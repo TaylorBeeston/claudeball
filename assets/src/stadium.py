@@ -180,6 +180,30 @@ def rim(target, extra=10.0):
 for i, tg in enumerate(((-71, 71), (71, 71), (-58, 30), (58, 30), (-20, 118), (20, 118))):
     p = rim(tg); tower(f"LightTower_{i+1}", p[0], p[1])
 
+# ---------------- advertising boards on the outfield wall (atlas 3x2, one 3 m panel per cell, cycling)
+adimg = bpy.data.images.load(ROOT+"/ads/ad_atlas.png"); adimg.pack()
+M_AD = mat("ad_boards", (1, 1, 1, 1), 0.5); _t = M_AD.node_tree.nodes.new("ShaderNodeTexImage"); _t.image = adimg
+M_AD.node_tree.links.new(_t.outputs["Color"], M_AD.node_tree.nodes["Principled BSDF"].inputs["Base Color"])
+sel_ = np.where((P[:, 1] > 76) & (~G['eye']))[0]
+avs, afs, auv = [], [], []
+seg = None; acc = 0.0; k = 0
+for i, j in enumerate(sel_):
+    if i > 0:
+        acc += np.linalg.norm(P[j]-P[sel_[i-1]])
+        if acc >= 3.0 or (j - sel_[i-1]) != 1: seg = None; acc = 0.0; k += 1
+    if seg is None:
+        seg = len(avs); cell = k % 6; cx, cy = (cell % 3)/3.0, 0.5 - (cell//3)*0.5
+    p = P[j]+N_[j]*(-0.03)
+    avs += [(p[0], 0.35, p[1]), (p[0], 1.25, p[1])]; u = cx + (acc/3.0)/3.0
+    auv += [(u, cy), (u, cy+0.5)]
+    if len(avs) >= 4 and seg is not None and len(avs)-2 >= seg+2: afs.append((len(avs)-4, len(avs)-2, len(avs)-1, len(avs)-3))
+fs_ = []
+for f in afs:
+    v0, v1, v2 = [np.array(avs[i]) for i in f[:3]]; nn = np.cross(v1-v0, v2-v0); ref = -np.array([N_[0][0], 0, N_[0][1]])
+    ctr = np.mean([avs[i] for i in f], axis=0); jj_ = sel_[np.argmin(np.linalg.norm(P[sel_]-np.array([ctr[0], ctr[2]]), axis=1))]
+    fs_.append(f if nn.dot(-np.array([N_[jj_][0], 0, N_[jj_][1]])) >= 0 else f[::-1])
+make_mesh("AdBoards", avs, fs_, [M_AD], uv=auv)
+
 # ---------------- seat templates (instanced in post-processing): 10 tris, facing +Z (center field)
 def seat_template(name, col):
     mb = MB(name); w = 0.46
