@@ -40,22 +40,22 @@ export function callPitch(w: World): PitchCall {
   let pEdge: number;
   if (balls === 3 && strikes < 2) {
     pChase = 0;
-    pEdge = strikes === 0 ? 0.12 : 0.32;
+    pEdge = strikes === 0 ? 0.15 : 0.35;
   } else if (strikes === 2) {
-    pChase = balls === 3 ? 0.08 : balls === 2 ? 0.3 : balls === 1 ? 0.42 : 0.5;
-    pEdge = 0.4;
-  } else if (balls > strikes) {
-    pChase = 0.07;
+    pChase = balls === 3 ? 0.12 : balls === 2 ? 0.34 : balls === 1 ? 0.5 : 0.58;
     pEdge = 0.36;
+  } else if (balls > strikes) {
+    pChase = 0.1;
+    pEdge = 0.45;
   } else if (balls === 0 && strikes === 0) {
-    pChase = 0.05;
-    pEdge = 0.4;
+    pChase = 0.1;
+    pEdge = 0.5;
   } else if (strikes === 1 && balls === 0) {
-    pChase = 0.24;
-    pEdge = 0.4;
+    pChase = 0.3;
+    pEdge = 0.42;
   } else {
-    pChase = 0.17;
-    pEdge = 0.4;
+    pChase = 0.22;
+    pEdge = 0.45;
   }
   const disc = (B.info.ratings.discipline + B.info.ratings.eye) / 2;
   pChase *= clamp(1.35 - 0.014 * disc, 0.55, 1.4);
@@ -101,10 +101,10 @@ export function callPitch(w: World): PitchCall {
   } else if (intent === 'edge') {
     const horiz = rng.next() < 0.6;
     if (horiz) {
-      u = (rng.next() < 0.62 ? away : -away) * rng.range(0.78, 1.0);
+      u = (rng.next() < 0.62 ? away : -away) * rng.range(0.85, 1.3);
       v = clamp(rng.normal(0, 0.45), -0.85, 0.85);
     } else {
-      v = (rng.next() < 0.6 ? -1 : 1) * rng.range(0.75, 1.0);
+      v = (rng.next() < 0.6 ? -1 : 1) * rng.range(0.8, 1.3);
       u = clamp(rng.normal(0, 0.5), -0.9, 0.9);
     }
   } else {

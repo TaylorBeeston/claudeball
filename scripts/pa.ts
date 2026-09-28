@@ -1,0 +1,10 @@
+import { createGame } from '../src/sim/game';
+const g = createGame({ seed: 'pa1', pace: 0 });
+let pitchesInPA = 0; const hist: Record<number, number> = {}; const firstPitch: Record<string, number> = {};
+const seqs: string[] = []; let seq = '';
+g.on('pitchReleased', () => { pitchesInPA++; });
+g.on('call', (e) => { const k = e.call.kind; seq += k === 'ball' ? 'B' : k === 'strikeLooking' ? 'K' : k === 'strikeSwinging' ? 'S' : k === 'foul' ? 'F' : k === 'hitByPitch' ? 'H' : ''; });
+g.on('plateAppearanceEnd', (e) => { hist[pitchesInPA] = (hist[pitchesInPA] ?? 0) + 1; seqs.push(seq + '|' + e.result); pitchesInPA = 0; seq = ''; });
+g.simulateToEnd(6 * 3600);
+console.log(hist);
+console.log(seqs.slice(0, 40).join('\n'));

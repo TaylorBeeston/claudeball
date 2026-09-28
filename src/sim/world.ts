@@ -166,6 +166,7 @@ export interface BallRT {
   throwTo: PlayerRT | null;
   throwBase: number | null;
   thrower: PlayerRT | null;
+  throwTarget: { x: number; z: number } | null;
   /** For throws that are not physics (catcher -> pitcher lobs). */
   lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number } | null;
   /** Cached prediction for fielders. */

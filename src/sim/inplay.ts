@@ -1,7 +1,7 @@
 import { stepBall } from './ball';
 import type { ContactResult } from './batting';
 import { emit } from './events';
-import { BASE_XZ, MOUND_DIST, fenceAt, isFairXZ } from './field';
+import { BASE_POS, BASE_XZ, MOUND_DIST, fenceAt, isFairXZ } from './field';
 import { setGoal } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
 import type { BipInfo, PlayKind, PlayState, PlayerRT, RunnerRT, World } from './world';
@@ -13,7 +13,7 @@ import * as running from './running';
 import { DUGOUT } from './setup';
 import { CallInfo } from './types';
 
-const bpos = running.bpos;
+const bpos = (b: number) => BASE_POS[b % 4];
 
 export function newPlay(w: World, kind: PlayKind): PlayState {
   return {

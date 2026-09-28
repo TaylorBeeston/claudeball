@@ -141,7 +141,11 @@ export function updateLeads(w: World): void {
     r.leadX = a.x + ((b.x - a.x) / d) * lead;
     r.leadZ = a.z + ((b.z - a.z) / d) * lead;
     const p = r.p;
-    if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, 0.5);
+    if (w.cfg.pace === 0 && Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) {
+      p.x = r.leadX;
+      p.z = r.leadZ;
+      p.vx = p.vz = 0;
+    } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, 0.5);
     p.lookAt = { x: w.pitcher.x, z: w.pitcher.z };
   }
 }
@@ -207,6 +211,7 @@ export function decideSteals(w: World, windupSecs: number): void {
   const exch = 0.72 - 0.0035 * (cr - 50);
   const tBall = windupSecs + (w.pitcher.info.arsenal.length ? 0.44 : 0.44) + exch + D / (armV * 0.9) + 0.2;
   const margin = tBall - tRun + w.rng.normal(0, 0.22);
+  if (process.env.DBG_STEAL) console.log('steal eval', { tRun: tRun.toFixed(2), tBall: tBall.toFixed(2), margin: margin.toFixed(2), dist: dist.toFixed(1) });
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
   const thr = 0.15 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);

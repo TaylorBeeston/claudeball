@@ -1,6 +1,6 @@
 import { flightStep, newFlags, predictPath, PathSample, BallBody } from './ball';
 import { emit } from './events';
-import { BALL_RADIUS, fenceAt, isFairXZ } from './field';
+import { BALL_RADIUS, BASE_POS, fenceAt, isFairXZ } from './field';
 import { clamp, MPH, RPM } from './math';
 import { setGoal, travelTime } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
@@ -16,7 +16,7 @@ export const TUNE = { fieldSigma: 0.03, throwSigma: 0.0165, pocket: 0.135 };
 export const fielders = (w: World): PlayerRT[] => [...w.fieldingTeam.defense.values()].filter((p) => p.onField);
 export const armSpeed = (p: PlayerRT) => 27 + 0.21 * p.info.ratings.arm;
 export const throwTimeEstimate = (D: number, v: number) => D / (0.9 * v) + 0.05;
-const bpos = running.bpos;
+const bpos = (b: number) => BASE_POS[b % 4];
 
 // ---------------------------------------------------------------------------------------------
 // ball path prediction shared by the defense
@@ -181,6 +181,7 @@ export function defenseAI(w: World): void {
 
   // coverage assignments
   const covers: Record<number, PlayerRT | null> = { 1: null, 2: null, 3: null, 4: null };
+  if (play.kind === 'pickoff') for (const b of [1, 2, 3, 4]) covers[b] = play.covers[b] ?? null;
   const taken = new Set<PlayerRT>();
   if (primary) taken.add(primary);
   if (holder) taken.add(holder);
@@ -188,9 +189,9 @@ export function defenseAI(w: World): void {
   for (const b of [...needs].filter((x) => x >= 1 && x <= 4).sort((a, c) => a - c)) {
     let order = COVER_ORDER[b];
     if (b === 2) order = sideLeft ? ['2B', 'SS', '3B'] : ['SS', '2B', '1B'];
-    let chosen: PlayerRT | null = null;
+    let chosen: PlayerRT | null = covers[b];
     // holder standing at the base covers it himself
-    if (holder && Math.hypot(holder.x - bpos(b).x, holder.z - bpos(b).z) < 4) chosen = holder;
+    if (!chosen && holder && Math.hypot(holder.x - bpos(b).x, holder.z - bpos(b).z) < 4) chosen = holder;
     for (const pos of order) {
       if (chosen) break;
       const F = team.defense.get(pos as never);
@@ -273,29 +274,29 @@ export const isOutfielder = (p: PlayerRT) => p.fieldPos === 'LF' || p.fieldPos =
 function receiverLogic(w: World): void {
   const ball = w.ball;
   const R = ball.throwTo;
-  if (!R) return;
-  const ic = computeInterceptThrow(w, R);
+  if (!R || !ball.throwTarget) return;
   R.plan.kind = 'receive';
-  if (ic) setGoal(R, ic.x, ic.z, true, 1);
-  R.lookAt = { x: ball.body.x, z: ball.body.z };
-}
-
-/** Where a receiver should move to catch a throw (only small adjustments). */
-function computeInterceptThrow(w: World, R: PlayerRT): { x: number; z: number } | null {
-  ensurePath(w);
-  const path = w.ball.path;
-  const tNow = (w.tick - w.ball.pathStart) * TICK;
-  for (let i = Math.max(1, Math.floor(tNow * 60)); i < path.length; i++) {
-    const s = path[i];
-    if (s.y < 2.4 && s.y > 0) {
-      const d = Math.hypot(s.x - R.x, s.z - R.z);
-      const T = travelTime(R, s.x, s.z);
-      if (s.t - tNow >= T - 0.05 && d < 5) return { x: s.x, z: s.z };
-      if (d > 5) continue;
+  // go to (and stay at) the spot the throw is aimed at; small adjustments for a throw that is going astray
+  let gx = ball.throwTarget.x;
+  let gz = ball.throwTarget.z;
+  const b = ball.body;
+  const path = ball.path;
+  if (path.length) {
+    const tNow = (w.tick - ball.pathStart) * TICK;
+    for (let i = Math.max(1, Math.floor(tNow * 60)); i < path.length; i++) {
+      const s = path[i];
+      if (s.y < 2.3 && Math.hypot(s.x - gx, s.z - gz) < 3.2 && (s.x - b.x) * (gx - b.x) + (s.z - b.z) * (gz - b.z) > 0) {
+        const T = travelTime(R, s.x, s.z);
+        if (s.t - tNow >= T - 0.02) {
+          gx = s.x;
+          gz = s.z;
+        }
+        break;
+      }
     }
-    if (s.t - tNow > 3) break;
   }
-  return null;
+  setGoal(R, gx, gz, true, 1);
+  R.lookAt = { x: b.x, z: b.z };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -671,8 +672,9 @@ export function doThrow(w: World, F: PlayerRT): void {
   F.plan.releaseAt = 0;
   if (ball.holder !== F) return;
   const bp = base > 0 && !R ? bpos(base) : null;
-  const tx = R ? R.x : bp!.x;
-  const tz = R ? R.z : bp!.z;
+  const atBase = R && base > 0 && (R.plan.kind === 'cover' || R.plan.kind === 'cutoff');
+  const tx = atBase ? R!.plan.tx : R ? R.x : bp!.x;
+  const tz = atBase ? R!.plan.tz : R ? R.z : bp!.z;
   const from = { x: F.x + Math.sin(F.facing) * 0.45, y: 1.75, z: F.z + Math.cos(F.facing) * 0.45 };
   const D = Math.hypot(tx - from.x, tz - from.z);
   const effort = D > 14 ? 1 : 0.82 + 0.18 * (D / 14);
@@ -705,6 +707,7 @@ export function doThrow(w: World, F: PlayerRT): void {
   ball.thrower = F;
   ball.throwTo = R;
   ball.throwBase = base > 0 ? base : null;
+  ball.throwTarget = { x: tx, z: tz };
   ball.pathDirty = true;
   ball.touchedGround = false;
   ball.lastTouch = F;
@@ -729,6 +732,7 @@ export function checkWildThrow(w: World): void {
   const closing = (b.x - R.x) * b.vx + (b.z - R.z) * b.vz < 0;
   if (!closing && d > 3.2 && w.tick - play.lastThrowTick > 12) {
     play.throwChecked = true;
+    if (process.env.DBG_THROW) console.log('wild throw', { tgt: ball.throwTarget && [ball.throwTarget.x.toFixed(1), ball.throwTarget.z.toFixed(1)], from: F.fieldPos, to: R.fieldPos, d: d.toFixed(1), rpos: [R.x.toFixed(1), R.z.toFixed(1)], ball: [b.x.toFixed(1), b.y.toFixed(1), b.z.toFixed(1)], base: ball.throwBase, kind: R.plan.kind });
     // charge the thrower: the throw was beyond the receiver's reach
     play.hadError = true;
     if (!play.errors.includes(F)) {

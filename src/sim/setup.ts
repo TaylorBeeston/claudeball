@@ -164,6 +164,7 @@ export function createWorld(cfg: GameConfig): World {
       throwTo: null,
       throwBase: null,
       thrower: null,
+      throwTarget: null,
       lob: null,
       path: [],
       pathStart: 0,
