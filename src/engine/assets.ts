@@ -59,14 +59,18 @@ export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onP
     /* no layout: assume current contract */
   }
 
+  // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
   const load = async (file: string) => {
-    try {
-      onProgress?.(`loading ${file}`);
-      return await loader.loadAsync(base + file);
-    } catch (e) {
-      out.missing.push(file);
-      return null;
+    for (const path of [`optimized/${file}`, file]) {
+      try {
+        onProgress?.(`loading ${path}`);
+        return await loader.loadAsync(base + path);
+      } catch {
+        /* try next */
+      }
     }
+    out.missing.push(file);
+    return null;
   };
 
   const [field, stadium, ball, bat, ...chars] = await Promise.all([

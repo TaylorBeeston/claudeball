@@ -160,8 +160,8 @@ export class CameraDirector {
         if (this.inPlay) this.pendingReplay = true;
         break;
       case 'half_inning':
-        this.cutawayIdx = (this.cutawayIdx + 1) % 3;
-        this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
+        this.cutawayIdx = (this.cutawayIdx + 1) % 2;
+        this.cutaway = (['crowd', 'wide'] as const)[this.cutawayIdx];
         this.cutawayUntil = this.clock + 5.5;
         this.cut('cutaway');
         this.inPlay = false;

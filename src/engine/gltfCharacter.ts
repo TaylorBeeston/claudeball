@@ -106,11 +106,15 @@ export class GltfPuppet implements PuppetLike {
   private look = { yaw: 0, pitch: 0 };
   private ikW = 0;
   private skin: string;
+  private numberSet = -1;
+  private numMeshes: { tens?: Mesh; ones?: Mesh } = {};
 
   constructor(private tpl: CharacterTemplate, id: string) {
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
     this.model.traverse((o) => {
+      if (o.name === 'Gear_Number_Tens') this.numMeshes.tens = o as Mesh;
+      if (o.name === 'Gear_Number_Ones') this.numMeshes.ones = o as Mesh;
       if ((o as Bone).isBone) this.bones[o.name.replace('mixamorig', '').replace(':', '')] = o as Bone;
       const m = o as Mesh;
       if (m.isMesh) {
@@ -121,6 +125,9 @@ export class GltfPuppet implements PuppetLike {
         this.meshes.push(m);
       }
     });
+    // hair is hidden under caps / helmets
+    const hair = this.model.getObjectByName('Face_Hair');
+    if (hair && (this.model.getObjectByName('Gear_Cap') || this.model.getObjectByName('Gear_Helmet'))) hair.visible = false;
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
       const a = this.mixer.clipAction(clip);
@@ -166,7 +173,38 @@ export class GltfPuppet implements PuppetLike {
     this.currentName = name;
   }
 
+  /** Jersey number quads: two textured digits (cells of number_digits.png; defaults tens=2, ones=7). */
+  private setNumber(n: number | undefined) {
+    const v = n ?? -1;
+    if (v === this.numberSet) return;
+    this.numberSet = v;
+    const { tens, ones } = this.numMeshes;
+    const apply = (mesh: Mesh | undefined, digit: number, def: number, show: boolean) => {
+      if (!mesh) return;
+      mesh.visible = show;
+      if (!show) return;
+      const base = mesh.material as MeshStandardMaterial;
+      if (!mesh.userData.numMat) {
+        const m = base.clone();
+        m.userData = {};
+        if (m.map) m.map = m.map.clone();
+        mesh.userData.numMat = m;
+        reg(m);
+      }
+      const m = mesh.userData.numMat as MeshStandardMaterial;
+      mesh.material = m;
+      if (m.map) {
+        m.map.offset.x = (digit - def) / 10;
+        m.map.needsUpdate = true;
+      }
+    };
+    const show = v >= 0;
+    apply(tens, Math.floor(v / 10) % 10, 2, show && v >= 10);
+    apply(ones, v % 10, 7, show);
+  }
+
   update(snap: PlayerSnap, dt: number, env: PuppetEnv) {
+    this.setNumber(snap.number);
     this.model.scale.x = snap.hand === 'L' ? -1 : 1;
     const name = clipFor(snap.anim, snap.role);
     if (snap.anim !== this.lastHint || name !== this.currentName) {

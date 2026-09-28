@@ -29,6 +29,7 @@ import type { Environment } from './environment';
 import type { GameState } from './types';
 
 type P2 = [number, number];
+const SCOREBOARD_FLIP_X = true;
 
 /** Closed outline of the seating bowl's front edge, in SCENE coords (x mirrored). */
 function buildOutline(): P2[] {
@@ -551,7 +552,8 @@ export function buildStadium(env: Environment): Stadium {
         if (o.name.endsWith('_Lamps')) lampSet.add(mt);
         if (o.name === 'Scoreboard_Screen') {
           sbTex.flipY = false; // glTF UV convention
-          if (mirrored) {
+          // the flipped-axis export leaves the screen UVs mirrored horizontally (asset issue, reported)
+          if (SCOREBOARD_FLIP_X !== mirrored) {
             sbTex.wrapS = RepeatWrapping;
             sbTex.repeat.x = -1;
             sbTex.offset.x = 1;
@@ -593,6 +595,20 @@ export function buildStadium(env: Environment): Stadium {
       }
     });
     crowd.setMatrices(seatMats);
+    // crowd cutaway shots from the real bowl: lower-deck seats, camera 16 m out on the field side
+    const cand = seatMats.filter((m) => {
+      m.decompose(p, q, sc);
+      return p.y > 1 && p.y < 7 && Math.hypot(p.x, p.z - 30) < 95 && p.z > -10;
+    });
+    if (cand.length > 50) {
+      crowdShots.length = 0;
+      for (const f of [0.06, 0.25, 0.45, 0.62, 0.8, 0.93]) {
+        const m = cand[Math.floor(f * cand.length)];
+        m.decompose(p, q, sc);
+        const fwd = new Vector3(0, 0, 1).applyQuaternion(q);
+        crowdShots.push({ pos: p.clone().addScaledVector(fwd, 18).setY(p.y + 1.6), target: p.clone().setY(p.y + 1.3) });
+      }
+    }
     gltfLamps = [...lampSet];
     gltfLampBase = gltfLamps.map((m) => m.emissiveIntensity || 1);
     setLightsOn(lightsState);
