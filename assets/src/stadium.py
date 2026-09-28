@@ -153,11 +153,17 @@ v = [sc_.vert(cx-hx, y0s, cz-hz, uv=(1, 0)), sc_.vert(cx+hx, y0s, cz+hz, uv=(0, 
 sc_.quad_out(*v, (base[0]-face[0]*5, y0s, base[1]-face[1]*5))
 objs.append(sc_.build(M_SCR))
 
-# ---------------- dugout roofs
+# ---------------- dugout roofs (same footprint constants as the pit in field.glb)
+M_ROOFW = mat("dugout_roof_fascia", (0.02, 0.05, 0.16, 1), 0.6)
 for nm, side in (("DugoutRoof_1B", 1), ("DugoutRoof_3B", -1)):
-    s0, s1, o0, o1 = 12.0, 30.0, 8.6, 12.8; S2 = math.sqrt(.5)
-    ctr = (side*((s0+s1)/2+(o0+o1)/2)*S2, ((s0+s1)/2-(o0+o1)/2)*S2)
-    mb = MB(nm); mb.box(ctr[0], ctr[1], (o1-o0), (s1-s0), 2.6, 2.85, rot=-side*math.pi/4); objs.append(mb.build(M_DUGR))
+    s0, s1 = DUG_S; o0, o1 = DUG_O; rot = -side*math.pi/4
+    def BXr(mb_, s_lo, s_hi, o_lo, o_hi, y0, y1):
+        cx, cz = dug_xy((s_lo+s_hi)/2, (o_lo+o_hi)/2, side); mb_.box(cx, cz, o_hi-o_lo, s_hi-s_lo, y0, y1, rot=rot)
+    slab, fas, post = MB(nm), MB(nm+"_Fascia"), MB(nm+"_Posts")
+    BXr(slab, s0-.3, s1+.3, o0-.5, o1+.3, 2.72, 2.95)                             # roof slab, overhangs the field side
+    BXr(fas, s0-.3, s1+.3, o0-.55, o0-.45, 2.45, 2.98)                            # fascia board along the opening
+    for k in range(int((s1-s0)//4.5)+2): BXr(post, s0+k*4.5-.06, s0+k*4.5+.06, o0-.25, o0-.13, .55, 2.72)   # front posts
+    for mbx, mat_ in ((slab, M_DUGR), (fas, M_ROOFW), (post, M_STEEL)): objs.append(mbx.build(mat_))
 
 # ---------------- light towers (steel mast + emissive lamp banks)
 def tower(name, px, pz, h=46.0):

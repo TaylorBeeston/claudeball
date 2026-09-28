@@ -80,3 +80,21 @@ def bands(poly, ang, width, lo, hi):
         p = clip_poly(poly, nx, nz, d); p = clip_poly(p, -nx, -nz, -(d+width))
         if len(p) >= 3: yield k, p
         k += 1; d += width
+
+
+def carve(poly, side):
+    """Return pieces of `poly` (list of (x,z)) with the dugout footprint removed."""
+    r = math.sqrt(.5); s0, s1 = DUG_S; o0, o1 = DUG_O
+    # rotated coordinates: s = (side*x + z)*r ; o = (side*x - z)*r  -> half-planes
+    def cut(p, ax, lo, hi):
+        pieces = []
+        a = clip_poly(p, *ax[0], ax[1]) if False else None
+        return pieces
+    out = []
+    S = (side*r, r); O = (side*r, -r)          # gradient vectors of s and o
+    # left of o-range, right of o-range, then within o-range below/above the s-range
+    below = clip_poly(poly, -O[0], -O[1], -o0)                        # o <= o0
+    above = clip_poly(poly, O[0], O[1], o1)                           # o >= o1
+    mid = clip_poly(clip_poly(poly, O[0], O[1], o0), -O[0], -O[1], -o1)   # o0 <= o <= o1
+    lo = clip_poly(mid, -S[0], -S[1], -s0); hi = clip_poly(mid, S[0], S[1], s1)
+    return [p for p in (below, above, lo, hi) if len(p) >= 3]

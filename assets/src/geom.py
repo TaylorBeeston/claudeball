@@ -61,3 +61,8 @@ def wall_path(step=0.5):
     t = _np.roll(pts, -1, 0) - _np.roll(pts, 1, 0); t /= _np.linalg.norm(t, axis=1, keepdims=True)
     n = _np.stack([-t[:, 1], t[:, 0]], 1)
     return pts, n, t, ss
+
+# ---- dugout footprint shared by field.glb (pit) and stadium.glb (roof); (s, o) = distance along the foul line from home / lateral offset from it
+DUG_S = (12.0, 30.0); DUG_O = (8.6, 13.2); DUG_FLOOR = -1.05
+def dug_xy(s, o, side):                     # side: +1 = 1B dugout (before the x-mirror at export), -1 = 3B
+    r = math.sqrt(.5); return (side*(s+o)*r, (s-o)*r)
