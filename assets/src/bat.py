@@ -43,5 +43,5 @@ nrm = make_image("bat_normal", height_to_normal(fine*0.6+rings_t*0.2, 2.0), 'Non
 m = pbr_material("bat_wood", alb, nrm, rough=0.4, nstrength=0.4)
 me.materials.append(m)
 # axis: knob at origin, barrel toward +Z (Blender) => +Y up in glTF.
-export([bat], ROOT+"/bat.glb")
+export([bat], ROOT+"/bat.glb", jpg=True)
 result = {"len": L, "tris": len(me.polygons)*2}

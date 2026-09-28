@@ -3,7 +3,7 @@ import bmesh, math
 from mathutils import Vector
 reset_scene()
 R = 0.0369  # 73.8 mm diameter
-bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=32, radius=R, calc_uvs=True)
+bm = bmesh.new(); bm.loops.layers.uv.new('UVMap'); bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=32, radius=R, calc_uvs=True)
 me = bpy.data.meshes.new("ball_mesh"); bm.to_mesh(me); bm.free()
 ball = bpy.data.objects.new("ball", me); bpy.context.collection.objects.link(ball)
 for p in me.polygons: p.use_smooth = True
@@ -54,5 +54,5 @@ sme.materials.append(red)
 # thin raised seam ridge (leather seam) via displacing verts near the curve
 me.update()
 st.parent = ball
-export([ball, st], ROOT+"/ball.glb")
+export([ball, st], ROOT+"/ball.glb", jpg=True)
 result = {"tris": len(me.polygons)*2 + len(sme.polygons)*2, "dia_mm": R*2000}
