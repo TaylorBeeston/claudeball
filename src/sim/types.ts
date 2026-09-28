@@ -63,6 +63,20 @@ export interface PitchSpec {
   usage: number;
 }
 
+/** Hidden hitter/pitcher habits that shape mechanics (not ratings). */
+export interface Traits {
+  /** Mean bat attack angle (deg, + = uppercut). */
+  attackAngleDeg: number;
+  /** How far below the ball's centre the batter aims the bat centre-line (m). */
+  aimBelow: number;
+  /** Willingness to swing early in the count (-1..1). */
+  aggression: number;
+  /** Pitcher arm slot: release height (m), lateral offset toward the arm side (m), extension (m). */
+  armHeight: number;
+  armSide: number;
+  extension: number;
+}
+
 export interface PlayerInfo {
   id: string;
   name: string;
@@ -75,6 +89,7 @@ export interface PlayerInfo {
   ratings: Ratings;
   arsenal: PitchSpec[]; // empty for position players
   isPitcher: boolean;
+  traits: Traits;
 }
 
 export interface Team {

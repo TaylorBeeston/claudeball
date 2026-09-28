@@ -1,6 +1,6 @@
 import { Rng } from './rng';
 import { clamp } from './math';
-import type { FieldPosition, Handed, PitchSpec, PitchType, PlayerInfo, Ratings, Team, TeamSide } from './types';
+import type { FieldPosition, Handed, PitchSpec, PitchType, PlayerInfo, Ratings, Team, TeamSide, Traits } from './types';
 
 const FIRST = ['Aaron', 'Adrian', 'Alex', 'Andre', 'Andrew', 'Anthony', 'Ben', 'Blake', 'Brandon', 'Brett', 'Bryce', 'Caleb', 'Carlos', 'Chase', 'Chris', 'Cody', 'Colby', 'Cole', 'Connor', 'Dalton', 'Dan', 'Darius', 'David', 'Derek', 'Diego', 'Dominic', 'Dustin', 'Elijah', 'Eric', 'Ethan', 'Evan', 'Felix', 'Frankie', 'Gabe', 'Garrett', 'Gavin', 'George', 'Grant', 'Gus', 'Hank', 'Hunter', 'Ian', 'Isaac', 'Jack', 'Jake', 'Jamal', 'Jared', 'Jason', 'Javier', 'Jay', 'Jesse', 'Joey', 'Jon', 'Jorge', 'Josh', 'Juan', 'Justin', 'Kaleb', 'Kenny', 'Kevin', 'Kyle', 'Lance', 'Leo', 'Logan', 'Luis', 'Luke', 'Marcus', 'Mario', 'Mason', 'Matt', 'Miguel', 'Mike', 'Nate', 'Nick', 'Noah', 'Omar', 'Oscar', 'Pablo', 'Patrick', 'Pete', 'Quinn', 'Rafael', 'Ray', 'Reid', 'Ricky', 'Riley', 'Rob', 'Roman', 'Ryan', 'Sam', 'Santiago', 'Seth', 'Shane', 'Sean', 'Spencer', 'Tanner', 'Theo', 'Tim', 'Todd', 'Tomas', 'Travis', 'Trent', 'Tyler', 'Victor', 'Vince', 'Wade', 'Will', 'Xavier', 'Zach'];
 const LAST = ['Abbott', 'Alvarez', 'Anderson', 'Baker', 'Barnes', 'Bell', 'Bennett', 'Blanco', 'Brooks', 'Brown', 'Burke', 'Butler', 'Cabrera', 'Campbell', 'Carter', 'Castillo', 'Chavez', 'Clark', 'Coleman', 'Cruz', 'Daniels', 'Davis', 'Delgado', 'Diaz', 'Dixon', 'Douglas', 'Edwards', 'Ellis', 'Evans', 'Fernandez', 'Fisher', 'Flores', 'Foster', 'Fuentes', 'Garcia', 'Gibson', 'Gomez', 'Gonzalez', 'Graham', 'Grant', 'Gray', 'Green', 'Griffin', 'Guerrero', 'Hall', 'Hamilton', 'Harris', 'Hayes', 'Henderson', 'Hernandez', 'Hill', 'Howard', 'Hughes', 'Jackson', 'James', 'Jenkins', 'Johnson', 'Jones', 'Kelly', 'Kim', 'King', 'Lee', 'Lewis', 'Lopez', 'Marshall', 'Martin', 'Martinez', 'Mason', 'Miller', 'Mitchell', 'Moore', 'Morales', 'Morgan', 'Murphy', 'Myers', 'Nelson', 'Nguyen', 'Ortiz', 'Owens', 'Parker', 'Patel', 'Perez', 'Peterson', 'Powell', 'Price', 'Ramirez', 'Reed', 'Reyes', 'Reynolds', 'Rivera', 'Roberts', 'Robinson', 'Rodriguez', 'Rogers', 'Ross', 'Ruiz', 'Sanchez', 'Sanders', 'Santos', 'Scott', 'Silva', 'Simmons', 'Smith', 'Stewart', 'Sullivan', 'Taylor', 'Thomas', 'Thompson', 'Torres', 'Turner', 'Vargas', 'Walker', 'Ward', 'Washington', 'Watson', 'White', 'Williams', 'Wilson', 'Wood', 'Wright', 'Young'];
@@ -66,6 +66,21 @@ function makeName(rng: Rng, used: Set<string>): string {
   return `${rng.pick(FIRST)} ${rng.pick(LAST)} Jr.`;
 }
 
+function makeTraits(rng: Rng, throwsLeft: boolean, power: number): Traits {
+  const slotType = rng.next();
+  // 3/4 over-the-top / three-quarter, some sidearm
+  const armHeight = slotType < 0.62 ? rng.normal(1.83, 0.07) : slotType < 0.94 ? rng.normal(1.6, 0.07) : rng.normal(1.28, 0.08);
+  const side = (throwsLeft ? 1 : -1) * (0.25 + (1.83 - armHeight) * 0.9 + rng.normal(0, 0.08));
+  return {
+    attackAngleDeg: rng.normal(5 + (power - 50) * 0.05, 3.5),
+    aimBelow: rng.normal(0.0, 0.006),
+    aggression: clamp(rng.normal(0, 0.45), -1, 1),
+    armHeight,
+    armSide: side,
+    extension: clamp(rng.normal(1.85, 0.12), 1.5, 2.2),
+  };
+}
+
 function makeHitter(id: string, side: TeamSide, jersey: number, pos: FieldPosition, tilt: Slot['tilt'], quality: number, rng: Rng, used: Set<string>): PlayerInfo {
   const q = quality; // additive rating shift (regulars ~ +3, bench ~ -4)
   const talent = rng.normal(0, 1);
@@ -88,18 +103,20 @@ function makeHitter(id: string, side: TeamSide, jersey: number, pos: FieldPositi
   };
   const r = rng.next();
   const bats: Handed = r < 0.56 ? 'R' : r < 0.86 ? 'L' : 'S';
+  const throwsL = rng.next() >= 0.88;
   return {
     id,
     name: makeName(rng, used),
     team: side,
     jersey,
     bats,
-    throws: rng.next() < 0.88 ? 'R' : 'L',
+    throws: throwsL ? 'L' : 'R',
     primaryPosition: pos,
     height: clamp(rng.normal(1.86, 0.06), 1.68, 2.05),
     ratings,
     arsenal: [],
     isPitcher: false,
+    traits: makeTraits(rng, throwsL, ratings.power),
   };
 }
 
@@ -162,6 +179,7 @@ function makePitcher(id: string, side: TeamSide, jersey: number, role: 'SP' | 'R
     ratings,
     arsenal,
     isPitcher: true,
+    traits: makeTraits(rng, left, 30),
   };
 }
 
