@@ -53,7 +53,15 @@ def pbr_material(name, base, nrm=None, rough=0.6, metal=0.0, orm=None, nstrength
         nt.links.new(t.outputs["Color"], nm.inputs["Color"]); nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
     return m
 
-def export(objs, path, **kw):
+def mirror_x(objs):
+    """Final convention flip: game x -> -x (first base at -X, third base at +X). Mirrors vertices and re-flips faces."""
+    for o in objs:
+        if o.type != 'MESH': continue
+        me = o.data; v = np.empty(len(me.vertices)*3, np.float32); me.vertices.foreach_get("co", v); v[0::3] *= -1
+        me.vertices.foreach_set("co", v); me.flip_normals(); me.update()
+
+def export(objs, path, mirror=False, **kw):
+    if mirror: mirror_x(objs)
     bpy.ops.object.select_all(action='DESELECT')
     for o in objs: o.select_set(True)
     bpy.context.view_layer.objects.active = objs[0]

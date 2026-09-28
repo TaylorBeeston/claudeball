@@ -115,12 +115,13 @@ for nm, side in (("Bullpen_R", 1), ("Bullpen_L", -1)):
     objs.append(bp.build(M_DIRT))
     bpl = MB(nm+"_Plate"); bpl.poly(pl if False else [(p0[0]+x, p0[1]+z) for x, z in pl], Y_CUT+0.012); objs.append(bpl.build(M_PLATE))
 # ---------------- layout metadata for engine / sim / stadium
-layout = {"units": "meters", "axes": "Y up, +Z center field, +X first base, origin home plate apex",
-          "bases": {"home": [0, 0], "first": list(b1), "second": list(b2), "third": list(b3)},
-          "mound_center": list(C_MOUND), "rubber_front_z": 60.5*FT, "mound_height": H,
-          "foul_poles": {"left": list(POLE_L), "right": list(POLE_R)}, "warning_track_width": 15*FT,
-          "fence": [[round(x, 3), round(z, 3)] for x, z in fence_pts(91)],
-          "ground_outline": [[round(x, 3), round(z, 3)] for x, z in outline], "backstop_z": BACKSTOP_Z}
+FX = lambda p: [-p[0], p[1]]
+layout = {"units": "meters", "axes": "Y up, +Z center field, +X THIRD base (first base at -X), origin home plate apex",
+          "bases": {"home": [0, 0], "first": FX(b1), "second": FX(b2), "third": FX(b3)},
+          "mound_center": FX(C_MOUND), "rubber_front_z": 60.5*FT, "mound_height": H,
+          "foul_poles": {"left": FX(POLE_L), "right": FX(POLE_R)}, "warning_track_width": 15*FT,
+          "fence": [[round(-x, 3), round(z, 3)] for x, z in fence_pts(91)],
+          "ground_outline": [[round(-x, 3), round(z, 3)] for x, z in outline], "backstop_z": BACKSTOP_Z}
 json.dump(layout, open(ROOT+"/field_layout.json", "w"), indent=1)
-export(objs, ROOT+"/field.glb", jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
+export(objs, ROOT+"/field.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
 result = {"objs": [o.name for o in objs], "tris": sum(len(o.data.polygons) for o in objs)}

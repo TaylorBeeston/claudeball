@@ -195,7 +195,7 @@ for t in range(3):
     o = seat_template(f"Seats_T{t+1}", SEATC[t]); objs.append(o)
 np.savez_compressed(ROOT+"/src/seats.npz", **{f"pos{t}": G['seats'][t][0] for t in range(3)}, **{f"yaw{t}": G['seats'][t][1] for t in range(3)})
 result = {"objs": len(objs), "seats": [len(G['seats'][t][0]) for t in range(3)], "tris": sum(len(o.data.polygons) for o in objs)}
-export(objs, ROOT+"/stadium.glb", jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
+export(objs, ROOT+"/stadium.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
 exec(open(CB_SRC + "/inject_instances.py").read())
 _d = np.load(ROOT+"/src/seats.npz")
-inject(ROOT+"/stadium.glb", {f"Seats_T{t+1}": (_d[f"pos{t}"], _d[f"yaw{t}"]) for t in range(3)})
+inject(ROOT+"/stadium.glb", {f"Seats_T{t+1}": (_d[f"pos{t}"]*np.array([-1, 1, 1], np.float32), -_d[f"yaw{t}"]) for t in range(3)})
