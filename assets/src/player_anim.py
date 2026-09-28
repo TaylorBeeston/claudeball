@@ -8,12 +8,18 @@ def Rz(deg): return Matrix.Rotation(math.radians(deg), 3, 'Z')
 def lean_dir(lean, side=0.0):
     l, s = math.radians(lean), math.radians(side)
     return Vector((math.sin(s), -math.sin(l), math.cos(l)*math.cos(s))).normalized()
+def hand_frame(side):
+    sx = 1 if side == "Left" else -1; z = REST_DIR_[side+"Hand"]; x = Vector((-sx, 0, 0)); y = z.cross(x).normalized(); x = y.cross(z).normalized(); return x, y, z
+REST_DIR_ = {n: (JOINTS[n][2]-JOINTS[n][1]).normalized() for n in ORDER}
 LEN = {n: (JOINTS[n][2]-JOINTS[n][1]).length for n in ORDER}
 REST_DIR = {n: (JOINTS[n][2]-JOINTS[n][1]).normalized() for n in ORDER}
 REST_HEAD = {n: JOINTS[n][1].copy() for n in ORDER}
 
+CLAMPS = []
 def ik2(root, target, l1, l2, pole):
-    dv = target-root; dist = dv.length; d = max(abs(l1-l2)+1e-3, min(dist, l1+l2-1e-3)); dn = dv.normalized()
+    dv = target-root; dist = dv.length
+    if dist > l1+l2+1e-3: CLAMPS.append(round(dist-(l1+l2), 3))
+    d = max(abs(l1-l2)+1e-3, min(dist, l1+l2-1e-3)); dn = dv.normalized()
     a = (l1*l1-l2*l2+d*d)/(2*d); h = math.sqrt(max(l1*l1-a*a, 0.0))
     pv = pole - dn*pole.dot(dn)
     pv = pv.normalized() if pv.length > 1e-6 else Vector((0, -1, 0))
@@ -22,7 +28,7 @@ def ik2(root, target, l1, l2, pole):
 
 DEFAULT = dict(hips=(0, 0, 0), hyaw=0, yaw=0, lean=0, side=0, head_yaw=None, head_pitch=0,
                lfoot=(.13, 0, .08), rfoot=(-.13, 0, .08), lknee=(0, -1, 0), rknee=(0, -1, 0), lfoot_o=(0, 0), rfoot_o=(0, 0),
-               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None)
+               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None)
 
 def solve(spec):
     """Return {bone: (M_arm matrix 4x4)} for a pose spec."""
@@ -48,10 +54,21 @@ def solve(spec):
         for n in (sd+"Shoulder", sd+"Arm"):
             place(n)
             if n == sd+"Shoulder": delta[n] = delta['Spine2']; d_out[n] = delta[n] @ REST_DIR[n]
-        # arm IK
-        d1, d2 = ik2(head[sd+"Arm"], Vector(P[k+'hand']), LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
+        # arm IK (optionally driven by a bat grip)
+        hd_dir = P[k+'hand_dir']; hd_tw = P[k+'hand_twist']; wr_target = Vector(P[k+'hand'])
+        if P['bat']:
+            knob, B = Vector(P['bat'][0]), Vector(P['bat'][1]).normalized()
+            grip = knob + B*(.035 if sd == "Left" else .135)
+            ref = Vector((1, 0, 0)) if abs(B.dot(Vector((1, 0, 0)))) < .9 else Vector((0, 0, -1))
+            dd = ref.cross(B).normalized() if hd_dir is None else Vector(hd_dir).normalized()
+            xr, yr, zr = hand_frame(sd); q = REST_DIR[sd+"Hand"].rotation_difference(dd); ya = q @ yr
+            tgt = (B - dd*B.dot(dd)).normalized()*(1 if sd == "Right" else -1); ya_p = (ya - dd*ya.dot(dd)).normalized()
+            ang = math.atan2(dd.dot(ya_p.cross(tgt)), ya_p.dot(tgt)); hd_tw = math.degrees(ang) + (P['bat'][2] if len(P['bat']) > 2 else 0)
+            qt = Quaternion(dd, math.radians(hd_tw)) @ q; N = qt @ xr
+            wr_target = grip - dd*.06 - N*.03; hd_dir = dd
+        d1, d2 = ik2(head[sd+"Arm"], wr_target, LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
         setb(sd+"Arm", d1); place(sd+"ForeArm"); setb(sd+"ForeArm", d2); place(sd+"Hand")
-        setb(sd+"Hand", P[k+'hand_dir'] if P[k+'hand_dir'] else d2)
+        setb(sd+"Hand", hd_dir if hd_dir is not None else d2, hd_tw)
         # leg IK
         place(sd+"UpLeg"); l1, l2 = LEN[sd+"UpLeg"], LEN[sd+"Leg"]
         d1, d2 = ik2(head[sd+"UpLeg"], Vector(P[k+'foot']), l1, l2, Vector(P[k+'knee']))
