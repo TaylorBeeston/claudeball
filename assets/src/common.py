@@ -67,3 +67,13 @@ def export(objs, path, mirror=False, **kw):
     bpy.context.view_layer.objects.active = objs[0]
     bpy.ops.export_scene.gltf(filepath=path, use_selection=True, export_format='GLB', export_yup=True,
         export_image_format='JPEG' if kw.pop('jpg', False) else 'AUTO', export_apply=True, **kw)
+
+def glTF_group():
+    g = bpy.data.node_groups.get("glTF Material Output")
+    if g is None:
+        g = bpy.data.node_groups.new("glTF Material Output", 'ShaderNodeTree'); g.interface.new_socket("Occlusion", in_out='INPUT', socket_type='NodeSocketFloat')
+    return g
+def add_orm(nt, b, ormimg):
+    t = nt.nodes.new("ShaderNodeTexImage"); t.image = ormimg; sp = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(t.outputs["Color"], sp.inputs["Color"]); nt.links.new(sp.outputs["Green"], b.inputs["Roughness"]); nt.links.new(sp.outputs["Blue"], b.inputs["Metallic"])
+    gn = nt.nodes.new("ShaderNodeGroup"); gn.node_tree = glTF_group(); nt.links.new(sp.outputs["Red"], gn.inputs["Occlusion"])
