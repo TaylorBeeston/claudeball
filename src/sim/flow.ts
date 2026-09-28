@@ -42,7 +42,6 @@ export function startHalfInning(w: World): void {
   const t = w.battingTeam;
   while (t.linescore.length < w.inning) t.linescore.push(0);
   w.teams.home.linescore.length = Math.max(w.teams.home.linescore.length, w.inning - (bottom ? 0 : 1));
-  emit(w, { type: 'halfInningStart', inning: w.inning, half: w.half });
   // fielders take the field
   const f = w.fieldingTeam;
   w.pitcher = f.pitcher;
@@ -86,6 +85,7 @@ export function startHalfInning(w: World): void {
   w.phase = 'halfBreak';
   w.phaseUntil = w.tick + paced(w, w.tick === 0 ? 3 : 7.5);
   w.play = null;
+  emit(w, { type: 'halfInningStart', inning: w.inning, half: w.half });
 }
 
 export function fielderSpeed(p: PlayerRT): number {

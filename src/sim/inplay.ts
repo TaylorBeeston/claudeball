@@ -52,6 +52,7 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   const play = newPlay(w, kind);
   w.play = play;
   w.phase = 'inPlay';
+  w.ball.lob = null;
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
@@ -177,12 +178,18 @@ export function startDeadBallMovement(w: World): void {
     r.p.onField = true;
     r.reaction = w.tick + secToTicks(0.5);
     if (w.cfg.pace === 0) {
-      // snap immediately to the awarded bases
-      r.base = r.target;
-      const bp = bpos(r.target);
+      // no dead-ball time: everyone is placed on the awarded base at once
+      const from = r.base;
+      const to = r.target;
+      for (let b = from + 1; b <= to; b++) {
+        r.base = b;
+        emit(w, { type: 'runnerAdvance', playerId: r.p.info.id, fromBase: b - 1, toBase: b });
+      }
+      const bp = bpos(to);
       r.p.x = bp.x;
       r.p.z = bp.z;
       r.p.vx = r.p.vz = 0;
+      if (to >= 4) rules.scoreRun(w, r);
     }
   }
   for (const F of fielding.fielders(w)) {

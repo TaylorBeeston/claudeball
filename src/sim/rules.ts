@@ -102,6 +102,7 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
   br.awarded = true;
   br.dead = true;
   br.target = Math.min(4, bases);
+  br.want = br.target;
   // push runners: process from the front
   const live = w.runners.filter((r) => r.state === 'live' && !r.isBatter);
   const occupied = (b: number) => live.find((r) => r.base === b);
@@ -112,6 +113,7 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
       const r = occupied(pushBase);
       if (!r) break;
       r.target = pushBase + 1;
+      r.want = r.target;
       r.awarded = true;
       r.dead = true;
       pushBase++;
@@ -120,6 +122,7 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
     // multi-base award (e.g. ground-rule double): every runner advances the same number of bases
     for (const r of live) {
       r.target = Math.min(4, r.base + need);
+      r.want = r.target;
       r.awarded = true;
       r.dead = true;
     }
