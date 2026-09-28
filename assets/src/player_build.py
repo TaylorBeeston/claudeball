@@ -73,20 +73,50 @@ gear_obj("Gear_Cap", "Head", MATS["cap"], cap); gear_obj("Gear_Helmet", "Head", 
 gear_obj("Gear_Glove", "LeftHand", MATS["glove"], glove); gear_obj("Gear_CatcherMask", "Head", MATS["catcher_gear"], mask)
 gear_obj("Gear_ChestProtector", "Spine1", MATS["catcher_gear"], chest)
 gear_obj("Gear_ShinGuard_L", "LeftLeg", MATS["catcher_gear"], shin(1)); gear_obj("Gear_ShinGuard_R", "RightLeg", MATS["catcher_gear"], shin(-1))
+
+# ---- face details, hair, jersey numbers
+M_FEAT = M("face_features", (0.02, 0.015, 0.015, 1), 0.4); M_EYEW = M("eye_white", (0.9, 0.9, 0.88, 1), 0.3); M_HAIR = M("hair", (0.09, 0.06, 0.035, 1), 0.7)
+def blob(bm, r, loc, seg=12):
+    tmp = bmesh.new(); bmesh.ops.create_uvsphere(tmp, u_segments=seg, v_segments=8, radius=1.0)
+    for v in tmp.verts: v.co = Vector((v.co.x*r[0], v.co.y*r[1], v.co.z*r[2])) + Vector(loc)
+    m = bpy.data.meshes.new("t"); tmp.to_mesh(m); tmp.free(); bm.from_mesh(m); bpy.data.meshes.remove(m)
+def face(bm):
+    for sx in (1, -1):
+        blob(bm, (.013, .008, .009), (sx*.038, -.098, 1.742)); blob(bm, (.006, .006, .006), (sx*.038, -.104, 1.742))     # eyes: white + pupil (features colour)
+        blob(bm, (.020, .006, .006), (sx*.040, -.099, 1.775)); blob(bm, (.010, .022, .030), (sx*.092, -.005, 1.72))     # brows, ears
+    blob(bm, (.010, .014, .020), (0, -.108, 1.715)); blob(bm, (.026, .006, .005), (0, -.097, 1.668))                        # nose, mouth
+def hair(bm):
+    sphere(bm); xf(bm, (.096, .113, .122), HC + Vector((0, .006, .012))); cut_below(bm, HC.z+.03)
+gear_obj("Face_Details", "Head", M_FEAT, face); gear_obj("Face_Hair", "Head", M_HAIR, hair)
+digits = bpy.data.images.load(ROOT+"/players/number_digits.png"); digits.pack()
+M_NUM = bpy.data.materials.new("jersey_number"); M_NUM.use_nodes = True; nb = M_NUM.node_tree.nodes["Principled BSDF"]
+tx = M_NUM.node_tree.nodes.new("ShaderNodeTexImage"); tx.image = digits; tx.extension = 'CLIP'
+M_NUM.node_tree.links.new(tx.outputs["Color"], nb.inputs["Base Color"]); M_NUM.node_tree.links.new(tx.outputs["Alpha"], nb.inputs["Alpha"]); nb.inputs["Roughness"].default_value = 0.8
+M_NUM.surface_render_method = 'BLENDED'
+def number_quad(name, cx, digit):
+    bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); w, zb, zt, y = .0375, 1.215, 1.335, .137
+    vs = [bm.verts.new((cx+w, y, zb)), bm.verts.new((cx-w, y, zb)), bm.verts.new((cx-w, y, zt)), bm.verts.new((cx+w, y, zt))]
+    f = bm.faces.new(vs); u0, u1 = digit/10.0, (digit+1)/10.0
+    for lp, uv in zip(f.loops, ((u0, 0), (u1, 0), (u1, 1), (u0, 1))): lp[uvl].uv = uv
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free(); me.materials.append(M_NUM)
+    o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o)
+    vg = o.vertex_groups.new(name=PFX+"Spine1"); vg.add(list(range(4)), 1.0, 'REPLACE'); o.parent = arm
+    md = o.modifiers.new("Armature", 'ARMATURE'); md.object = arm; gear[name] = o
+number_quad("Gear_Number_Tens", .04, 2); number_quad("Gear_Number_Ones", -.04, 7)
 acts = bake_clips(arm)
 arm.animation_data.action = acts["idle"]
 # ---- variants
 def setc(name, col): MATS[name].node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = col
 VARIANTS = {
  "player_base": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)),
-                 ["Gear_Cap", "Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"]),
- "player_home": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), cap=(.05, .08, .3, 1)), ["Gear_Cap", "Gear_Glove"]),
- "player_away": (dict(uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), cap=(.5, .03, .03, 1)), ["Gear_Cap", "Gear_Glove"]),
- "player_batter": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)), ["Gear_Helmet"]),
+                 ["Gear_Cap", "Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
+ "player_home": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), cap=(.05, .08, .3, 1)), ["Gear_Cap", "Gear_Glove", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
+ "player_away": (dict(uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), cap=(.5, .03, .03, 1)), ["Gear_Cap", "Gear_Glove", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
+ "player_batter": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)), ["Gear_Helmet", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
  "player_catcher": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)),
-                    ["Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"]),
+                    ["Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R", "Face_Details", "Face_Hair"]),
  "player_umpire": (dict(uniform_jersey=(.03, .03, .035, 1), uniform_pants=(.22, .23, .25, 1), uniform_socks=(.02, .02, .02, 1), cap=(.02, .02, .02, 1), helmet=(.02, .02, .02, 1)),
-                   ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector"]),
+                   ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector", "Face_Details", "Face_Hair"]),
 }
 os.makedirs(ROOT+"/players", exist_ok=True)
 info = {}
