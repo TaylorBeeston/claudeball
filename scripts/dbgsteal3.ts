@@ -1,0 +1,10 @@
+import { createGame } from '../src/sim/game';
+const g = createGame({ seed: 'st3', pace: 0 });
+const w = g._world;
+let rel = 0; let n = 0; let catchT = 0, throwT = 0, catcherCatch = 0;
+g.on('pitchReleased', () => { rel = w.tick; });
+g.on('catch', (e) => { if (e.fielderId === w.catcher.info.id) catcherCatch = w.tick; else if (w.stealing.size || true) catchT = w.tick; });
+g.on('throw', (e) => { if (e.fromId === w.catcher.info.id) throwT = w.tick; });
+g.on('steal', (e) => { if (n++ < 12) console.log('SB', 'release->touch', ((w.tick - rel) / 240).toFixed(2), 'catch', ((catcherCatch - rel) / 240).toFixed(2), 'throw', ((throwT - rel) / 240).toFixed(2), 'arrive', ((catchT - rel) / 240).toFixed(2)); });
+g.on('out', (e) => { if (e.outType === 'caughtStealing' && n++ < 12) console.log('CS', 'release->out', ((w.tick - rel) / 240).toFixed(2), 'catch', ((catcherCatch - rel) / 240).toFixed(2), 'throw', ((throwT - rel) / 240).toFixed(2), 'arrive', ((catchT - rel) / 240).toFixed(2)); });
+g.simulateToEnd(6 * 3600);

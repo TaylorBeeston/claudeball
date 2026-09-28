@@ -58,7 +58,8 @@ export function callPitch(w: World): PitchCall {
     pEdge = 0.45;
   }
   const disc = (B.info.ratings.discipline + B.info.ratings.eye) / 2;
-  pChase *= clamp(1.35 - 0.014 * disc, 0.55, 1.4);
+  pChase *= clamp(1.35 - 0.014 * disc, 0.55, 1.4) * 1.35;
+  pEdge += 0.04;
   const power = B.info.ratings.power;
   if (power > 60) pEdge += 0.05;
   // wild pitchers avoid nibbling

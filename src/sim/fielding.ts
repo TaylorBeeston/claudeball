@@ -373,8 +373,8 @@ function gauss2(w: World, sigma: number): number {
 
 export function transferTicks(F: PlayerRT, onRun: number): number {
   const g = F.info.ratings.glove;
-  const c = F.fieldPos === 'C' ? F.info.ratings.catching : g;
-  return secToTicks(clamp(0.5 - 0.004 * (c - 50) + 0.03 * onRun, 0.3, 0.85));
+  if (F.fieldPos === 'C') return secToTicks(clamp(0.74 - 0.0045 * (F.info.ratings.catching - 50), 0.5, 1.0));
+  return secToTicks(clamp(0.5 - 0.004 * (g - 50) + 0.03 * onRun, 0.3, 0.85));
 }
 
 /** Per-tick check whether any fielder gets a glove on the ball. */

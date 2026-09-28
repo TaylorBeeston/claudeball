@@ -214,7 +214,7 @@ export function decideSteals(w: World, windupSecs: number): void {
   if (process.env.DBG_STEAL) console.log('steal eval', { tRun: tRun.toFixed(2), tBall: tBall.toFixed(2), margin: margin.toFixed(2), dist: dist.toFixed(1) });
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
-  const thr = 0.15 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
+  const thr = 0.3 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
   if (margin > thr) {
     r.stealing = true;
     r.stealDelay = 0;
@@ -285,7 +285,7 @@ export function tickRunners(w: World): void {
       // touch?
       const dd = Math.hypot(p.x - tp.x, p.z - tp.z);
       if (dd < 0.9) touchBase(w, r, r.target);
-    } else if (r.base >= 1) {
+    } else if (r.base >= 1 && !(r.want === r.base && !r.dead && !r.overrun && !r.retouch && !r.isBatter && w.phase !== 'inPlay')) {
       // returning to / staying at the base
       const b = bpos(r.base);
       const dd = Math.hypot(p.x - b.x, p.z - b.z);
@@ -339,7 +339,11 @@ export function runnerAI(w: World): void {
   for (const r of w.runners) {
     if (r.state !== 'live' || r.dead) continue;
     const p = r.p;
-    if (r.stealing && !r.isBatter && r.target > r.base && w.ball.mode === 'pitched') continue;
+    if (r.stealing && !r.isBatter && r.base === r.origin) {
+      // a runner who has broken for the next base is committed
+      r.want = Math.max(r.want, r.origin + 1);
+      continue;
+    }
     // tag-up on a fly ball that is likely to be caught
     if (airFly && r.base >= 1 && !r.isBatter && r.target === r.base) {
       const cm = play.catchMargin;

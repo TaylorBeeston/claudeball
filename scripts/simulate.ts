@@ -15,7 +15,7 @@ const pit: PitcherLine = { outs: 0, bf: 0, h: 0, r: 0, er: 0, bb: 0, so: 0, hr: 
 let runs = 0, errors = 0, innings = 0, extra = 0, pitches = 0, gameSecs = 0, dps = 0;
 const contact: { ev: number; la: number }[] = [];
 let fly = 0;
-let swings = 0, zoneP = 0, whiffs = 0, oSw = 0, oP = 0, zSw = 0;
+let swings = 0, zoneP = 0, whiffs = 0, oSw = 0, oP = 0, zSw = 0, zTake = 0, zCalled = 0, oTake = 0, oCalled = 0;
 const calls: Record<string, number> = {};
 const errKinds: Record<string, number> = {};
 let sbAtt = 0, cs = 0, passed = 0, wp = 0, pickoffs = 0;
@@ -25,8 +25,10 @@ for (let i = 0; i < N; i++) {
   const home = generateTeam(`${seed0}-h${i}`, { side: 'home' });
   const away = generateTeam(`${seed0}-a${i}`, { side: 'away' });
   const g = createGame({ seed: `${seed0}-g${i}`, homeTeam: home, awayTeam: away, pace });
-  g.on('pitchCrossed', (e) => { pitches += 0; if (e.inZone) zoneP++; else oP++; });
-  g.on('swing', () => { swings++; });
+  let cur: { z: boolean; swung: boolean } | null = null;
+  g.on('pitchReleased', () => { cur = { z: g._world.pitch!.inZone, swung: false }; if (cur.z) zoneP++; else oP++; });
+  g.on('swing', () => { swings++; if (cur) { cur.swung = true; if (cur.z) zSw++; else oSw++; } });
+  g.on('call', (e) => { if (cur && !cur.swung && (e.call.kind === 'ball' || e.call.kind === 'strikeLooking')) { if (cur.z) { zTake++; if (e.call.kind === 'strikeLooking') zCalled++; } else { oTake++; if (e.call.kind === 'strikeLooking') oCalled++; } } });
   g.on('contact', (e) => contact.push({ ev: e.exitMph, la: e.launchDeg }));
   g.on('call', (e) => { calls[e.call.kind] = (calls[e.call.kind] ?? 0) + 1; });
   g.on('error', (e) => { errors++; errKinds[e.kind] = (errKinds[e.kind] ?? 0) + 1; });
@@ -72,3 +74,4 @@ console.log('calls', calls, 'swings', swings, 'contacts', contact.length);
 console.log('error kinds', errKinds);
 const sw = calls.strikeSwinging ?? 0, fl = calls.foul ?? 0;
 console.log(`per swing: whiff ${pct(sw / swings)}  foul ${pct(fl / swings)}  in-play ${pct(1 - (sw + fl) / swings)}   per pitch: ball ${pct((calls.ball ?? 0) / pit.pitches)}  called K ${pct((calls.strikeLooking ?? 0) / pit.pitches)}  whiff ${pct(sw / pit.pitches)}  foul ${pct(fl / pit.pitches)}`);
+console.log(`Z-swing ${pct(zSw / zoneP)}  O-swing ${pct(oSw / oP)}  called-strike on taken zone pitches ${pct(zCalled / zTake)}  on taken out-of-zone pitches ${pct(oCalled / oTake)}`);

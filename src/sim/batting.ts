@@ -128,13 +128,13 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
 
   // --- decision -------------------------------------------------------------------------
   const disc = (R.discipline - 50) / 50;
-  let thr = 0.005 - 0.045 * disc;
+  let thr = 0.035 - 0.05 * disc;
   if (ctx.strikes === 2) thr += 0.055;
   else if (ctx.balls === 3) thr -= ctx.strikes === 0 ? 0.2 : 0.09;
   else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
   else thr -= 0.02;
   thr += 0.025 * b.traits.aggression * (ctx.strikes < 2 ? 1 : 0.4);
-  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.03);
+  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.085);
   const protect = ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
   if (dPerceived > thr) {
@@ -148,7 +148,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   for (let i = 0; i < 4; i++) {
     const dx = pred.x - pivot.x;
     const dy = pred.y - pivot.y;
-    const rTarget = 0.42 + S_AIM;
+    const rTarget = 0.5 + S_AIM;
     const dz2 = rTarget * rTarget - dx * dx - dy * dy;
     zc = clamp(PIVOT_Z + Math.sqrt(Math.max(dz2, 0.04)), 0.1, 1.5);
     pred = predictAtZ(zc);
