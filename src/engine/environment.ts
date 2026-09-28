@@ -41,12 +41,12 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     sunDir: [0.7, 0.62, 0.22],
     skySun: [0.7, 0.62, 0.22],
     sunColor: 0xfff0dc,
-    sunIntensity: 3.4,
-    env: 0.35,
-    exposure: 0.7,
+    sunIntensity: 3.8,
+    env: 1.25,
+    exposure: 0.95,
     hemi: [0xbcd6ff, 0x506038, 0.35],
     lightsOn: false,
-    sky: { turbidity: 2.4, rayleigh: 1.3, mie: 0.0025, g: 0.75 },
+    sky: { turbidity: 2.0, rayleigh: 2.4, mie: 0.002, g: 0.7 },
     fog: 0xbfd2e6,
     fogDensity: 0.00045,
   },
@@ -105,7 +105,7 @@ export class Environment {
     this.sky.scale.setScalar(50000);
     // clamp the sky's HDR so the sun glare cannot dominate bloom / DoF; the sun itself is the directional light
     this.sky.material.onBeforeCompile = (s) => {
-      s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( min( retColor, vec3( 2.2 ) ), 1.0 );');
+      s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( min( texColor, vec3( 2.2 ) ), 1.0 );');
     };
     this.skyScene.add(this.sky);
     const sg = new BufferGeometry();
@@ -202,7 +202,7 @@ export class Environment {
     this.scene.background = this.cubeRT.texture;
     this.scene.environment = this.envRT.texture;
     this.scene.environmentIntensity = t.env;
-    this.scene.backgroundIntensity = name === 'night' ? 1 : 0.75;
+    this.scene.backgroundIntensity = name === 'night' ? 1 : 1.0;
     this.scene.fog = null;
     this.hemi.color.setHex(t.hemi[0]);
     this.hemi.groundColor.setHex(t.hemi[1]);
