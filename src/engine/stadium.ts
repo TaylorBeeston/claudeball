@@ -576,7 +576,7 @@ function buildCrowd(path: PathPt[], env: Environment) {
       const s = 0.9 + rnd() * 0.22;
       scale.set(s, s * (0.92 + rnd() * 0.16), s);
       mats.push(new Matrix4().compose(pos.clone(), q.clone(), scale.clone()));
-      shirts.push(shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.7 + rnd() * 0.5));
+      shirts.push(shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.35 + rnd() * 0.35));
       skins.push(skinPalette[Math.floor(rnd() * skinPalette.length)]);
     }
   }

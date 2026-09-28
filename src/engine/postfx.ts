@@ -126,7 +126,7 @@ export class PostFX {
     this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, radiusExponent: 1, rings: 2, samples: 12 });
     this.ao.blendIntensity = 0.85;
     this.dof = new ShaderPass(new ShaderMaterial(DofShader));
-    this.bloom = new UnrealBloomPass(this.size.clone(), 0.16, 0.45, 3.2);
+    this.bloom = new UnrealBloomPass(this.size.clone(), 0.14, 0.4, 4.5);
     this.output = new OutputPass();
     this.grade = new ShaderPass(new ShaderMaterial(GradeShader));
     this.composer.addPass(this.renderPass);
@@ -136,13 +136,15 @@ export class PostFX {
     this.composer.addPass(this.output);
     this.composer.addPass(this.grade);
     this.setQuality(q);
+    const qs = location.search;
+    if (qs.includes('noao')) this.ao.enabled = false;
   }
 
   setQuality(q: QualitySettings) {
     this.q = q;
-    this.ao.enabled = q.ao;
-    this.bloom.enabled = q.bloom;
-    this.dof.enabled = q.dof && q.ao;
+    this.ao.enabled = q.ao && !location.search.includes('noao');
+    this.bloom.enabled = q.bloom && !location.search.includes('nobloom');
+    this.dof.enabled = q.dof && q.ao && !location.search.includes('nodof');
     this.aoActive = q.ao;
     (this.grade.uniforms as Record<string, { value: number }>).grain.value = q.grain ? 0.035 : 0;
     // MSAA changes need a new target
@@ -169,7 +171,7 @@ export class PostFX {
   setFocus(focus: number, aperture: number) {
     const u = this.dof.uniforms as Record<string, { value: unknown }>;
     u.focus.value = focus;
-    u.aperture.value = this.q.dof ? aperture : 0;
+    u.aperture.value = this.q.dof ? aperture * focus * 0.012 : 0;
     u.near.value = this.camera.near;
     u.far.value = this.camera.far;
     u.tDepth.value = this.aoActive ? this.ao.depthTexture : null;

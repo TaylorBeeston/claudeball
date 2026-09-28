@@ -72,6 +72,7 @@ export class SimDriver {
   private historyEvents: TimedEvent[] = [];
   private skipTarget: { inning: number; half: 'top' | 'bottom' } | null = null;
   private stepsThisFrame = 0;
+  private crossListeners = new Set<(x: number, y: number, inZone: boolean) => void>();
 
   constructor(seed = 20260928, forceMock = false) {
     const src = createSimSource(seed, forceMock);
@@ -89,6 +90,11 @@ export class SimDriver {
   on(cb: (e: TimedEvent) => void) {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  /** Fires when a pitched ball crosses the front of the plate (derived from ball state). */
+  onPitchCross(cb: (x: number, y: number, inZone: boolean) => void) {
+    this.crossListeners.add(cb);
   }
 
   get state() {
@@ -137,6 +143,13 @@ export class SimDriver {
     this.game.step(SIM_DT);
     this.prev = this.curr;
     this.curr = this.game.getState();
+    const a = this.prev.ball, b = this.curr.ball;
+    if (b.visible && a.visible && a.pos.z > 0 && b.pos.z <= 0 && b.vel.z < -5 && !this.skipping) {
+      const f = a.pos.z / (a.pos.z - b.pos.z);
+      const x = a.pos.x + (b.pos.x - a.pos.x) * f, y = a.pos.y + (b.pos.y - a.pos.y) * f;
+      const inZone = Math.abs(x) < 0.216 + 0.036 && y > 0.5 - 0.036 && y < 1.05 + 0.036;
+      for (const l of this.crossListeners) l(x, y, inZone);
+    }
     this.histAcc += SIM_DT;
     if (this.histAcc >= HISTORY_DT) {
       this.histAcc -= HISTORY_DT;
