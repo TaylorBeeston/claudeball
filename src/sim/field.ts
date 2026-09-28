@@ -2,7 +2,8 @@ import { DEG, FT, clamp, hypot2 } from './math';
 
 /**
  * Field geometry. Coordinates (metres): origin = home plate apex (back point), +Y up,
- * +Z toward center field, +X toward first base. Foul lines are x = +/- z.
+ * +Z toward center field, +X toward THIRD base (first base is at -X). Right-handed; from behind
+ * the plate looking toward center, first base is on the right. Foul lines are x = +/- z.
  */
 export const BASE_DIST = 90 * FT; // 27.432 m
 export const BASE_XZ = BASE_DIST / Math.SQRT2; // 19.399 m
@@ -15,15 +16,15 @@ export const BALL_MASS = 0.145;
 /** Base index: 0 = home, 1 = first, 2 = second, 3 = third. */
 export const BASE_POS: readonly { x: number; z: number }[] = [
   { x: 0, z: 0 },
-  { x: BASE_XZ, z: BASE_XZ },
+  { x: -BASE_XZ, z: BASE_XZ }, // first base
   { x: 0, z: 2 * BASE_XZ },
-  { x: -BASE_XZ, z: BASE_XZ },
+  { x: BASE_XZ, z: BASE_XZ }, // third base
 ];
 
 export const RUBBER = { x: 0, z: MOUND_DIST };
 
 export interface FencePoint {
-  /** Degrees from center field: 0 = CF, + toward first base, - toward third, +/-180 = behind home. */
+  /** Degrees from center field: 0 = CF, + toward third base (+X), - toward first base, +/-180 = behind home. */
   angleDeg: number;
   /** Distance from home plate apex (m). */
   distance: number;

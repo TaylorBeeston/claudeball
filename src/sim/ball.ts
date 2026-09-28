@@ -10,7 +10,7 @@ export interface BallBody {
   vx: number;
   vy: number;
   vz: number;
-  /** Angular velocity (rad/s), plain-cross-product convention (see math.ts). */
+  /** Angular velocity (rad/s), right-hand rule, sim axes. */
   wx: number;
   wy: number;
   wz: number;

@@ -59,7 +59,7 @@ export function stanceFor(bats: PlayerInfo['bats'], pitcherThrows: 'L' | 'R'): S
   return bats;
 }
 
-export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? -BODY_X : BODY_X, y: PIVOT_Y, z: PIVOT_Z });
+export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X : -BODY_X, y: PIVOT_Y, z: PIVOT_Z });
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
@@ -181,7 +181,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
     epsC,
     omegaPk,
     alpha,
-    sgn: stance === 'R' ? -1 : 1,
+    sgn: stance === 'R' ? 1 : -1,
     tauC: TAU_CONTACT,
     batSpeed,
     protect,
@@ -263,7 +263,7 @@ export interface ContactResult {
   s: number;
   exitSpeed: number;
   launchDeg: number;
-  sprayDeg: number; // 0 = up the middle (+z), + toward first base
+  sprayDeg: number; // 0 = up the middle (+z), + toward third base (+x, pull side for a righty)
   spinRpm: number;
   /** Normal offset (vertical, m) of the ball centre from the bat axis, + = above. */
   offsetY: number;

@@ -23,10 +23,8 @@ export const norm = (a: Vec3): Vec3 => {
   return l < 1e-12 ? { x: 0, y: 0, z: 0 } : scale(a, 1 / l);
 };
 /**
- * Plain component cross product. NOTE: the sim frame (+X toward 1B, +Y up, +Z toward CF) is
- * *left-handed* in the physical sense. Every pseudovector relation in the sim (Magnus, contact
- * friction torque, rolling) uses this same formula consistently, so the sim is the exact mirror
- * image of a right-handed world. See README for how a renderer should map spin.
+ * Plain component cross product. The sim frame (+X toward 3B, +Y up, +Z toward CF) is right-handed,
+ * so angular velocity follows the ordinary right-hand rule (Magnus force = omega x v).
  */
 export const cross = (a: Vec3, b: Vec3): Vec3 => ({
   x: a.y * b.z - a.z * b.y,
@@ -34,7 +32,7 @@ export const cross = (a: Vec3, b: Vec3): Vec3 => ({
   z: a.x * b.y - a.y * b.x,
 });
 
-/** Facing angle: atan2(x, z) — 0 faces +Z (center field), +90deg faces +X (first base side). */
+/** Facing angle: atan2(x, z) — 0 faces +Z (center field), +90deg faces +X (third base side). */
 export const facingTo = (dx: number, dz: number) => Math.atan2(dx, dz);
 
 export const KMH_PER_MPH = 1.609344;

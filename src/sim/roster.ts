@@ -14,7 +14,7 @@ const CITIES: [string, string][] = [
 const MASCOTS = ['Comets', 'Herons', 'Foxes', 'Ironmen', 'Otters', 'Stallions', 'Rangers', 'Falcons', 'Hammers', 'Owls', 'Wolves', 'Miners', 'Barons', 'Captains', 'Pioneers', 'Sharks', 'Bison', 'Thunder', 'Cyclones', 'Lynx', 'Mariners', 'Giants', 'Kings', 'Rockets', 'Bears', 'Chargers', 'Skippers', 'Voyagers', 'Sea Dogs', 'Storm'];
 
 export const PITCH_TEMPLATES: Record<PitchType, { dv: number; rpm: number; eff: number; dir: number }> = {
-  // dv: mph below the pitcher's fastball; dir: Magnus force direction (deg) for a RIGHT-handed pitcher.
+  // dv: mph below the pitcher's fastball; dir: Magnus force direction (deg), mirrored for right-handers.
   FF: { dv: 0, rpm: 2250, eff: 0.9, dir: -18 },
   SI: { dv: 1.5, rpm: 2100, eff: 0.85, dir: -62 },
   FC: { dv: 3.5, rpm: 2350, eff: 0.55, dir: 48 },
@@ -31,7 +31,7 @@ export function makePitchSpec(type: PitchType, fbMph: number, movement: number, 
   const rpm = t.rpm * (1 + 0.1 * q + rng.normal(0, 0.03));
   const eff = clamp(t.eff + 0.05 * q + rng.normal(0, 0.03), 0.15, 0.98);
   let dir = t.dir + rng.normal(0, 6);
-  if (throwsLeft) dir = -dir; // mirror for left-handers
+  if (!throwsLeft) dir = -dir; // templates are written for a left-hander in the +X=3B frame; mirror for righties
   dir = ((dir % 360) + 360) % 360;
   return { type, mph: fbMph - t.dv + rng.normal(0, 0.6), rpm, efficiency: eff, breakDirDeg: dir, usage };
 }
@@ -70,7 +70,7 @@ function makeTraits(rng: Rng, throwsLeft: boolean, power: number): Traits {
   const slotType = rng.next();
   // 3/4 over-the-top / three-quarter, some sidearm
   const armHeight = slotType < 0.62 ? rng.normal(1.83, 0.07) : slotType < 0.94 ? rng.normal(1.6, 0.07) : rng.normal(1.28, 0.08);
-  const side = (throwsLeft ? 1 : -1) * (0.25 + (1.83 - armHeight) * 0.9 + rng.normal(0, 0.08));
+  const side = (throwsLeft ? -1 : 1) * (0.25 + (1.83 - armHeight) * 0.9 + rng.normal(0, 0.08));
   return {
     attackAngleDeg: rng.normal(5 + (power - 50) * 0.05, 3.5),
     aimBelow: rng.normal(0.0, 0.006),

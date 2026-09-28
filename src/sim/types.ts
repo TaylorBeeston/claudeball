@@ -57,7 +57,7 @@ export interface PitchSpec {
   rpm: number;
   /** Spin efficiency 0..1 (share of spin that produces movement). */
   efficiency: number;
-  /** Direction of the Magnus force on the pitch as seen from the catcher, degrees: 0 = up (backspin), 90 = toward first base side, 180 = down (topspin), 270 = toward third base side. */
+  /** Direction of the Magnus force on the pitch as seen from the catcher, degrees: 0 = up (backspin), 90 = toward third base side (+X), 180 = down (topspin), 270 = toward first base side (-X). */
   breakDirDeg: number;
   /** Relative usage weight in the pitcher's mix. */
   usage: number;
@@ -147,7 +147,7 @@ export interface PlayerSnapshot {
   jersey: number;
   pos: Vec3;
   vel: Vec3;
-  /** Heading in radians: atan2(x, z). 0 faces center field, +PI/2 faces first-base side. */
+  /** Heading in radians: atan2(x, z). 0 faces center field, +PI/2 faces third-base side (+X). */
   facing: number;
   anim: AnimHint;
   /** 0..1 progress through the current windup / swing / throw / slide animation (when meaningful). */
@@ -163,7 +163,7 @@ export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dea
 export interface BallSnapshot {
   pos: Vec3;
   vel: Vec3;
-  /** Angular velocity, rad/s, in sim axes (see README for mapping to a right-handed engine). */
+  /** Angular velocity, rad/s, right-hand rule in sim axes. */
   spin: Vec3;
   mode: BallMode;
   holderId: string | null;
@@ -274,6 +274,7 @@ export type GameEvent =
   | (EBase & { type: 'safe'; playerId: string; base: number })
   | (EBase & { type: 'runnerAdvance'; playerId: string; fromBase: number; toBase: number })
   | (EBase & { type: 'runScored'; playerId: string; team: TeamSide; runsHome: number; runsAway: number })
+  | (EBase & { type: 'runsNullified'; count: number; runsHome: number; runsAway: number })
   | (EBase & { type: 'steal'; runnerId: string; toBase: number })
   | (EBase & { type: 'pickoffAttempt'; pitcherId: string; base: number })
   | (EBase & { type: 'walk'; batterId: string; intentional: boolean })
@@ -302,7 +303,7 @@ export interface GameConfig {
   innings?: number;
   /** Start extra innings with a runner on second (default true, MLB rule). */
   extraInningsRunner?: boolean;
-  /** Steady wind in m/s in sim axes (x toward 1B, z toward CF). Default calm. */
+  /** Steady wind in m/s in sim axes (x toward 3B, z toward CF). Default calm. */
   wind?: { x: number; z: number };
   /** Multiplier on the idle time between pitches / plays (default 1). Use 0 to skip dead time entirely. */
   pace?: number;

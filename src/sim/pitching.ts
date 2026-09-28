@@ -38,7 +38,7 @@ export function zoneDistance(z: StrikeZone, x: number, y: number): number {
 }
 
 export interface ArmSlot {
-  /** Lateral release offset from rubber centre (m; + toward first base). */
+  /** Lateral release offset from rubber centre (m; + toward third base). */
   x: number;
   /** Release height (m). */
   y: number;
