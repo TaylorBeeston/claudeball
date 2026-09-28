@@ -24,12 +24,17 @@ def circle(cx, cz, r, n=96, a0=0.0, a1=2*math.pi):
 # ---------------- outfield / foul grass: 4.6 m mowing bands running toward center field
 outline = ground_outline()
 mb = MB("Grass_Outfield")
-for k, p in bands(outline, 0.0, 4.6, -70, 70): mb.poly(p, 0.0, LIGHT if k % 2 else DARK)
+def carved(p):
+    ps = [p]
+    for side in (1, -1): ps = [q for pp in ps for q in carve(pp, side)]
+    return ps
+for k, p in bands(outline, 0.0, 4.6, -70, 70):
+    for q in carved(p): mb.poly(q, 0.0, LIGHT if k % 2 else DARK)
 objs.append(mb.build(M_GRASS))
 # ---------------- dirt: skin (95 ft circle around mound), warning track, home area, base paths
 mb = MB("Dirt")
-mb.poly(circle(*C_MOUND, 95*FT, 160), Y_DIRT)
-mb.poly(clip_poly(outline, 0.0, -1.0, 6.0), Y_DIRT)   # backstop apron: outline clipped to z <= -6
+for q in carved(circle(*C_MOUND, 95*FT, 160)): mb.poly(q, Y_DIRT)
+for q in carved(clip_poly(outline, 0.0, -1.0, 6.0)): mb.poly(q, Y_DIRT)   # backstop apron
 objs.append(mb.build(M_DIRT))
 mb = MB("WarningTrack")
 outer = fence_pts(); inner = fence_pts(off=15*FT)
@@ -99,15 +104,31 @@ for nm, (px, pz) in (("FoulPole_R", POLE_R), ("FoulPole_L", POLE_L)):
     fp = MB(nm); fp.box(px, pz, 0.15, 0.15, 0.0, 14.0)
     objs.append(fp.build(M_YELLOW))
 # ---------------- dugouts (concrete shells; roofs are in stadium.glb) and bullpens
+M_PADN = flat("dugout_padding", (0.02, 0.05, 0.16, 1), 0.8); M_WOOD = flat("dugout_wood", (0.45, 0.3, 0.16, 1), 0.65); M_RAIL = flat("dugout_steel", (0.6, 0.62, 0.65, 1), 0.4)
+M_DARK = flat("dugout_interior", (0.06, 0.06, 0.07, 1), 0.9); M_FLOOR = flat("dugout_floor", (0.28, 0.28, 0.29, 1), 0.85)
 for nm, side in (("Dugout_1B", 1), ("Dugout_3B", -1)):
-    dm = MB(nm); s0, s1, o0, o1 = 12*1.0, 30*1.0, 9.0, 12.5
-    def P(s, o): return along(s, o, side)
-    rot = -side*math.pi/4
-    cs = ((s0+s1)/2, (o0+o1)/2); cx, cz = P(*cs)
-    dm.box(*P((s0+s1)/2, o0), 0.25, s1-s0, 0.0, 1.0, rot=rot+math.pi/2*0 - 0)  # front parapet (toward field)
-    dm.box(*P((s0+s1)/2, o1), 0.3, s1-s0, 0.0, 2.6, rot=rot)                    # back wall
-    dm.box(*P((s0+s1)/2, o1-0.8), 0.5, s1-s0-2, 0.0, 0.45, rot=rot)             # bench
-    objs.append(dm.build(M_DUG))
+    s0, s1 = DUG_S; o0, o1 = DUG_O; rot = -side*math.pi/4; fl = DUG_FLOOR; ln = s1-s0
+    def P(s, o): return dug_xy(s, o, side)
+    def BX(mb_, s_lo, s_hi, o_lo, o_hi, y0, y1):
+        cx, cz = P((s_lo+s_hi)/2, (o_lo+o_hi)/2); mb_.box(cx, cz, o_hi-o_lo, s_hi-s_lo, y0, y1, rot=rot)
+    conc, pad, wood, rail, dark = MB(nm), MB(nm+"_Padding"), MB(nm+"_Bench"), MB(nm+"_Rail"), MB(nm+"_Interior")
+    BX(conc, s0, s1, o0, o1, fl-.3, fl)                                         # floor slab (top at fl)
+    BX(conc, s0, s1, o0, o0+.30, fl, .55)                                       # front wall (field side), lip 0.55 m above the field
+    BX(conc, s0, s1, o1-.30, o1, fl, 2.55)                                      # back wall
+    BX(conc, s0, s0+.25, o0+.30, o1-.30, fl, 2.55); BX(conc, s1-.25, s1, o0+.30, o1-.30, fl, 2.55)   # end walls (tunnel entrance omitted: steps at s0 end)
+    BX(pad, s0+.3, s1-.3, o1-.34, o1-.30, fl+.9, 2.2)                           # padded back panel
+    BX(pad, s0+.3, s1-.3, o0+.28, o0+.34, fl+.6, .50)                           # padded front rail facing the bench
+    BX(rail, s0, s1, o0-.05, o0+.12, .55, .68)                                  # top rail along the lip
+    for k in range(int(ln//2.4)+1):
+        BX(rail, s0+k*2.4-.03, s0+k*2.4+.03, o0-.02, o0+.08, .68, 1.05)        # rail posts
+    BX(wood, s0+1.3, s1-.6, o1-1.25, o1-.75, fl+.42, fl+.50)                    # bench seat
+    BX(wood, s0+1.3, s1-.6, o1-.78, o1-.70, fl+.50, fl+1.0)                     # bench back
+    for k in range(6): BX(rail, s0+1.5+k*(ln-2.5)/5, s0+1.6+k*(ln-2.5)/5, o1-1.2, o1-.8, fl, fl+.42)   # bench legs
+    for k in range(4): BX(conc, s0+.25+k*.28, s0+.25+(k+1)*.28, o0+.6, o0+1.5, fl, fl+.18*(4-k)+.0)     # steps at the s0 end (rise from floor)
+    BX(rail, s1-5.5, s1-.5, o1-.7, o1-.35, fl+1.6, fl+1.66)                     # helmet/bat rack rail
+    for k in range(8): BX(dark, s1-5.3+k*.62, s1-5.3+k*.62+.08, o1-.75, o1-.5, fl+1.66, fl+2.0)   # bat/helmet rack pegs
+    BX(dark, s0+.25, s1-.25, o0+.30, o1-.30, fl-.01, fl+.001)                   # (kept for tri budget: dark interior floor shadow plane)
+    for mbx, mat_ in ((conc, M_DUG), (pad, M_PADN), (wood, M_WOOD), (rail, M_RAIL), (dark, M_DARK)): objs.append(mbx.build(mat_))
 for nm, side in (("Bullpen_R", 1), ("Bullpen_L", -1)):
     bp = MB(nm); m0 = along(62, 8, side); p0 = along(80.4, 8, side)
     bp.poly(circle(*m0, 2.0, 32), Y_CUT); bp.poly(circle(*p0, 1.6, 32), Y_CUT)
