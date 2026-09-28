@@ -29,7 +29,7 @@ objs.append(mb.build(M_GRASS))
 # ---------------- dirt: skin (95 ft circle around mound), warning track, home area, base paths
 mb = MB("Dirt")
 mb.poly(circle(*C_MOUND, 95*FT, 160), Y_DIRT)
-mb.poly([(-24, BACKSTOP_Z), (24, BACKSTOP_Z), (24, -6), (-24, -6)], Y_DIRT)   # backstop apron
+mb.poly(clip_poly(outline, 0.0, -1.0, 6.0), Y_DIRT)   # backstop apron: outline clipped to z <= -6
 objs.append(mb.build(M_DIRT))
 mb = MB("WarningTrack")
 outer = fence_pts(); inner = fence_pts(off=15*FT)
