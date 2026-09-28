@@ -210,15 +210,21 @@ export function decideSteals(w: World, windupSecs: number): void {
   const cr = catcher.info.ratings.catching;
   const exch = 0.72 - 0.0035 * (cr - 50);
   const tBall = windupSecs + (w.pitcher.info.arsenal.length ? 0.44 : 0.44) + exch + D / (armV * 0.9) + 0.2;
-  const margin = tBall - tRun + w.rng.normal(0, 0.22);
+  const margin = tBall - tRun + w.rng.normal(0, 0.25);
   if (process.env.DBG_STEAL) console.log('steal eval', { tRun: tRun.toFixed(2), tBall: tBall.toFixed(2), margin: margin.toFixed(2), dist: dist.toFixed(1) });
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
-  const thr = 0.42 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
+  const thr = 0.15 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
   if (margin > thr) {
     r.stealing = true;
     r.stealDelay = 0;
     w.stealing.add(r);
+    // the runner breaks as the pitcher commits to the plate
+    r.want = r.base + 1;
+    r.target = r.base + 1;
+    r.origin = r.base;
+    r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.06)));
+    P.lookAt = null;
   }
 }
 
@@ -232,12 +238,6 @@ export function onPitchRelease(w: World): void {
       const bp = bpos(nb);
       setGoal(cover, bp.x + (nb === 2 ? 0 : 0), bp.z - 0.6, true, 1);
     }
-    r.want = r.base + 1;
-    r.target = r.base + 1;
-    r.reaction = w.tick + secToTicks(0.02 + 0.2 * (1 - r.p.info.ratings.baserunning / 100));
-    r.p.vx = 0;
-    r.p.lookAt = null;
-    r.origin = r.base;
   }
 }
 

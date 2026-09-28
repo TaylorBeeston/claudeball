@@ -180,7 +180,7 @@ export function beginWindup(w: World): void {
   w.pitchAim = { x: call.x, y: call.y, intent: call.intent };
   (w as unknown as { _spec: unknown })._spec = call.spec;
   const runnersOn = w.runners.some((r) => r.state === 'live');
-  const dur = runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY;
+  const dur = (runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY) + w.rng.normal(0, 0.05);
   w.phase = 'windup';
   w.phaseUntil = w.tick + secToTicks(dur);
   running.decideSteals(w, dur);
@@ -250,7 +250,7 @@ export function releasePitch(w: World): void {
   running.onPitchRelease(w);
 }
 
-const BODY_HALF_W = 0.15;
+const BODY_HALF_W = 0.12;
 
 export function tickPitch(w: World): void {
   const pitch = w.pitch!;
