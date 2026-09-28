@@ -141,18 +141,15 @@ mb = MB("Scoreboard")
 mb.box(base[0], base[1], 30.0, 2.0, E1[1]+1.0, E1[1]+14.5, rot=rot)
 for sgn in (-1, 1): mb.box(*(base+tang*sgn*11), 1.0, 1.0, 0.0, E1[1]+1.0, rot=rot)
 objs.append(mb.build(M_FASC))
-sb = np.zeros((384, 1024, 3), np.float32); sb[:] = (0.02, 0.03, 0.05)
-sb[20:60, 20:1004] = (0.1, 0.1, 0.3); sb[80:200, 40:520] = (0.05, 0.25, 0.1); sb[80:200, 560:1000] = (0.05, 0.1, 0.25)
-sb[230:340, 40:1000:] = (0.2, 0.2, 0.05)
 M_SCR = bpy.data.materials.new("scoreboard_screen"); M_SCR.use_nodes = True
-img = make_image("scoreboard", sb, path=ROOT+"/tex/scoreboard.png"); bp = M_SCR.node_tree.nodes["Principled BSDF"]
+img = bpy.data.images.load(ROOT+"/ads/scoreboard.png"); img.pack(); bp = M_SCR.node_tree.nodes["Principled BSDF"]
 tn = M_SCR.node_tree.nodes.new("ShaderNodeTexImage"); tn.image = img
 M_SCR.node_tree.links.new(tn.outputs["Color"], bp.inputs["Base Color"]); M_SCR.node_tree.links.new(tn.outputs["Color"], bp.inputs["Emission Color"]); bp.inputs["Emission Strength"].default_value = 2.0
 sc_ = MB("Scoreboard_Screen")
 cx, cz = base + face*1.05
 hx, hz = tang*13.5
 y0s, y1s = E1[1]+2.5, E1[1]+13.0
-v = [sc_.vert(cx-hx, y0s, cz-hz, uv=(0, 0)), sc_.vert(cx+hx, y0s, cz+hz, uv=(1, 0)), sc_.vert(cx+hx, y1s, cz+hz, uv=(1, 1)), sc_.vert(cx-hx, y1s, cz-hz, uv=(0, 1))]
+v = [sc_.vert(cx-hx, y0s, cz-hz, uv=(1, 0)), sc_.vert(cx+hx, y0s, cz+hz, uv=(0, 0)), sc_.vert(cx+hx, y1s, cz+hz, uv=(0, 1)), sc_.vert(cx-hx, y1s, cz-hz, uv=(1, 1))]  # u reversed: mirror_x at export flips reading direction
 sc_.quad_out(*v, (base[0]-face[0]*5, y0s, base[1]-face[1]*5))
 objs.append(sc_.build(M_SCR))
 

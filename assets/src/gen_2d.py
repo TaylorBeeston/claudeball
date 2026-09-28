@@ -34,3 +34,11 @@ for r in range(R):
             g.rounded_rectangle([190+ox, 60, 214+ox, 180], radius=12, fill=top); g.ellipse([186+ox, 40, 218+ox, 72], fill=sk)
         sh.paste(im, (c*W, r*H))
 sh.save(f"{root}/crowd/crowd_sheet.png")
+
+# ---- scoreboard placeholder (1024x384): asymmetric text so orientation is checkable
+sb = Image.new("RGB", (1024, 384), (6, 8, 14)); d = ImageDraw.Draw(sb)
+d.rectangle([16, 16, 1007, 70], fill=(20, 30, 90)); d.text((30, 22), "CLAUDEBALL PARK", fill=(255, 210, 0), font=font(40))
+for i, (t, n) in enumerate((("VISITORS", "0"), ("HOME", "0"))):
+    y = 90+i*90; d.text((40, y+10), t, fill=(255, 255, 255), font=font(48)); d.text((520, y), n, fill=(255, 190, 0), font=font(80))
+d.text((40, 290), "B 0  S 0  O 0   INNING 1", fill=(80, 255, 120), font=font(40))
+sb.save(f"{root}/ads/scoreboard.png")
