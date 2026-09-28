@@ -63,7 +63,7 @@ export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X 
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 26.4 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 25.9 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Perception + decision: does the batter swing, and if so how. Uses only what a real hitter could know at the decision point. */
@@ -128,13 +128,13 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
 
   // --- decision -------------------------------------------------------------------------
   const disc = (R.discipline - 50) / 50;
-  let thr = 0.035 - 0.05 * disc;
-  if (ctx.strikes === 2) thr += 0.055;
+  let thr = 0.04 - 0.05 * disc;
+  if (ctx.strikes === 2) thr += 0.06;
   else if (ctx.balls === 3) thr -= ctx.strikes === 0 ? 0.2 : 0.09;
   else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
   else thr -= 0.02;
   thr += 0.025 * b.traits.aggression * (ctx.strikes < 2 ? 1 : 0.4);
-  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.085);
+  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.125);
   const protect = ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
   if (dPerceived > thr) {
@@ -167,7 +167,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   const rSweet = rh + BAT_S_NODE;
   const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0125 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
+  const sigmaT = 0.0150 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = pred.t - TAU_CONTACT + timeErr;
   return {

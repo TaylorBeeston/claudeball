@@ -72,8 +72,8 @@ function makeTraits(rng: Rng, throwsLeft: boolean, power: number): Traits {
   const armHeight = slotType < 0.62 ? rng.normal(1.83, 0.07) : slotType < 0.94 ? rng.normal(1.6, 0.07) : rng.normal(1.28, 0.08);
   const side = (throwsLeft ? -1 : 1) * (0.25 + (1.83 - armHeight) * 0.9 + rng.normal(0, 0.08));
   return {
-    attackAngleDeg: rng.normal(5 + (power - 50) * 0.05, 3.5),
-    aimBelow: rng.normal(0.0, 0.006),
+    attackAngleDeg: rng.normal(8 + (power - 50) * 0.05, 3.5),
+    aimBelow: rng.normal(0.004, 0.006),
     aggression: clamp(rng.normal(0, 0.45), -1, 1),
     armHeight,
     armSide: side,

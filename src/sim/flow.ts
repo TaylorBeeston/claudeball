@@ -250,7 +250,7 @@ export function releasePitch(w: World): void {
   running.onPitchRelease(w);
 }
 
-const BODY_HALF_W = 0.17;
+const BODY_HALF_W = 0.15;
 
 export function tickPitch(w: World): void {
   const pitch = w.pitch!;
@@ -487,7 +487,7 @@ export function umpireCall(w: World, px: number, py: number): boolean {
   x -= Math.sign(x - cx) * Math.min(Math.abs(x - cx), frame);
   y -= Math.sign(y - cy) * Math.min(Math.abs(y - cy), frame);
   const zeff = { left: z.left - bias.width, right: z.right + bias.width, bottom: z.bottom + bias.low, top: z.top + bias.high };
-  return zoneContains(zeff, x, y, 0.028);
+  return zoneContains(zeff, x, y, 0.042);
 }
 
 /** Batter's pitch-by-pitch state reset helpers for the next pitch. */

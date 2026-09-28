@@ -181,7 +181,7 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
   if (spec.type === 'CU' || spec.type === 'SL' || spec.type === 'SW') sigmaPos *= 1.12;
   if (spec.type === 'FS' || spec.type === 'CH') sigmaPos *= 1.05;
   // occasional release lapses (a mistimed release point): a physical heavy tail on command error
-  if (rng.next() < 0.02 + 0.0005 * (60 - ctl) + 0.04 * f) sigmaPos *= 3.0;
+  if (rng.next() < 0.03 + 0.0005 * (60 - ctl) + 0.04 * f) sigmaPos *= 4.0;
   if (ctx.careful) sigmaPos *= 0.82;
   const sigmaAng = sigmaPos / (rel.z - PLATE_FRONT_Z);
   // horizontal miss is a bit smaller than vertical for most pitchers
