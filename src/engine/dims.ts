@@ -35,15 +35,19 @@ export function wallDistance(phi: number): number {
 }
 
 export const BASES = [
-  { x: DIM.baseLine / Math.SQRT2, z: DIM.baseLine / Math.SQRT2 }, // first (sim x)
+  { x: -DIM.baseLine / Math.SQRT2, z: DIM.baseLine / Math.SQRT2 }, // first (−X)
   { x: 0, z: DIM.baseLine * Math.SQRT2 }, // second
-  { x: -DIM.baseLine / Math.SQRT2, z: DIM.baseLine / Math.SQRT2 }, // third
+  { x: DIM.baseLine / Math.SQRT2, z: DIM.baseLine / Math.SQRT2 }, // third (+X)
 ] as const;
 
-/** sim → scene: the sim's +X (first base side) is on the right when looking at center field. */
-export const toScene = (v: Vec3, out = new Vector3()): Vector3 => out.set(-v.x, v.y, v.z);
-export const facingToScene = (yaw: number) => -yaw;
-export const quatToScene = (q: Quat, out = new Quaternion()): Quaternion => out.set(q.x, -q.y, -q.z, q.w);
+/**
+ * Sim → scene. Contract: origin at home plate, +Y up, +Z toward center field, +X toward THIRD base
+ * (first base at −X, i.e. on the right seen from behind the plate). That is a plain right-handed
+ * frame, so scene == sim; these helpers exist so any future change stays in one place.
+ */
+export const toScene = (v: Vec3, out = new Vector3()): Vector3 => out.set(v.x, v.y, v.z);
+export const facingToScene = (yaw: number) => yaw;
+export const quatToScene = (q: Quat, out = new Quaternion()): Quaternion => out.set(q.x, q.y, q.z, q.w);
 
 export const MPS_TO_MPH = 2.2369363;
 export const M_TO_FT = 3.28084;

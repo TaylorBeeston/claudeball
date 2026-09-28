@@ -112,7 +112,7 @@ export class Engine {
       if (te.event.type === 'run') this.stadium.crowd.excite(1);
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);
     });
-    this.sim.on((te) => te.event.type === 'pitch' && (this.batted = false));
+    this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
     this.sim.onPitchCross((x, y, inZone) => this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b'));
 
     this.canvas.addEventListener('webglcontextrestored', () => this.env.setTimeOfDay(this.env.todName));
@@ -206,7 +206,7 @@ export class Engine {
     this.live = state;
 
     // director picks camera + which state to render (live or replay)
-    const liveBall = new Vector3(-state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
+    const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
     const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));

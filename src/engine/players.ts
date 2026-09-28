@@ -106,14 +106,14 @@ export class BallView {
     toScene(b.pos, this.worldPos);
     this.mesh.position.copy(this.worldPos);
     // spin (sim spin is in sim axes; mirror x)
-    const w = new Vector3(-b.spin.x, b.spin.y, b.spin.z);
+    const w = new Vector3(b.spin.x, b.spin.y, b.spin.z);
     const wl = w.length();
     if (wl > 1e-3) this.mesh.rotateOnWorldAxis(w.divideScalar(wl), wl * dt);
     const sp = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
     // motion streak along velocity (simulated shutter)
     if (b.visible && sp > 12) {
       this.streak.visible = true;
-      const v = new Vector3(-b.vel.x, b.vel.y, b.vel.z);
+      const v = new Vector3(b.vel.x, b.vel.y, b.vel.z);
       const len = Math.min(sp * (1 / 90), 1.6);
       this.streak.position.copy(this.worldPos);
       this.streak.scale.set(1, 1, len);

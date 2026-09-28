@@ -541,8 +541,8 @@ export class Puppet implements PuppetLike {
     this.applyPose(this.pose);
 
     // root & gear
-    this.root.position.set(-snap.pos.x, snap.pos.y, snap.pos.z);
-    this.root.rotation.y = -snap.facing;
+    this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
+    this.root.rotation.y = snap.facing;
     this.root.updateMatrixWorld(true);
 
     // head lookAt toward ball (or straight ahead)

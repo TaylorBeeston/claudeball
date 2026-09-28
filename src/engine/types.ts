@@ -1,6 +1,6 @@
 /**
  * Sim contract, engine side. Metric units, origin at home plate, +Y up,
- * +Z toward center field, +X toward the first-base side. The engine only
+ * +Z toward center field, +X toward THIRD base (1B is at -X; from behind the plate 1B is on the right). The engine only
  * renders what the sim reports; nothing here decides game outcomes.
  */
 export interface Vec3 {

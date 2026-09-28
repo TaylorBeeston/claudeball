@@ -23,6 +23,7 @@ import {
   Vector3,
   CylinderGeometry,
   SphereGeometry,
+  CapsuleGeometry,
   Quaternion,
 } from 'three';
 import { DIM, wallDistance } from './dims';
@@ -403,7 +404,7 @@ export function buildStadium(env: Environment): Stadium {
       const t = 15;
       const off = 11.5;
       dug.position.set(sgn * (t + off) * Math.SQRT1_2, 0, (t - off) * Math.SQRT1_2);
-      dug.rotation.y = Math.atan2(-sgn, 1) * 0 + (sgn > 0 ? -Math.PI / 4 : Math.PI / 4) + Math.PI / 2 * 0;
+      dug.rotation.y = sgn * ((3 * Math.PI) / 4);
       dug.children.forEach((c) => (c.castShadow = c.receiveShadow = true));
       group.add(dug);
     }
@@ -428,11 +429,7 @@ export function buildStadium(env: Environment): Stadium {
     sbBack.translateZ(-0.6);
     group.add(sbBack, sb);
   }
-  let lastSb = '';
   const updateScoreboard = (s: GameState) => {
-    const key = `${s.score.away}-${s.score.home}-${s.inning}${s.half}${s.outs}${s.count.balls}${s.count.strikes}${s.batter?.name ?? ''}`;
-    if (key === lastSb) return;
-    lastSb = key;
     const g = sbCanvas.getContext('2d')!;
     g.fillStyle = '#05080c';
     g.fillRect(0, 0, 1024, 384);
@@ -521,8 +518,8 @@ export function buildStadium(env: Environment): Stadium {
     const p = path[Math.floor(f * path.length)];
     const rows = rowsAt(p);
     const row = rows[Math.min(6, rows.length - 1)];
-    const cam = new Vector3(p.x + p.nx * (row.off - 8), row.h - 3 + 2.6, p.z + p.nz * (row.off - 8));
-    const tgt = new Vector3(p.x + p.nx * (row.off + 8), row.h + 4.5, p.z + p.nz * (row.off + 8));
+    const cam = new Vector3(p.x + p.nx * (row.off - 17), Math.max(row.h - 3 + 2.6, 2.2), p.z + p.nz * (row.off - 17));
+    const tgt = new Vector3(p.x + p.nx * (row.off + 8), row.h + 3.2, p.z + p.nz * (row.off + 8));
     crowdShots.push({ pos: cam, target: tgt });
   }
 
@@ -553,7 +550,7 @@ function buildCrowd(path: PathPt[], env: Environment) {
     let a = 12345;
     return () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296);
   })();
-  const shirtPalette = ['#c8202f', '#f3f3ef', '#1f3f7f', '#111111', '#e8b923', '#3c7a3e', '#8a8a90', '#d16a2c', '#7a2a86', '#2a7f9c'].map((c) => new Color(c));
+  const shirtPalette = ['#b3202f', '#e9e9e4', '#233f73', '#1a1a1c', '#c8a23a', '#3f6b45', '#7c7f86', '#a85a2c', '#5c3a6a', '#3d6f86', '#e9e9e4', '#233f73', '#b3202f', '#8a8d93'].map((c) => new Color(c));
   const skinPalette = ['#f1c9a5', '#e0ac82', '#c68642', '#8d5524', '#5c3a21', '#ffdbac'].map((c) => new Color(c));
   const q = new Quaternion();
   const scale = new Vector3();
@@ -608,10 +605,11 @@ function buildCrowd(path: PathPt[], env: Environment) {
         }`,
       );
   };
-  const body = new BoxGeometry(0.44, 0.55, 0.3);
-  body.translate(0, 0.22, 0);
-  const head = new SphereGeometry(0.115, 8, 6);
-  head.translate(0, 0.66, 0.02);
+  const body = new CapsuleGeometry(0.19, 0.3, 3, 8);
+  body.scale(1.15, 1, 0.75);
+  body.translate(0, 0.32, 0);
+  const head = new SphereGeometry(0.105, 8, 6);
+  head.translate(0, 0.72, 0.02);
   const arms = new BoxGeometry(0.62, 0.14, 0.2);
   arms.translate(0, 0.32, 0.12);
   const bodyMesh = new InstancedMesh(body, env.register(new MeshStandardMaterial({ roughness: 0.9 }), patch), total);

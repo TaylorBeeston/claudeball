@@ -114,13 +114,13 @@ const LAST_NAMES = ['Ortega', 'Whitfield', 'Nakamura', 'Brennan', 'Castillo', 'O
 const FIELDERS: { role: PlayerRole; x: number; z: number; speed: number }[] = [
   { role: 'pitcher', x: 0, z: DIM.moundDist, speed: 6.2 },
   { role: 'catcher', x: 0, z: -1.15, speed: 6 },
-  { role: 'first', x: 20.5, z: 21.5, speed: 6.6 },
-  { role: 'second', x: 8.5, z: 33.5, speed: 7.2 },
-  { role: 'short', x: -9.5, z: 33, speed: 7.6 },
-  { role: 'third', x: -22, z: 21, speed: 6.9 },
-  { role: 'left', x: -36, z: 78, speed: 8 },
+  { role: 'first', x: -20.5, z: 21.5, speed: 6.6 },
+  { role: 'second', x: -8.5, z: 33.5, speed: 7.2 },
+  { role: 'short', x: 9.5, z: 33, speed: 7.6 },
+  { role: 'third', x: 22, z: 21, speed: 6.9 },
+  { role: 'left', x: 36, z: 78, speed: 8 },
   { role: 'center', x: 1, z: 90, speed: 8.6 },
-  { role: 'right', x: 38, z: 78, speed: 8 },
+  { role: 'right', x: -38, z: 78, speed: 8 },
 ];
 
 type Phase = 'ready' | 'windup' | 'flight' | 'inplay' | 'aftermath' | 'inning_break';
@@ -224,8 +224,8 @@ export class MockGame implements GameLike {
     }
     this.actors = this.actors.filter((a) => !a.id.startsWith('C'));
     const bt = this.battingTeam();
-    this.actors.push(this.mk('C1', bt, 'coach', v3(26, 0, 12.5), Math.atan2(-1, 0.5)));
-    this.actors.push(this.mk('C3', bt, 'coach', v3(-26, 0, 12.5), Math.atan2(1, 0.5)));
+    this.actors.push(this.mk('C1', bt, 'coach', v3(-26, 0, 12.5), Math.atan2(1, 0.5)));
+    this.actors.push(this.mk('C3', bt, 'coach', v3(26, 0, 12.5), Math.atan2(-1, 0.5)));
   }
 
   private fielder(role: PlayerRole) {
@@ -244,7 +244,7 @@ export class MockGame implements GameLike {
     this.actors = this.actors.filter((a) => a.id !== 'B');
     this.batterInfo = this.person(`B${this.t.toFixed(1)}`);
     this.hand = this.batterInfo.hand;
-    const side = this.hand === 'R' ? -1 : 1;
+    const side = this.hand === 'R' ? 1 : -1;
     const b = this.mk('B', this.battingTeam(), 'batter', v3(side * 0.95, 0, 0.05), side > 0 ? Math.PI / 2 * -1 : Math.PI / 2, 8);
     b.facing = side < 0 ? Math.PI / 2 : -Math.PI / 2; // face the plate
     b.hand = this.hand;
@@ -264,13 +264,13 @@ export class MockGame implements GameLike {
 
   // ------------------------------------------------------------------ bat
   private batHands() {
-    const side = this.hand === 'R' ? -1 : 1;
+    const side = this.hand === 'R' ? 1 : -1;
     return v3(side * 0.6, 1.12, 0.05 - 0.12);
   }
 
   private updateBatPose(swingT: number) {
     // swingT: 0 = stance, in (0,1] = swing progress (1 = through)
-    const side = this.hand === 'R' ? -1 : 1;
+    const side = this.hand === 'R' ? 1 : -1;
     const hands = this.batHands();
     let dir: Vec3;
     if (swingT <= 0) {
@@ -279,7 +279,7 @@ export class MockGame implements GameLike {
       // sweep in a plane from back-up to across the plate to follow-through
       const th = -0.3 + swingT * 3.5; // 0 = pointing back (−z)
       const lift = 0.5 * (1 - swingT);
-      dir = norm(v3(-side * Math.sin(th) * 0.0 + (side < 0 ? 1 : -1) * Math.sin(th), lift, -Math.cos(th)));
+      dir = norm(v3(-side * Math.sin(th) * 0.0 + -side * Math.sin(th), lift, -Math.cos(th)));
     }
     this.bat.pos = hands;
     this.bat.quat = quatFromTo(v3(0, 1, 0), dir);
@@ -505,7 +505,7 @@ export class MockGame implements GameLike {
     const la = 10 + gauss() * 17;
     const spray = gauss() * 26 * (Math.PI / 180) * (this.hand === 'R' ? 1 : -1) * 1.0;
     const cl = Math.cos((la * Math.PI) / 180);
-    // spray>0 -> first base side (+x)
+    // spray>0 -> third base side (+x)
     const v = v3(Math.sin(spray) * cl * exit, Math.sin((la * Math.PI) / 180) * exit, Math.cos(spray) * cl * exit);
     this.ball.p = v3(0.02, 0.92, 0.3);
     this.ball.v = v;
@@ -581,10 +581,10 @@ export class MockGame implements GameLike {
     if (!foul) {
       const fb = this.fielder('first');
       if (best.f !== fb) {
-        fb.target = v3(BASES[0].x - 0.6, 0, BASES[0].z + 0.3);
+        fb.target = v3(BASES[0].x + 0.6, 0, BASES[0].z + 0.3);
       }
       const pit = this.fielder('pitcher');
-      if (best.f === fb && best.f !== pit) pit.target = v3(BASES[0].x - 1.2, 0, BASES[0].z - 6);
+      if (best.f === fb && best.f !== pit) pit.target = v3(BASES[0].x + 1.2, 0, BASES[0].z - 6);
       // run
       const b = this.batter;
       b.speed = 8.3;
@@ -672,14 +672,14 @@ export class MockGame implements GameLike {
         if (!first) return;
         if (!target) {
           // first baseman fields unassisted: race runner to bag
-          f!.target = v3(BASES[0].x - 0.4, 0, BASES[0].z);
+          f!.target = v3(BASES[0].x + 0.4, 0, BASES[0].z);
           f!.speed = 7;
           play.phase = 'thrown';
           play.throwTo = f!;
           return;
         }
         const from = { ...this.ball.p };
-        const to = v3(BASES[0].x - 0.5, 1.2, BASES[0].z + 0.2);
+        const to = v3(BASES[0].x + 0.5, 1.2, BASES[0].z + 0.2);
         const d = Math.hypot(to.x - from.x, to.z - from.z);
         const T = d / 31 + 0.05;
         this.ball.held = null;

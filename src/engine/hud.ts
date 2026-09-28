@@ -8,7 +8,7 @@ const CSS = /* css */ `
 .cb-teams{height:100%;display:flex;flex-direction:column;justify-content:center;min-width:calc(var(--u)*19)}
 .cb-row{display:flex;align-items:center;height:50%;line-height:1;padding:0 calc(var(--u)*1.2) 0 0}
 .cb-row .bar{width:calc(var(--u)*.9);height:100%;margin-right:calc(var(--u)*1)}
-.cb-row .abbr{font-size:calc(var(--u)*2.9);width:calc(var(--u)*7.2);letter-spacing:.08em}
+.cb-row .abbr{display:flex;align-items:center;white-space:nowrap;font-size:calc(var(--u)*2.9);width:calc(var(--u)*7.6);letter-spacing:.08em}
 .cb-row .sc{margin-left:auto;font-size:calc(var(--u)*3.4);font-variant-numeric:tabular-nums;min-width:calc(var(--u)*4);text-align:right;background:rgba(255,255,255,.08);padding:0 calc(var(--u)*.9);height:100%;display:flex;align-items:center;justify-content:flex-end}
 .cb-row.bat .abbr::after{content:"";display:inline-block;width:0;height:0;margin-left:calc(var(--u)*.7);border-left:calc(var(--u)*.7) solid #ffcf4a;border-top:calc(var(--u)*.45) solid transparent;border-bottom:calc(var(--u)*.45) solid transparent}
 .cb-mid{display:flex;align-items:center;gap:calc(var(--u)*1.6);padding:0 calc(var(--u)*1.6);border-left:1px solid rgba(255,255,255,.1)}
@@ -265,7 +265,7 @@ export class Hud {
   }
 
   pitchCrossed(x: number, y: number, call: 'b' | 's') {
-    this.pitches.push({ x, y, k: call });
+    this.pitches.push({ x: -x, y, k: call }); // +X is third base = catcher's left
     if (this.pitches.length > 7) this.pitches.shift();
     this.drawZone();
   }

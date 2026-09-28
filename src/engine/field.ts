@@ -63,7 +63,7 @@ void groundSurface(vec3 wp, float viewDist){
   // --- grass -------------------------------------------------------------------
   float patchN = fbm(p * 0.12);
   vec3 g0 = vec3(0.036, 0.135, 0.026);
-  vec3 g1 = vec3(0.058, 0.215, 0.034);
+  vec3 g1 = vec3(0.068, 0.2, 0.03);
   vec3 grass = mix(g0, g1, patchN);
   // outfield: straight bands toward center; infield: diamond checker
   float band = step(0.5, fract(p.x / 4.4));
@@ -185,7 +185,7 @@ export function buildField(env: Environment): Group {
   const bagGeo = new BoxGeometry(DIM.baseSize, 0.08, DIM.baseSize);
   for (const b of BASES) {
     const bag = new Mesh(bagGeo, white);
-    bag.position.set(-b.x + (b.x === 0 ? 0 : Math.sign(-b.x) * 0.0), 0.04, b.z);
+    bag.position.set(b.x, 0.04, b.z);
     bag.rotation.y = Math.PI / 4;
     bag.castShadow = bag.receiveShadow = true;
     g.add(bag);

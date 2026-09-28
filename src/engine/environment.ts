@@ -24,6 +24,7 @@ export type TimeOfDay = 'day' | 'dusk' | 'night';
 
 interface TodPreset {
   sunDir: [number, number, number];
+  skySun: [number, number, number];
   sunColor: number;
   sunIntensity: number;
   env: number;
@@ -37,19 +38,21 @@ interface TodPreset {
 
 const PRESETS: Record<TimeOfDay, TodPreset> = {
   day: {
-    sunDir: [0.52, 0.7, 0.5],
+    sunDir: [0.42, 0.82, 0.38],
+    skySun: [0.42, 0.82, 0.38],
     sunColor: 0xfff0dc,
     sunIntensity: 3.4,
     env: 0.35,
     exposure: 0.7,
     hemi: [0xbcd6ff, 0x506038, 0.35],
     lightsOn: false,
-    sky: { turbidity: 3.2, rayleigh: 1.1, mie: 0.004, g: 0.82 },
+    sky: { turbidity: 2.4, rayleigh: 1.3, mie: 0.0025, g: 0.75 },
     fog: 0xbfd2e6,
     fogDensity: 0.00045,
   },
   dusk: {
     sunDir: [0.62, 0.11, 0.72],
+    skySun: [0.62, 0.11, 0.72],
     sunColor: 0xffa860,
     sunIntensity: 3.0,
     env: 0.7,
@@ -62,11 +65,12 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
   },
   night: {
     sunDir: [0.3, 0.86, 0.2],
+    skySun: [0.3, -0.18, -0.6],
     sunColor: 0xfff1de,
-    sunIntensity: 2.4,
-    env: 0.16,
-    exposure: 0.75,
-    hemi: [0x5f7cae, 0x1c2818, 0.5],
+    sunIntensity: 3.6,
+    env: 0.25,
+    exposure: 1.0,
+    hemi: [0x7f9cd0, 0x2c3c28, 0.95],
     lightsOn: true,
     sky: { turbidity: 1, rayleigh: 0.12, mie: 0.001, g: 0.7 },
     fog: 0x0a1020,
@@ -184,7 +188,7 @@ export class Environment {
     u['rayleigh'].value = t.sky.rayleigh;
     u['mieCoefficient'].value = t.sky.mie;
     u['mieDirectionalG'].value = t.sky.g;
-    u['sunPosition'].value.copy(this.sunDir);
+    u['sunPosition'].value.set(...t.skySun).normalize();
     this.stars.visible = name === 'night';
     const wasVisible = this.scene.background;
     void wasVisible;

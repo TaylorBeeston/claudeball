@@ -28,7 +28,7 @@ interface Desired {
 }
 
 const HOME_HIGH = new Vector3(0, 17, -26);
-const CF_CAM = new Vector3(-2.6, 7.2, 121);
+const CF_CAM = new Vector3(-2.6, 10.5, 121);
 
 export interface DirectorOutput {
   renderState: GameState;
@@ -294,8 +294,8 @@ export class CameraDirector {
       case 'pitch': {
         d.pos.copy(CF_CAM);
         const batter = rs.players.find((p) => p.role === 'batter');
-        const bx = batter ? -batter.pos.x * 0.3 : 0;
-        d.tgt.set(bx, 1.35, 8.2);
+        const bx = batter ? batter.pos.x * 0.3 : 0;
+        d.tgt.set(bx, 1.05, 8.2);
         const dist = d.pos.distanceTo(d.tgt);
         d.fov = this.tele(8.6, dist);
         d.focus = dist;
@@ -311,7 +311,7 @@ export class CameraDirector {
       case 'follow': {
         d.pos.copy(HOME_HIGH);
         // lead the ball slightly; anticipate where it is going
-        const lead = new Vector3(-rs.ball.vel.x, rs.ball.vel.y * 0.2, rs.ball.vel.z).multiplyScalar(0.12);
+        const lead = new Vector3(rs.ball.vel.x, rs.ball.vel.y * 0.2, rs.ball.vel.z).multiplyScalar(0.12);
         const want = ball.clone().add(lead);
         if (this.clock - this.shotStart < 0.05) this.ballSm.copy(want);
         this.ballSm.lerp(want, 1 - Math.exp(-dt * 6));
@@ -385,11 +385,9 @@ export class CameraDirector {
           d.fov = 15;
         } else if (this.cutaway === 'dugout') {
           const sgn = live.half === 'top' ? 1 : -1;
-          d.pos.set(-sgn * 14 - sgn * 4, 1.6, -6);
-          d.tgt.set(-sgn * 14 - sgn * 2, 1.2, 10);
-          d.pos.set(sgn * 17, 1.7, -5);
-          d.tgt.set(sgn * 24.5, 1.3, 7);
-          d.fov = 20;
+          d.pos.set(sgn * 3, 1.7, 15);
+          d.tgt.set(sgn * 19, 1.2, 2.5);
+          d.fov = 15;
         } else {
           const t = this.clock - this.shotStart;
           d.pos.set(-30 + t * 3, 45 - t, -80);
