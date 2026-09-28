@@ -58,6 +58,8 @@ export interface PlayerSnap {
   anim: AnimHint;
   /** seconds since the animation hint began, if the sim tracks it */
   animTime?: number;
+  /** 0..1 progress through a windup/swing/throw/slide style animation, if the sim reports it */
+  animProgress?: number;
 }
 
 export interface BallSnap {

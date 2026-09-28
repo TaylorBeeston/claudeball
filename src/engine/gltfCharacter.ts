@@ -215,6 +215,13 @@ export class GltfPuppet implements PuppetLike {
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
       this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / 4.5));
     } else if (this.current) this.current.timeScale = 1;
+    // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
+    if (this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
+      const dur = this.current.getClip().duration;
+      this.current.paused = false;
+      this.current.timeScale = 0;
+      this.current.time = Math.min(dur - 0.001, Math.max(0, snap.animProgress * dur));
+    }
     this.mixer.update(dt);
 
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
@@ -225,9 +232,9 @@ export class GltfPuppet implements PuppetLike {
     const wantIK = !!(env.batGrip && snap.role === 'batter');
     this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * 25));
     if (this.ikW > 0.02 && env.batGrip) {
-      // model-left/right swap when mirrored: the top hand (closest to the knob end) is the right hand
-      this.solveArm('Right', env.batGrip.bottom, this.ikW);
-      this.solveArm('Left', env.batGrip.top, this.ikW);
+      // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
+      this.solveArm('Left', env.batGrip.bottom, this.ikW);
+      this.solveArm('Right', env.batGrip.top, this.ikW);
     }
     this.lookAt(env.ball, dt, snap.role);
   }

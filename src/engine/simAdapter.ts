@@ -8,6 +8,7 @@
  */
 import type { GameEvent, GameLike, GameState, PlayerSnap, Vec3 } from './types';
 import { MockGame } from './mockSim';
+import { RealSimAdapter, looksLikeRealSim, type RealGame } from './realSimAdapter';
 import { lerpAngle } from './dims';
 
 type CreateGame = (opts: { seed: number }) => GameLike;
@@ -17,7 +18,12 @@ const simModules = import.meta.glob('../sim/index.ts', { eager: true }) as Recor
 
 export function createSimSource(seed: number, forceMock = false): { game: GameLike; kind: 'sim' | 'mock' } {
   const mod = Object.values(simModules)[0];
-  if (!forceMock && mod?.createGame) return { game: mod.createGame({ seed }), kind: 'sim' };
+  if (!forceMock && mod?.createGame) {
+    const g = mod.createGame({ seed });
+    // the real sim exposes its own snapshot/event shapes; wrap them into the engine contract
+    if (looksLikeRealSim(g.getState())) return { game: new RealSimAdapter(g as unknown as RealGame), kind: 'sim' };
+    return { game: g, kind: 'sim' };
+  }
   return { game: new MockGame(seed), kind: 'mock' };
 }
 
