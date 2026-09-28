@@ -132,6 +132,8 @@ function simulatePitch(
 
 export interface ThrowContext {
   fatigue: number; // 0 fresh .. 1+ gassed
+  /** Pitcher is 'aiming it' (throwing for a strike) rather than working the edges: tighter command, less movement risk. */
+  careful?: boolean;
   rng: Rng;
   env: Environment;
 }
@@ -178,6 +180,9 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
   sigmaPos *= 1 + 0.9 * f;
   if (spec.type === 'CU' || spec.type === 'SL' || spec.type === 'SW') sigmaPos *= 1.12;
   if (spec.type === 'FS' || spec.type === 'CH') sigmaPos *= 1.05;
+  // occasional release lapses (a mistimed release point): a physical heavy tail on command error
+  if (rng.next() < 0.02 + 0.0005 * (60 - ctl) + 0.04 * f) sigmaPos *= 3.0;
+  if (ctx.careful) sigmaPos *= 0.82;
   const sigmaAng = sigmaPos / (rel.z - PLATE_FRONT_Z);
   // horizontal miss is a bit smaller than vertical for most pitchers
   dir = norm({ x: dir.x + rng.normal(0, sigmaAng * 0.95), y: dir.y + rng.normal(0, sigmaAng * 1.1), z: dir.z });

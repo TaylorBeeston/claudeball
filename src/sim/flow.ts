@@ -200,7 +200,7 @@ export function releasePitch(w: World): void {
   const slot = { x: P.info.traits.armSide, y: P.info.traits.armHeight, ext: P.info.traits.extension };
   const fat = fatigueOf(P);
   P.fatigue = fat;
-  const pitch = throwPitch(P.info, slot, spec, aim.x, aim.y, { fatigue: fat, rng: w.rng, env: w.env });
+  const pitch = throwPitch(P.info, slot, spec, aim.x, aim.y, { fatigue: fat, rng: w.rng, env: w.env, careful: aim.intent === 'middle' });
   pitch.inZone = pitchTouchesZone(pitch, w.zone);
   w.pitch = pitch;
   w.pitchTick = w.tick;
@@ -384,7 +384,7 @@ function catcherReceive(w: World): void {
   const react = 0.19 + 0.12 * (1 - cr / 100);
   const avail = Math.max(0, pitch.tPlate + 0.05 - react);
   const hand = 5.2 + 0.035 * cr;
-  const maxMove = hand * avail + 0.28;
+  const maxMove = hand * avail * 0.6 + 0.12;
   const perceive = 0.03 * (1.6 - cr / 100) * lateBreak;
   const errX = w.rng.normal(0, perceive);
   const errY = w.rng.normal(0, perceive);

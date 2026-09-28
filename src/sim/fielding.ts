@@ -684,9 +684,29 @@ export function doThrow(w: World, F: PlayerRT): void {
   F.plan.releaseAt = 0;
   if (ball.holder !== F) return;
   const bp = base > 0 && !R ? bpos(base) : null;
-  const atBase = R && base > 0 && (R.plan.kind === 'cover' || R.plan.kind === 'cutoff');
-  const tx = atBase ? R!.plan.tx : R ? R.x : bp!.x;
-  const tz = atBase ? R!.plan.tz : R ? R.z : bp!.z;
+  const isCutoff = !!R && R === play.cutoff;
+  const atBase = !!R && base > 0 && !isCutoff;
+  let tx: number;
+  let tz: number;
+  if (atBase) {
+    // aim at the bag, a little toward the thrower, where the receiver will be standing
+    const bp2 = bpos(base);
+    const ddx = F.x - bp2.x;
+    const ddz = F.z - bp2.z;
+    const dl2 = Math.hypot(ddx, ddz) || 1;
+    tx = bp2.x + (ddx / dl2) * 0.5;
+    tz = bp2.z + (ddz / dl2) * 0.5;
+    R!.plan.tx = tx;
+    R!.plan.tz = tz;
+    R!.plan.kind = 'receive';
+    setGoal(R!, tx, tz, true, 1);
+  } else if (isCutoff) {
+    tx = R!.plan.tx;
+    tz = R!.plan.tz;
+  } else {
+    tx = R ? R.x : bp!.x;
+    tz = R ? R.z : bp!.z;
+  }
   const from = { x: F.x + Math.sin(F.facing) * 0.45, y: 1.75, z: F.z + Math.cos(F.facing) * 0.45 };
   const D = Math.hypot(tx - from.x, tz - from.z);
   const effort = D > 14 ? 1 : 0.82 + 0.18 * (D / 14);

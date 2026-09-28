@@ -180,8 +180,8 @@ export function considerPickoff(w: World): boolean {
   if (!r) return false;
   const nextOpen = !w.runners.some((q) => q.state === 'live' && q.base === r.base + 1);
   if (!nextOpen) return false;
-  const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.6);
-  const p = 0.02 + 0.1 * threat;
+  const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.2);
+  const p = (r.base === 1 ? 0.012 : 0.002) + (r.base === 1 ? 0.06 : 0.01) * threat;
   if (w.rng.next() >= p) return false;
   inplay.beginPickoff(w, r);
   return true;
@@ -224,6 +224,14 @@ export function decideSteals(w: World, windupSecs: number): void {
 
 export function onPitchRelease(w: World): void {
   for (const r of w.stealing) {
+    // the middle infielder covering the base breaks toward the bag with the runner
+    const nb = r.base + 1;
+    const pos = nb === 2 ? (w.batStance === 'R' ? 'SS' : '2B') : nb === 3 ? '3B' : 'C';
+    const cover = w.fieldingTeam.defense.get(pos as never);
+    if (cover && cover.onField) {
+      const bp = bpos(nb);
+      setGoal(cover, bp.x + (nb === 2 ? 0 : 0), bp.z - 0.6, true, 1);
+    }
     r.want = r.base + 1;
     r.target = r.base + 1;
     r.reaction = w.tick + secToTicks(0.02 + 0.2 * (1 - r.p.info.ratings.baserunning / 100));
