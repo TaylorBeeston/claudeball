@@ -1,132 +1,139 @@
-for f in ("common", "player_rig", "player_anim", "player_clips"): exec(open(CB_SRC + f"/{f}.py").read())
+for f in ("common", "player_rig", "player_anim", "player_clips", "player_body", "player_cloth"): exec(open(CB_SRC + f"/{f}.py").read())
 import os
-import bmesh
 reset_scene()
-arm = build_armature(); body = build_body(); body = add_head(body)
-# ---- materials
-def M(name, col, rough=0.85, metal=0.0, nrm=None):
-    m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]
-    b.inputs["Base Color"].default_value = col; b.inputs["Roughness"].default_value = rough; b.inputs["Metallic"].default_value = metal
-    if nrm is not None:
-        t = m.node_tree.nodes.new("ShaderNodeTexImage"); t.image = nrm; nm = m.node_tree.nodes.new("ShaderNodeNormalMap")
-        nm.inputs["Strength"].default_value = 0.5; m.node_tree.links.new(t.outputs["Color"], nm.inputs["Color"]); m.node_tree.links.new(nm.outputs["Normal"], b.inputs["Normal"])
-    return m
-weave = np.zeros((256, 256), np.float32); weave[::2, :] += .5; weave[:, ::2] += .5
-fabric_n = make_image("fabric_normal", height_to_normal(weave + 0.3*noise_tex(256, [32, 128], 4), 1.5), 'Non-Color', ROOT+"/tex/fabric_normal.png")
-skin_n = make_image("skin_normal", height_to_normal(noise_tex(256, [64, 128, 256], 8), 0.6), 'Non-Color', ROOT+"/tex/skin_normal.png")
-MATS = {n: M(n, c, r, mt, nr) for n, c, r, mt, nr in [
-    ("skin", (0.55, 0.36, 0.27, 1), 0.55, 0, skin_n), ("uniform_jersey", (0.8, 0.8, 0.8, 1), 0.85, 0, fabric_n), ("uniform_pants", (0.75, 0.75, 0.75, 1), 0.85, 0, fabric_n),
-    ("uniform_socks", (0.05, 0.08, 0.3, 1), 0.85, 0, fabric_n), ("cleats", (0.02, 0.02, 0.02, 1), 0.5, 0, None), ("cap", (0.05, 0.08, 0.3, 1), 0.8, 0, fabric_n),
-    ("helmet", (0.05, 0.08, 0.3, 1), 0.35, 0, None), ("glove", (0.28, 0.14, 0.07, 1), 0.6, 0, None), ("catcher_gear", (0.03, 0.03, 0.04, 1), 0.5, 0.3, None)]}
-ORDER_M = ["skin", "uniform_jersey", "uniform_pants", "uniform_socks", "cleats"]
-for n in ORDER_M: body.data.materials.append(MATS[n])
-for p in body.data.polygons:
-    c = p.center; z, ax = c.z, abs(c.x)
-    if z > 1.52 or (ax > .50 and z > .5) or (z < 1.0 and ax > .5): i = 0                     # head/neck, forearms, hands
-    elif z < .105: i = 4
-    elif z < .40: i = 3
-    elif z < 1.06 and ax < .30: i = 2
-    else: i = 1                                                                                # torso + sleeves
-    if z > 1.0 and ax > .50: i = 0
-    p.material_index = i
-bpy.context.view_layer.objects.active = body; bpy.ops.object.select_all(action='DESELECT'); body.select_set(True)
-bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT'); bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.02); bpy.ops.object.mode_set(mode='OBJECT')
+arm = build_armature()
+body = body_skin(2)
 skin_to_armature(body, arm)
-# ---- gear (each skinned 100% to one bone)
+bpy.context.view_layer.objects.active = body; bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.object.vertex_group_limit_total(limit=4); bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+body.data.validate()
+# ---------------- clothing shells (copy weights) and the remaining skin
+SH = {}
+for nm, reg, off in (("Jersey", "jersey", .012), ("Undershirt", "undershirt", .0055), ("Pants", "pants", .0125), ("Socks", "socks", .005), ("Cleats", "cleats", .011)):
+    SH[nm] = make_shell(body, nm, reg, off)
+keep_skin_only(body); body.name = "Body_Skin"
+# ---------------- head, eyes, hands
+head = build_head(); ears_ = ears()
+bpy.ops.object.select_all(action='DESELECT'); head.select_set(True)
+for e in ears_: e.select_set(True)
+bpy.context.view_layer.objects.active = head; bpy.ops.object.join(); head.name = "Head"
+eyes = eyes_meshes(); bpy.ops.object.select_all(action='DESELECT')
+for e in eyes: e.select_set(True)
+bpy.context.view_layer.objects.active = eyes[0]; bpy.ops.object.join(); eyeobj = eyes[0]; eyeobj.name = "Eyes"
+handL, handR = hand_mesh("Left"), hand_mesh("Right"); handL.name, handR.name = "Hand_L", "Hand_R"
+# ---------------- gear
 gear = {}
-def gear_obj(name, bone, mat, build):
-    bm = bmesh.new(); build(bm); me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
-    for p in me.polygons: p.use_smooth = True
-    me.materials.append(mat); o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o)
-    vg = o.vertex_groups.new(name=PFX+bone); vg.add(list(range(len(me.vertices))), 1.0, 'REPLACE')
-    o.parent = arm; md = o.modifiers.new("Armature", 'ARMATURE'); md.object = arm; gear[name] = o; return o
-def xf(bm, sc=(1, 1, 1), loc=(0, 0, 0), rotx=0):
-    for v in bm.verts: v.co = Vector((v.co.x*sc[0], v.co.y*sc[1], v.co.z*sc[2]))
-    if rotx: bmesh.ops.rotate(bm, verts=bm.verts, cent=(0, 0, 0), matrix=Matrix.Rotation(rotx, 3, 'X'))
-    bmesh.ops.translate(bm, vec=loc, verts=bm.verts)
-def sphere(bm, r=1.0): bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=14, radius=r)
-def cut_below(bm, z):
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < z], context='VERTS')
-HC = Vector((0, -.008, 1.725))
-def cap(bm):
-    sphere(bm); xf(bm, (.098, .114, .115), HC + Vector((0, .0, .03))); cut_below(bm, HC.z+.025)
-    b2 = bmesh.new(); bmesh.ops.create_cube(b2, size=1.0)
-    for v in b2.verts: v.co = Vector((v.co.x*.16, v.co.y*.13, v.co.z*.008)) + HC + Vector((0, -.115, .045))
-    tmp = bpy.data.meshes.new("t"); b2.to_mesh(tmp); b2.free(); bm.from_mesh(tmp); bpy.data.meshes.remove(tmp)
-def helmet(bm):
-    sphere(bm); xf(bm, (.108, .125, .125), HC + Vector((0, .005, .02))); cut_below(bm, HC.z-.02)
-    b2 = bmesh.new(); bmesh.ops.create_cube(b2, size=1.0)
-    for v in b2.verts: v.co = Vector((v.co.x*.02, v.co.y*.07, v.co.z*.09)) + HC + Vector((-.106, -.01, -.06))
-    tmp = bpy.data.meshes.new("t"); b2.to_mesh(tmp); b2.free(); bm.from_mesh(tmp); bpy.data.meshes.remove(tmp)
-def glove(bm):
-    sphere(bm); xf(bm, (.06, .11, .09), Vector((.72, -.03, 1.0)))
-def mask(bm):
-    sphere(bm); xf(bm, (.115, .10, .13), HC + Vector((0, -.08, -.005)))
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.y > HC.y - .07 or v.co.z < HC.z-.09], context='VERTS')
-def chest(bm):
-    bmesh.ops.create_cube(bm, size=1.0); xf(bm, (.36, .06, .42), Vector((0, -.135, 1.28)))
-def shin(sx):
-    def f(bm):
-        bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=.062, radius2=.075, depth=.36); xf(bm, (1, 1, 1), Vector((sx*.09, -.045, .27)))
-    return f
-gear_obj("Gear_Cap", "Head", MATS["cap"], cap); gear_obj("Gear_Helmet", "Head", MATS["helmet"], helmet)
-gear_obj("Gear_Glove", "LeftHand", MATS["glove"], glove); gear_obj("Gear_CatcherMask", "Head", MATS["catcher_gear"], mask)
-gear_obj("Gear_ChestProtector", "Spine1", MATS["catcher_gear"], chest)
-gear_obj("Gear_ShinGuard_L", "LeftLeg", MATS["catcher_gear"], shin(1)); gear_obj("Gear_ShinGuard_R", "RightLeg", MATS["catcher_gear"], shin(-1))
-
-# ---- face details, hair, jersey numbers
-M_FEAT = M("face_features", (0.02, 0.015, 0.015, 1), 0.4); M_EYEW = M("eye_white", (0.9, 0.9, 0.88, 1), 0.3); M_HAIR = M("hair", (0.09, 0.06, 0.035, 1), 0.7)
-def blob(bm, r, loc, seg=12):
-    tmp = bmesh.new(); bmesh.ops.create_uvsphere(tmp, u_segments=seg, v_segments=8, radius=1.0)
-    for v in tmp.verts: v.co = Vector((v.co.x*r[0], v.co.y*r[1], v.co.z*r[2])) + Vector(loc)
-    m = bpy.data.meshes.new("t"); tmp.to_mesh(m); tmp.free(); bm.from_mesh(m); bpy.data.meshes.remove(m)
-def face(bm):
-    for sx in (1, -1):
-        blob(bm, (.013, .008, .009), (sx*.038, -.098, 1.742)); blob(bm, (.006, .006, .006), (sx*.038, -.104, 1.742))     # eyes: white + pupil (features colour)
-        blob(bm, (.020, .006, .006), (sx*.040, -.099, 1.775)); blob(bm, (.010, .022, .030), (sx*.092, -.005, 1.72))     # brows, ears
-    blob(bm, (.010, .014, .020), (0, -.108, 1.715)); blob(bm, (.026, .006, .005), (0, -.097, 1.668))                        # nose, mouth
-def hair(bm):
-    sphere(bm); xf(bm, (.096, .113, .122), HC + Vector((0, .006, .012))); cut_below(bm, HC.z+.03)
-gear_obj("Face_Details", "Head", M_FEAT, face); gear_obj("Face_Hair", "Head", M_HAIR, hair)
+def G(name, bone, fn):
+    me = bm_from(fn); o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o); set_weight(o, arm, bone); gear[name] = o; return o
+G("Gear_Cap", "Head", cap); G("Gear_Helmet", "Head", helmet); G("Gear_Hair", "Head", hair); G("Gear_Glove", "LeftHand", glove)
+G("Gear_CatcherMask", "Head", cage_mask); G("Gear_ChestProtector", "Spine1", chest_prot)
+G("Gear_ShinGuard_L", "LeftLeg", lambda bm: shin_guard(bm, 1)); G("Gear_ShinGuard_R", "RightLeg", lambda bm: shin_guard(bm, -1))
+G("Gear_Belt", "Hips", belt); G("Gear_Collar", "Spine2", collar)
+set_weight(head, arm, "Head"); set_weight(eyeobj, arm, "Head"); set_weight(handL, arm, "LeftHand"); set_weight(handR, arm, "RightHand")
+# ---------------- box-projected UVs (1 tile = 0.25 m) for everything without UVs
+def box_uv(o, tile=4.0):
+    me = o.data
+    if "UVMap" in me.uv_layers and o.name in ("Head", "Eyes"): return
+    uvl = me.uv_layers.get("UVMap") or me.uv_layers.new(name="UVMap")
+    for p in me.polygons:
+        n = p.normal; ax = max(range(3), key=lambda i: abs(n[i]))
+        for li in p.loop_indices:
+            c = me.vertices[me.loops[li].vertex_index].co
+            uvl.data[li].uv = ((c.y, c.z) if ax == 0 else (c.x, c.z) if ax == 1 else (c.x, c.y))
+            uvl.data[li].uv = (uvl.data[li].uv[0]*tile, uvl.data[li].uv[1]*tile)
+for o in list(SH.values()) + [body, handL, handR] + list(gear.values()): box_uv(o)
+# ---------------- materials + maps
+exec(open(CB_SRC + "/player_mats.py").read())
+ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Hand_L": "skin", "Hand_R": "skin", "Jersey": "uniform_jersey", "Undershirt": "uniform_undershirt",
+          "Pants": "uniform_pants", "Socks": "uniform_socks", "Cleats": "cleats", "Gear_Cap": "cap", "Gear_Helmet": "helmet", "Gear_Hair": "hair", "Gear_Glove": "glove",
+          "Gear_CatcherMask": "catcher_gear", "Gear_ChestProtector": "catcher_gear", "Gear_ShinGuard_L": "catcher_gear", "Gear_ShinGuard_R": "catcher_gear",
+          "Gear_Belt": "belt", "Gear_Collar": "uniform_undershirt"}
+allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Hand_L": handL, "Hand_R": handR, **gear}
+for n, mname in ASSIGN.items():
+    o = allobjs[n]; o.data.materials.clear(); o.data.materials.append(MATS[mname])
+    if n == "Head":                                        # ears use the skin material slot too? keep single face material (plain uv region)
+        pass
+    rig(o, arm)
+# jersey numbers
 digits = bpy.data.images.load(ROOT+"/players/number_digits.png"); digits.pack()
 M_NUM = bpy.data.materials.new("jersey_number"); M_NUM.use_nodes = True; nb = M_NUM.node_tree.nodes["Principled BSDF"]
 tx = M_NUM.node_tree.nodes.new("ShaderNodeTexImage"); tx.image = digits; tx.extension = 'CLIP'
 M_NUM.node_tree.links.new(tx.outputs["Color"], nb.inputs["Base Color"]); M_NUM.node_tree.links.new(tx.outputs["Alpha"], nb.inputs["Alpha"]); nb.inputs["Roughness"].default_value = 0.8
 M_NUM.surface_render_method = 'BLENDED'
 def number_quad(name, cx, digit):
-    bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); w, zb, zt, y = .0375, 1.215, 1.335, .137
+    bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); w, zb, zt, y = .05, 1.205, 1.355, .178
     vs = [bm.verts.new((cx+w, y, zb)), bm.verts.new((cx-w, y, zb)), bm.verts.new((cx-w, y, zt)), bm.verts.new((cx+w, y, zt))]
     f = bm.faces.new(vs); u0, u1 = digit/10.0, (digit+1)/10.0
     for lp, uv in zip(f.loops, ((u0, 0), (u1, 0), (u1, 1), (u0, 1))): lp[uvl].uv = uv
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free(); me.materials.append(M_NUM)
-    o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o)
-    vg = o.vertex_groups.new(name=PFX+"Spine1"); vg.add(list(range(4)), 1.0, 'REPLACE'); o.parent = arm
-    md = o.modifiers.new("Armature", 'ARMATURE'); md.object = arm; gear[name] = o
-number_quad("Gear_Number_Tens", .04, 2); number_quad("Gear_Number_Ones", -.04, 7)
-acts = bake_clips(arm)
-arm.animation_data.action = acts["idle"]
-# ---- variants
-def setc(name, col): MATS[name].node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = col
+    o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o); set_weight(o, arm, "Spine1"); rig(o, arm); gear[name] = o
+number_quad("Gear_Number_Tens", .055, 2); number_quad("Gear_Number_Ones", -.055, 7)
+ACTS = bake_clips(arm)
+result = {"objs": {n: len(o.data.polygons) for n, o in {**allobjs, **{k: gear[k] for k in ('Gear_Number_Tens',)}}.items()}}
+
+# ---------------- grip empties (interface for the engine): Bat_Grip / Ball_Grip on RightHand, Glove_Pocket on LeftHand
+def grip_empty(name, bone, world_m):
+    e = bpy.data.objects.new(name, None); e.empty_display_type = 'ARROWS'; e.empty_display_size = .05; bpy.context.collection.objects.link(e)
+    bb = arm.data.bones[PFX+bone]
+    e.parent = arm; e.parent_type = 'BONE'; e.parent_bone = PFX+bone
+    parent_rest = arm.matrix_world @ bb.matrix_local @ Matrix.Translation((0, bb.length, 0))
+    e.matrix_parent_inverse = parent_rest.inverted(); e.matrix_basis = world_m; return e
+def frame_matrix(pos, zaxis, xhint):
+    z = Vector(zaxis).normalized(); x = (Vector(xhint) - z*Vector(xhint).dot(z)).normalized(); y = z.cross(x)
+    m = Matrix((x, y, z)).transposed().to_4x4(); m.translation = pos; return m
+xr, yr, zr = hand_frame("Right"); wrR = JOINTS["RightHand"][1]
+gripR = wrR + zr*.06 + xr*.03; knob = gripR - yr*.135
+E_bat = grip_empty("Bat_Grip", "RightHand", frame_matrix(knob, yr, xr))                 # local +Z(blender)=+Y(glTF)=barrel direction; origin = knob
+E_ball = grip_empty("Ball_Grip", "RightHand", frame_matrix(wrR + zr*.085 + xr*.045, Vector((0, 0, 1)), Vector((1, 0, 0))))
+xl, yl, zl = hand_frame("Left"); wrL = JOINTS["LeftHand"][1]
+E_pocket = grip_empty("Glove_Pocket", "LeftHand", frame_matrix(wrL + xl*.05 + zl*.10, Vector((0, 0, 1)), Vector((1, 0, 0))))
+GRIPS = (E_bat, E_ball, E_pocket)
+
+def preview_clip(name, frames, path_prefix, cams=((2.6, -2.6, 1.3), (0, -3.6, 1.3), (-3.6, 0, 1.3)), tgt=(0, -.2, 1.0), hide=(), props=True, res=(420, 480)):
+    exec(open(CB_SRC + "/render_check.py").read(), globals())
+    for n in hide: bpy.data.objects[n].hide_render = True
+    if props and "PrevBat" not in bpy.data.objects:
+        bpy.ops.import_scene.gltf(filepath=ROOT+"/bat.glb"); bat_o = [o for o in bpy.context.selected_objects if o.type == 'MESH'][0]; bat_o.name = "PrevBat"
+        bat_o.parent = E_bat; bat_o.matrix_parent_inverse = Matrix(); bat_o.location = (0, 0, 0); bat_o.rotation_euler = (0, 0, 0)
+        bpy.ops.import_scene.gltf(filepath=ROOT+"/ball.glb"); ball_o = [o for o in bpy.context.selected_objects if o.type == 'MESH'][0]; ball_o.name = "PrevBall"
+        ball_o.parent = E_ball; ball_o.matrix_parent_inverse = Matrix(); ball_o.location = (0, 0, 0)
+    arm.animation_data.action = ACTS[name]
+    try: arm.animation_data.action_slot = arm.animation_data.action_suitable_slots[0]
+    except Exception: pass
+    out = []
+    for f in frames:
+        bpy.context.scene.frame_set(f)
+        for ci, c in enumerate(cams):
+            p = f"{path_prefix}_{name}_{f:02d}_{ci}.png"; snap(p, c, tgt, lens=40, res=res, sun=3); out.append(p)
+    return out
+
+# ---------------- variants + export
+def setc(name, col):
+    b = MATS[name].node_tree.nodes["Principled BSDF"]
+    mix = [n for n in MATS[name].node_tree.nodes if n.type == 'MIX']
+    if mix: mix[0].inputs[7].default_value = col
+    else: b.inputs["Base Color"].default_value = col
+CORE = ["Body_Skin", "Head", "Eyes", "Hand_L", "Hand_R", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_Collar", "Gear_Hair", "Bat_Grip", "Ball_Grip", "Glove_Pocket"]
+NUM = ["Gear_Number_Tens", "Gear_Number_Ones"]
+HOME = dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), uniform_undershirt=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1), belt=(.02, .02, .02, 1))
 VARIANTS = {
- "player_base": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)),
-                 ["Gear_Cap", "Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
- "player_home": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), cap=(.05, .08, .3, 1)), ["Gear_Cap", "Gear_Glove", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
- "player_away": (dict(uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), cap=(.5, .03, .03, 1)), ["Gear_Cap", "Gear_Glove", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
- "player_batter": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)), ["Gear_Helmet", "Gear_Number_Tens", "Gear_Number_Ones", "Face_Details", "Face_Hair"]),
- "player_catcher": (dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1)),
-                    ["Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R", "Face_Details", "Face_Hair"]),
- "player_umpire": (dict(uniform_jersey=(.03, .03, .035, 1), uniform_pants=(.22, .23, .25, 1), uniform_socks=(.02, .02, .02, 1), cap=(.02, .02, .02, 1), helmet=(.02, .02, .02, 1)),
-                   ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector", "Face_Details", "Face_Hair"]),
+ "player_base": (HOME, ["Gear_Cap", "Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"] + NUM),
+ "player_home": (HOME, ["Gear_Cap", "Gear_Glove"] + NUM),
+ "player_away": (dict(HOME, uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), uniform_undershirt=(.5, .03, .03, 1), cap=(.5, .03, .03, 1)), ["Gear_Cap", "Gear_Glove"] + NUM),
+ "player_batter": (HOME, ["Gear_Helmet"] + NUM),
+ "player_catcher": (HOME, ["Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"] + NUM),
+ "player_umpire": (dict(HOME, uniform_jersey=(.03, .03, .035, 1), uniform_pants=(.22, .23, .25, 1), uniform_socks=(.02, .02, .02, 1), uniform_undershirt=(.03, .03, .035, 1), cap=(.02, .02, .02, 1), helmet=(.02, .02, .02, 1)), ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector"]),
 }
-os.makedirs(ROOT+"/players", exist_ok=True)
-info = {}
+os.makedirs(ROOT+"/players", exist_ok=True); info = {}
+arm.animation_data.action = ACTS["idle"]
+allnodes = {**allobjs, **gear, "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Glove_Pocket": E_pocket}
 for vn, (cols, gl) in VARIANTS.items():
     for k, c in cols.items(): setc(k, c)
-    bpy.ops.object.select_all(action='DESELECT')
-    sel = [arm, body] + [gear[g] for g in gl]
+    bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl]
     for o in sel: o.select_set(True)
     bpy.context.view_layer.objects.active = arm
     bpy.ops.export_scene.gltf(filepath=ROOT+f"/players/{vn}.glb", use_selection=True, export_format='GLB', export_yup=True, export_image_format='JPEG',
-        export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False)
+        export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False,
+        export_vertex_color='NONE')
     info[vn] = os.path.getsize(ROOT+f"/players/{vn}.glb")//1024
-result = {"kb": info, "body_tris": len(body.data.polygons)*2 if False else len(body.data.polygons)}
+result = {"kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values())}
