@@ -5,25 +5,23 @@ def _tile(n, scales, seed): return noise_tex(n, scales, seed)
 
 def grass_tex(n=2048, seed=1):
     rng = np.random.default_rng(seed)
-    low = _tile(n, [4, 8, 16, 32], seed)
+    low = _tile(n, [4, 8, 16, 32], seed); dry = _tile(n, [3, 6], seed+9)
     img = np.zeros((n, n, 3), np.float32)
-    dark = np.array([0.045, 0.16, 0.03]); mid = np.array([0.11, 0.30, 0.05]); light = np.array([0.22, 0.42, 0.09])
-    t = low[..., None]
-    img[:] = dark*(1-t) + mid*t
+    dark = np.array([0.040, 0.15, 0.028]); mid = np.array([0.105, 0.29, 0.045]); light = np.array([0.20, 0.40, 0.085]); yel = np.array([0.24, 0.32, 0.07])
+    t = low[..., None]; img[:] = dark*(1-t) + mid*t
+    img = img*(1-0.25*dry[..., None]) + yel*(0.25*dry[..., None])*0.6
     hgt = np.zeros((n, n), np.float32)
-    m = 260000
+    m = 700000
     xs = rng.integers(0, n, m); ys = rng.integers(0, n, m)
-    ang = rng.uniform(0, 2*np.pi, m); ln = rng.integers(3, 9, m)
+    ang = rng.normal(0.9, 0.55, m); ln = rng.integers(4, 12, m)                 # blades lean in a common direction with scatter
     shade = rng.random(m).astype(np.float32)
-    for k in range(9):                      # splat short blade strokes
+    for k in range(12):
         mk = ln > k
-        px = (xs[mk] + (np.cos(ang[mk])*k).astype(int)) % n; py = (ys[mk] + (np.sin(ang[mk])*k).astype(int)) % n
-        c = (mid[None]*(1-shade[mk, None]) + light[None]*shade[mk, None]) * (0.75 + 0.25*k/8)
-        img[py, px] = c; hgt[py, px] = 0.4 + 0.6*k/8
-    fine = _tile(n, [256, 512], seed+7)[..., None]
-    img *= 0.85 + 0.3*fine
+        px = (xs[mk] + (np.cos(ang[mk])*k*.9).astype(int)) % n; py = (ys[mk] + (np.sin(ang[mk])*k*1.1).astype(int)) % n
+        c = (mid[None]*(1-shade[mk, None]) + light[None]*shade[mk, None]) * (0.62 + 0.38*k/11)
+        img[py, px] = c; hgt[py, px] = np.maximum(hgt[py, px], 0.25 + 0.75*k/11)
+    img *= (0.86 + 0.28*_tile(n, [256, 512], seed+7))[..., None]
     return np.clip(img, 0, 1), hgt
-
 def dirt_tex(n=2048, seed=2, base=(0.36, 0.22, 0.12), var=0.35):
     rng = np.random.default_rng(seed)
     low = _tile(n, [3, 6, 12, 24, 48], seed)
@@ -39,7 +37,7 @@ def dirt_tex(n=2048, seed=2, base=(0.36, 0.22, 0.12), var=0.35):
         img[ys+dy, xs+dx] = (b[None]*c[:, None]*0.9).clip(0, 1); hgt[ys+dy, xs+dx] += 0.5
     return np.clip(img, 0, 1), hgt
 
-def vc_material(name, base_img, nrm_img, rough=0.9, nstrength=1.0):
+def vc_material(name, base_img, nrm_img, rough=0.9, nstrength=1.0, ormimg=None, metal=0.0):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; b = nt.nodes["Principled BSDF"]
     t = nt.nodes.new("ShaderNodeTexImage"); t.image = base_img
@@ -52,4 +50,6 @@ def vc_material(name, base_img, nrm_img, rough=0.9, nstrength=1.0):
         n = nt.nodes.new("ShaderNodeTexImage"); n.image = nrm_img
         nm = nt.nodes.new("ShaderNodeNormalMap"); nm.inputs["Strength"].default_value = nstrength
         nt.links.new(n.outputs["Color"], nm.inputs["Color"]); nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    b.inputs["Metallic"].default_value = metal
+    if ormimg is not None: add_orm(nt, b, ormimg)
     return m

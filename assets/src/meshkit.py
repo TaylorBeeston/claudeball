@@ -21,7 +21,7 @@ class MB:
         base = len(self.v)
         vv = [Vector((x, z, 0)) for l in loops for (x, z) in l]
         for l in loops:
-            for (x, z) in l: self.vert(x, y, z, col=col)
+            for (x, z) in l: self.vert(x, y, z, col=col(x, z) if callable(col) else col)
         idx = geometry.tessellate_polygon([[Vector((x, z, 0)) for (x, z) in l] for l in loops])
         for t in idx: self.tri(base+t[0], base+t[1], base+t[2])
     def strip(self, pts, width, y, col=(1, 1, 1, 1), closed=False):
@@ -98,3 +98,45 @@ def carve(poly, side):
     mid = clip_poly(clip_poly(poly, O[0], O[1], o0), -O[0], -O[1], -o1)   # o0 <= o <= o1
     lo = clip_poly(mid, -S[0], -S[1], -s0); hi = clip_poly(mid, S[0], S[1], s1)
     return [p for p in (below, above, lo, hi) if len(p) >= 3]
+
+
+def pip(pts, poly):
+    """vectorised point-in-polygon (ray casting); pts (N,2) numpy, poly list of (x,z)."""
+    import numpy as _np
+    P = _np.asarray(poly); x, z = pts[:, 0], pts[:, 1]; ins = _np.zeros(len(pts), bool); n = len(P)
+    for i in range(n):
+        x1, z1 = P[i]; x2, z2 = P[(i+1) % n]
+        cond = ((z1 > z) != (z2 > z)) & (x < (x2-x1)*(z-z1)/((z2-z1) if z2 != z1 else 1e-12) + x1)
+        ins ^= cond
+    return ins
+
+def grid_cells(subject, cell, ang=0.0, origin=(-70.0, -70.0), extent=(140.0, 140.0), clip_fn=None):
+    """Regular grid of cells (side `cell`) in a frame rotated by `ang` (rad), clipped to `subject` polygon (list of (x,z), world coords).
+    Yields (band_i, cell_j, polygon_world). clip_fn(poly)->list of pieces, applied to boundary cells."""
+    import numpy as _np
+    c, s = math.cos(ang), math.sin(ang)
+    to_uv = lambda p: (p[0]*c + p[1]*s, -p[0]*s + p[1]*c); to_xz = lambda u, v: (u*c - v*s, u*s + v*c)
+    S = [to_uv(p) for p in subject]
+    u0, v0 = origin; nu, nv = int(extent[0]//cell)+1, int(extent[1]//cell)+1
+    su = [p[0] for p in S]; sv = [p[1] for p in S]
+    i0 = max(0, int((min(su)-u0)//cell)); i1 = min(nu, int((max(su)-u0)//cell)+1); j0 = max(0, int((min(sv)-v0)//cell)); j1 = min(nv, int((max(sv)-v0)//cell)+1)
+    II, JJ = _np.meshgrid(_np.arange(i0, i1+1), _np.arange(j0, j1+1), indexing='ij')
+    U = u0 + II*cell; Vv = v0 + JJ*cell
+    inside = pip(_np.stack([U.ravel(), Vv.ravel()], 1), S).reshape(U.shape)
+    for a in range(i1-i0):
+        for b in range(j1-j0):
+            corners = inside[a, b], inside[a+1, b], inside[a+1, b+1], inside[a, b+1]
+            cu, cv = u0+(i0+a)*cell, v0+(j0+b)*cell
+            sq = [(cu, cv), (cu+cell, cv), (cu+cell, cv+cell), (cu, cv+cell)]
+            if not any(corners): 
+                # boundary cell that contains no corner of the grid inside might still overlap the polygon edge; test polygon vertices inside the cell
+                if not any(cu <= p[0] <= cu+cell and cv <= p[1] <= cv+cell for p in S): continue
+            if all(corners):
+                pieces = [[to_xz(*q) for q in sq]]
+            else:
+                pl = S
+                for (nx, nz, d) in ((1, 0, cu), (-1, 0, -(cu+cell)), (0, 1, cv), (0, -1, -(cv+cell))): pl = clip_poly(pl, nx, nz, d)
+                if len(pl) < 3: continue
+                pieces = [[to_xz(*q) for q in pl]]
+            if clip_fn: pieces = [q for p in pieces for q in clip_fn(p)]
+            for p in pieces: yield i0+a, j0+b, p
