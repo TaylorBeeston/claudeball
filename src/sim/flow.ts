@@ -124,11 +124,15 @@ export function startPlateAppearance(w: World): void {
   b.vmax = (6.65 + 0.031 * b.info.ratings.speed);
   b.anim = 'idle';
   w.pitcher.pit.bf += 1;
+  resetDefense(w);
   emit(w, { type: 'batterUp', batterId: b.info.id, pitcherId: w.pitcher.info.id });
   w.phase = 'prePitch';
   w.phaseUntil = w.tick + paced(w, WALKUP);
   w.seq = { lastType: null, lastMph: 0, count: 0 };
   w.pitch = null;
+  w.swing = null;
+  w.swingPlan = null;
+  w.swingStarted = false;
   if (w.ball.holder !== w.pitcher) giveBall(w, w.pitcher);
 }
 
@@ -487,7 +491,44 @@ export function umpireCall(w: World, px: number, py: number): boolean {
 }
 
 /** Batter's pitch-by-pitch state reset helpers for the next pitch. */
+/** Send every fielder back to his spot (shading with the situation). */
+export function resetDefense(w: World): void {
+  const t = w.fieldingTeam;
+  const runnerThird = w.runners.some((r) => r.state === 'live' && r.base === 3);
+  const runnerFirst = w.runners.some((r) => r.state === 'live' && r.base === 1);
+  const infieldIn = runnerThird && w.outs < 2 && w.inning >= 7 && Math.abs(w.battingTeam.runs - t.runs) <= 1;
+  const dpDepth = runnerFirst && w.outs < 2;
+  const power = w.batter ? w.batter.info.ratings.power : 50;
+  const ofDepth = power > 65 ? 5 : power < 40 ? -4 : 0;
+  for (const [pos, F] of t.defense) {
+    if (!F.onField) continue;
+    const s = DEFAULT_SPOTS[pos as keyof typeof DEFAULT_SPOTS];
+    let x = s.x;
+    let z = s.z;
+    if (pos === '1B' || pos === '2B' || pos === 'SS' || pos === '3B') {
+      if (infieldIn) z -= 6.5;
+      else if (dpDepth && (pos === '2B' || pos === 'SS')) {
+        z -= 2.0;
+        x *= 0.85;
+      }
+    }
+    if (pos === 'LF' || pos === 'CF' || pos === 'RF') z += ofDepth;
+    F.plan.kind = 'idle';
+    F.plan.releaseAt = 0;
+    F.lookAt = { x: 0, z: 0 };
+    if (w.cfg.pace === 0) {
+      F.x = x;
+      F.z = z;
+      F.vx = F.vz = 0;
+      F.goal = null;
+    } else {
+      F.goal = { x, z, stop: true, mul: 0.75 };
+    }
+  }
+}
+
 export function readyNextPitch(w: World, seconds = BETWEEN): void {
+  resetDefense(w);
   w.phase = 'prePitch';
   w.phaseUntil = w.tick + paced(w, seconds);
   w.swing = null;
@@ -509,3 +550,18 @@ export function pickoffPhase(w: World): void {
   void w;
 }
 export { setGoal };
+
+export function resetBatterToBox(w: World): void {
+  const b = w.batter!;
+  const side = w.batStance === 'R' ? 1 : -1;
+  b.role = 'batter';
+  b.onField = true;
+  b.vx = b.vz = 0;
+  b.goal = null;
+  b.x = side * BATTER_X;
+  b.z = 0.15;
+  b.lookAt = { x: 0, z: MOUND_DIST };
+  b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
+  b.anim = 'idle';
+  b.animUntil = 0;
+}

@@ -212,6 +212,8 @@ export function createWorld(cfg: GameConfig): World {
     ballInPlayEver: false,
     jitter: 0,
     passedBallFlag: false,
+    batterKeepsPA: false,
+    foulReset: false,
     wildPitchFlag: false,
     walkOffPending: false,
   };

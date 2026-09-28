@@ -209,51 +209,41 @@ export interface BipInfo {
   line: boolean;
 }
 
-export type PlayKind = 'pitchBall' | 'battedBall' | 'pickoff' | 'looseBall';
+export type PlayKind = 'battedBall' | 'looseBall' | 'pickoff' | 'steal' | 'deadBall' | 'droppedThird';
 
 export interface PlayState {
   kind: PlayKind;
   startTick: number;
-  runners: RunnerRT[];
   bip: BipInfo | null;
-  /** Ticks with nothing happening (all stopped, ball held) — play settles when long enough. */
-  settleTicks: number;
-  outsBefore: number;
-  runsBefore: number;
-  /** Runs scored this play (for nullification on force / BR outs at 3rd out). */
   runsThisPlay: { runner: RunnerRT; tick: number }[];
   outsThisPlay: { runner: RunnerRT; force: boolean; brBeforeFirst: boolean; tick: number }[];
-  /** Fielder responsible for each defensive job (assigned each AI tick). */
-  primary: PlayerRT | null;
-  chaseTarget: { x: number; z: number; t: number } | null;
-  /** Ball is dead (no further outs). */
   dead: boolean;
-  /** Batter-runner has been put out. */
   batterOut: boolean;
-  result: string;
-  /** Errors charged on this play. */
-  errors: PlayerRT[];
-  /** Was an error made (for hit/E decisions). */
   hadError: boolean;
-  /** Did a fielder choose a different runner than batter (FC). */
   fieldersChoice: boolean;
-  /** First base ump call etc. handled? */
-  throwsMade: number;
-  /** Ball retrieved after passing catcher (wild pitch / passed ball). */
-  wildPitchBy: PlayerRT | null;
-  passedBall: boolean;
-  wildPitch: boolean;
-  /** For 3rd-out logic. */
-  thirdOutForce: boolean;
-  lastThrower: PlayerRT | null;
-  /** Fielders' arrival plan tick. */
+  errors: PlayerRT[];
+  settleTicks: number;
+  primary: PlayerRT | null;
+  catchMargin: number | null;
+  est: number[];
+  estTick: number;
   aiNext: number;
   runnerAiNext: number;
-  /** Throw plan in progress. */
-  throwPlan: { thrower: PlayerRT; baseTarget: number; receiver: PlayerRT | null; relay: PlayerRT | null; releaseTick: number; toRunner: RunnerRT | null } | null;
-  holdSince: number;
-  /** Batter/runner state helper for sacrifice determination. */
-  sacFlyEligible: boolean;
+  throws: number;
+  touches: PlayerRT[];
+  covers: Record<number, PlayerRT | null>;
+  cutoff: PlayerRT | null;
+  /** Foul ball / dead ball reason once decided. */
+  deadReason: string;
+  deadTick: number;
+  /** A thrown ball that got past its receiver was already charged. */
+  throwChecked: boolean;
+  lastThrowTick: number;
+  lastThrower: PlayerRT | null;
+  /** Two-out run/RBI bookkeeping. */
+  rbiEligible: boolean;
+  dropped3Swinging: boolean;
+  finished?: boolean;
 }
 
 export interface Count {
@@ -328,6 +318,8 @@ export interface World {
   ballInPlayEver: boolean;
   jitter: number;
   passedBallFlag: boolean;
+  batterKeepsPA: boolean;
+  foulReset: boolean;
   wildPitchFlag: boolean;
   /** Home team leads in the bottom of the last inning: game ends when the play resolves. */
   walkOffPending: boolean;

@@ -96,3 +96,5 @@ export function setGoal(p: PlayerRT, x: number, z: number, stop = true, mul = 1)
 export function clearGoal(p: PlayerRT): void {
   p.goal = null;
 }
+
+export const sprintSpeedOf = (p: { info: { ratings: { speed: number } } }) => sprintSpeed(p.info.ratings.speed);

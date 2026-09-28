@@ -125,7 +125,6 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
     }
   }
   w.play = inplay.newPlay(w, 'deadBall');
-  w.play.runners = w.runners.filter((r) => r.state === 'live');
   w.play.dead = true;
   w.ball.mode = 'dead';
   giveBall(w, w.pitcher);
@@ -147,7 +146,6 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   if (play) play.outsThisPlay.push({ runner: r, force: force || brBeforeFirst, brBeforeFirst, tick: w.tick });
   if (r.isBatter && play) play.batterOut = true;
   emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base });
-  r.goal_clear = true;
   if (w.outs >= 3) {
     thirdOut(w, force || brBeforeFirst);
   }
@@ -328,3 +326,126 @@ export function teamOf(w: World, side: TeamSide): TeamRT {
 }
 
 export { BASE_POS, clamp, setGoal };
+
+// ---------------------------------------------------------------------------------------------
+// resolving plays
+// ---------------------------------------------------------------------------------------------
+
+const DIR_LABEL = (spray: number) => (spray > 14 ? 'left field' : spray < -14 ? 'right field' : 'center field');
+
+function sprayWord(spray: number): string {
+  if (spray > 30) return 'down the left-field line';
+  if (spray < -30) return 'down the right-field line';
+  return `to ${DIR_LABEL(spray)}`;
+}
+
+export function resolveBattedBall(w: World): void {
+  const play = w.play!;
+  const bip = play.bip!;
+  const b = w.batter!;
+  const name = b.info.name;
+  const br = w.runners.find((r) => r.isBatter && r.p === b)!;
+  const runs = play.runsThisPlay.length;
+  const dp = play.outsThisPlay.length >= 2;
+  const chain = fielderChain(w, play.touches.length ? dedupe(play.touches) : bip.fielders);
+  let result: string;
+  let opts: PAResult;
+  let desc: string;
+  if (br.state === 'out') {
+    const ff = bip.firstFielder ?? play.touches[0];
+    const where = ff ? posName(ff) : 'the field';
+    if (bip.infieldFly) {
+      result = 'infield fly';
+      desc = `${name} pops out on an infield fly to ${where}.`;
+      opts = { ab: true };
+    } else if (bip.caught) {
+      const sacFly = runs > 0 && play.outsThisPlay[0]?.tick !== undefined && w.outs <= 3 && bip.launchDeg > 15 && playOutsBefore(w, play) < 2;
+      const kind = bip.launchDeg > 45 ? 'pops out' : bip.line ? 'lines out' : 'flies out';
+      result = kind.replace(' out', 'out').replace('pops', 'pop').replace('lines', 'line').replace('flies', 'fly');
+      result = bip.launchDeg > 45 ? 'popout' : bip.line ? 'lineout' : 'flyout';
+      if (sacFly) {
+        result = 'sac fly';
+        desc = `${name} hits a sacrifice fly to ${where}; ${runs} run${runs > 1 ? 's' : ''} score${runs > 1 ? '' : 's'}.`;
+        opts = { ab: false, sf: true, rbi: runs };
+      } else {
+        desc = `${name} ${kind} to ${where}.`;
+        opts = { ab: true };
+      }
+    } else {
+      result = dp ? 'double play' : 'groundout';
+      desc = dp ? `${name} grounds into a double play, ${chain}.` : `${name} grounds out, ${chain}.`;
+      opts = { ab: true, rbi: dp ? 0 : runs };
+    }
+  } else {
+    const base = br.state === 'scored' ? 4 : br.base;
+    const forceOut = play.outsThisPlay.some((o) => o.runner !== br);
+    if (bip.homeRun) {
+      result = 'home run';
+      desc = `${name} homers ${sprayWord(bip.sprayDeg)}${runs > 1 ? `, ${runs} runs score` : ''}.`;
+      opts = { ab: true, h: 4, rbi: runs };
+    } else if (play.errors.length && br.reachedOnError && base <= 1) {
+      result = 'reached on error';
+      desc = `${name} reaches on an error by ${posName(play.errors[0])}.`;
+      opts = { ab: true, rbi: 0 };
+    } else if ((forceOut && base <= 1) || base < 1) {
+      result = "fielder's choice";
+      desc = `${name} reaches on a fielder's choice, ${chain}.`;
+      opts = { ab: true, rbi: runs };
+    } else {
+      const h = clamp(base, 1, 4);
+      const verb = h === 1 ? 'singles' : h === 2 ? 'doubles' : h === 3 ? 'triples' : 'homers';
+      result = h === 1 ? 'single' : h === 2 ? 'double' : h === 3 ? 'triple' : 'home run';
+      desc = `${name} ${verb} ${sprayWord(bip.sprayDeg)}${runs ? `; ${runs} run${runs > 1 ? 's' : ''} score` : ''}.`;
+      opts = { ab: true, h, rbi: play.errors.length ? 0 : runs };
+    }
+  }
+  if (bip.groundRuleDouble) {
+    result = 'double';
+    desc = `${name} hits a ground-rule double.`;
+    opts = { ab: true, h: 2, rbi: runs };
+  }
+  endPlateAppearance(w, result, opts);
+  w.lastPlay = desc;
+  emit(w, { type: 'playEnd', description: desc });
+}
+
+const dedupe = <T,>(a: T[]) => a.filter((x, i) => a.indexOf(x) === i);
+
+function playOutsBefore(w: World, play: { outsThisPlay: unknown[] }): number {
+  return w.outs - play.outsThisPlay.length;
+}
+
+export function resolveDroppedThird(w: World): void {
+  const b = w.batter!;
+  b.bat.so++;
+  w.pitcher.pit.so++;
+  const play = w.play!;
+  const br = w.runners.find((r) => r.isBatter && r.p === b)!;
+  const out = br.state === 'out';
+  const desc = out ? `${b.info.name} strikes out and is thrown out at first.` : `${b.info.name} strikes out but reaches on the dropped third strike.`;
+  if (!out) br.reachedOnError = true;
+  endPlateAppearance(w, out ? 'strikeout' : 'strikeout (dropped third strike)', { ab: true, so: true });
+  w.lastPlay = desc;
+  emit(w, { type: 'playEnd', description: desc });
+  void play;
+}
+
+export function resolveOtherPlay(w: World): void {
+  const play = w.play!;
+  const parts: string[] = [];
+  for (const o of play.outsThisPlay) {
+    const r = o.runner;
+    if (r.p.info.id) parts.push(`${r.p.info.name} is out${r.stealing ? ' trying to steal' : ''}.`);
+  }
+  for (const r of w.runners) {
+    if (r.state === 'live' && r.stealing && r.base > r.origin) parts.push(`${r.p.info.name} steals ${['', 'first', 'second', 'third', 'home'][r.base]}.`);
+    else if (r.state === 'live' && !r.stealing && r.base > r.origin && (w.wildPitchFlag || w.passedBallFlag)) parts.push(`${r.p.info.name} advances on the ${w.wildPitchFlag ? 'wild pitch' : 'passed ball'}.`);
+  }
+  if (w.wildPitchFlag && w.runners.some((r) => r.state !== 'out' && r.base > r.origin)) w.pitcher.pit.wp++;
+  w.wildPitchFlag = false;
+  w.passedBallFlag = false;
+  if (parts.length) {
+    w.lastPlay = parts.join(' ');
+    emit(w, { type: 'playEnd', description: w.lastPlay });
+  }
+}
