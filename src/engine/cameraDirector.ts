@@ -91,9 +91,12 @@ export class CameraDirector {
     this.auto = auto;
     this.orbit.enabled = !auto;
     if (!auto) {
-      this.orbit.target.copy(this.tgt);
-      this.camera.position.copy(this.pos);
-      this.camera.fov = this.fov;
+      // free orbit starts from a clear vantage point above the first-base side of the infield
+      this.orbit.target.set(0, 1, 32);
+      this.camera.position.set(-38, 34, 4);
+      this.camera.fov = 45;
+      this.camera.near = 0.5;
+      this.camera.far = 900;
       this.camera.updateProjectionMatrix();
       this.orbit.update();
     } else this.cut('pitch');

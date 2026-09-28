@@ -16,8 +16,12 @@ import { PostFX } from './postfx';
 import { AdaptiveScale, QUALITY, QUALITY_ORDER, type QualityName } from './quality';
 import { SimDriver } from './simAdapter';
 import { BallView, BatView, PlayerManager } from './players';
+import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
+import { loadAssets, type Assets } from './assets';
+import { GltfPuppet, templateNameFor } from './gltfCharacter';
+import { Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 
 export interface EngineOptions {
@@ -56,6 +60,8 @@ export class Engine {
   private batted = false;
   private live: GameState;
   private raf = 0;
+  private fieldGroup: Object3D;
+  assets: Assets | null = null;
 
   constructor(root: HTMLElement, opts: EngineOptions = {}) {
     this.el = root;
@@ -70,7 +76,8 @@ export class Engine {
     root.appendChild(this.canvas);
 
     this.env = new Environment(this.scene, this.renderer, this.camera, this.quality);
-    this.scene.add(buildField(this.env));
+    this.fieldGroup = buildField(this.env);
+    this.scene.add(this.fieldGroup);
     this.stadium = buildStadium(this.env);
     this.scene.add(this.stadium.group);
     this.gbufferHidden.push(...this.stadium.gbufferHidden);
@@ -81,7 +88,7 @@ export class Engine {
     this.scene.add(this.players.group);
     this.ball = new BallView(this.env);
     this.bat = new BatView(this.env);
-    this.scene.add(this.ball.group, this.bat.mesh);
+    this.scene.add(this.ball.group, this.bat.obj);
     this.gbufferHidden.push(...this.ball.gbufferHidden);
 
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
@@ -123,6 +130,37 @@ export class Engine {
     if (opts.timeOfDay) this.setTimeOfDay(opts.timeOfDay);
     this.director.setAuto(true);
     this.resize();
+  }
+
+  /** Load Blender assets from /assets and swap them in for the procedural placeholders. */
+  async loadAssets(): Promise<Assets> {
+    const a = await loadAssets(this.renderer);
+    this.assets = a;
+    if (a.field) {
+      this.fieldGroup.visible = false;
+      this.scene.add(a.field);
+      a.field.traverse((o) => {
+        const m = o as Mesh;
+        if (m.isMesh) for (const mt of Array.isArray(m.material) ? m.material : [m.material]) this.env.register(mt as MeshStandardMaterial);
+      });
+      // ground under the stands / beyond the field mesh
+      const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
+      under.position.y = -0.06;
+      under.receiveShadow = true;
+      this.scene.add(under);
+    }
+    if (a.stadium) this.stadium.adoptGltf(a.stadium as never, a.mirrored);
+    if (a.ball) this.ball.useModel(a.ball, this.env);
+    if (a.bat) this.bat.useModel(a.bat, this.env);
+    if (a.characters.size) {
+      this.players.makePuppet = (snap) => {
+        const tpl = a.characters.get(templateNameFor(snap)) ?? a.characters.get('player_base');
+        return tpl ? new GltfPuppet(tpl, snap.id) : new Puppet(snap.id);
+      };
+      this.players.reset();
+    }
+    this.env.setQuality(this.quality);
+    return a;
   }
 
   private onKey(e: KeyboardEvent) {

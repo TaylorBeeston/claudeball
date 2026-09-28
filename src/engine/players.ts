@@ -61,6 +61,8 @@ function ballTexture(): CanvasTexture {
 
 export class BallView {
   readonly mesh: Mesh;
+  /** parent of the visible ball (procedural sphere or the glTF ball); carries position and spin */
+  readonly spin = new Group();
   readonly streak: Mesh;
   readonly trail: Mesh;
   private trailPts: Vector3[] = [];
@@ -96,19 +98,34 @@ export class BallView {
     this.trail = new Mesh(this.trailGeo, tm);
     this.trail.frustumCulled = false;
     this.trail.visible = false;
-    this.group.add(this.mesh, this.streak, this.trail);
+    this.spin.add(this.mesh);
+    this.group.add(this.spin, this.streak, this.trail);
     this.gbufferHidden = [this.streak, this.trail];
+  }
+
+  /** Use the Blender ball (`ball.glb`, origin at centre, real size). */
+  useModel(model: Object3D, env: Environment) {
+    this.mesh.visible = false;
+    const m = model.clone(true);
+    m.traverse((o) => {
+      const mm = o as Mesh;
+      if (mm.isMesh) {
+        for (const mt of Array.isArray(mm.material) ? mm.material : [mm.material]) env.register(mt as MeshStandardMaterial);
+        mm.castShadow = true;
+      }
+    });
+    this.spin.add(m);
   }
 
   update(state: GameState, dt: number, camPos: Vector3, showTrail: boolean) {
     const b = state.ball;
-    this.mesh.visible = b.visible;
+    this.spin.visible = b.visible;
     toScene(b.pos, this.worldPos);
-    this.mesh.position.copy(this.worldPos);
+    this.spin.position.copy(this.worldPos);
     // spin (sim spin is in sim axes; mirror x)
     const w = new Vector3(b.spin.x, b.spin.y, b.spin.z);
     const wl = w.length();
-    if (wl > 1e-3) this.mesh.rotateOnWorldAxis(w.divideScalar(wl), wl * dt);
+    if (wl > 1e-3) this.spin.rotateOnWorldAxis(w.divideScalar(wl), wl * dt);
     const sp = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
     // motion streak along velocity (simulated shutter)
     if (b.visible && sp > 12) {
@@ -161,6 +178,7 @@ export class BallView {
 
 export class BatView {
   readonly mesh: Mesh;
+  readonly obj = new Group();
   readonly grip = { top: new Vector3(), bottom: new Vector3() };
   visible = false;
   private q = new Quaternion();
@@ -183,19 +201,34 @@ export class BatView {
     g.computeVertexNormals();
     this.mesh = new Mesh(g, env.register(new MeshStandardMaterial({ color: 0xc89a5c, roughness: 0.45 })));
     this.mesh.castShadow = true;
+    this.obj.add(this.mesh);
+    this.obj.visible = false;
+  }
+
+  /** Use the Blender bat (`bat.glb`: knob at origin, barrel along +Y). */
+  useModel(model: Object3D, env: Environment) {
     this.mesh.visible = false;
+    const m = model.clone(true);
+    m.traverse((o) => {
+      const mm = o as Mesh;
+      if (mm.isMesh) {
+        for (const mt of Array.isArray(mm.material) ? mm.material : [mm.material]) env.register(mt as MeshStandardMaterial);
+        mm.castShadow = true;
+      }
+    });
+    this.obj.add(m);
   }
 
   update(state: GameState) {
     const b = state.bat;
     this.visible = b.visible;
-    this.mesh.visible = b.visible;
+    this.obj.visible = b.visible;
     if (!b.visible) return;
-    toScene(b.pos, this.mesh.position);
+    toScene(b.pos, this.obj.position);
     quatToScene(b.quat, this.q);
-    this.mesh.quaternion.copy(this.q);
-    this.grip.bottom.set(0, 0.12, 0).applyQuaternion(this.q).add(this.mesh.position);
-    this.grip.top.set(0, 0.26, 0).applyQuaternion(this.q).add(this.mesh.position);
+    this.obj.quaternion.copy(this.q);
+    this.grip.bottom.set(0, 0.12, 0).applyQuaternion(this.q).add(this.obj.position);
+    this.grip.top.set(0, 0.26, 0).applyQuaternion(this.q).add(this.obj.position);
   }
 }
 
@@ -217,6 +250,12 @@ export class PlayerManager {
   constructor(env: Environment) {
     this.group.name = 'players';
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
+  }
+
+  /** Drop all puppets (they are recreated with the current factory on the next update). */
+  reset() {
+    for (const p of this.puppets.values()) p.dispose();
+    this.puppets.clear();
   }
 
   update(state: GameState, dt: number, ball: Vector3, bat: BatView) {

@@ -38,8 +38,8 @@ interface TodPreset {
 
 const PRESETS: Record<TimeOfDay, TodPreset> = {
   day: {
-    sunDir: [0.42, 0.82, 0.38],
-    skySun: [0.42, 0.82, 0.38],
+    sunDir: [0.7, 0.62, 0.22],
+    skySun: [0.7, 0.62, 0.22],
     sunColor: 0xfff0dc,
     sunIntensity: 3.4,
     env: 0.35,
@@ -103,6 +103,10 @@ export class Environment {
     this.hemi = new HemisphereLight(0xffffff, 0x444444, 0.3);
     scene.add(this.hemi);
     this.sky.scale.setScalar(50000);
+    // clamp the sky's HDR so the sun glare cannot dominate bloom / DoF; the sun itself is the directional light
+    this.sky.material.onBeforeCompile = (s) => {
+      s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'gl_FragColor = vec4( min( retColor, vec3( 2.2 ) ), 1.0 );');
+    };
     this.skyScene.add(this.sky);
     const sg = new BufferGeometry();
     const pos: number[] = [];
@@ -198,7 +202,7 @@ export class Environment {
     this.scene.background = this.cubeRT.texture;
     this.scene.environment = this.envRT.texture;
     this.scene.environmentIntensity = t.env;
-    this.scene.backgroundIntensity = name === 'night' ? 1 : 0.55;
+    this.scene.backgroundIntensity = name === 'night' ? 1 : 0.75;
     this.scene.fog = null;
     this.hemi.color.setHex(t.hemi[0]);
     this.hemi.groundColor.setHex(t.hemi[1]);

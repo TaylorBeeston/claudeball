@@ -270,7 +270,7 @@ export function setMaterialRegistrar(fn: (m: Material) => void) {
   registerMaterial = fn;
   for (const m of matCache.values()) fn(m);
 }
-const reg = <T extends Material>(m: T): T => {
+export const reg = <T extends Material>(m: T): T => {
   if (!(m.userData.regd)) {
     m.userData.regd = true;
     registerMaterial(m);

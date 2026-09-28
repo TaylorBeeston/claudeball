@@ -8,11 +8,9 @@ import {
   DynamicDrawUsage,
   Float32BufferAttribute,
   Group,
-  InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
@@ -297,6 +295,10 @@ function glowTexture(): CanvasTexture {
 
 export interface Stadium {
   group: Group;
+  /** procedural placeholder structure (hidden once glTF stadium is adopted) */
+  structure: Group;
+  /** swap in the Blender stadium (`stadium.glb`); crowd is regenerated from its instanced seats */
+  adoptGltf(root: Group, mirrored?: boolean): void;
   /** objects that must not be drawn into the SSAO/DoF depth pass */
   gbufferHidden: Object3D[];
   crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; excite(v: number): void; update(t: number, dt: number): void };
@@ -309,6 +311,9 @@ export interface Stadium {
 export function buildStadium(env: Environment): Stadium {
   const group = new Group();
   group.name = 'stadium';
+  const structure = new Group();
+  structure.name = 'stadium-structure';
+  group.add(structure);
   const gbufferHidden: Object3D[] = [];
   const raw = buildOutline();
   const path = resample(chaikin(raw, 3), 0.62);
@@ -319,7 +324,7 @@ export function buildStadium(env: Environment): Stadium {
   stands.castShadow = true;
   stands.receiveShadow = true;
   stands.frustumCulled = false;
-  group.add(stands);
+  structure.add(stands);
 
   // --- outfield wall & foul wall -------------------------------------------------------
   {
@@ -364,7 +369,7 @@ export function buildStadium(env: Environment): Stadium {
     wall.castShadow = true;
     wall.receiveShadow = true;
     wall.frustumCulled = false;
-    group.add(wall);
+    structure.add(wall);
   }
 
   // --- batter's eye (dark screen behind center field) --------------------------------------------
@@ -376,10 +381,10 @@ export function buildStadium(env: Environment): Stadium {
     const r = wallDistance(0) + 4;
     eye.position.set(0, 6.5 + 1.5, r);
     eye.castShadow = eye.receiveShadow = true;
-    group.add(eye);
+    structure.add(eye);
     const hedge = new Mesh(new BoxGeometry(34, 1.6, 2.4), env.register(new MeshStandardMaterial({ color: 0x143a1a, roughness: 1 })));
     hedge.position.set(0, 0.8, r - 1.5);
-    group.add(hedge);
+    structure.add(hedge);
   }
 
   // --- backstop & dugouts ------------------------------------------------------------------------
@@ -388,7 +393,7 @@ export function buildStadium(env: Environment): Stadium {
     const back = new Mesh(new BoxGeometry(34, 2.6, 0.5), padMat);
     back.position.set(0, 1.3, -20.5);
     back.castShadow = back.receiveShadow = true;
-    group.add(back);
+    structure.add(back);
     const concrete = env.register(new MeshStandardMaterial({ color: 0x9a9c9e, roughness: 0.85 }));
     const dark = env.register(new MeshStandardMaterial({ color: 0x0c0d10, roughness: 1 }));
     for (const sgn of [-1, 1]) {
@@ -406,7 +411,7 @@ export function buildStadium(env: Environment): Stadium {
       dug.position.set(sgn * (t + off) * Math.SQRT1_2, 0, (t - off) * Math.SQRT1_2);
       dug.rotation.y = sgn * ((3 * Math.PI) / 4);
       dug.children.forEach((c) => (c.castShadow = c.receiveShadow = true));
-      group.add(dug);
+      structure.add(dug);
     }
   }
 
@@ -427,7 +432,7 @@ export function buildStadium(env: Environment): Stadium {
     sbBack.position.copy(sb.position);
     sbBack.quaternion.copy(sb.quaternion);
     sbBack.translateZ(-0.6);
-    group.add(sbBack, sb);
+    structure.add(sbBack, sb);
   }
   const updateScoreboard = (s: GameState) => {
     const g = sbCanvas.getContext('2d')!;
@@ -500,7 +505,7 @@ export function buildStadium(env: Environment): Stadium {
       tw.add(sp);
       glares.push(sp);
       gbufferHidden.push(sp);
-      group.add(tw);
+      structure.add(tw);
     }
   }
   const setLightsOn = (on: boolean) => {
@@ -509,8 +514,8 @@ export function buildStadium(env: Environment): Stadium {
   };
 
   // --- crowd -----------------------------------------------------------------------------------------
-  const crowd = buildCrowd(path, env);
-  group.add(crowd.headMesh, crowd.bodyMesh);
+  const crowd = buildCrowd(env, group);
+  crowd.setMatrices(crowdMatrices(path));
 
   // crowd cutaway shots: pick a few spots in lower-deck stands looking back across the crowd
   const crowdShots: { pos: Vector3; target: Vector3 }[] = [];
@@ -523,8 +528,79 @@ export function buildStadium(env: Environment): Stadium {
     crowdShots.push({ pos: cam, target: tgt });
   }
 
+  // --- glTF replacement --------------------------------------------------------------------------
+  let gltfLamps: MeshStandardMaterial[] = [];
+  let gltfLampBase: number[] = [];
+  let lightsState = false;
+  const adoptGltf = (root: Group, mirrored = false) => {
+    structure.visible = false;
+    root.name = 'stadium-gltf';
+    group.add(root);
+    root.updateMatrixWorld(true);
+    const seatMats: Matrix4[] = [];
+    const wm = new Matrix4(), inst = new Matrix4();
+    const up = new Vector3(0, 1, 0), p = new Vector3(), q = new Quaternion(), sc = new Vector3();
+    const lampSet = new Set<MeshStandardMaterial>();
+    root.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh) return;
+      const mats = (Array.isArray(m.material) ? m.material : [m.material]) as MeshStandardMaterial[];
+      for (const mt of mats) {
+        env.register(mt);
+        if (mt.transparent) gbufferHidden.push(m);
+        if (o.name.endsWith('_Lamps')) lampSet.add(mt);
+        if (o.name === 'Scoreboard_Screen') {
+          sbTex.flipY = false; // glTF UV convention
+          if (mirrored) {
+            sbTex.wrapS = RepeatWrapping;
+            sbTex.repeat.x = -1;
+            sbTex.offset.x = 1;
+          }
+          sbTex.needsUpdate = true;
+          mt.map = sbTex;
+          mt.emissiveMap = sbTex;
+          mt.emissive.set(0xffffff);
+          mt.emissiveIntensity = 1.4;
+          mt.color.set(0x222222);
+          mt.needsUpdate = true;
+        }
+      }
+      m.receiveShadow = true;
+      m.castShadow = !mats.some((x) => x.transparent) && !o.name.startsWith('Seats');
+      const im = o as InstancedMesh;
+      if (im.isInstancedMesh && o.name.startsWith('Seats_T')) {
+        // spectators sit on the seat instances
+        const bb = im.geometry.boundingBox ?? (im.geometry.computeBoundingBox(), im.geometry.boundingBox!);
+        const fill = o.name === 'Seats_T3' ? 0.7 : 0.88;
+        let r = 1234 + o.name.charCodeAt(7);
+        const rnd = () => ((r = (r * 1664525 + 1013904223) >>> 0) / 4294967296);
+        wm.copy(im.matrixWorld);
+        for (let i = 0; i < im.count; i++) {
+          if (rnd() > fill) continue;
+          im.getMatrixAt(i, inst);
+          inst.premultiply(wm);
+          inst.decompose(p, q, sc);
+          // seat template faces +Z; sit slightly behind the front edge
+          const fwd = new Vector3(0, 0, 1).transformDirection(inst);
+          fwd.y = 0;
+          fwd.normalize();
+          p.addScaledVector(fwd, -0.05).addScaledVector(up, bb.min.y + 0.03 + (bb.max.y - bb.min.y) * 0.18);
+          q.setFromAxisAngle(up, Math.atan2(fwd.x, fwd.z) + (rnd() - 0.5) * 0.5);
+          const s = 0.92 + rnd() * 0.2;
+          sc.set(s, s * (0.92 + rnd() * 0.16), s);
+          seatMats.push(new Matrix4().compose(p.clone(), q.clone(), sc.clone()));
+        }
+      }
+    });
+    crowd.setMatrices(seatMats);
+    gltfLamps = [...lampSet];
+    gltfLampBase = gltfLamps.map((m) => m.emissiveIntensity || 1);
+    setLightsOn(lightsState);
+  };
+
   return {
     group,
+    structure,
     gbufferHidden,
     crowd: {
       setDensity: (d) => crowd.setDensity(d),
@@ -536,22 +612,22 @@ export function buildStadium(env: Environment): Stadium {
       },
     },
     updateScoreboard,
-    setLightsOn,
+    setLightsOn: (on: boolean) => {
+      lightsState = on;
+      setLightsOn(on);
+      gltfLamps.forEach((m, i) => (m.emissiveIntensity = on ? gltfLampBase[i] : 0.03));
+    },
+    adoptGltf,
     crowdShots,
   };
 }
 
-function buildCrowd(path: PathPt[], env: Environment) {
-  // instance placement: every 0.62 m of path, every row
+function crowdMatrices(path: PathPt[]): Matrix4[] {
   const mats: Matrix4[] = [];
-  const shirts: Color[] = [];
-  const skins: Color[] = [];
   const rnd = (() => {
     let a = 12345;
     return () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296);
   })();
-  const shirtPalette = ['#b3202f', '#e9e9e4', '#233f73', '#1a1a1c', '#c8a23a', '#3f6b45', '#7c7f86', '#a85a2c', '#5c3a6a', '#3d6f86', '#e9e9e4', '#233f73', '#b3202f', '#8a8d93'].map((c) => new Color(c));
-  const skinPalette = ['#f1c9a5', '#e0ac82', '#c68642', '#8d5524', '#5c3a21', '#ffdbac'].map((c) => new Color(c));
   const q = new Quaternion();
   const scale = new Vector3();
   const pos = new Vector3();
@@ -559,32 +635,30 @@ function buildCrowd(path: PathPt[], env: Environment) {
   for (let i = 0; i < path.length; i++) {
     const p = path[i];
     const rows = rowsAt(p);
-    // a bit sparse in outfield upper areas
     for (let k = 0; k < rows.length; k++) {
       const r = rows[k];
       if (p.wall && (p.lowerScale < 0.35 || (r.upper && p.upperScale < 0.2))) continue;
       const depth = (r.upper ? 0.95 * p.upperScale : p.lowerScale) * ROW_D;
       if (depth < 0.25) continue;
-      const fill = r.upper ? 0.68 : 0.86;
-      if (rnd() > fill) continue;
+      if (rnd() > (r.upper ? 0.68 : 0.86)) continue;
       const jitter = (rnd() - 0.5) * 0.08;
       pos.set(p.x + p.nx * (r.off + depth * 0.55) - p.nz * jitter, r.h + 0.28, p.z + p.nz * (r.off + depth * 0.55) + p.nx * jitter);
       q.setFromAxisAngle(up, Math.atan2(-p.nx, -p.nz) + (rnd() - 0.5) * 0.5);
       const s = 0.9 + rnd() * 0.22;
       scale.set(s, s * (0.92 + rnd() * 0.16), s);
       mats.push(new Matrix4().compose(pos.clone(), q.clone(), scale.clone()));
-      shirts.push(shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.35 + rnd() * 0.35));
-      skins.push(skinPalette[Math.floor(rnd() * skinPalette.length)]);
     }
   }
-  // shuffle for uniform density culling
-  const order = mats.map((_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(rnd() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
-  const total = mats.length;
+  return mats;
+}
 
+function buildCrowd(env: Environment, group: Group) {
+  const rnd = (() => {
+    let a = 987654;
+    return () => ((a = (a * 1664525 + 1013904223) >>> 0) / 4294967296);
+  })();
+  const shirtPalette = ['#b3202f', '#e9e9e4', '#233f73', '#1a1a1c', '#c8a23a', '#3f6b45', '#7c7f86', '#a85a2c', '#5c3a6a', '#3d6f86', '#e9e9e4', '#233f73', '#b3202f', '#8a8d93'].map((c) => new Color(c));
+  const skinPalette = ['#f1c9a5', '#e0ac82', '#c68642', '#8d5524', '#5c3a21', '#ffdbac'].map((c) => new Color(c));
   const uniforms = { uTime: { value: 0 }, uExcite: { value: 0.12 }, uAnimate: { value: 1 } };
   const patch = (s: unknown) => {
     const shader = s as { uniforms: Record<string, unknown>; vertexShader: string };
@@ -610,37 +684,55 @@ function buildCrowd(path: PathPt[], env: Environment) {
   body.translate(0, 0.32, 0);
   const head = new SphereGeometry(0.105, 8, 6);
   head.translate(0, 0.72, 0.02);
-  const arms = new BoxGeometry(0.62, 0.14, 0.2);
-  arms.translate(0, 0.32, 0.12);
-  const bodyMesh = new InstancedMesh(body, env.register(new MeshStandardMaterial({ roughness: 0.9 }), patch), total);
-  const headMesh = new InstancedMesh(head, env.register(new MeshStandardMaterial({ roughness: 0.7 }), patch), total);
-  for (let n = 0; n < total; n++) {
-    const i = order[n];
-    bodyMesh.setMatrixAt(n, mats[i]);
-    headMesh.setMatrixAt(n, mats[i]);
-    bodyMesh.setColorAt(n, shirts[i]);
-    headMesh.setColorAt(n, skins[i]);
-  }
-  bodyMesh.instanceMatrix.setUsage(DynamicDrawUsage);
-  for (const m of [bodyMesh, headMesh]) {
-    m.castShadow = false;
-    m.receiveShadow = true;
-    m.frustumCulled = false;
-    m.instanceMatrix.needsUpdate = true;
-    m.instanceColor!.needsUpdate = true;
-  }
-  void InstancedBufferAttribute;
-  void arms;
-  void MeshBasicMaterial;
+  const bodyMat = env.register(new MeshStandardMaterial({ roughness: 0.9 }), patch);
+  const headMat = env.register(new MeshStandardMaterial({ roughness: 0.7 }), patch);
+  let bodyMesh: InstancedMesh | null = null;
+  let headMesh: InstancedMesh | null = null;
+  let total = 0;
+  let density = 1;
+  const applyDensity = () => {
+    if (!bodyMesh || !headMesh) return;
+    bodyMesh.count = headMesh.count = Math.floor(total * density);
+  };
   return {
-    bodyMesh,
-    headMesh,
     uniforms,
     baseExcite: 0.12,
+    /** (Re)build the spectators from seat transforms in world space. */
+    setMatrices(mats: Matrix4[]) {
+      if (bodyMesh) {
+        group.remove(bodyMesh, headMesh!);
+        bodyMesh.dispose();
+        headMesh!.dispose();
+      }
+      const order = mats.map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      total = mats.length;
+      bodyMesh = new InstancedMesh(body, bodyMat, total);
+      headMesh = new InstancedMesh(head, headMat, total);
+      for (let n = 0; n < total; n++) {
+        const i = order[n];
+        bodyMesh.setMatrixAt(n, mats[i]);
+        headMesh.setMatrixAt(n, mats[i]);
+        bodyMesh.setColorAt(n, shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.35 + rnd() * 0.35));
+        headMesh.setColorAt(n, skinPalette[Math.floor(rnd() * skinPalette.length)]);
+      }
+      for (const m of [bodyMesh, headMesh]) {
+        m.castShadow = false;
+        m.receiveShadow = true;
+        m.frustumCulled = false;
+        m.instanceMatrix.setUsage(DynamicDrawUsage);
+        m.instanceMatrix.needsUpdate = true;
+        m.instanceColor!.needsUpdate = true;
+        group.add(m);
+      }
+      applyDensity();
+    },
     setDensity(d: number) {
-      const c = Math.floor(total * d);
-      bodyMesh.count = c;
-      headMesh.count = c;
+      density = d;
+      applyDensity();
     },
   };
 }
