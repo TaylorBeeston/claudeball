@@ -63,7 +63,7 @@ export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X 
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 25.2 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 26.4 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Perception + decision: does the batter swing, and if so how. Uses only what a real hitter could know at the decision point. */
@@ -128,12 +128,12 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
 
   // --- decision -------------------------------------------------------------------------
   const disc = (R.discipline - 50) / 50;
-  let thr = 0.02 - 0.05 * disc;
-  if (ctx.strikes === 2) thr += 0.05;
-  else if (ctx.balls === 3) thr -= 0.09;
-  else if (ctx.balls === 0 && ctx.strikes === 0) thr -= 0.03 - 0.02 * b.traits.aggression;
-  else if (ctx.balls > ctx.strikes) thr -= 0.015;
-  thr += 0.02 * b.traits.aggression * (ctx.strikes < 2 ? 1 : 0);
+  let thr = 0.005 - 0.045 * disc;
+  if (ctx.strikes === 2) thr += 0.055;
+  else if (ctx.balls === 3) thr -= ctx.strikes === 0 ? 0.2 : 0.09;
+  else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
+  else thr -= 0.02;
+  thr += 0.025 * b.traits.aggression * (ctx.strikes < 2 ? 1 : 0.4);
   const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.03);
   const protect = ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
@@ -167,7 +167,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   const rSweet = rh + BAT_S_NODE;
   const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0105 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
+  const sigmaT = 0.0125 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = pred.t - TAU_CONTACT + timeErr;
   return {
@@ -306,7 +306,7 @@ export function batBallCollision(ball: BallBody, bat: BatPose): ContactResult | 
   const dCm = s - BAT_S_CM;
   const mEff = 1 / (1 / BAT_MASS + (dCm * dCm) / BAT_I_CM);
   const r = BALL_MASS / mEff;
-  const e = clamp(0.5 - 1.3 * Math.abs(s - BAT_S_NODE), 0.05, 0.5);
+  const e = clamp(0.5 - 1.1 * Math.abs(s - BAT_S_NODE), 0.05, 0.5);
   const jn = ((1 + e) * -un) / (1 + r); // impulse per unit ball mass along +n
   // tangential slip at the contact point (ball surface velocity relative to bat surface)
   const rcx = -BALL_RADIUS * nx, rcy = -BALL_RADIUS * ny, rcz = -BALL_RADIUS * nz;

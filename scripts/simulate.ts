@@ -70,3 +70,5 @@ console.log(`avg run margin ${f(margins.reduce((a, b) => a + b, 0) / N, 1)}  inn
 
 console.log('calls', calls, 'swings', swings, 'contacts', contact.length);
 console.log('error kinds', errKinds);
+const sw = calls.strikeSwinging ?? 0, fl = calls.foul ?? 0;
+console.log(`per swing: whiff ${pct(sw / swings)}  foul ${pct(fl / swings)}  in-play ${pct(1 - (sw + fl) / swings)}   per pitch: ball ${pct((calls.ball ?? 0) / pit.pitches)}  called K ${pct((calls.strikeLooking ?? 0) / pit.pitches)}  whiff ${pct(sw / pit.pitches)}  foul ${pct(fl / pit.pitches)}`);

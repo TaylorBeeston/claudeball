@@ -54,7 +54,7 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     hasBall: false,
     fatigue: 0,
     onField: false,
-    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false },
+    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
   };
 }
 

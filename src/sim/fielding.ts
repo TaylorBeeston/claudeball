@@ -103,6 +103,7 @@ export function initFielderPlans(w: World, reactSecBase: number): void {
       throwTo: null,
       lastAttempt: -999,
       wasPrimary: false,
+      delays: 0,
     };
     F.lookAt = null;
   }
@@ -282,17 +283,25 @@ function receiverLogic(w: World): void {
   const b = ball.body;
   const path = ball.path;
   if (path.length) {
-    const tNow = (w.tick - ball.pathStart) * TICK;
-    for (let i = Math.max(1, Math.floor(tNow * 60)); i < path.length; i++) {
+    // where does the throw actually pass nearest the aiming point (with the glove at chest height)?
+    let bestD = 1e9;
+    let bx = gx;
+    let bz = gz;
+    for (let i = 1; i < path.length; i++) {
       const s = path[i];
-      if (s.y < 2.3 && Math.hypot(s.x - gx, s.z - gz) < 3.2 && (s.x - b.x) * (gx - b.x) + (s.z - b.z) * (gz - b.z) > 0) {
-        const T = travelTime(R, s.x, s.z);
-        if (s.t - tNow >= T - 0.02) {
-          gx = s.x;
-          gz = s.z;
-        }
-        break;
+      if (s.y > 2.6) continue;
+      const d = Math.hypot(s.x - gx, s.z - gz);
+      if (d < bestD) {
+        bestD = d;
+        bx = s.x;
+        bz = s.z;
       }
+      if (s.t > 4) break;
+    }
+    if (bestD > 0.9 && bestD < 4) {
+      const move = Math.min(bestD, 2.2);
+      gx += ((bx - gx) / bestD) * move;
+      gz += ((bz - gz) / bestD) * move;
     }
   }
   setGoal(R, gx, gz, true, 1);
@@ -521,7 +530,10 @@ function holderLogic(w: World, F: PlayerRT): void {
     return;
   }
   if (w.tick < F.plan.holdUntil) {
-    F.goal = null;
+    // the man covering a base with a runner coming keeps moving to the bag while he secures the ball
+    const cb = [1, 2, 3, 4].find((b) => play.covers[b] === F && w.runners.some((r) => r.state === 'live' && !r.dead && r.target === b && r.target > r.base));
+    if (cb) setGoal(F, bpos(cb).x, bpos(cb).z, true, 1);
+    else F.goal = null;
     return;
   }
   const opt = decideThrow(w, F);
@@ -682,6 +694,16 @@ export function doThrow(w: World, F: PlayerRT): void {
   const speed = armSpeed(F) * effort * (1 - 0.05 * Math.min(1, fs / 6));
   const to = { x: tx, y: 1.25, z: tz };
   const sol = solveThrow(from, to, speed, w.env);
+  if (R && atBase && F.plan.delays < 14) {
+    // hold the throw until the man covering the base can be there when it arrives
+    const tR = travelTime(R, tx, tz);
+    if (tR > sol.time + 0.1) {
+      F.plan.delays++;
+      F.plan.releaseAt = w.tick + 24;
+      return;
+    }
+  }
+  F.plan.delays = 0;
   const acc = F.info.ratings.accuracy;
   const sigma = (TUNE.throwSigma - 0.00011 * acc) * (1 + 0.5 * Math.min(1, fs / 6)) * (0.8 + 0.5 * Math.min(1, D / 50));
   // angular noise: horizontal (about vertical axis) and vertical

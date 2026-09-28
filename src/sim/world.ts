@@ -87,6 +87,7 @@ export interface FielderPlan {
   lastAttempt: number;
   /** Ticks since the play started at which this fielder was 'primary'. */
   wasPrimary: boolean;
+  delays: number;
 }
 
 export interface LineupSlot {
