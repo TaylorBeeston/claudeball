@@ -283,13 +283,13 @@ export function tickLob(w: World): void {
 
 export function beginWindup(w: World): void {
   const P = w.pitcher;
-  // an illegal motion: the pitcher's delivery from the set position hitches (execution noise), and the umpire calls it
-  if (w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) {
-    const hitch = Math.abs(w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 100)));
-    if (hitch > HITCH_BALK) {
-      rules.balk(w);
-      return;
-    }
+  // the pitcher's timing from the set position varies from pitch to pitch (wilder pitchers vary more): this one draw is both the
+  // length of his windup (it moves runners' jumps and the batter's timing) and, if he hesitates or rushes far enough, an illegal
+  // motion that the umpire calls
+  const hitch = w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 250));
+  if (Math.abs(hitch) > HITCH_BALK && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) {
+    rules.balk(w);
+    return;
   }
   const d = w.prep.pitch!;
   const spec = P.info.arsenal.find((a) => a.type === d.pitchType) ?? P.info.arsenal[0];
@@ -300,7 +300,7 @@ export function beginWindup(w: World): void {
   w.pitchAim = { x: d.targetX, y: d.targetY, intent: careful ? 'middle' : 'edge' };
   (w as unknown as { _spec: unknown })._spec = spec;
   const runnersOn = w.runners.some((r) => r.state === 'live');
-  const dur = (runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY) + w.rng.normal(0, 0.05);
+  const dur = (runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY) + hitch;
   w.phase = 'windup';
   w.phaseUntil = w.tick + secToTicks(dur);
   running.commitSteals(w);
@@ -309,7 +309,7 @@ export function beginWindup(w: World): void {
 }
 
 /** A hitch in the set position longer than this (s) is an illegal motion. */
-const HITCH_BALK = 0.171;
+const HITCH_BALK = 0.19;
 
 export function tickWindup(w: World): void {
   running.updateLeads(w);

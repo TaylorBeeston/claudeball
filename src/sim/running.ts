@@ -637,7 +637,7 @@ export function aiRunner(w: World, r: RunnerRT, req: RunnerRequest): RunnerDecis
   const diff = req.situation.scoreDiff;
   const late = w.inning >= 7;
   const safety =
-    0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0) + (late && diff <= -1 ? -0.04 : 0) + (late && diff >= 3 ? 0.08 : 0);
+    0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0) + (late && diff <= -1 ? -0.04 : 0) + (late && diff >= 3 ? 0.08 : 0) + (bip?.bunt ? -0.14 : 0); // on a bunt the runners are going: the ball is slow and the play is at first
   const coachExtra = r.base === 2 ? 0.05 : 0; // third-base coach is conservative at the plate
   for (let b = Math.max(r.base + 1, 1); b <= 4; b++) {
     if (b > r.base + 1 && b > want + 0) {

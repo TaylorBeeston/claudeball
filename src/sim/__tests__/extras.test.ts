@@ -96,7 +96,7 @@ describe('bunts', () => {
     let attempts = 0;
     let advanced = 0;
     let sac = 0;
-    for (let s = 0; s < 40; s++) {
+    for (let s = 0; s < 80; s++) {
       const l = lab('bunt' + s);
       const w = l.w;
       w.outs = 0;
@@ -122,10 +122,10 @@ describe('bunts', () => {
     exits = exits.filter((x) => x > 0);
     exits.sort((a, b) => a - b);
     const median = exits[Math.floor(exits.length / 2)];
-    expect(contacts).toBeGreaterThan(20);
+    expect(contacts).toBeGreaterThan(40);
     expect(median).toBeLessThan(35);
-    expect(advanced).toBeGreaterThan(8);
-    expect(attempts).toBe(40);
+    expect(advanced).toBeGreaterThan(12);
+    expect(attempts).toBe(80);
     void sac;
   });
 

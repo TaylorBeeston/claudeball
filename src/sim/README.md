@@ -206,8 +206,12 @@ random draw is on an allowlist with the reason). Findings:
 
 * **No outcome tables, no rolled results.** Walks, strikeouts, hits, outs, errors, steals, HRs and robberies all come from the
   flown pitch vs the umpire's noisy call, the bat–ball collision, the batted ball's flight and bounces, and who gets to the ball / bag first.
-* **Removed:** the *balk* used to be `rng < 0.0006` per pitch with a runner on — a dice roll producing a rule event. It is now the pitcher's
-  set-position hitch (execution noise, larger for wild pitchers) exceeding what the umpire allows.
+* **Reworked, not removed — read this one skeptically:** the *balk* used to be `rng < 0.0006` per pitch with a runner on, a dice roll that
+  directly produced a rule event. It is now the pitcher's set-position timing: one Gaussian draw per pitch (wider for wilder pitchers) is
+  the length of his windup — so it moves runners' jumps and the batter's timing — and a balk is called if that hesitation / rush exceeds
+  0.19 s with a runner on. It is still a rare noise-threshold event (~0.03 per team-game), but it is now part of the delivery
+  mechanics instead of an independent coin. The audit test only pins *uniform* draws (`next/range/int/pick`); Gaussian draws (`normal`) are
+  all physical / perception noise and are not enumerated by it.
 * **Kept, and what they are:** physical noise (release, swing timing/plane, glove offset, throw error, bounce/wall irregularity, umpire
   location noise); perception noise (the batter's read of the pitch, a fielder's persistent misjudgement of a fly ball's path and of the
   ball's height/timing at the wall, a runner's misjudgement of arrival times); one heavy-tail term on pitch command (`pitching.ts`, "release

@@ -14,7 +14,7 @@ import * as running from './running';
 import * as rules from './rules';
 
 /** Tunables (glove noise and throw noise scales). */
-export const TUNE = { fieldSigma: 0.033, throwSigma: 0.0165, pocket: 0.135 };
+export const TUNE = { fieldSigma: 0.033, throwSigma: 0.0155, pocket: 0.135 };
 
 export const fielders = (w: World): PlayerRT[] => [...w.fieldingTeam.defense.values()].filter((p) => p.onField);
 export const armSpeed = (p: PlayerRT) => 27 + 0.21 * p.info.ratings.arm;
@@ -843,7 +843,7 @@ export function aiThrow(w: World, F: PlayerRT, options: ThrowOptionRT[]): ThrowD
   if (!viable.length) {
     // nobody can be stopped, but an outfielder still gets the ball back in (through the cut-off man) to hold the trailing runners
     const cand = options.filter((o) => o.kind === 'throw').sort((a, c) => c.margin - a.margin)[0];
-    if (cand && (isOutfielder(F) || cand.margin > -0.8)) return { action: 'throw', base: cand.base, viaCutoff: !!play.cutoff && play.cutoff !== F && Math.hypot(play.cutoff.x - F.x, play.cutoff.z - F.z) > 25, recheckSec: rec };
+    if (cand && isOutfielder(F)) return { action: 'throw', base: cand.base, viaCutoff: !!play.cutoff && play.cutoff !== F && Math.hypot(play.cutoff.x - F.x, play.cutoff.z - F.z) > 25, recheckSec: rec };
     return { action: 'hold', recheckSec: rec };
   }
   viable.sort((a, c) => (c.kind === 'tag' ? 1 : 0) - (a.kind === 'tag' ? 1 : 0) || c.base - a.base || c.margin - a.margin);
