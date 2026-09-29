@@ -1,0 +1,319 @@
+for f in ("common", "geom", "meshkit", "textures"): exec(open(CB_SRC + f"/{f}.py").read())
+import types; geom = types.SimpleNamespace(wall_path=wall_path)
+exec(open(CB_SRC + "/stadium_gen.py").read().split("if __name__")[0].replace("import numpy as np, sys, os", "import numpy as np").replace("sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\nimport geom\n", ""))
+reset_scene()
+G = generate(0.5); M, K = G['M'], G['K']; V = G['V']
+FLAT = lambda n, c, r=0.8, m=0.0: (lambda mm: (mm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].__setattr__("default_value", c),
+            mm.node_tree.nodes["Principled BSDF"].inputs["Roughness"].__setattr__("default_value", r),
+            mm.node_tree.nodes["Principled BSDF"].inputs["Metallic"].__setattr__("default_value", m), mm)[-1])(bpy.data.materials.new(n))
+def mat(n, c, r=0.8, m=0.0):
+    mm = bpy.data.materials.new(n); mm.use_nodes = True; b = mm.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = c; b.inputs["Roughness"].default_value = r; b.inputs["Metallic"].default_value = m; return mm
+def emissive(n, c, strength):
+    mm = mat(n, c, 0.4); b = mm.node_tree.nodes["Principled BSDF"]
+    b.inputs["Emission Color"].default_value = c; b.inputs["Emission Strength"].default_value = strength; return mm
+cd, chn = dirt_tex(seed=9, base=(0.42, 0.42, 0.41), var=0.22)
+_hh = (chn-chn.min())/(chn.max()-chn.min())
+M_CONC = vc_material("concrete", make_image("concrete_albedo", cd, path=ROOT+"/tex/concrete_albedo.png"),
+                     make_image("concrete_normal", height_to_normal(chn, 2.0), 'Non-Color', ROOT+"/tex/concrete_normal.png"), 0.85, 0.7,
+                     make_image("concrete_orm", np.stack([.55+.45*_hh, .92-.15*_hh, np.zeros_like(_hh)], -1), 'Non-Color', ROOT+"/tex/concrete_orm.png"))
+M_FASC = mat("fascia_dark", (0.05, 0.06, 0.08, 1), 0.5, 0.2)
+M_PAD = mat("wall_padding", (0.02, 0.10, 0.05, 1), 0.85); M_YEL = mat("wall_yellow_line", (0.95, 0.72, 0.03, 1), 0.5)
+M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = mat("steel", (0.55, 0.57, 0.6, 1), 0.38, 1.0)
+M_DUGR = mat("dugout_roof", (0.15, 0.16, 0.18, 1), 0.7); M_EYE = mat("batters_eye", (0.01, 0.03, 0.02, 1), 0.95)
+M_LAMP = emissive("stadium_light", (1.0, 0.97, 0.88, 1), 40.0)
+SEATC = [(0.02, 0.06, 0.30, 1), (0.03, 0.10, 0.28, 1), (0.05, 0.08, 0.20, 1)]
+objs = []
+
+def B3(v): return (v[0], -v[2], v[1])
+def make_mesh(name, verts, faces, mats, mat_idx=None, uv=None, cols=None, smooth=False):
+    me = bpy.data.meshes.new(name); me.from_pydata([B3(v) for v in verts], [], faces); me.update()
+    if uv is not None:
+        u = me.uv_layers.new(name="UVMap"); li = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", li)
+        u.data.foreach_set("uv", np.asarray(uv, np.float32)[li].ravel())
+    if cols is not None:
+        ca = me.color_attributes.new("Color", 'FLOAT_COLOR', 'POINT'); c4 = np.concatenate([cols, np.ones((len(cols), 1))], 1)
+        ca.data.foreach_set("color", c4.astype(np.float32).ravel())
+    for m_ in mats: me.materials.append(m_)
+    if mat_idx is not None: me.polygons.foreach_set("material_index", np.asarray(mat_idx, np.int32))
+    for p in me.polygons: p.use_smooth = smooth
+    o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o); objs.append(o); return o
+
+# ---------------- bowl loft (concrete tread/riser/back walls + dark fascia bands)
+jj, kk = np.meshgrid(np.arange(M), np.arange(K-1), indexing='ij')
+a = jj*K+kk; b = ((jj+1) % M)*K+kk; c = b+1; d = a+1
+a, b, c, d = a.reshape(-1), b.reshape(-1), c.reshape(-1), d.reshape(-1)
+Vf = V.reshape(-1, 3)
+area = np.linalg.norm(np.cross(Vf[b]-Vf[a], Vf[c]-Vf[a]), axis=1) + np.linalg.norm(np.cross(Vf[c]-Vf[a], Vf[d]-Vf[a]), axis=1)
+# orientation: the first tread (k=2) must face +Y
+q = (a[5*(K-1)+2], b[5*(K-1)+2], c[5*(K-1)+2]); nrm = np.cross(Vf[q[1]]-Vf[q[0]], Vf[q[2]]-Vf[q[0]])
+flip = nrm[1] < 0
+keep = (area.reshape(-1) > 1e-5)
+qa, qb, qc, qd = [x.reshape(-1)[keep] for x in (a, b, c, d)]
+if flip: qb, qd = qd, qb
+faces = np.stack([qa, qb, qc, qd], 1).tolist()
+tagf = G['tag'].reshape(-1)[keep]
+cum = np.concatenate([np.zeros((M, 1)), np.cumsum(np.linalg.norm(np.diff(G['prof'], axis=1), axis=2), axis=1)], 1)
+uv = np.stack([np.repeat(G['S'][:, None], K, 1)/4.0, cum/4.0], 2).reshape(-1, 2)
+cols = np.repeat(G['cols'][:, None, :], K, 1).reshape(-1, 3)
+make_mesh("Bowl", Vf, faces, [M_CONC, M_FASC], tagf, uv, cols)
+
+# ---------------- outfield wall: padded (dark green) + yellow top line, loft along path at o = 0
+P, N_, hw = G['P'], G['N'], G['hw']
+def ribbon(name, o, y0, y1, mat_, samples=None, cap=None):
+    idx = np.arange(M) if samples is None else np.asarray(samples)
+    n = len(idx); vs, fs = [], []
+    for i, j in enumerate(idx):
+        p = P[j]+N_[j]*(o if np.isscalar(o) else o[j]); ya = y0 if np.isscalar(y0) else y0[j]; yb = y1 if np.isscalar(y1) else y1[j]
+        vs += [(p[0], ya, p[1]), (p[0], yb, p[1])]
+    closed = samples is None
+    for i in range(n if closed else n-1):
+        i2 = (i+1) % n; fs.append((2*i, 2*i2, 2*i2+1, 2*i+1))
+    return vs, fs
+def add_ribbon(name, o, y0, y1, mat_, samples=None, flip_=None):
+    vs, fs = ribbon(name, o, y0, y1, mat_, samples)
+    # face toward the field (-N): test first quad
+    v0, v1, v2 = [np.array(vs[i]) for i in fs[0][:3]]; nn = np.cross(v1-v0, v2-v0)
+    ref = -np.array([N_[0 if samples is None else samples[0]][0], 0, N_[0 if samples is None else samples[0]][1]])
+    if nn.dot(ref) < 0: fs = [f[::-1] for f in fs]
+    return make_mesh(name, vs, fs, [mat_])
+add_ribbon("Wall_Padding", 0.0, 0.0, hw-0.15, M_PAD)
+add_ribbon("Wall_YellowLine", 0.0, hw-0.15, hw, M_YEL)
+# batter's eye: dark wall 12 m high behind center field
+eye = np.where(G['eye'])[0]
+add_ribbon("BattersEye", 0.4, 0.0, 12.0, M_EYE, samples=eye)
+# backstop netting: alpha net texture on a ribbon behind home
+net = np.zeros((256, 256, 4), np.float32)
+for i in range(0, 256, 16): net[i:i+2, :, :] = (0.7, 0.7, 0.7, 1); net[:, i:i+2, :] = (0.7, 0.7, 0.7, 1)
+ni = make_image("net", net[..., :3], path=ROOT+"/tex/net.png")
+ni.alpha_mode = 'STRAIGHT'
+arr = np.zeros((256, 256, 4), np.float32); arr[..., :3] = net[..., :3]; arr[..., 3] = net[..., 3]
+ni2 = bpy.data.images.new("net_rgba", 256, 256, alpha=True); ni2.pixels.foreach_set(arr.ravel()); ni2.pack()
+M_NET = mat("backstop_net", (0.6, 0.6, 0.6, 1), 0.9); nt = M_NET.node_tree; t_ = nt.nodes.new("ShaderNodeTexImage"); t_.image = ni2
+nt.links.new(t_.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"]); nt.links.new(t_.outputs["Alpha"], nt.nodes["Principled BSDF"].inputs["Alpha"])
+M_NET.surface_render_method = 'BLENDED'
+nets = np.where((np.abs(P[:, 0]) < 24) & (P[:, 1] < 6))[0]
+o_ = add_ribbon("BackstopNetting", 0.5, 1.2, 9.5, M_NET, samples=nets)
+me = o_.data; u = me.uv_layers.new(name="UVMap")
+L = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P[nets], axis=0), axis=0 if False else 1))]
+vuv = []
+for i in range(len(nets)): vuv += [(L[i]/2.0, 0.0), (L[i]/2.0, 4.0)]
+li = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", li); u.data.foreach_set("uv", np.asarray(vuv, np.float32)[li].ravel())
+mb = MB("NetPosts")
+for j in nets[::12]:
+    p = P[j]+N_[j]*0.5; mb.box(p[0], p[1], 0.12, 0.12, 0.0, 9.6)
+objs.append(mb.build(M_STEEL))
+
+# ---------------- press box, glass band on the first fascia behind home
+mk = G['marks'][0]; sel = np.where((np.abs(P[:, 0]) < 14) & (P[:, 1] < 0))[0]
+od = np.array([mk[j][0][0] for j in sel]); yd = np.array([mk[j][0][1] for j in sel])
+def strip_between(name, sel, o0, o1, y0, y1, mat_):
+    vs, fs = [], []
+    for i, j in enumerate(sel):
+        for oo, yy in ((o0[i], y0[i]), (o1[i], y0[i]), (o1[i], y1[i]), (o0[i], y1[i])):
+            p = P[j]+N_[j]*oo; vs.append((p[0], yy, p[1]))
+    n = len(sel)
+    for i in range(n-1):
+        for k in range(4):
+            k2 = (k+1) % 4; fs.append((4*i+k, 4*(i+1)+k, 4*(i+1)+k2, 4*i+k2))
+    fs += [(0, 1, 2, 3), (4*(n-1)+3, 4*(n-1)+2, 4*(n-1)+1, 4*(n-1))]
+    # make every face point outward from the strip's centroid
+    cen = np.mean(np.array(vs), axis=0); out = []
+    for f in fs:
+        v0, v1, v2 = [np.array(vs[i]) for i in f[:3]]; nn = np.cross(v1-v0, v2-v0); ctr = np.mean([vs[i] for i in f], axis=0)
+        # approximate outward using distance from the strip's local axis is overkill: use per-quad local centre
+        out.append(f)
+    return vs, out
+vs, fs = strip_between("PressBox", sel, od-1.6, od-0.05, yd+0.5, yd+3.6, M_GLASS)
+# orient faces: ensure normals point away from the box interior (local centre = mean of the 4 verts of its ring slice)
+def orient(vs, fs, ring=4):
+    res = []
+    for f in fs:
+        i0 = f[0]//ring*ring; cen = np.mean(vs[i0:i0+ring], axis=0) if True else 0
+        v0, v1, v2 = [np.array(vs[i]) for i in f[:3]]; nn = np.cross(v1-v0, v2-v0); ctr = np.mean([vs[i] for i in f], axis=0)
+        res.append(f if nn.dot(ctr-cen) >= 0 else f[::-1])
+    return res
+make_mesh("PressBox", vs, orient(vs, fs), [M_GLASS])
+
+# ---------------- scoreboard (left-center) with emissive screen plane
+jS = int(np.argmin(np.abs(np.degrees(np.arctan2(P[:, 0], P[:, 1])) + 22) + (P[:, 1] < 90)*1000))
+E1 = G['marks'][0][jS][2]; base = P[jS]+N_[jS]*(E1[0]-0.5); tang = np.array([-N_[jS][1], N_[jS][0]])
+face = -N_[jS]; rot = np.arctan2(tang[1], tang[0])
+mb = MB("Scoreboard")
+mb.box(base[0], base[1], 30.0, 2.0, E1[1]+1.0, E1[1]+14.5, rot=rot)
+for sgn in (-1, 1): mb.box(*(base+tang*sgn*11), 1.0, 1.0, 0.0, E1[1]+1.0, rot=rot)
+objs.append(mb.build(M_FASC))
+M_SCR = bpy.data.materials.new("scoreboard_screen"); M_SCR.use_nodes = True
+img = bpy.data.images.load(ROOT+"/ads/scoreboard.png"); img.pack(); bp = M_SCR.node_tree.nodes["Principled BSDF"]
+tn = M_SCR.node_tree.nodes.new("ShaderNodeTexImage"); tn.image = img
+M_SCR.node_tree.links.new(tn.outputs["Color"], bp.inputs["Base Color"]); M_SCR.node_tree.links.new(tn.outputs["Color"], bp.inputs["Emission Color"]); bp.inputs["Emission Strength"].default_value = 2.0
+sc_ = MB("Scoreboard_Screen")
+cx, cz = base + face*1.05
+hx, hz = tang*13.5
+y0s, y1s = E1[1]+2.5, E1[1]+13.0
+v = [sc_.vert(cx-hx, y0s, cz-hz, uv=(1, 0)), sc_.vert(cx+hx, y0s, cz+hz, uv=(0, 0)), sc_.vert(cx+hx, y1s, cz+hz, uv=(0, 1)), sc_.vert(cx-hx, y1s, cz-hz, uv=(1, 1))]  # u reversed: mirror_x at export flips reading direction
+sc_.quad_out(*v, (base[0]-face[0]*5, y0s, base[1]-face[1]*5))
+objs.append(sc_.build(M_SCR))
+
+# ---------------- dugout roofs (same footprint constants as the pit in field.glb)
+M_ROOFW = mat("dugout_roof_fascia", (0.02, 0.05, 0.16, 1), 0.6)
+for nm, side in (("DugoutRoof_1B", 1), ("DugoutRoof_3B", -1)):
+    s0, s1 = DUG_S; o0, o1 = DUG_O; rot = -side*math.pi/4
+    def BXr(mb_, s_lo, s_hi, o_lo, o_hi, y0, y1):
+        cx, cz = dug_xy((s_lo+s_hi)/2, (o_lo+o_hi)/2, side); mb_.box(cx, cz, o_hi-o_lo, s_hi-s_lo, y0, y1, rot=rot)
+    slab, fas, post = MB(nm), MB(nm+"_Fascia"), MB(nm+"_Posts")
+    BXr(slab, s0-.3, s1+.3, o0-.5, o1+.3, 2.72, 2.95)                             # roof slab, overhangs the field side
+    BXr(fas, s0-.3, s1+.3, o0-.55, o0-.45, 2.45, 2.98)                            # fascia board along the opening
+    for k in range(int((s1-s0)//4.5)+2): BXr(post, s0+k*4.5-.06, s0+k*4.5+.06, o0-.25, o0-.13, .55, 2.72)   # front posts
+    for mbx, mat_ in ((slab, M_DUGR), (fas, M_ROOFW), (post, M_STEEL)): objs.append(mbx.build(mat_))
+
+# ---------------- light towers (steel mast + emissive lamp banks)
+def tower(name, px, pz, h=46.0):
+    mb = MB(name); face = np.array([0.0-px, 60.0-pz]); face /= np.linalg.norm(face); rot = math.atan2(face[1], face[0]) - math.pi/2
+    mb.box(px, pz, 1.4, 1.4, 0.0, h*0.55, rot=rot); mb.box(px, pz, 0.9, 0.9, h*0.55, h, rot=rot)
+    lamps = MB(name+"_Lamps")
+    for r_ in range(5):
+        for c_ in range(9):
+            lx = (c_-4)*1.0; ly = h+0.8+r_*0.9
+            ox, oz = px + face[0]*0.7 + (-face[1])*lx, pz + face[1]*0.7 + face[0]*lx
+            lamps.box(ox, oz, 0.7, 0.2, ly, ly+0.7, rot=rot)
+    mb.box(px, pz, 10.0, 0.5, h, h+5.2, rot=rot)
+    objs.append(mb.build(M_STEEL)); objs.append(lamps.build(M_LAMP))
+Om = 62.0
+def rim(target, extra=10.0):
+    j = int(np.argmin(np.linalg.norm(P-np.array(target), axis=1))); o = float(G['prof'][j, -1, 0])+extra; return P[j]+N_[j]*o
+for i, tg in enumerate(((-71, 71), (71, 71), (-58, 30), (58, 30), (-20, 118), (20, 118))):
+    p = rim(tg); tower(f"LightTower_{i+1}", p[0], p[1])
+
+# ---------------- advertising boards on the outfield wall (atlas 3x2, one 3 m panel per cell, cycling)
+adimg = bpy.data.images.load(ROOT+"/ads/ad_atlas.png"); adimg.pack()
+M_AD = mat("ad_boards", (1, 1, 1, 1), 0.5); _t = M_AD.node_tree.nodes.new("ShaderNodeTexImage"); _t.image = adimg
+M_AD.node_tree.links.new(_t.outputs["Color"], M_AD.node_tree.nodes["Principled BSDF"].inputs["Base Color"])
+sel_ = np.where((P[:, 1] > 76) & (~G['eye']))[0]
+avs, afs, auv = [], [], []
+seg = None; acc = 0.0; k = 0
+for i, j in enumerate(sel_):
+    if i > 0:
+        acc += np.linalg.norm(P[j]-P[sel_[i-1]])
+        if acc >= 3.0 or (j - sel_[i-1]) != 1: seg = None; acc = 0.0; k += 1
+    if seg is None:
+        seg = len(avs); cell = k % 6; cx, cy = (cell % 3)/3.0, 0.5 - (cell//3)*0.5
+    p = P[j]+N_[j]*(-0.03)
+    avs += [(p[0], 0.35, p[1]), (p[0], 1.25, p[1])]; u = cx + (acc/3.0)/3.0
+    auv += [(u, cy), (u, cy+0.5)]
+    if len(avs) >= 4 and seg is not None and len(avs)-2 >= seg+2: afs.append((len(avs)-4, len(avs)-2, len(avs)-1, len(avs)-3))
+fs_ = []
+for f in afs:
+    v0, v1, v2 = [np.array(avs[i]) for i in f[:3]]; nn = np.cross(v1-v0, v2-v0); ref = -np.array([N_[0][0], 0, N_[0][1]])
+    ctr = np.mean([avs[i] for i in f], axis=0); jj_ = sel_[np.argmin(np.linalg.norm(P[sel_]-np.array([ctr[0], ctr[2]]), axis=1))]
+    fs_.append(f if nn.dot(-np.array([N_[jj_][0], 0, N_[jj_][1]])) >= 0 else f[::-1])
+make_mesh("AdBoards", avs, fs_, [M_AD], uv=auv)
+
+# ---------------- fascia signage (tier 1 fascia, infield): 9 m panels cycling through the ad atlas
+def ad_ribbon(name, samples, o_of, y0_of, y1_of, panel):
+    vs, fs, uvs = [], [], []; seg = None; acc = 0.0; k = 0; prev = None
+    for i, j in enumerate(samples):
+        if prev is not None:
+            acc += np.linalg.norm(P[j]-P[prev])
+            if acc >= panel or (j - prev) != 1: seg = None; acc = 0.0; k += 1
+        prev = j
+        if seg is None: seg = True; cell = k % 6; cx, cy = (cell % 3)/3.0, 0.5 - (cell//3)*0.5; first = True
+        else: first = False
+        p = P[j]+N_[j]*o_of(j); vs += [(p[0], y0_of(j), p[1]), (p[0], y1_of(j), p[1])]; u = cx + (acc/panel)/3.0
+        uvs += [(u, cy), (u, cy+0.5)]
+        if not first: fs.append((len(vs)-4, len(vs)-2, len(vs)-1, len(vs)-3))
+    out = []
+    for f in fs:
+        v0, v1, v2 = [np.array(vs[q]) for q in f[:3]]; nn = np.cross(v1-v0, v2-v0); ctr = np.mean([vs[q] for q in f], axis=0)
+        jj_ = samples[int(np.argmin(np.linalg.norm(P[samples]-np.array([ctr[0], ctr[2]]), axis=1)))]
+        out.append(f if nn.dot(-np.array([N_[jj_][0], 0, N_[jj_][1]])) >= 0 else f[::-1])
+    return make_mesh(name, vs, out, [M_AD], uv=uvs)
+mk1 = G['marks'][0]; fsel = np.array([j for j in range(M) if G['N2'][j] >= 3 and G['N3'][j] >= 3 and not G['eye'][j]])
+ad_ribbon("FasciaSignage", fsel, lambda j: mk1[j][0][0]-0.03, lambda j: mk1[j][0][1]+0.5, lambda j: mk1[j][1][1]-0.5, 9.0)
+
+# ---------------- crowd: 8 low-poly seated spectator variants (instanced over ~50% of tier-1/2 seats, ~35% of tier-3)
+def face_tex(n=128):
+    im = np.ones((n, n, 3), np.float32)*.95; uu, vv = np.meshgrid((np.arange(n)+.5)/n, (np.arange(n)+.5)/n)
+    for du in (-.055, .055): im[..., :] *= (1 - .85*np.exp(-(((uu-.5-du)/.022)**2 + ((vv-.60)/.03)**2)))[..., None]     # eyes
+    im[..., :] *= (1 - .5*np.exp(-(((uu-.5)/.05)**2 + ((vv-.38)/.012)**2)))[..., None]; im[..., 0] = np.minimum(1, im[..., 0]*1.02)        # mouth
+    im *= (1 - .18*np.exp(-(((uu-.5)/.35)**2 + ((vv-.85)/.09)**2)))[..., None]                                                  # hair line shading
+    return np.clip(im, 0, 1)
+FACE = make_image("crowd_face", face_tex(), path=ROOT+"/tex/crowd_face.png")
+SKINS = [(.85, .62, .48), (.75, .52, .38), (.6, .4, .29), (.45, .29, .2), (.9, .72, .6), (.32, .2, .14), (.8, .58, .44), (.68, .46, .34)]
+SHIRTS = [(.7, .05, .06), (.05, .12, .5), (.9, .9, .9), (.08, .08, .09), (.9, .75, .1), (.1, .45, .2), (.35, .1, .45), (.9, .4, .08)]
+def crowd_template(i):
+    verts, faces, midx, uvs = [], [], [], []
+    def box(cx, cy, cz, sx, sy, sz, mi):
+        b = len(verts)
+        for (dx, dy, dz) in ((-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1), (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)):
+            verts.append((cx+dx*sx, cy+dy*sy, cz+dz*sz)); uvs.append((.5, .5))
+        for f in ((4, 5, 6, 7), (0, 3, 2, 1), (0, 1, 5, 4), (2, 3, 7, 6), (1, 2, 6, 5), (3, 0, 4, 7)):   # outward (verified below)
+            faces.append(tuple(b+q for q in f)); midx.append(mi)
+    box(0, .72, -.13, .20, .26, .11, 1)          # torso
+    box(0, .47, .00, .17, .045, .26, 1)          # thighs
+    hc = np.array([0, 1.06, -.06]); bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=8, v_segments=4, radius=1.0)
+    b0 = len(verts)
+    for v in bm.verts:
+        p = np.array([v.co.x*.095, v.co.z*.12, v.co.y*.105]) + hc      # blender (x,y,z) -> game: y-up = z, front(+Z game) = -y  => use -y
+        p[2] = hc[2] - v.co.y*.105; verts.append(tuple(p))
+        uvs.append((math.atan2(p[0]-hc[0], p[2]-hc[2])/(2*math.pi)+.5, (p[1]-hc[1])/(2*.12)+.5))
+    for f in bm.faces: faces.append(tuple(b0+l.vert.index for l in f.loops)); midx.append(0)
+    bm.free()
+    # orient every face outward from the template centre of its material group
+    cen = np.array([0, .8, -.05]); fixed = []
+    for f in faces:
+        v0, v1, v2 = [np.array(verts[q]) for q in f[:3]]; nn = np.cross(v1-v0, v2-v0); c = np.mean([verts[q] for q in f], axis=0)
+        fixed.append(f if nn.dot(c-cen) >= 0 else f[::-1])
+    mh = pbr_crowd = None
+    m_skin = bpy.data.materials.new(f"crowd_skin_{i}"); m_skin.use_nodes = True; nt = m_skin.node_tree; b = nt.nodes["Principled BSDF"]
+    t = nt.nodes.new("ShaderNodeTexImage"); t.image = FACE; mx = nt.nodes.new("ShaderNodeMix"); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs[0].default_value = 1.0
+    mx.inputs[7].default_value = (*SKINS[i], 1); nt.links.new(t.outputs["Color"], mx.inputs[6]); nt.links.new(mx.outputs[2], b.inputs["Base Color"]); b.inputs["Roughness"].default_value = .6
+    m_cloth = mat(f"crowd_cloth_{i}", (*SHIRTS[i], 1), .85)
+    return make_mesh(f"Crowd_{i+1}", verts, fixed, [m_skin, m_cloth], midx, uvs, smooth=True)
+import bmesh
+for i in range(8): crowd_template(i)
+rngc = np.random.default_rng(3); CROWD = {i: ([], []) for i in range(8)}
+for t_, fill in enumerate((.5, .5, .35)):
+    pos, yaw = G['seats'][t_]
+    keep_ = rngc.random(len(pos)) < fill; var = rngc.integers(0, 8, len(pos))
+    for i in range(8):
+        sel_i = keep_ & (var == i); CROWD[i][0].append(pos[sel_i]); CROWD[i][1].append(yaw[sel_i])
+np.savez_compressed(ROOT+"/src/crowd.npz", **{f"pos{i}": np.concatenate(CROWD[i][0]) for i in range(8)}, **{f"yaw{i}": np.concatenate(CROWD[i][1]) for i in range(8)})
+
+# ---------------- seat templates (instanced in post-processing): 10 tris, facing +Z (center field)
+def seat_template(name, col):
+    mb = MB(name); w = 0.46
+    def Q(pts, ref):
+        v = [mb.vert(*p) for p in pts]; mb.quad_out(*v, ref)
+    Q([(-w/2, 0.42, -0.25), (w/2, 0.42, -0.25), (w/2, 0.42, 0.22), (-w/2, 0.42, 0.22)], (0, 0.2, 0))        # cushion top
+    Q([(-w/2, 0.42, 0.22), (w/2, 0.42, 0.22), (w/2, 0.30, 0.22), (-w/2, 0.30, 0.22)], (0, 0.3, 0))          # cushion front
+    Q([(-w/2, 0.42, -0.25), (w/2, 0.42, -0.25), (w/2, 0.95, -0.30), (-w/2, 0.95, -0.30)], (0, 0.6, -1.0))   # backrest front
+    Q([(-w/2, 0.95, -0.30), (w/2, 0.95, -0.30), (w/2, 0.95, -0.36), (-w/2, 0.95, -0.36)], (0, 0.5, -0.3))   # backrest top
+    Q([(-w/2, 0.42, -0.30), (w/2, 0.42, -0.30), (w/2, 0.95, -0.36), (-w/2, 0.95, -0.36)], (0, 0.6, 0.5))    # backrest back
+    return mb.build(mat(name+"_mat", col, 0.6))
+for t in range(3):
+    o = seat_template(f"Seats_T{t+1}", SEATC[t]); objs.append(o)
+np.savez_compressed(ROOT+"/src/seats.npz", **{f"pos{t}": G['seats'][t][0] for t in range(3)}, **{f"yaw{t}": G['seats'][t][1] for t in range(3)})
+result = {"objs": len(objs), "seats": [len(G['seats'][t][0]) for t in range(3)], "tris": sum(len(o.data.polygons) for o in objs)}
+# ---------------- bake ambient occlusion into the Bowl's vertex colours (Cycles, geometry of the static scene; instanced seats/crowd not included)
+AO_OK = False
+try:
+    sc = bpy.context.scene; sc.render.engine = 'CYCLES'; sc.cycles.samples = 24; sc.cycles.device = 'CPU'
+    if sc.world is None: sc.world = bpy.data.worlds.new("w")
+    sc.world.light_settings.distance = 10.0
+    bowl = bpy.data.objects["Bowl"]; ca = bowl.data.color_attributes.new("AO", 'FLOAT_COLOR', 'POINT'); bowl.data.color_attributes.active_color = ca
+    bpy.ops.object.select_all(action='DESELECT'); bowl.select_set(True); bpy.context.view_layer.objects.active = bowl
+    bpy.ops.object.bake(type='AO', target='VERTEX_COLORS')
+    n = len(bowl.data.vertices); a_ = np.empty(n*4, np.float32); ca.data.foreach_get("color", a_); a_ = a_.reshape(-1, 4)
+    base = bowl.data.color_attributes["Color"]; c_ = np.empty(n*4, np.float32); base.data.foreach_get("color", c_); c_ = c_.reshape(-1, 4)
+    ao_ = np.clip(a_[:, :1], 0, 1)**0.9; c_[:, :3] *= (.25 + .75*ao_); base.data.foreach_set("color", c_.ravel())
+    bowl.data.color_attributes.remove(ca); bowl.data.color_attributes.active_color = base; AO_OK = True
+except Exception as e:
+    AO_ERR = str(e)[:300]
+export(objs, ROOT+"/stadium.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
+exec(open(CB_SRC + "/inject_instances.py").read())
+_d = np.load(ROOT+"/src/seats.npz")
+_c = np.load(ROOT+"/src/crowd.npz"); _inst = {f"Seats_T{t+1}": (_d[f"pos{t}"]*np.array([-1, 1, 1], np.float32), -_d[f"yaw{t}"]) for t in range(3)}
+_inst.update({f"Crowd_{i+1}": (_c[f"pos{i}"]*np.array([-1, 1, 1], np.float32), -_c[f"yaw{i}"]) for i in range(8)})
+inject(ROOT+"/stadium.glb", _inst)
+result["ao"] = AO_OK; result["ao_err"] = globals().get("AO_ERR")
