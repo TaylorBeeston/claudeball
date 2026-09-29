@@ -73,9 +73,11 @@ const GradeShader = {
     tint: { value: new Vector2(0.0, 0.0) },
     fade: { value: 0 },
     aspect: { value: 1.7 },
+    motion: { value: new Vector2(0, 0) },
   },
   vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
+    uniform vec2 motion;
     uniform sampler2D tDiffuse; uniform float time, grain, vignette, saturation, contrast, aberration, fade, aspect; uniform vec2 tint;
     varying vec2 vUv;
     float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p + 19.19); return fract(p.x * p.y); }
@@ -84,6 +86,15 @@ const GradeShader = {
       float r2 = dot(d * vec2(aspect, 1.0), d * vec2(aspect, 1.0));
       vec2 ca = d * aberration * (0.4 + r2 * 3.0);
       vec3 c = vec3(texture2D(tDiffuse, vUv + ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - ca).b);
+      // camera-pan motion blur (screen-space direction from camera rotation, 180 degree shutter)
+      if (dot(motion, motion) > 1e-8) {
+        vec3 acc = c; float ws = 1.0;
+        for (int i = 1; i <= 6; i++) {
+          float f = float(i) / 6.0 - 0.5;
+          acc += texture2D(tDiffuse, vUv + motion * f).rgb; ws += 1.0;
+        }
+        c = acc / ws;
+      }
       // gentle filmic grade: cool shadows, warm highlights
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       c = (c - 0.5) * contrast + 0.5;
@@ -175,6 +186,11 @@ export class PostFX {
     u.near.value = this.camera.near;
     u.far.value = this.camera.far;
     u.tDepth.value = this.aoActive ? this.ao.depthTexture : null;
+  }
+
+  /** Screen-space camera motion this frame in uv units (drives the pan motion blur). */
+  setMotion(x: number, y: number) {
+    (this.grade.uniforms as Record<string, { value: Vector2 }>).motion.value.set(x, y);
   }
 
   setFade(f: number) {

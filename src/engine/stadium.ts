@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Box3,
   BoxGeometry,
   BufferGeometry,
   CanvasTexture,
@@ -533,8 +534,10 @@ export function buildStadium(env: Environment): Stadium {
   let gltfLamps: MeshStandardMaterial[] = [];
   let gltfLampBase: number[] = [];
   let lightsState = false;
+  const gltfGlares: Sprite[] = [];
   const applyLights = () => {
     setLightsOn(lightsState);
+    for (const g of gltfGlares) (g.material as SpriteMaterial).opacity = lightsState ? 0.85 : 0;
     gltfLamps.forEach((m, i) => (m.emissiveIntensity = lightsState ? gltfLampBase[i] : 0.03));
   };
   const adoptGltf = (root: Group, mirrored = false) => {
@@ -653,6 +656,18 @@ export function buildStadium(env: Environment): Stadium {
         crowdShots.push({ pos: p.clone().addScaledVector(fwd, 18).setY(p.y + 1.6), target: p.clone().setY(p.y + 1.3) });
       }
     }
+    // glare sprites on each lamp bank (bloom + lens glare when lit)
+    root.traverse((o) => {
+      if (!(o as Mesh).isMesh || !o.name.endsWith('_Lamps')) return;
+      const box = new Box3().setFromObject(o);
+      const c = box.getCenter(new Vector3());
+      const sp = new Sprite(new SpriteMaterial({ map: glow, color: 0xfff0d8, blending: AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
+      sp.scale.setScalar(Math.max(24, box.getSize(new Vector3()).length() * 3));
+      sp.position.copy(c);
+      root.add(sp);
+      gltfGlares.push(sp);
+      gbufferHidden.push(sp);
+    });
     gltfLamps = [...lampSet];
     gltfLampBase = gltfLamps.map((m) => m.emissiveIntensity || 1);
     applyLights();

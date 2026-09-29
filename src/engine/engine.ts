@@ -61,6 +61,7 @@ export class Engine {
   private live: GameState;
   private raf = 0;
   private tmpV = new Vector3();
+  private prevFar: Vector3 | null = null;
   private fieldGroup: Object3D;
   assets: Assets | null = null;
 
@@ -277,6 +278,17 @@ export class Engine {
       this.hud.setFps(this.fps, this.adaptive.scale);
     }
 
+    // pan motion blur: how far a distant point ahead of the camera slid across the screen since last frame
+    {
+      const fwd = this.tmpV.set(0, 0, -1).applyQuaternion(this.camera.quaternion).multiplyScalar(200).add(this.camera.position);
+      if (this.prevFar && !out.cut) {
+        const a = this.prevFar.clone().project(this.camera);
+        const cap = 0.04;
+        const mx = Math.max(-cap, Math.min(cap, (-a.x * 0.5) * 0.5)), my = Math.max(-cap, Math.min(cap, (-a.y * 0.5) * 0.5));
+        this.post.setMotion(Math.abs(mx) < 0.0015 ? 0 : mx, Math.abs(my) < 0.0015 ? 0 : my);
+      } else this.post.setMotion(0, 0);
+      this.prevFar = fwd.clone();
+    }
     this.post.setFocus(out.focus, out.aperture * (this.director.auto ? 1 : 0));
     this.stadium.crowd.update(this.time, dt);
     this.camera.updateMatrixWorld();

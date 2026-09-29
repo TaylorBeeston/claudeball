@@ -3,6 +3,8 @@ import {
   Camera,
   Color,
   DataTexture,
+  DirectionalLight,
+  FogExp2,
   DataUtils,
   EquirectangularReflectionMapping,
   Euler,
@@ -54,7 +56,7 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     lightsOn: false,
     sky: { turbidity: 2.0, rayleigh: 2.4, mie: 0.002, g: 0.7 },
     fog: 0xbfd2e6,
-    fogDensity: 0.00045,
+    fogDensity: 0.0011,
   },
   dusk: {
     sunDir: [0.62, 0.11, 0.72],
@@ -67,7 +69,7 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     lightsOn: true,
     sky: { turbidity: 6, rayleigh: 2.2, mie: 0.006, g: 0.9 },
     fog: 0xc0907a,
-    fogDensity: 0.0006,
+    fogDensity: 0.0012,
   },
   night: {
     sunDir: [0.3, 0.86, 0.2],
@@ -90,6 +92,8 @@ export class Environment {
   tod: TodPreset = PRESETS.day;
   todName: TimeOfDay = 'day';
   private hemi: HemisphereLight;
+  /** unshadowed stadium fill for dusk (the sun is behind the stands) */
+  private fill = new DirectionalLight(0xfff0dc, 0);
   private skyScene = new Scene();
   private sky = new Sky();
   private stars: Points;
@@ -115,6 +119,8 @@ export class Environment {
   ) {
     this.hemi = new HemisphereLight(0xffffff, 0x444444, 0.3);
     scene.add(this.hemi);
+    this.fill.position.set(0.3, 0.86, 0.2).multiplyScalar(100);
+    scene.add(this.fill);
     this.sky.scale.setScalar(50000);
     // clamp the sky's HDR so the sun glare cannot dominate bloom / DoF; the sun itself is the directional light
     this.sky.material.onBeforeCompile = (s) => {
@@ -216,7 +222,8 @@ export class Environment {
     this.scene.environment = this.envRT.texture;
     this.scene.environmentIntensity = t.env;
     this.scene.backgroundIntensity = name === 'night' ? 1 : 1.0;
-    this.scene.fog = null;
+    this.scene.fog = new FogExp2(t.fog, t.fogDensity);
+    this.fill.intensity = name === 'dusk' ? 4.5 : 0;
     this.hemi.color.setHex(t.hemi[0]);
     this.hemi.groundColor.setHex(t.hemi[1]);
     this.hemi.intensity = t.hemi[2];

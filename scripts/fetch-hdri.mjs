@@ -6,7 +6,7 @@ import path from 'node:path';
 const FILES = {
   'sky_day.hdr': 'kloofendal_48d_partly_cloudy_puresky',
   'sky_dusk.hdr': 'qwantani_dusk_2_puresky',
-  'sky_night.hdr': 'dikhololo_night',
+  'sky_night.hdr': 'satara_night_no_lamps',
 };
 const dir = path.resolve('public/hdri');
 fs.mkdirSync(dir, { recursive: true });

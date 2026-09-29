@@ -60,7 +60,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onP
   }
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
-  const load = async (file: string) => {
+  const load = async (file: string, need?: string) => {
     // use whichever copy is newer (the raw export may have been re-exported after the optimized build)
     const stamp = async (path: string) => {
       try {
@@ -75,7 +75,13 @@ export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onP
     for (const path of order) {
       try {
         onProgress?.(`loading ${path}`);
-        return await loader.loadAsync(base + path);
+        const g = await loader.loadAsync(base + path);
+        // the optimizer prunes empty nodes; players need their Bat_Grip / Ball_Grip attachment empties
+        if (need && !g.scene.getObjectByName(need)) {
+          out.missing.push(`${path} (no ${need}, using raw export)`);
+          continue;
+        }
+        return g;
       } catch {
         /* try next */
       }
@@ -89,7 +95,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onP
     load('stadium.glb'),
     load('ball.glb'),
     load('bat.glb'),
-    ...CHARACTERS.map((c) => load(`players/${c}.glb`)),
+    ...CHARACTERS.map((c) => load(`players/${c}.glb`, 'Bat_Grip')),
   ]);
 
   const wrap = (g: Group | undefined) => {
