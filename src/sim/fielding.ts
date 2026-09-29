@@ -2,10 +2,10 @@ import { flightStep, newFlags, predictPath, PathSample, BallBody } from './ball'
 import { emit } from './events';
 import { BALL_RADIUS, BASE_POS, fenceAt, isFairXZ } from './field';
 import { clamp, MPH, RPM } from './math';
-import { setGoal, travelTime } from './movement';
+import { WALL_STAND, insideFence, setGoal, travelTime } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
-import type { PlayerRT, RunnerRT, World } from './world';
-import { TICK, secToTicks } from './world';
+import type { PlayerRT, RunnerRT, WallPlan, World } from './world';
+import { TICK, TICKS_PER_SEC as TICKS, secToTicks } from './world';
 import { DEFAULT_SPOTS } from './setup';
 import * as running from './running';
 import * as rules from './rules';
@@ -30,7 +30,28 @@ export function ensurePath(w: World): void {
   ball.pathDirty = false;
 }
 
+// ---------------------------------------------------------------------------------------------
+// reach and jump (wall play)
+// ---------------------------------------------------------------------------------------------
+
+/** Glove height standing flat-footed, arm overhead (m). */
+export const standReach = (F: PlayerRT) => F.info.height * 1.32 + 0.12;
+/** Peak height of a running jump at the wall (m): athleticism and instincts. */
+export const jumpHeight = (F: PlayerRT) => clamp(0.58 + 0.005 * (F.info.ratings.speed - 50) + 0.003 * (F.info.ratings.range - 50), 0.35, 0.85);
+/** Glove height at `tick` for a fielder who may be in mid-leap. */
+export function gloveY(F: PlayerRT, tick: number): number {
+  const L = F.leap;
+  if (!L) return standReach(F);
+  const u = (tick - L.t0) / L.dur;
+  if (u <= 0 || u >= 1) return standReach(F);
+  return standReach(F) + 4 * L.h * u * (1 - u);
+}
+/** Horizontal reach of a glove extended over the wall while leaping (m). */
+export const WALL_REACH_H = 1.25;
+const LEAP_DUR = (h: number) => 2 * Math.sqrt((2 * h) / 9.80665);
+
 export interface Intercept {
+  wall?: WallPlan;
   found: boolean;
   x: number;
   z: number;
@@ -59,6 +80,34 @@ export function computeIntercept(w: World, F: PlayerRT): Intercept {
   const bx = F.plan.biasX * off;
   const bz = F.plan.biasZ * off;
   let best: Intercept | null = null;
+  // a ball that will meet the wall above the height a fielder can reach standing: this is a wall play
+  const wallS = path.find((q) => q.wall && q.t > tNow);
+  if (wallS) {
+    const standing = standReach(F);
+    const fd = fenceAt(w.env.fence, wallS.x, wallS.z);
+    if (wallS.wall === 'over' || wallS.y > standing - 0.25) {
+      const tRel = wallS.t - tNow;
+      const off = Math.min(tRel, 5);
+      const wp = insideFence(w, wallS.x + F.plan.biasX * off, wallS.z + F.plan.biasZ * off);
+      const T = react + travelTime(F, wp.x, wp.z);
+      const margin = tRel - 0.3 - T;
+      const reach = standing + jumpHeight(F);
+      const plan: WallPlan = {
+        crossTick: w.tick + Math.round(tRel / TICK),
+        x: wp.x,
+        z: wp.z,
+        crossY: wallS.y,
+        dy: wallS.y - fd.height,
+        over: wallS.wall === 'over',
+        leap: null,
+        timing: 0,
+      };
+      // reachable with a leap if the ball is within the glove's reach when it passes the wall
+      const canReach = wallS.y <= reach + 0.1;
+      if (margin >= 0) return { found: true, x: wp.x, z: wp.z, y: wallS.y, t: tRel, tF: T, margin, air: canReach, wall: plan };
+      best = { found: false, x: wp.x, z: wp.z, y: wallS.y, t: tRel, tF: T, margin, air: false, wall: plan };
+    }
+  }
   const start = Math.max(0, Math.floor(tNow * 60));
   for (let i = start + 1; i < path.length; i += 2) {
     const s = path[i];
@@ -68,7 +117,7 @@ export function computeIntercept(w: World, F: PlayerRT): Intercept {
     const tx = s.x + bx;
     const tz = s.z + bz;
     const fd = fenceAt(w.env.fence, tx, tz).distance;
-    if (Math.hypot(tx, tz) > fd - 0.4) continue;
+    if (Math.hypot(tx, tz) > fd - WALL_STAND) continue;
     const T = react + travelTime(F, tx, tz);
     const margin = tRel - T;
     const air = s.y > 0.5 && !s.rolling;
@@ -77,7 +126,8 @@ export function computeIntercept(w: World, F: PlayerRT): Intercept {
   }
   if (best) return best;
   const last = path[path.length - 1] ?? { x: ball.body.x, z: ball.body.z, y: 0, t: 0 };
-  return { found: false, x: last.x, z: last.z, y: last.y, t: 5, tF: 5 + travelTime(F, last.x, last.z), margin: -5, air: false };
+  const lp = insideFence(w, last.x, last.z);
+  return { found: false, x: lp.x, z: lp.z, y: last.y, t: 5, tF: 5 + travelTime(F, lp.x, lp.z), margin: -5, air: false };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -97,6 +147,9 @@ export function initFielderPlans(w: World, reactSecBase: number): void {
       reactTick: w.tick + secToTicks(react),
       biasX: w.rng.normal(0, kJ),
       biasZ: w.rng.normal(0, kJ),
+      biasY: w.rng.normal(0, 0.16 + 0.0025 * (100 - rg) / 2),
+      biasT: w.rng.normal(0, 0.05 + 0.0006 * (100 - rg)),
+      wall: null,
       holdUntil: 0,
       releaseAt: 0,
       throwBase: 0,
@@ -166,12 +219,23 @@ export function defenseAI(w: World): void {
     for (const F of all) F.plan.wasPrimary = F === primary;
     const bip = play.bip;
     play.catchMargin = bip && bip.status !== 'foul' && !bip.landed && !ball.touchedGround && catchMargin > -Infinity ? catchMargin : null;
+    for (const F of all) if (F !== primary && !F.leap) F.plan.wall = null;
     if (bestF && bestIc) {
       const F = bestF;
-      F.plan.kind = 'chase';
-      F.plan.tx = bestIc.x;
-      F.plan.tz = bestIc.z;
-      setGoal(F, bestIc.x, bestIc.z, !bestIc.found || bestIc.margin > 0.25, 1);
+      const tgt = insideFence(w, bestIc.x, bestIc.z);
+      if (bestIc.wall) {
+        // wall play: run to the fence under the ball, plant, and (maybe) leave the ground
+        const prev = F.plan.wall;
+        F.plan.wall = prev ? { ...bestIc.wall, leap: prev.leap, timing: prev.timing } : bestIc.wall;
+        F.plan.kind = 'wall';
+        setGoal(F, tgt.x, tgt.z, true, 1);
+      } else {
+        if (!F.leap) F.plan.wall = null;
+        F.plan.kind = 'chase';
+        setGoal(F, tgt.x, tgt.z, !bestIc.found || bestIc.margin > 0.25, 1);
+      }
+      F.plan.tx = tgt.x;
+      F.plan.tz = tgt.z;
       F.lookAt = { x: ball.body.x, z: ball.body.z };
     }
   } else {
@@ -253,8 +317,9 @@ export function defenseAI(w: World): void {
       const pz = play.primary!.plan.tz;
       const dl = Math.hypot(px, pz) || 1;
       F.plan.kind = 'backup';
-      F.plan.tx = px + (px / dl) * 10;
-      F.plan.tz = pz + (pz / dl) * 10;
+      const bk = insideFence(w, px + (px / dl) * 10, pz + (pz / dl) * 10);
+      F.plan.tx = bk.x;
+      F.plan.tz = bk.z;
       setGoal(F, F.plan.tx, F.plan.tz, true, 1);
     } else {
       const spot = DEFAULT_SPOTS[pos] ?? { x: 0, z: 30 };
@@ -391,12 +456,68 @@ export function fieldingAttempts(w: World): void {
     const dh = Math.hypot(b.x - F.x, b.z - F.z);
     const sp = Math.hypot(F.vx, F.vz);
     const low = b.y < 0.5;
+    if (F.leap) {
+      // leaping at the wall: the glove reaches over the fence, as high as the jump takes it
+      if (leapAttempt(w, F)) return;
+      continue;
+    }
     const reachH = (low ? 0.92 : 1.15) + (sp > 5 ? 0.22 : 0);
     const reachV = 2.45 + (sp > 3 ? 0.3 : 0.05);
     if (dh > reachH || b.y > reachV) continue;
     if (F.plan.kind === 'idle' && ball.mode === 'batted' && ball.touchedGround === false && b.y > 2.6) continue;
     attempt(w, F, dh / reachH);
     if (ball.holder) return;
+  }
+}
+
+/** A leaping fielder's glove against the ball; returns true if the ball is now held. */
+function leapAttempt(w: World, F: PlayerRT): boolean {
+  const ball = w.ball;
+  const b = ball.body;
+  if (ball.holder || w.tick - F.plan.lastAttempt < 48) return false;
+  const glove = gloveY(F, w.tick);
+  const dh = Math.hypot(b.x - F.x, b.z - F.z);
+  if (dh > WALL_REACH_H || b.y > glove + 0.18 || b.y < glove - 1.3) return false;
+  const vs = clamp((b.y - (glove - 0.45)) / 0.65, 0, 1);
+  attempt(w, F, Math.max(dh / WALL_REACH_H, vs));
+  return !!ball.holder;
+}
+
+/** One last try at the tick a fair ball clears the fence: anyone in mid-leap gets a glove out. */
+export function wallLastChance(w: World): boolean {
+  for (const F of fielders(w)) {
+    if (F.leap && leapAttempt(w, F)) return true;
+  }
+  return false;
+}
+
+/** Wall play state machine: decide (once) whether to leap, and leave the ground so the glove peaks as the ball arrives. */
+export function tickWallPlay(w: World): void {
+  const play = w.play;
+  for (const F of fielders(w)) {
+    if (F.leap && w.tick >= F.leap.t0 + F.leap.dur) F.leap = null;
+    const wp = F.plan.wall;
+    if (!wp || F.leap || !play || play.dead) continue;
+    if (w.tick > wp.crossTick + 24) continue;
+    const d = Math.hypot(F.x - wp.x, F.z - wp.z);
+    if (wp.leap === null && d < 12) {
+      // he watches the ball and decides whether it is worth going up for (misjudges the height by biasY)
+      const perceived = wp.crossY + F.plan.biasY;
+      const reach = standReach(F) + jumpHeight(F);
+      wp.leap = perceived > standReach(F) - 0.15 && perceived <= reach + 0.2;
+      wp.timing = 0;
+    }
+    if (!wp.leap) continue;
+    const h = jumpHeight(F);
+    const dur = LEAP_DUR(h);
+    const apexTicks = Math.round((dur / 2) * TICKS);
+    const startTick = wp.crossTick - apexTicks + Math.round((F.plan.biasT + wp.timing) * TICKS);
+    if (d < 2.4 && w.tick >= startTick && w.tick <= wp.crossTick) {
+      F.leap = { t0: w.tick, dur: Math.round(dur * TICKS), h };
+      setAnim(w, F, 'catch_jump', dur + 0.25);
+      F.plan.lastAttempt = Math.min(F.plan.lastAttempt, w.tick - 60);
+      emit(w, { type: 'wallLeap', fielderId: F.info.id, pos: { x: F.x, y: 0, z: F.z }, ballHeightAboveWall: wp.dy });
+    }
   }
 }
 
@@ -469,6 +590,15 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
   const b = ball.body;
   const bip = play.bip;
   const fairHere = isFairXZ(b.x, b.z);
+  // a fair fly ball that was going over the fence and is caught by a leaping fielder is a robbed home run
+  let robbedDy: number | null = null;
+  if (F.leap && bip && air && !fromThrow && !ball.touchedGround && fairHere) {
+    const wallS = predictPath(b, w.env, 3, 1 / 60).find((q) => q.wall);
+    if (wallS && wallS.wall === 'over') robbedDy = wallS.y - fenceAt(w.env.fence, wallS.x, wallS.z).height;
+  }
+  const bx0 = b.x;
+  const by0 = b.y;
+  const bz0 = b.z;
   giveBall(w, F);
   F.plan.kind = 'hold';
   F.plan.holdUntil = w.tick + transferTicks(F, fs > 4 ? 1 : 0);
@@ -499,6 +629,10 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
         r.retouch = r.base;
         r.retouchDone = running.isOnBase(r);
         r.want = r.base;
+      }
+      if (robbedDy !== null) {
+        bip.robbed = true;
+        emit(w, { type: 'robbedHomeRun', fielderId: F.info.id, batterId: w.batter!.info.id, distance: Math.hypot(bx0, bz0), heightAboveWall: robbedDy, pos: { x: bx0, y: by0, z: bz0 } });
       }
     }
   } else if (fromThrow) {

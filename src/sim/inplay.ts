@@ -80,6 +80,7 @@ export function beginBattedBall(w: World, res: ContactResult): void {
     infieldFly: false,
     infieldFlyChecked: false,
     homeRun: false,
+    robbed: false,
     groundRuleDouble: false,
     bunt: !!w.swingPlan?.bunt,
     fielders: [],
@@ -206,7 +207,7 @@ function homeRun(w: World, bip: BipInfo): void {
   w.ball.mode = 'dead';
   const b = w.ball.body;
   const dist = Math.hypot(b.x, b.z);
-  emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist });
+  emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist, heightAboveWall: b.y - fenceAt(w.env.fence, b.x, b.z).height, pos: { x: b.x, y: b.y, z: b.z } });
   emit(w, { type: 'call', call: mkCall(w, 'homeRun') });
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
@@ -267,6 +268,7 @@ export function tickInPlay(w: World): void {
   else if (ball.holder) flow.ballFollowsHolder(w);
   else if (ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown') stepLiveBall(w);
 
+  fielding.tickWallPlay(w);
   if (!play.dead) {
     // throws leave the hand when the wind-up ends
     for (const F of fielding.fielders(w)) {
@@ -324,9 +326,16 @@ function stepLiveBall(w: World): void {
     ball.touchedWall = true;
     ball.pathDirty = true;
     if (bip && bip.status === 'undecided') bip.status = isFairXZ(b.x, b.z) ? 'fair' : 'foul';
+    emit(w, { type: 'wallContact', who: 'ball', pos: { x: b.x, y: b.y, z: b.z }, speed: f.wallSpeed });
   }
   if (f.overFence) {
-    if (bip && bip.status !== 'foul' && isFairXZ(b.x, b.z)) {
+    // a fielder leaping at the wall gets one last try before the ball is gone
+    const held = !play.dead && bip && bip.status !== 'foul' && !ball.touchedGround && fielding.wallLastChance(w);
+    if (held || ball.holder) {
+      /* robbed: the play goes on as a caught fly ball */
+    } else if (ball.mode !== 'batted' && Math.hypot(b.x, b.z) < fenceAt(w.env.fence, b.x, b.z).distance) {
+      /* tipped back into the park: still live */
+    } else if (bip && bip.status !== 'foul' && isFairXZ(b.x, b.z)) {
       if (ball.touchedGround) groundRuleDouble(w, bip);
       else homeRun(w, bip);
     } else if (bip) {
