@@ -3,3 +3,5 @@ dist/
 *.blend1
 .DS_Store
 public/hdri/
+__pycache__/
+*.pyc

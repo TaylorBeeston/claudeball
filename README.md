@@ -1,5 +1,9 @@
 # Claudeball
 
+[![Deploy](https://github.com/TaylorBeeston/claudeball/actions/workflows/deploy.yml/badge.svg)](https://github.com/TaylorBeeston/claudeball/actions/workflows/deploy.yml)
+
+**Play it: https://taylorbeeston.github.io/claudeball/**
+
 3D baseball in the browser: two AIs play a full, physically simulated game, shown like a TV broadcast.
 Nothing is scripted — pitch flight, bat–ball contact, batted balls, fielding, throws, baserunning and the managers'
 decisions all come from the simulation in `src/sim`; `src/engine` (three.js) only renders what the sim reports.
@@ -45,6 +49,19 @@ overrides the folder). Re-run `assets/optimize.sh` after re-exporting from Blend
 Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` skip to next half inning · `c` auto camera on/off · `q` quality ·
 `t` time of day. `?quality=low|medium|high|ultra`, `?tod=day|dusk|night`, `?mock` (dev mock game instead of the real
 sim), `?noassets`, `?nopost`. Details in [`src/engine/README.md`](src/engine/README.md).
+
+## Deployment
+
+Every push to `main` runs `.github/workflows/deploy.yml`: `npm ci`, typecheck, `vitest`, a (non-fatal, cached) `npm run hdri`,
+then `vite build` with `CB_BASE=/claudeball/` and a deploy to GitHub Pages. A failing typecheck or test blocks the deploy; a failed
+HDRI download only means the site uses the procedural sky. The build ships `assets/optimized/*` and `field_layout.json` only
+(not the raw Blender exports). To test the Pages build locally: `CB_BASE=/claudeball/ npm run build && npm run preview`, then open
+`http://localhost:4173/claudeball/`. All runtime URLs go through `import.meta.env.BASE_URL`.
+
+## Credits
+
+- Sky HDRIs: [Poly Haven](https://polyhaven.com/hdris) (CC0), *Kloofendal 48d Partly Cloudy (Pure Sky)* and *Qwantani Dusk 2 (Pure Sky)*.
+- Rendering: [three.js](https://threejs.org/). Models and animation are original, built in Blender.
 
 ## Layout
 

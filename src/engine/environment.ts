@@ -241,7 +241,7 @@ export class Environment {
   /** Which `sky_<tod>.hdr` files exist (from the `/hdri/index.json` manifest); none when the manifest or files are absent. */
   private static hdriFiles: Promise<Set<string>> | null = null;
   private static availableHdris() {
-    return (Environment.hdriFiles ??= fetch('/hdri/index.json')
+    return (Environment.hdriFiles ??= fetch(`${import.meta.env.BASE_URL}hdri/index.json`)
       .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? (r.json() as Promise<string[]>) : []))
       .catch(() => [] as string[])
       .then((l) => new Set(l)));
@@ -251,7 +251,7 @@ export class Environment {
     if (this.hdri.has(name)) return this.hdri.get(name)!;
     try {
       if (!(await Environment.availableHdris()).has(`sky_${name}.hdr`)) throw new Error('no HDRI'); // procedural sky
-      const tex = await new HDRLoader().loadAsync(`/hdri/sky_${name}.hdr`);
+      const tex = await new HDRLoader().loadAsync(`${import.meta.env.BASE_URL}hdri/sky_${name}.hdr`);
       tex.mapping = EquirectangularReflectionMapping;
       const data = tex.image.data as Uint16Array;
       const w = tex.image.width, h = tex.image.height;
