@@ -1,6 +1,20 @@
+import { emit } from './events';
+import { fenceAt } from './field';
 import { clamp } from './math';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
+
+/** Distance a player's centre stays from the outfield wall (body radius + glove). */
+export const WALL_STAND = 0.5;
+
+/** Keep (x, z) at least `margin` inside the outfield wall; returns the (possibly moved) point. */
+export function insideFence(w: World, x: number, z: number, margin = WALL_STAND): { x: number; z: number } {
+  const rho = Math.hypot(x, z);
+  if (rho < 15) return { x, z };
+  const lim = fenceAt(w.env.fence, x, z).distance - margin;
+  if (rho <= lim) return { x, z };
+  return { x: (x / rho) * lim, z: (z / rho) * lim };
+}
 
 export const sprintSpeed = (speedRating: number) => 6.65 + 0.031 * speedRating; // 50 -> 8.2 m/s (27 ft/s)
 export const accelOf = (speedRating: number) => 6.6 + 0.03 * speedRating; // 50 -> 8.1 m/s^2
@@ -67,6 +81,26 @@ export function stepPlayer(p: PlayerRT, w: World): void {
   p.vz += dvz;
   p.x += p.vx * TICK;
   p.z += p.vz * TICK;
+  // the outfield wall is solid: nobody runs through it
+  const rho = Math.hypot(p.x, p.z);
+  if (rho > 15) {
+    const lim = fenceAt(w.env.fence, p.x, p.z).distance - WALL_STAND;
+    if (rho > lim) {
+      const nx = p.x / rho;
+      const nz = p.z / rho;
+      const vn = p.vx * nx + p.vz * nz;
+      p.x = nx * lim;
+      p.z = nz * lim;
+      if (vn > 0) {
+        p.vx -= vn * nx;
+        p.vz -= vn * nz;
+        if (vn > 1.5 && w.tick - p.wallTick > 120) {
+          emit(w, { type: 'wallContact', who: 'fielder', fielderId: p.info.id, pos: { x: p.x, y: 0, z: p.z }, speed: vn });
+        }
+      }
+      if (vn > 0.3) p.wallTick = w.tick;
+    }
+  }
   const sp = Math.hypot(p.vx, p.vz);
   if (sp > 0.8) {
     const target = Math.atan2(p.vx, p.vz);

@@ -1,6 +1,8 @@
 import { DEFAULT_ENV } from './ball';
 import { DEFAULT_FENCE, MOUND_DIST } from './field';
 import { Rng } from './rng';
+import { newDecState } from './dispatch';
+import { createAI } from './ai';
 import { generateTeam } from './roster';
 import { accelOf, sprintSpeed } from './movement';
 import { strikeZoneFor } from './pitching';
@@ -54,7 +56,10 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     hasBall: false,
     fatigue: 0,
     onField: false,
-    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
+    leap: null,
+    gait: null,
+    wallTick: -9999,
+    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
   };
 }
 
@@ -138,6 +143,15 @@ export function createWorld(cfg: GameConfig): World {
   const w: World = {
     cfg: { ...cfg, dh, innings: cfg.innings ?? 9, extraInningsRunner: cfg.extraInningsRunner ?? true, pace: cfg.pace ?? 1 },
     rng,
+    aiRng: new Rng(`${cfg.seed}:ai`),
+    dec: newDecState(cfg.providers),
+    ai: undefined as unknown as World['ai'],
+    paStage: 0,
+    prep: { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, steal: null },
+    swingObs: null,
+    swingDecided: false,
+    buntNow: null,
+    align: {},
     env,
     tick: 0,
     acc: 0,
@@ -156,6 +170,7 @@ export function createWorld(cfg: GameConfig): World {
     pitcher: home.pitcher,
     catcher: home.defense.get('C')!,
     runners: [],
+    exiting: [],
     ball: {
       body: ballBody,
       mode: 'held',
@@ -221,5 +236,6 @@ export function createWorld(cfg: GameConfig): World {
   };
   // umpire zone tendencies for this game (physical noise: some umps squeeze, some expand)
   w.umpBias = { width: rng.normal(0, 0.012), low: rng.normal(0, 0.02), high: rng.normal(0, 0.02), noise: 0.018 + Math.abs(rng.normal(0, 0.004)) };
+  w.ai = createAI(w);
   return w;
 }

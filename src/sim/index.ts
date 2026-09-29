@@ -3,3 +3,4 @@ export { generateTeam } from './roster';
 export * from './types';
 export * from './field';
 export { Rng } from './rng';
+export * from './decisions';

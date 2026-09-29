@@ -28,6 +28,11 @@ export class Rng {
     for (let i = 0; i < 16; i++) this.next();
   }
 
+  /** Snapshot of the generator state (tests / audits: equal state == equal past draws). */
+  state(): string {
+    return `${this.a >>> 0}.${this.b >>> 0}.${this.c >>> 0}.${this.d >>> 0}.${this.spare ?? ''}`;
+  }
+
   /** Uniform in [0, 1). */
   next(): number {
     this.a >>>= 0;

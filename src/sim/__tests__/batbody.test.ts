@@ -12,7 +12,8 @@ describe('bat vs batter body', () => {
     for (let i = 0; i < 40_000 && swingsSeen < 40; i++) {
       g.step(1 / 120);
       const s = g.getState();
-      if (!s.bat.active) {
+      // (a bunt presents the bat square to the pitch instead of swinging it, so the swing's reach limit does not apply)
+      if (!s.bat.active || g._world.swingPlan?.bunt) {
         wasActive = false;
         continue;
       }
