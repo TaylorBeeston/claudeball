@@ -80,19 +80,30 @@ mb = MB("Dirt_Cutouts")
 mb.poly(circle(0, 0.2, 13*FT, 72), Y_CUT, dirt_col)                 # home plate circle (13 ft radius)
 for bc in (b1, b2, b3): mb.poly(circle(*bc, 1.6, 40), Y_CUT, dirt_col)
 objs.append(mb.build(M_DIRT))
-# ---------------- mound (18 ft diameter, 10 in above plate) + rubber
-mb = MB("Mound"); H = 10*IN; RO = 9*FT; RP = 1.4; NR, NS = 20, 72
+# ---------------- mound (MLB spec) + rubber
+# 18 ft diameter circle centred 59 ft from the plate apex; 10 in above the plate; level area 5 ft wide x 34 in long whose front edge is 6 in in front of the
+# rubber's front edge (rubber front edge 60 ft 6 in from the apex, rubber 24 x 6 in, i.e. spanning z = 60.5..61 ft); from the level area the surface falls
+# 1 in per foot in every direction (measured from the level rectangle), eased to the field over the last 1.5 ft of the circle.
+mb = MB("Mound"); H = 10*IN; RO = 9*FT; NR, NS = 40, 96
+LV_X, LV_Z0, LV_Z1 = 2.5*FT, 60.0*FT, 60.0*FT + 34*IN
+def mound_h(x, z):
+    dx = max(abs(x) - LV_X, 0.0); dz = max(LV_Z0 - z, z - LV_Z1, 0.0); d = math.hypot(dx, dz)
+    r = math.hypot(x - C_MOUND[0], z - C_MOUND[1]); e = min(1.0, max(0.0, (RO - r)/(1.5*FT))); e = e*e*(3-2*e)
+    return max(0.0, H - d*(1*IN/FT))*e
 rings = []
 for i in range(NR+1):
     r = RO*i/NR
-    u = max(0.0, min(1.0, (RO - r)/(RO-RP))); h = Y_CUT+0.002 + (H-Y_CUT-0.002)*(u*u*(3-2*u))
-    rings.append([mb.vert(C_MOUND[0]+r*math.cos(2*math.pi*k/NS), h, C_MOUND[1]+r*math.sin(2*math.pi*k/NS)) for k in range(NS)])
+    row = []
+    for k in range(NS):
+        x = C_MOUND[0]+r*math.cos(2*math.pi*k/NS); z = C_MOUND[1]+r*math.sin(2*math.pi*k/NS)
+        c = dirt_col(x, z); row.append(mb.vert(x, max(Y_CUT+0.002, mound_h(x, z)), z, col=c))
+    rings.append(row)
 for i in range(NR):
     for k in range(NS):
         a, b_, c, d_ = rings[i][k], rings[i][(k+1) % NS], rings[i+1][(k+1) % NS], rings[i+1][k]
         mb.tri(a, b_, c); mb.tri(a, c, d_)
 objs.append(mb.build(M_DIRT, smooth=True))
-rub = MB("PitchersRubber"); rub.box(0, 60.5*FT-3*IN, 24*IN, 6*IN, H-0.03, H+0.012)
+rub = MB("PitchersRubber"); rub.box(0, 60.5*FT+3*IN, 24*IN, 6*IN, H-0.03, H+0.008)
 objs.append(rub.build(M_RUB))
 # ---------------- home plate (17 in front edge, 8.5 in sides, 12 in slanted; apex at origin)
 hp = MB("HomePlate"); w = 8.5*IN; sd = 8.5*IN + math.sqrt((12*IN)**2 - w*w)
@@ -167,7 +178,7 @@ for nm, side in (("Bullpen_R", 1), ("Bullpen_L", -1)):
 FX = lambda p: [-p[0], p[1]]
 layout = {"units": "meters", "axes": "Y up, +Z center field, +X THIRD base (first base at -X), origin home plate apex",
           "bases": {"home": [0, 0], "first": FX(b1), "second": FX(b2), "third": FX(b3)},
-          "mound_center": FX(C_MOUND), "rubber_front_z": 60.5*FT, "mound_height": H,
+          "mound_center": FX(C_MOUND), "rubber_front_z": 60.5*FT, "rubber_size": [24*IN, 6*IN], "mound_height": H, "mound_top_y": H, "mound_radius": 9*FT, "mound_level_area": {"x_half": 2.5*FT, "z_from": 60.0*FT, "z_to": 60.0*FT+34*IN}, "mound_slope_per_m": 1*IN/FT,
           "foul_poles": {"left": FX(POLE_L), "right": FX(POLE_R)}, "warning_track_width": 15*FT,
           "fence": [[round(-x, 3), round(z, 3)] for x, z in fence_pts(91)],
           "ground_outline": [[round(-x, 3), round(z, 3)] for x, z in outline], "backstop_z": BACKSTOP_Z}
