@@ -1,3 +1,4 @@
+import { accelOfRating, pitchLimit, sprintOf } from './attributes';
 import { emit } from './events';
 import { PENDING } from './decisions';
 import type { BuntDecision } from './decisions';
@@ -65,7 +66,7 @@ export function aiBunt(w: World): BuntDecision {
 /** The reliever the manager would bring in now (or null). */
 export function aiPitchingChange(w: World, t: TeamRT): PlayerRT | null {
   const p = t.pitcher;
-  const limit = 30 + p.info.ratings.stamina;
+  const limit = pitchLimit(p.info.ratings);
   const isStarter = p.info.id === t.team.startingPitcherId;
   const inn = w.inning;
   const lead = t.runs - (t === w.teams.home ? w.teams.away.runs : w.teams.home.runs);
@@ -184,8 +185,8 @@ function pinchRun(w: World, t: TeamRT, r: RunnerRT, best: PlayerRT): void {
   best.x = out.x;
   best.z = out.z;
   best.vx = best.vz = 0;
-  best.vmax = 6.65 + 0.031 * best.info.ratings.speed;
-  best.accel = 6.6 + 0.03 * best.info.ratings.speed;
+  best.vmax = sprintOf(best.info.ratings.speed);
+  best.accel = accelOfRating(best.info.ratings.acceleration);
   out.onField = false;
 }
 

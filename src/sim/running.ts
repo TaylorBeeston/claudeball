@@ -4,7 +4,8 @@ import type { LeadDecision, PickoffDecision, RunnerDecision, RunnerRequest, Stea
 import { ask, situationOf } from './dispatch';
 import { BASE_POS } from './field';
 import { clamp } from './math';
-import { setGoal, sprintSpeedOf, travelTime } from './movement';
+import { catcherExchange, deliverySeconds, holdingLeadAdjust, sprintOf } from './attributes';
+import { setGoal, travelTime } from './movement';
 import { setAnim } from './util';
 import type { PlayerRT, RunnerRT, World } from './world';
 import { TICK, secToTicks } from './world';
@@ -58,7 +59,7 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
   };
   p.role = 'runner';
   p.onField = true;
-  p.vmax = sprintSpeedOf(p);
+  p.vmax = sprintOf(p.info.ratings.speed);
   p.lookAt = null;
   if (isBatter) {
     p.goal = null;
@@ -175,9 +176,10 @@ export function updateLeads(w: World): void {
 export const MAX_LEAD = 6;
 
 /** The built-in runner's lead: from his speed and baserunning instincts. */
-export function aiLead(req: { runner: { ratings: { speed: number; baserunning: number } }; base: number }): LeadDecision {
+export function aiLead(req: { runner: { ratings: { speed: number; baserunning: number } }; pitcher: { ratings: { holding: number } }; base: number }): LeadDecision {
   const R = req.runner.ratings;
-  return { lead: clamp(3.0 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50), 1.8, 4.6) * (req.base === 3 ? 0.8 : 1) };
+  // a good runner takes a bigger lead, a pitcher who holds runners well shortens it
+  return { lead: clamp(3.0 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50) + holdingLeadAdjust(req.pitcher.ratings), 1.8, 4.6) * (req.base === 3 ? 0.8 : 1) };
 }
 
 /** Runners standing off a base should be able to run through their lead point quickly; snap to base when a play ends. */
@@ -230,7 +232,8 @@ export function stagePickoff(w: World): 'none' | 'wait' | 'thrown' {
 export function aiPickoff(w: World, r: RunnerRT): PickoffDecision {
   const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.2);
   const p = (r.base === 1 ? 0.012 : 0.002) + (r.base === 1 ? 0.06 : 0.01) * threat;
-  return { throw: w.aiRng.next() < p };
+  // a pitcher with a good move throws over more often
+  return { throw: w.aiRng.next() < p * clamp(1 + 0.012 * (w.pitcher.info.ratings.pickoff - 50), 0.6, 1.6) };
 }
 
 /** The runner who could break for the next base on this pitch, if the base is open. */
@@ -253,7 +256,7 @@ export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTim
   const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, dist, 0) - 0.08;
   const armV = 27 + 0.21 * catcher.info.ratings.arm;
   const D = Math.hypot(bp.x - catcher.x, bp.z - catcher.z);
-  const exch = 0.72 - 0.0035 * (catcher.info.ratings.catching - 50);
+  const exch = catcherExchange(catcher.info.ratings);
   const ballTime = windupSecs + 0.44 + exch + D / (armV * 0.9) + 0.2;
   return { ballTime, runnerTime };
 }
@@ -265,8 +268,8 @@ export function stageSteals(w: World): boolean {
     w.prep.steal = null;
     return true;
   }
-  const runnersOn = true;
-  const nominalWindup = runnersOn ? 0.84 : 1.12;
+  // from the stretch, with this pitcher's tempo and holding
+  const nominalWindup = deliverySeconds(w.pitcher.info.delivery ?? { style: 'three_quarter', armSlotDeg: 45, tempo: 1 }, w.pitcher.info.ratings, true);
   const d = ask(
     w,
     'steal',

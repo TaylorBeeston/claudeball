@@ -45,7 +45,7 @@ export const pickoffSeconds = (r: Ratings) => clamp(0.35 - 0.003 * (r.pickoff - 
 /** Seconds the runner needs to react to the move: a deceptive move freezes him a moment. */
 export const pickoffRunnerReaction = (runnerBaserunning: number, r: Ratings) => Math.max(0.1, 0.22 - 0.0008 * (runnerBaserunning - 50) + 0.0014 * (r.pickoff - 50));
 /** How far off the bag (m) a runner dares to stand against this pitcher: a good holder shortens the leash. */
-export const holdingLeadAdjust = (r: Ratings) => -0.022 * (r.holding - 50);
+export const holdingLeadAdjust = (r: Pick<Ratings, 'holding'>) => -0.022 * (r.holding - 50);
 
 /** Scale on the pitcher's command noise from his form and composure under pressure (`pressure` 0..1) and rattled state (0..1). */
 export function composureScale(r: Ratings, pressure: number, rattled: number): number {

@@ -1,4 +1,5 @@
 import { flightStep, stepBall } from './ball';
+import { blockHalfWidth, consistencyScale, framingPull, nextForm, pressureOf, deliverySeconds, fielderTopSpeed, routeEfficiency, sprintOf } from './attributes';
 import { BatSwing, batBallCollision, buildSwing, decisionTime, perceivePitch, stanceFor } from './batting';
 import { ask, situationOf } from './dispatch';
 import { PENDING } from './decisions';
@@ -22,8 +23,7 @@ export const BATTER_X = 0.72;
 export const CATCH_Z = -0.8;
 const WALKUP = 2.4;
 const BETWEEN = 3.6;
-const WINDUP_EMPTY = 1.12;
-const WINDUP_RUNNERS = 0.84;
+const DEFAULT_DELIVERY = { style: 'three_quarter' as const, armSlotDeg: 45, tempo: 1 };
 
 const paced = (w: World, s: number) => secToTicks(s * w.cfg.pace);
 
@@ -42,6 +42,7 @@ export function startHalfInning(w: World): void {
   w.play = null;
   w.inningRuns = 0;
   w.halfStartTick = w.tick;
+  w.fieldingTeam.pitcher.rattle *= 0.4; // a new half-inning: he shakes off trouble
   for (const r of w.exiting) r.p.onField = false;
   w.exiting = [];
   const t = w.battingTeam;
@@ -94,7 +95,7 @@ export function startHalfInning(w: World): void {
 }
 
 export function fielderSpeed(p: PlayerRT): number {
-  return (6.65 + 0.031 * p.info.ratings.speed) * 0.975;
+  return fielderTopSpeed(p.info.ratings) * (routeEfficiency(p.info.ratings) / 0.955) * 0.975;
 }
 
 /**
@@ -177,9 +178,11 @@ function stepInBatter(w: World): void {
   }
   b.lookAt = { x: 0, z: MOUND_DIST };
   b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
-  b.vmax = (6.65 + 0.031 * b.info.ratings.speed);
+  b.vmax = sprintOf(b.info.ratings.speed);
   b.anim = 'idle';
   w.pitcher.pit.bf += 1;
+  w.pitcher.rattle *= 0.93; // he settles a little between batters
+  b.form = nextForm(b.form, b.info.ratings.consistency, w.rng.normal(0, 1));
   w.align = {};
   resetDefense(w);
   emit(w, { type: 'batterUp', batterId: b.info.id, pitcherId: w.pitcher.info.id });
@@ -286,7 +289,7 @@ export function beginWindup(w: World): void {
   // the pitcher's timing from the set position varies from pitch to pitch (wilder pitchers vary more): this one draw is both the
   // length of his windup (it moves runners' jumps and the batter's timing) and, if he hesitates or rushes far enough, an illegal
   // motion that the umpire calls
-  const hitch = w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 250));
+  const hitch = w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 250) * consistencyScale(P.info.ratings.consistency));
   if (Math.abs(hitch) > HITCH_BALK && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) {
     rules.balk(w);
     return;
@@ -300,7 +303,8 @@ export function beginWindup(w: World): void {
   w.pitchAim = { x: d.targetX, y: d.targetY, intent: careful ? 'middle' : 'edge' };
   (w as unknown as { _spec: unknown })._spec = spec;
   const runnersOn = w.runners.some((r) => r.state === 'live');
-  const dur = (runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY) + hitch;
+  // the delivery: windup with the bases empty, the shorter stretch with anyone on; tempo and the pitcher's holding decide how quick
+  const dur = deliverySeconds(P.info.delivery ?? DEFAULT_DELIVERY, P.info.ratings, runnersOn) + hitch;
   w.phase = 'windup';
   w.phaseUntil = w.tick + secToTicks(dur);
   running.commitSteals(w);
@@ -323,7 +327,15 @@ export function releasePitch(w: World): void {
   const slot = { x: P.info.traits.armSide, y: P.info.traits.armHeight, ext: P.info.traits.extension };
   const fat = fatigueOf(P);
   P.fatigue = fat;
-  const pitch = throwPitch(P.info, slot, spec, aim.x, aim.y, { fatigue: fat, rng: w.rng, env: w.env, careful: aim.intent === 'middle' });
+  const pitch = throwPitch(P.info, slot, spec, aim.x, aim.y, {
+    fatigue: fat,
+    rng: w.rng,
+    env: w.env,
+    careful: aim.intent === 'middle',
+    stretch: w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead),
+    pressure: leverage(w),
+    rattled: P.rattle,
+  });
   pitch.inZone = pitchTouchesZone(pitch, w.zone);
   w.pitch = pitch;
   w.pitchTick = w.tick;
@@ -406,7 +418,7 @@ function stageSwing(w: World): void {
     inning: w.inning,
     scoreDiff: w.battingTeam.runs - w.fieldingTeam.runs,
   };
-  w.swingPlan = buildSwing(B.info, w.batStance, pitch, obs, d, ctx, w.rng, bunt ? bunt.psi : null, elapsed);
+  w.swingPlan = buildSwing(B.info, w.batStance, pitch, obs, d, ctx, w.rng, bunt ? bunt.psi : null, elapsed, { form: B.form, pressure: leverage(w) });
   if (w.swingPlan.swing) w.swing = new BatSwing(w.swingPlan);
   w.swingObs = null;
   w.swingDecided = true;
@@ -569,7 +581,7 @@ function catcherReceive(w: World): void {
     return;
   }
   // block attempt for balls in the dirt / off target
-  const blockHalf = 0.3 + 0.0045 * cr;
+  const blockHalf = blockHalfWidth(C.info.ratings);
   const shift = clamp((b.x - aim.x) * 0.75, -0.5, 0.5);
   const blocked = b.y < 0.85 && Math.abs(b.x - (aim.x + shift)) <= blockHalf;
   if (blocked) {
@@ -639,7 +651,7 @@ export function umpireCall(w: World, px: number, py: number): boolean {
   const z = w.zone;
   const bias = w.umpBias;
   const C = w.catcher;
-  const frame = clamp((C.info.ratings.catching - 50) * 0.00022, -0.008, 0.012);
+  const frame = framingPull(C.info.ratings);
   let x = px + w.rng.normal(0, bias.noise);
   let y = py + w.rng.normal(0, bias.noise);
   // framing pulls borderline pitches toward the middle of the zone
@@ -724,4 +736,10 @@ export function resetBatterToBox(w: World): void {
   b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
   b.anim = 'idle';
   b.animUntil = 0;
+}
+
+/** How much the moment matters (0..1): late, close, runners in scoring position. */
+export function leverage(w: World): number {
+  const bases = w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead).map((r) => r.base);
+  return pressureOf(w.inning, w.cfg.innings, w.outs, w.battingTeam.runs - w.fieldingTeam.runs, bases);
 }
