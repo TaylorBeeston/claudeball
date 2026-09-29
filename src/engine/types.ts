@@ -25,7 +25,11 @@ export type AnimHint =
   | 'throw'
   | 'catch'
   | 'slide'
-  | 'celebrate';
+  | 'celebrate'
+  /** home-run / dead-ball jog, rounding a base, an outfielder leaping at the wall */
+  | 'trot'
+  | 'run_turn'
+  | 'catch_jump';
 
 export type PlayerRole =
   | 'pitcher'

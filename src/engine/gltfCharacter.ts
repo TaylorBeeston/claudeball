@@ -12,6 +12,7 @@ import {
   LoopOnce,
   LoopRepeat,
   Material,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   MeshPhysicalMaterial,
@@ -23,27 +24,41 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterTemplate } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
+import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 
-const LOOPING = new Set(['idle', 'run', 'field_ready', 'celebrate', 'catcher_crouch']);
+const LOOPING = new Set(['idle', 'run', 'trot', 'run_turn', 'field_ready', 'celebrate', 'catcher_crouch', 'batting_stance']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
-function clipFor(hint: AnimHint, role: PlayerRole): string {
+/** Preferred clip per hint, then fallbacks for clips that a given GLB may not contain (older exports). */
+function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
   switch (hint) {
-    case 'windup': return 'windup';
-    case 'pitch': return 'pitch';
-    case 'swing': return 'swing';
-    case 'run': return 'run';
-    case 'field': case 'catch': return 'field_catch';
-    case 'throw': return 'throw';
-    case 'slide': return 'slide';
-    case 'celebrate': return 'celebrate';
+    case 'windup': return ['windup'];
+    case 'pitch': return ['pitch'];
+    case 'swing': return ['swing'];
+    case 'run': return ['run'];
+    case 'trot': return ['trot', 'run'];
+    case 'run_turn': return ['run_turn', 'run'];
+    case 'field': case 'catch': return ['field_catch'];
+    case 'catch_jump': return ['catch_jump', 'field_catch'];
+    case 'throw': return ['throw'];
+    case 'slide': return ['slide'];
+    case 'celebrate': return ['celebrate', 'idle'];
     default:
-      if (role === 'batter') return 'swing'; // frame 0 of the swing is the batting stance (held, see update)
-      if (role === 'catcher') return 'catcher_crouch';
-      if (FIELDERS.has(role) || role === 'pitcher') return role === 'pitcher' ? 'idle' : 'field_ready';
-      return 'idle';
+      // frame 0 of the swing is the batting stance (held, see update) until a dedicated `batting_stance` clip exists
+      if (role === 'batter') return ['batting_stance', 'swing'];
+      if (role === 'catcher') return ['catcher_crouch'];
+      if (role === 'pitcher') return ['idle'];
+      if (FIELDERS.has(role)) return ['field_ready', 'idle'];
+      return ['idle'];
   }
+}
+
+/** Yaw (rad, direction = (sin f, cos f)) a batter's body faces in the box: chest toward the plate, a little open to the pitcher. */
+export const STANCE_OPEN = 0.2;
+export function stanceYaw(hand: 'L' | 'R' | undefined): number {
+  // righties stand on the third-base side (+X) facing -X, lefties on the first-base side (-X) facing +X
+  return hand === 'L' ? Math.PI / 2 - STANCE_OPEN : -Math.PI / 2 + STANCE_OPEN;
 }
 
 export function templateNameFor(snap: PlayerSnap): string {
@@ -84,29 +99,51 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
 }
 
 const _a = new Vector3(), _b = new Vector3(), _c = new Vector3(), _q = new Quaternion(), _q2 = new Quaternion();
+const _m = new Matrix4(), _s = new Vector3();
 const UP = new Vector3(0, 1, 0);
+const RIGHT = new Vector3(1, 0, 0);
 
-/** Rotate a bone in world space by qDelta. */
-function rotateWorld(bone: Object3D, qDelta: Quaternion, w = 1) {
-  bone.updateWorldMatrix(true, false);
-  bone.getWorldQuaternion(_q);
-  _q2.copy(qDelta).premultiply(_q.clone().identity());
-  const target = _q2.multiply(_q); // qDelta * qWorld
-  const parentQ = bone.parent ? bone.parent.getWorldQuaternion(new Quaternion()).invert() : new Quaternion();
-  const local = parentQ.multiply(target);
-  bone.quaternion.slerp(local, w);
-}
-
-/** Point `bone` (whose child is `child`) so the bone→child direction goes toward `target`. */
-function aimBone(bone: Object3D, child: Object3D, target: Vector3, w = 1) {
-  bone.updateWorldMatrix(true, false);
-  child.updateWorldMatrix(true, false);
-  bone.getWorldPosition(_a);
-  child.getWorldPosition(_b);
-  const cur = _b.sub(_a).normalize();
-  const des = _c.copy(target).sub(_a).normalize();
-  rotateWorld(bone, new Quaternion().setFromUnitVectors(cur, des), w);
-  bone.updateMatrixWorld(true);
+/**
+ * All bone math happens in "rig space": the space inside the character's model node, i.e. with the model's mirror (lefties are
+ * `scale.x = -1`) divided out. Quaternions extracted from a mirrored world matrix are meaningless (that is what threw heads and
+ * arms around on mirrored players), while `inverse(model) * bone` is always a proper rotation.
+ */
+export class Rig {
+  private inv = new Matrix4();
+  constructor(private model: Object3D) {}
+  /** call after the world matrices changed (once per solve step) */
+  refresh() {
+    this.model.updateWorldMatrix(true, false);
+    this.inv.copy(this.model.matrixWorld).invert();
+  }
+  toRig(worldPoint: Vector3, out: Vector3) {
+    return out.copy(worldPoint).applyMatrix4(this.inv);
+  }
+  pos(o: Object3D, out: Vector3) {
+    o.updateWorldMatrix(true, false);
+    return out.setFromMatrixPosition(_m.multiplyMatrices(this.inv, o.matrixWorld));
+  }
+  quat(o: Object3D, out: Quaternion) {
+    o.updateWorldMatrix(true, false);
+    _m.multiplyMatrices(this.inv, o.matrixWorld).decompose(_s, out, _s);
+    return out;
+  }
+  /** Rotate `bone` by the rig-space rotation `qd` (weighted). */
+  rotate(bone: Object3D, qd: Quaternion, w = 1) {
+    const boneQ = this.quat(bone, new Quaternion());
+    const parentQ = bone.parent ? this.quat(bone.parent, new Quaternion()) : new Quaternion();
+    const local = parentQ.invert().multiply(qd.clone().multiply(boneQ));
+    bone.quaternion.slerp(local, w);
+    bone.updateMatrixWorld(true);
+  }
+  /** Point `bone` (whose child is `child`) so the bone→child direction goes toward the rig-space `target`. */
+  aim(bone: Object3D, child: Object3D, target: Vector3, w = 1) {
+    this.pos(bone, _a);
+    this.pos(child, _b);
+    const cur = _b.sub(_a).normalize();
+    const des = _c.copy(target).sub(_a).normalize();
+    this.rotate(bone, _q.setFromUnitVectors(cur, des), w);
+  }
 }
 
 export class GltfPuppet implements PuppetLike {
@@ -120,7 +157,14 @@ export class GltfPuppet implements PuppetLike {
   private lastHint: AnimHint | '' = '';
   private bones: Record<string, Bone> = {};
   private meshes: Mesh[] = [];
-  private look = { yaw: 0, pitch: 0 };
+  private headLook = new HeadLook();
+  private rig: Rig;
+  private lookT: LookTarget = { yaw: 0, pitch: 0, valid: false };
+  private bodyYaw = 0;
+  private bodyYawSet = false;
+  /** last frame's look step (rad) and the largest seen; read by the frame-stepping checks */
+  lookStep = 0;
+  maxLookStep = 0;
   private ikW = 0;
   private skin: string;
   private numberSet = -1;
@@ -148,6 +192,11 @@ export class GltfPuppet implements PuppetLike {
     // hair is hidden under caps / helmets
     const hair = this.model.getObjectByName('Gear_Hair') ?? this.model.getObjectByName('Face_Hair');
     if (hair && (this.model.getObjectByName('Gear_Cap') || this.model.getObjectByName('Gear_Helmet'))) hair.visible = false;
+    this.rig = new Rig(this.model);
+    for (const n of ['Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
+      const b = this.bones[n];
+      if (b) this.clipPose.set(b, b.quaternion.clone());
+    }
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
       const a = this.mixer.clipAction(clip);
@@ -179,6 +228,12 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  /** First candidate clip this GLB actually has (falls back to idle). */
+  private resolveClip(hint: AnimHint, role: PlayerRole): string {
+    for (const n of clipCandidates(hint, role)) if (this.actions.has(n)) return n;
+    return 'idle';
+  }
+
   private play(name: string, snap: PlayerSnap) {
     const a = this.actions.get(name) ?? this.actions.get('idle');
     if (!a || a === this.current) return;
@@ -188,13 +243,30 @@ export class GltfPuppet implements PuppetLike {
     a.enabled = true;
     a.setEffectiveWeight(1);
     a.play();
-    if (this.current) this.current.crossFadeTo(a, name === 'run' || LOOPING.has(name) ? 0.2 : 0.1, false);
+    // walking up to / away from the box swings the head from forward to the stance's over-the-shoulder look: blend that slowly
+    const stanceBlend = snap.role === 'batter' && (name === 'swing' || name === 'batting_stance' || this.currentName === 'swing' || this.currentName === 'batting_stance');
+    if (this.current) this.current.crossFadeTo(a, stanceBlend ? 0.3 : LOOPING.has(name) ? 0.2 : 0.1, false);
     this.current = a;
     this.currentName = name;
   }
 
+  /**
+   * Left-handers are the right-handed model mirrored across X (`scale.x = -1`). The jersey digits are skinned quads, so they cannot
+   * be flipped on their own: instead the texture is flipped inside its cell and the two quads swap digits.
+   */
+  private mirrored = false;
+  private setMirrored(m: boolean) {
+    if (m === this.mirrored && this.model.scale.x === (m ? -1 : 1)) return;
+    this.mirrored = m;
+    this.model.scale.x = m ? -1 : 1;
+    this.numberSet = -1;
+    this.setNumber(this.numberValue);
+  }
+  private numberValue: number | undefined;
+
   /** Jersey number quads: two textured digits (cells of number_digits.png; defaults tens=2, ones=7). */
   private setNumber(n: number | undefined) {
+    this.numberValue = n;
     const v = n ?? -1;
     if (v === this.numberSet) return;
     this.numberSet = v;
@@ -210,33 +282,57 @@ export class GltfPuppet implements PuppetLike {
         if (m.map) m.map = m.map.clone();
         mesh.userData.numMat = m;
         reg(m);
+        const uv = mesh.geometry.getAttribute('uv');
+        let lo = Infinity, hi = -Infinity;
+        for (let i = 0; i < (uv?.count ?? 0); i++) {
+          lo = Math.min(lo, uv.getX(i));
+          hi = Math.max(hi, uv.getX(i));
+        }
+        mesh.userData.uvSpan = Number.isFinite(lo) ? lo + hi : 0;
+        mesh.userData.repeatX = m.map ? m.map.repeat.x : 1;
       }
       const m = mesh.userData.numMat as MeshStandardMaterial;
       mesh.material = m;
       if (m.map) {
-        m.map.offset.x = (digit - def) / 10;
+        const r = mesh.userData.repeatX as number;
+        const off = (digit - def) / 10;
+        if (this.mirrored) {
+          m.map.repeat.x = -r;
+          m.map.offset.x = off + (mesh.userData.uvSpan as number) * r;
+        } else {
+          m.map.repeat.x = r;
+          m.map.offset.x = off;
+        }
         m.map.needsUpdate = true;
       }
     };
     const show = v >= 0;
-    apply(tens, Math.floor(v / 10) % 10, 2, show && v >= 10);
-    apply(ones, v % 10, 7, show);
+    const t = Math.floor(v / 10) % 10, o = v % 10;
+    if (this.mirrored) {
+      apply(tens, o, 2, show);
+      apply(ones, t, 7, show && v >= 10);
+    } else {
+      apply(tens, t, 2, show && v >= 10);
+      apply(ones, o, 7, show);
+    }
   }
 
   update(snap: PlayerSnap, dt: number, env: PuppetEnv) {
     this.setNumber(snap.number);
-    this.model.scale.x = snap.hand === 'L' ? -1 : 1;
-    const name = clipFor(snap.anim, snap.role);
+    this.setMirrored(snap.hand === 'L');
+    const name = this.resolveClip(snap.anim, snap.role);
     if (snap.anim !== this.lastHint || name !== this.currentName) {
       this.lastHint = snap.anim;
       this.play(name, snap);
     }
-    if (snap.role === 'batter' && snap.anim === 'idle' && this.current) {
-      this.current.timeScale = 0;
+    const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
+    if (stanceHeld && snap.anim === 'idle' && this.currentName === 'swing' && this.current) {
+      this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
-    } else if (name === 'run' && this.current) {
+    } else if ((name === 'run' || name === 'trot' || name === 'run_turn') && this.current) {
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
-      this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / 4.5));
+      const nominal = name === 'trot' ? 3.2 : 4.5;
+      this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / nominal));
     } else if (this.current) this.current.timeScale = 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
     if (this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
@@ -245,11 +341,30 @@ export class GltfPuppet implements PuppetLike {
       this.current.timeScale = 0;
       this.current.time = Math.min(dur - 0.001, Math.max(0, snap.animProgress * dur));
     }
+    // ROOT CAUSE of the spinning heads: three's mixer only writes a bone when the clip value changed since last frame, so on a held
+    // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
+    // was applied again on top, every frame. Put every bone we modify back to its clip pose before the mixer runs.
+    for (const [bone, q] of this.clipPose) bone.quaternion.copy(q);
     this.mixer.update(dt);
+    for (const [bone, q] of this.clipPose) q.copy(bone.quaternion);
 
+    // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
+    // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : snap.facing;
+    if (!this.bodyYawSet) {
+      this.bodyYaw = wantYaw;
+      this.bodyYawSet = true;
+    } else {
+      let d = wantYaw - this.bodyYaw;
+      d -= Math.PI * 2 * Math.round(d / (Math.PI * 2));
+      const maxTurn = stanceHeld || this.wasStance ? 9 * dt : Infinity; // ease between the walk-up / run facing and the stance
+      this.bodyYaw += Math.abs(d) > maxTurn ? Math.sign(d) * maxTurn : d;
+    }
+    this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
-    this.root.rotation.y = snap.facing;
+    this.root.rotation.y = this.bodyYaw;
     this.root.updateMatrixWorld(true);
+    this.rig.refresh();
 
     // arm IK: batter's hands follow the sim's bat
     const wantIK = !!(env.batGrip && snap.role === 'batter');
@@ -260,8 +375,12 @@ export class GltfPuppet implements PuppetLike {
       this.solveArm('Left', env.batGrip.bottom, this.ikW);
       this.solveArm('Right', env.batGrip.top, this.ikW);
     }
-    this.lookAt(env.ball, dt, snap.role);
+    this.lookAt(snap, dt, env);
   }
+  private wasStance = false;
+  private warnedLook = false;
+  /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
+  private clipPose = new Map<Bone, Quaternion>();
 
   shoulderCenter(out: Vector3): Vector3 | null {
     const l = this.bones.LeftArm, r = this.bones.RightArm;
@@ -269,12 +388,14 @@ export class GltfPuppet implements PuppetLike {
     return out.copy(l.getWorldPosition(new Vector3())).add(r.getWorldPosition(new Vector3())).multiplyScalar(0.5);
   }
 
-  private solveArm(side: 'Left' | 'Right', target: Vector3, w: number) {
+  private solveArm(side: 'Left' | 'Right', targetWorld: Vector3, w: number) {
     const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (!arm || !fore || !hand) return;
-    const S = arm.getWorldPosition(new Vector3());
-    const E0 = fore.getWorldPosition(new Vector3());
-    const H0 = hand.getWorldPosition(new Vector3());
+    const rig = this.rig;
+    const target = rig.toRig(targetWorld, new Vector3());
+    const S = rig.pos(arm, new Vector3());
+    const E0 = rig.pos(fore, new Vector3());
+    const H0 = rig.pos(hand, new Vector3());
     const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0);
     const dir = target.clone().sub(S);
     let d = dir.length();
@@ -289,39 +410,57 @@ export class GltfPuppet implements PuppetLike {
     if (pole.lengthSq() < 1e-6) pole.set(0, -1, 0);
     pole.normalize();
     const E = S.clone().addScaledVector(dir, a).addScaledVector(pole, h);
-    aimBone(arm, fore, E, w);
-    aimBone(fore, hand, target, w);
+    rig.aim(arm, fore, E, w);
+    rig.aim(fore, hand, target, w);
   }
 
-  private lookAt(ball: Vector3 | null, dt: number, role: PlayerRole) {
-    const head = this.bones.Head, neck = this.bones.Neck;
-    if (!head || !neck) return;
-    let yaw = 0, pitch = 0.02;
-    if (ball && role !== 'pitcher' || (ball && role === 'pitcher')) {
-      const hp = head.getWorldPosition(new Vector3());
-      const d = ball.clone().sub(hp);
-      // into root-local space
-      const inv = this.root.getWorldQuaternion(new Quaternion()).invert();
-      d.applyQuaternion(inv);
-      yaw = Math.atan2(d.x, d.z);
-      pitch = Math.atan2(-d.y, Math.hypot(d.x, d.z));
+  /**
+   * Head look-at, done in rig space relative to the upper spine: the target's yaw/pitch is clamped to human limits, ignored when
+   * it is behind the player / too close / the player is idling with a dead ball, and eased with a speed-limited critically
+   * damped spring (see headLook.ts). The yaw is shared between the spine, neck and head.
+   */
+  private lookAt(snap: PlayerSnap, dt: number, env: PuppetEnv) {
+    const head = this.bones.Head, neck = this.bones.Neck, spine = this.bones.Spine2 ?? this.bones.Spine1;
+    if (!head || !neck || !spine) return;
+    const rig = this.rig;
+    // idle players with nothing moving forget the ball and look ahead
+    const still = (snap.anim === 'idle' || snap.anim === 'celebrate') && Math.hypot(snap.vel.x, snap.vel.z) < 0.3;
+    const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
+    const focus = live ? env.ball : env.mound ?? null;
+    let t: LookTarget | null = null;
+    if (focus) {
+      const hp = rig.pos(head, _a);
+      const fp = rig.toRig(focus, _b);
+      const dv = fp.sub(hp);
+      // into the upper spine's frame (its clip pose, before any look rotation): lean / twist of the torso is respected
+      const sq = rig.quat(spine, _q).invert();
+      dv.applyQuaternion(sq);
+      // where the clip itself already points the head (relative to the same spine frame), so we only add the difference
+      const hq = rig.quat(head, _q2).premultiply(sq);
+      _c.set(0, 0, 1).applyQuaternion(hq);
+      const cy = Math.atan2(_c.x, _c.z), cp = Math.atan2(-_c.y, Math.hypot(_c.x, _c.z));
+      t = lookTarget(dv.x, dv.y, dv.z, cy, cp, this.lookT);
     }
-    yaw = Math.max(-1.1, Math.min(1.1, yaw));
-    pitch = Math.max(-0.6, Math.min(0.7, pitch));
-    const k = 1 - Math.exp(-dt * 9);
-    this.look.yaw += (yaw - this.look.yaw) * k;
-    this.look.pitch += (pitch - this.look.pitch) * k;
-    const rootQ = this.root.getWorldQuaternion(new Quaternion());
-    const right = new Vector3(1, 0, 0).applyQuaternion(rootQ);
-    const qy = new Quaternion().setFromAxisAngle(UP, this.look.yaw);
-    const qp = new Quaternion().setFromAxisAngle(right, this.look.pitch);
-    // body already faces the play in many clips; add only a portion so the neck does not over-rotate
-    const q = qy.multiply(qp);
-    const half = new Quaternion().identity().slerp(q, 0.4);
-    const rest = new Quaternion().identity().slerp(q, 0.6);
-    rotateWorld(neck, half);
-    rotateWorld(head, rest);
-    this.root.updateMatrixWorld(true);
+    const hl = this.headLook;
+    hl.step(t, dt);
+    this.lookStep = hl.lastStep;
+    this.maxLookStep = Math.max(this.maxLookStep, hl.lastStep);
+    // debug assertion: the look offset can never move faster than its speed cap (a spike here means a target or spring bug)
+    if (import.meta.env?.DEV && hl.lastStep > maxLookStep(Math.min(dt, 0.1)) * 1.01 && !this.warnedLook) {
+      this.warnedLook = true;
+      console.error(`[head-look] ${snap.id} moved ${hl.lastStep.toFixed(3)} rad in one step (cap ${maxLookStep(dt).toFixed(3)})`);
+    }
+    if (Math.abs(hl.yaw) < 1e-4 && Math.abs(hl.pitch) < 1e-4) return;
+    const { spine: spineYaw, neckHeadYaw } = hl.split();
+    // yaw about the spine frame's up axis, pitch about its left/right axis; neck 40 %, head 60 %
+    const apply = (bone: Object3D, yaw: number, pitch: number) => {
+      const S = rig.quat(spine, new Quaternion()); // re-read: the spine twist above changes the frame the neck and head turn in
+      _q2.setFromAxisAngle(UP, yaw).multiply(_q.setFromAxisAngle(RIGHT, pitch));
+      rig.rotate(bone, S.clone().multiply(_q2).multiply(S.clone().invert()));
+    };
+    if (Math.abs(spineYaw) > 1e-4) apply(spine, spineYaw, 0);
+    apply(neck, neckHeadYaw * 0.4, hl.pitch * 0.4);
+    apply(head, neckHeadYaw * 0.6, hl.pitch * 0.6);
   }
 
   dispose() {
