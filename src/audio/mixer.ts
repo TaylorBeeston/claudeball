@@ -15,6 +15,8 @@ import { CROWD_IDS, SFX_DEFS, crowdLoop, renderCrowd, renderSfx } from './synth'
 import { mulberry32, type Rendered } from './dsp';
 
 export const MAX_VOICES = 32;
+/** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
+const MAKEUP = 2;
 
 export interface Settings {
   master: number;
@@ -167,7 +169,7 @@ export class Mixer {
     if (!this.ctx) return;
     const s = this.settings;
     const t = this.ctx.currentTime;
-    const m = s.muted ? 0 : s.master * s.master;
+    const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : 1), t, 0.2);

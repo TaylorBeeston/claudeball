@@ -239,8 +239,8 @@ export class AudioController {
 
   private dispatch(c: Cue, st: StateLike, simSpeed: number) {
     const key = `${st.inning}${st.half === 'top' ? 't' : 'b'}`;
-    const id = c.kind === 'speak' ? `speak:${c.role}` : c.kind === 'excite' ? 'excite' : c.id;
-    const tag = c.kind === 'sfx' || c.kind === 'excite' ? id : `${c.kind}:${id}`;
+    const id = c.kind === 'speak' ? c.role : c.kind === 'excite' ? 'excite' : c.id;
+    const tag = `${c.kind}:${id}`;
     this.debug.mapped[tag] = (this.debug.mapped[tag] ?? 0) + 1;
     const h = (this.debug.perHalf[key] ??= {});
     h[tag] = (h[tag] ?? 0) + 1;
@@ -272,7 +272,7 @@ export class AudioController {
       const tag = `${c.kind}:${id}`;
       this.debug.played[tag] = (this.debug.played[tag] ?? 0) + 1;
     }
-    this.debug.cues.push({ t: Math.round(performance.now()), simInning: key, kind: c.kind, id, gain: 'gain' in c ? c.gain : undefined, played, text: c.kind === 'speak' ? c.text : undefined });
+    if (id !== 'footstep') this.debug.cues.push({ t: Math.round(performance.now()), simInning: key, kind: c.kind, id, gain: 'gain' in c ? c.gain : undefined, played, text: c.kind === 'speak' ? c.text : undefined });
     if (this.debug.cues.length > 300) this.debug.cues.shift();
   }
 
@@ -398,7 +398,7 @@ export class AudioController {
           if (ph >= 1) {
             this.stepPhase.set(p.id, 0);
             steps++;
-            this.dispatch({ kind: 'sfx', id: 'footstep', pos: { x: p.pos.x, y: 0.05, z: p.pos.z }, gain: 0.35 + 0.05 * Math.min(8, v), imp: 0 }, st, speed);
+            this.dispatch({ kind: 'sfx', id: 'footstep', pos: { x: p.pos.x, y: 0.05, z: p.pos.z }, gain: 0.1 + 0.02 * Math.min(8, v), imp: 0 }, st, speed);
           } else this.stepPhase.set(p.id, ph);
         }
       }
