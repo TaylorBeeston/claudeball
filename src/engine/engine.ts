@@ -127,6 +127,7 @@ export class Engine {
         this.stadium.crowd.excite(te.event.exitVelo > 40 ? 0.7 : 0.35);
       }
       if (te.event.type === 'run') this.stadium.crowd.excite(1);
+      if (te.event.type === 'robbed_hr') this.stadium.crowd.excite(0.8); // the groan / gasp
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);
     });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
@@ -172,8 +173,12 @@ export class Engine {
     if (a.bat) this.bat.useModel(a.bat, this.env);
     if (a.characters.size) {
       this.players.makePuppet = (snap) => {
-        const tpl = a.characters.get(templateNameFor(snap)) ?? a.characters.get('player_base');
-        return tpl ? new GltfPuppet(tpl, snap.id) : new Puppet(snap.id);
+        // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
+        // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
+        const base = a.characters.get('player_base');
+        const name = snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
+        const tpl = a.characters.get(name) ?? base;
+        return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
       };
       this.players.reset();
     }
@@ -194,6 +199,7 @@ export class Engine {
       case '3': this.sim.speed = 4; break;
       case 'n': this.sim.skipToNextHalfInning(); break;
       case 'c': this.director.setAuto(!this.director.auto); break;
+      case 'b': this.hud?.toggleBox(); break;
       case 'q': this.setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(this.qualityName) + 1) % 4]); break;
       case 't': this.setTimeOfDay(tods[(tods.indexOf(this.env.todName) + 1) % 3]); break;
     }
@@ -265,7 +271,7 @@ export class Engine {
     const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
-    const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));
+    const animDt = this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
     // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.
     let useGrip = !rs.bat.visible;
@@ -282,8 +288,15 @@ export class Engine {
       grip.getWorldQuaternion(this.gripFrom.quat);
       this.bat.update(rs, this.gripFrom, blend);
     } else this.bat.update(rs);
+    this.players.update(rs, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall());
+    // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
+    const held = this.players.ballHeld;
+    if (this.ball.heldByPlayer && !held && rs.ball.visible) {
+      const sim = new Vector3(rs.ball.pos.x, rs.ball.pos.y, rs.ball.pos.z);
+      if (sim.distanceTo(this.players.heldPos) < 1.5) this.ball.released(this.players.heldPos, sim);
+    }
+    this.ball.heldByPlayer = held;
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
-    this.players.update(rs, animDt, this.ball.worldPos, this.bat);
 
     // batted distance once it first lands
     if (!this.landed && !out.replaying && state.ball.visible && state.ball.pos.y < 0.12 && state.ball.pos.z > 1) {
@@ -295,7 +308,7 @@ export class Engine {
       this.stadium.updateScoreboard(state);
     }
     this.hud?.update(state, dt);
-    this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color);
+    this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);
     if (this.hud && (this.hudTimer -= dt) < 0) {
       this.hudTimer = 0.5;
       this.hud.setFps(this.fps, this.adaptive.scale);
