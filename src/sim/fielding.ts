@@ -690,7 +690,7 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
   F.goal = null;
   play.touches.push(F);
   // the catch animation was started ~0.3 s ahead so that the catch is at about its half-way point; if it was not, start it now
-  if (!F.catchArmed) setAnim(w, F, detail.hint, 0.6);
+  if (!F.catchArmed && !F.leap) setAnim(w, F, detail.hint, 0.6);
   F.catchArmed = false;
   if (!fromThrow && bip && !bip.firstFielder) {
     bip.firstFielder = F;
@@ -1149,7 +1149,7 @@ export function updateGloveTargets(w: World): void {
     const last = m.t <= 0.07;
     F.gloveTarget = last ? { x: bb.x + z[0] * 0.02, y: Math.max(0.12, bb.y) + z[1] * 0.02, z: bb.z } : { x: m.x + z[0] * 0.03, y: m.y + z[1] * 0.03, z: m.z };
     F.gloveAt = w.tick + Math.round(m.t / TICK);
-    if (!F.catchArmed && m.t <= 0.32) {
+    if (!F.catchArmed && m.t <= 0.32 && !F.leap) {
       F.catchArmed = true;
       const air = m.y > 0.4 && !ball.touchedGround;
       const fromThrow = ball.mode === 'thrown';
