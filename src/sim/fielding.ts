@@ -87,7 +87,7 @@ export function computeIntercept(w: World, F: PlayerRT): Intercept {
 export function initFielderPlans(w: World, reactSecBase: number): void {
   for (const F of fielders(w)) {
     const rg = F.info.ratings.range;
-    const react = reactSecBase + 0.19 + 0.2 * (1 - rg / 100) + Math.abs(w.rng.normal(0, 0.04));
+    const react = reactSecBase + 0.15 + 0.2 * (1 - rg / 100) + Math.abs(w.rng.normal(0, 0.04));
     const kJ = clamp(0.5 - 0.004 * (rg - 50), 0.2, 0.85);
     F.plan = {
       kind: 'idle',

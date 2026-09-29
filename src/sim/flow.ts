@@ -250,7 +250,7 @@ export function releasePitch(w: World): void {
   running.onPitchRelease(w);
 }
 
-const BODY_HALF_W = 0.12;
+const BODY_HALF_W = 0.10;
 
 export function tickPitch(w: World): void {
   const pitch = w.pitch!;

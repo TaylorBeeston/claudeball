@@ -52,6 +52,8 @@ export interface SwingPlan {
   tauC: number;
   batSpeed: number;
   protect: boolean;
+  /** Bunt: the bat is squared around and held still at (x, y, z); psi = direction the ball should be deadened toward (rad, + toward third base). */
+  bunt?: { psi: number; x: number; y: number; z: number; stance: Stance };
 }
 
 export function stanceFor(bats: PlayerInfo['bats'], pitcherThrows: 'L' | 'R'): Stance {
@@ -63,11 +65,11 @@ export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X 
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 25.9 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 25.7 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Perception + decision: does the batter swing, and if so how. Uses only what a real hitter could know at the decision point. */
-export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, ctx: BattingContext, fbMphSeen: number, rng: Rng): SwingPlan {
+export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, ctx: BattingContext, fbMphSeen: number, rng: Rng, buntPsi: number | null = null): SwingPlan {
   const R = b.ratings;
   const ne = clamp(1.55 - 0.011 * R.eye, 0.55, 1.5); // perception noise multiplier
   const pivot = pivotFor(stance);
@@ -128,7 +130,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
 
   // --- decision -------------------------------------------------------------------------
   const disc = (R.discipline - 50) / 50;
-  let thr = 0.04 - 0.05 * disc;
+  let thr = 0.03 - 0.05 * disc;
   if (ctx.strikes === 2) thr += 0.06;
   else if (ctx.balls === 3) thr -= ctx.strikes === 0 ? 0.2 : 0.09;
   else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
@@ -139,6 +141,31 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
   if (dPerceived > thr) {
     return { swing: false, ...baseInfo, startTime: 0, plannedContactTime: 0, pivot, rh: 0, thetaC: 0, epsC: 0, omegaPk: 0, alpha: 0, sgn: 0, tauC: 0, batSpeed: 0, protect };
+  }
+
+  if (buntPsi !== null) {
+    // Bunt: square around and present the bat at the predicted location; the ball's speed is absorbed by the bat.
+    const pb = predictAtZ(0.7);
+    const sk = 1.5 - R.contact / 100;
+    const px = pb.x + rng.normal(0, 0.022 * sk);
+    const py = pb.y - 0.004 + rng.normal(0, 0.03 * sk);
+    return {
+      swing: true,
+      ...baseInfo,
+      startTime: pb.t - 0.34,
+      plannedContactTime: pb.t,
+      pivot,
+      rh: 0,
+      thetaC: 0,
+      epsC: 0,
+      omegaPk: 0,
+      alpha: 0,
+      sgn: 0,
+      tauC: 0.34,
+      batSpeed: 0,
+      protect,
+      bunt: { psi: buntPsi + rng.normal(0, 0.06 * sk), x: px, y: py, z: 0.7, stance },
+    };
   }
 
   // --- swing planning ---------------------------------------------------------------------
@@ -220,6 +247,11 @@ export class BatSwing {
 
   /** Advance the swing by dt seconds. */
   advance(dt: number): void {
+    if (this.plan.bunt) {
+      this.tau += dt;
+      if (this.tau > 0.8) this.done = true;
+      return;
+    }
     const w = this.omega(this.tau + dt * 0.5);
     this.theta += this.plan.sgn * w * dt;
     this.eps += Math.tan(this.plan.alpha) * w * dt;
@@ -229,12 +261,22 @@ export class BatSwing {
 
   /** 0..1 progress through the swing, for animation. */
   get progress(): number {
-    return clamp(this.tau / (this.plan.tauC * 1.9), 0, 1);
+    return this.plan.bunt ? clamp(this.tau / 0.6, 0, 1) : clamp(this.tau / (this.plan.tauC * 1.9), 0, 1);
   }
 
   pose(): BatPose {
     const { theta, eps } = this;
     const p = this.plan;
+    if (p.bunt) {
+      const bu = p.bunt;
+      // bat axis horizontal, perpendicular to the desired ball direction; the knob is on the batter's side
+      const sgn = bu.stance === 'R' ? 1 : -1;
+      const dir = { x: -sgn * Math.cos(bu.psi), y: 0, z: sgn * Math.sin(bu.psi) };
+      const s = 0.5;
+      const knob = { x: bu.x - dir.x * s, y: bu.y, z: bu.z - dir.z * s };
+      const still = { x: 0, y: 0, z: 0 };
+      return { knob, tip: { x: knob.x + dir.x * BAT_LEN, y: bu.y, z: knob.z + dir.z * BAT_LEN }, dir, velAt: () => still };
+    }
     const ce = Math.cos(eps);
     const se = Math.sin(eps);
     const st = Math.sin(theta);

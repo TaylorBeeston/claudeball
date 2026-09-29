@@ -19,6 +19,7 @@ const byCount: Record<string, { p: number; sw: number; z: number; zsw: number; w
 let swings = 0, zoneP = 0, whiffs = 0, oSw = 0, oP = 0, zSw = 0, zTake = 0, zCalled = 0, oTake = 0, oCalled = 0;
 const calls: Record<string, number> = {};
 const errKinds: Record<string, number> = {};
+let fairFB = 0, fairFBhr = 0, lastLA = 0, hadContact = false;
 let sbAtt = 0, cs = 0, passed = 0, wp = 0, pickoffs = 0;
 const t0 = Date.now();
 const margins: number[] = [];
@@ -31,7 +32,9 @@ for (let i = 0; i < N; i++) {
   g.on('pitchReleased', () => { cur = { z: g._world.pitch!.inZone, swung: false }; if (cur.z) zoneP++; else oP++; const c = g._world.count; key = c.strikes === 2 ? '2K' : c.balls > c.strikes ? 'behind' : c.balls < c.strikes ? 'ahead' : 'even'; const r = (byCount[key] ??= { p: 0, sw: 0, z: 0, zsw: 0, wh: 0 }); r.p++; if (cur.z) r.z++; });
   g.on('swing', () => { swings++; if (cur) { cur.swung = true; if (cur.z) zSw++; else oSw++; const r = byCount[key]; r.sw++; if (cur.z) r.zsw++; } });
   g.on('call', (e) => { if (cur && !cur.swung && (e.call.kind === 'ball' || e.call.kind === 'strikeLooking')) { if (cur.z) { zTake++; if (e.call.kind === 'strikeLooking') zCalled++; } else { oTake++; if (e.call.kind === 'strikeLooking') oCalled++; } } });
-  g.on('contact', (e) => contact.push({ ev: e.exitMph, la: e.launchDeg }));
+  g.on('contact', (e) => { contact.push({ ev: e.exitMph, la: e.launchDeg }); lastLA = e.launchDeg; hadContact = true; });
+  g.on('plateAppearanceEnd', (e) => { if (hadContact && lastLA >= 20 && lastLA <= 50 && !['strikeout', 'walk'].includes(e.result)) { fairFB++; if (e.result === 'home run') fairFBhr++; } hadContact = false; });
+  g.on('pitchReleased', () => { hadContact = false; });
   g.on('call', (e) => { calls[e.call.kind] = (calls[e.call.kind] ?? 0) + 1; });
   g.on('error', (e) => { errors++; errKinds[e.kind] = (errKinds[e.kind] ?? 0) + 1; });
   g.on('steal', () => sbAtt++);
@@ -65,7 +68,7 @@ const f = (x: number, d = 3) => x.toFixed(d);
 const pct = (x: number) => (100 * x).toFixed(1) + '%';
 console.log(`games ${N}  wall ${((Date.now() - t0) / 1000).toFixed(1)}s (${((Date.now() - t0) / N).toFixed(0)} ms/game)  avg sim length ${(gameSecs / N / 60).toFixed(0)} min  extra-inning games ${extra}`);
 console.log(`R/G/team ${f(runs / N / 2, 2)}   AVG ${f(avg)}  OBP ${f(obp)}  SLG ${f(slg)}   ERA ${f((9 * pit.er) / ip, 2)}`);
-console.log(`PA/G/team ${f(bat.pa / N / 2, 1)}  K% ${pct(bat.so / bat.pa)}  BB% ${pct(bat.bb / bat.pa)}  HBP% ${pct(bat.hbp / bat.pa)}  HR/PA ${pct(bat.hr / bat.pa)}  HR/FB ${pct(bat.hr / Math.max(1, flyBalls.length))}`);
+console.log(`PA/G/team ${f(bat.pa / N / 2, 1)}  K% ${pct(bat.so / bat.pa)}  BB% ${pct(bat.bb / bat.pa)}  HBP% ${pct(bat.hbp / bat.pa)}  HR/PA ${pct(bat.hr / bat.pa)}  HR/FB(fair 20-50deg) ${pct(fairFBhr / Math.max(1, fairFB))}`);
 console.log(`BABIP ${f((bat.h - bat.hr) / bip)}   2B/G ${f(bat.doubles / N / 2, 2)}  3B/G ${f(bat.triples / N / 2, 2)}  HR/G ${f(bat.hr / N / 2, 2)}`);
 console.log(`pitches/G/team ${f(pit.pitches / N / 2, 0)}  pitches/PA ${f(pit.pitches / pit.bf, 2)}  strike% ${pct(pit.strikes / pit.pitches)}  zone% ${pct(zoneP / (zoneP + oP))}  swing% ${pct(swings / pit.pitches)}`);
 console.log(`batted balls: EV ${f(contact.reduce((s, c) => s + c.ev, 0) / contact.length, 1)} mph  LA ${f(contact.reduce((s, c) => s + c.la, 0) / contact.length, 1)}  GB% ${pct(gb / contact.length)}  FB(>=25) ${pct(flyBalls.length / contact.length)}`);
