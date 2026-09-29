@@ -87,6 +87,7 @@ export function snapshot(w: World): GameStateSnapshot {
     players.push(snapPlayer(w, w.batter, 'batter'));
   }
   for (const u of w.umpires) {
+    const gesturing = w.tick < u.animUntil;
     players.push({
       id: u.id,
       name: u.name,
@@ -95,10 +96,10 @@ export function snapshot(w: World): GameStateSnapshot {
       position: u.position,
       jersey: 0,
       pos: { x: u.x, y: 0, z: u.z },
-      vel: { x: 0, y: 0, z: 0 },
-      facing: Math.atan2(-u.x, u.position === 'HP' ? 20 : 30 - u.z),
-      anim: 'idle',
-      animT: 0,
+      vel: { x: u.vx, y: 0, z: u.vz },
+      facing: u.facing,
+      anim: gesturing ? u.anim : 'ump_ready',
+      animT: gesturing ? Math.min(1, (w.tick - u.animStart) / Math.max(1, u.animUntil - u.animStart)) : 0,
       hasBall: false,
       bats: 'R',
       throws: 'R',

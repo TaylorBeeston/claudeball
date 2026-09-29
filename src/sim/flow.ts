@@ -18,6 +18,7 @@ import * as rules from './rules';
 import * as inplay from './inplay';
 import * as manager from './manager';
 import * as running from './running';
+import { scheduleCall } from './umpires';
 import { ensureBallReturn, hurryStragglers, readyToPitch, READY_TIMEOUT, sendHome, sendToDugout } from './handling';
 export { tickLob } from './handling';
 
@@ -682,6 +683,10 @@ function finishPitchResult(w: World, caught: boolean, how: 'blocked' | 'missed' 
   const keep = w.lastCall;
   void keep;
   emit(w, { type: 'call', call: mkCall(w, ballOrStrike) });
+  // the plate umpire makes his call a moment after the catch
+  if (ballOrStrike === 'ball') scheduleCall(w, 'plate', w.count.balls + 1 >= 4 ? 'ball_four' : 'ball', 0.2);
+  else if (w.count.strikes + 1 >= 3) scheduleCall(w, 'plate', 'strikeout', 0.25, { swinging: ballOrStrike === 'strikeSwinging' });
+  else scheduleCall(w, 'plate', ballOrStrike === 'strikeSwinging' ? 'strike_swinging' : 'strike_called', 0.25);
   // pitcher strike count
   if (ballOrStrike !== 'ball') w.pitcher.pit.strikes++;
   const ballLive = !caught;

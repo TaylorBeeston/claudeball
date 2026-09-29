@@ -356,6 +356,27 @@ export interface PrePitch {
   steal: { r: RunnerRT; go: boolean } | null;
 }
 
+export type UmpKey = 'plate' | 'first' | 'second' | 'third';
+
+export interface UmpireRT {
+  id: string;
+  name: string;
+  position: 'HP' | '1B-U' | '2B-U' | '3B-U';
+  key: UmpKey;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  /** Where he wants to be, and since when (he reacts a moment after the play changes). */
+  gx: number;
+  gz: number;
+  goalSince: number;
+  facing: number;
+  anim: import('./types').AnimHint;
+  animStart: number;
+  animUntil: number;
+}
+
 /** A fielder at a bag with the ball secure and his glove set down where the runner's foot / hand will arrive. */
 export interface BagTag {
   F: PlayerRT;
@@ -487,7 +508,9 @@ export interface World {
   /** Tick when the current half-inning started (for clocks). */
   halfStartTick: number;
   /** Fielders of the defense placed at positions in the snapshot. */
-  umpires: { id: string; name: string; position: 'HP' | '1B-U' | '2B-U' | '3B-U'; x: number; z: number }[];
+  umpires: UmpireRT[];
+  /** Umpire calls waiting for their moment (after the catch, after the tag / touch). */
+  umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean }[];
   ballInPlayEver: boolean;
   jitter: number;
   passedBallFlag: boolean;

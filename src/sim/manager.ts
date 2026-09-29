@@ -5,6 +5,7 @@ import type { BuntDecision } from './decisions';
 import { ask, situationOf } from './dispatch';
 import { fatigueOf } from './pitchai';
 import { sendToDugout } from './handling';
+import { scheduleCall } from './umpires';
 import { DEFAULT_SPOTS, DUGOUT } from './setup';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { giveBall } from './util';
@@ -168,6 +169,7 @@ export function substitutePitcher(w: World, t: TeamRT, np: PlayerRT): void {
     w.pitcher = np;
     giveBall(w, np);
   }
+  scheduleCall(w, 'plate', 'time', 0);
   emit(w, { type: 'pitchingChange', team: t.side, inId: np.info.id, outId: old.info.id });
   emit(w, { type: 'substitution', team: t.side, inId: np.info.id, outId: old.info.id, reason: 'pitching change' });
 }
@@ -183,6 +185,7 @@ function replaceInLineup(w: World, t: TeamRT, out: PlayerRT, inn: PlayerRT, reas
   inn.fieldPos = pos === 'DH' ? 'DH' : pos;
   if (pos !== 'DH') t.defense.set(pos, inn);
   t.bench = t.bench.filter((b) => b !== inn);
+  scheduleCall(w, 'plate', 'time', 0);
   emit(w, { type: 'substitution', team: t.side, inId: inn.info.id, outId: out.info.id, reason });
 }
 

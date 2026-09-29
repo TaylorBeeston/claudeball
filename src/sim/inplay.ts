@@ -13,6 +13,7 @@ import * as flow from './flow';
 import * as rules from './rules';
 import * as running from './running';
 import * as tagging from './tagging';
+import { nearestUmp, scheduleCall } from './umpires';
 import { DUGOUT } from './setup';
 import { CallInfo } from './types';
 
@@ -216,6 +217,7 @@ function homeRun(w: World, bip: BipInfo): void {
   const dist = Math.hypot(b.x, b.z);
   emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist, heightAboveWall: b.y - fenceAt(w.env.fence, b.x, b.z).height, pos: { x: b.x, y: b.y, z: b.z } });
   emit(w, { type: 'call', call: mkCall(w, 'homeRun') });
+  scheduleCall(w, nearestUmp(w, b.x, b.z), 'homerun', 0.4);
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.dead = true;
@@ -385,6 +387,8 @@ function determineFairFoul(w: World, bip: BipInfo): void {
   const first = w.ball.touchedGround;
   if (b.z >= BASE_XZ && (b.y < 0.2 || w.ball.body.rolling)) {
     bip.status = isFairXZ(b.x, b.z) ? 'fair' : 'foul';
+    // a ball that lands close to the line: the nearest umpire signals it fair
+    if (bip.status === 'fair' && Math.abs(Math.abs(b.x) - b.z) < 2.5) scheduleCall(w, nearestUmp(w, b.x, b.z), 'fair', 0.2);
     return;
   }
   if (first && !isFairXZ(b.x, b.z) && (b.z < 0 || Math.abs(b.x) > b.z + 4) && w.tick - w.ball.lastBounceTick < 3 + 1e6) {
@@ -426,6 +430,7 @@ function foulBallDead(w: World): void {
   play.deadReason = 'foul';
   w.ball.mode = w.ball.holder ? 'held' : 'dead';
   emit(w, { type: 'call', call: mkCall(w, 'foul') });
+  scheduleCall(w, nearestUmp(w, w.ball.body.x, w.ball.body.z), 'foul', 0.2);
   if (w.count.strikes < 2) w.count.strikes++;
   w.pitcher.pit.strikes++;
   // runners go back to their original bases; batter-runner is removed
