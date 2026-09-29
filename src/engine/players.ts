@@ -72,15 +72,23 @@ export class BallView {
   /** hidden from the depth/normal prepass */
   readonly gbufferHidden: Object3D[];
   private trailOn = 0;
+  private model: Object3D | null = null;
+  private env: Environment;
+  /** true while a player carries the ball in glove / hand: the world ball stays hidden */
+  heldByPlayer = false;
+  /** offset that fades out after a release, so the ball does not pop from the hand to the sim's release point */
+  private pop = new Vector3();
+  private popT = 0;
 
   constructor(env: Environment) {
+    this.env = env;
     const m = env.register(new MeshStandardMaterial({ map: ballTexture(), roughness: 0.55, metalness: 0 }));
     this.mesh = new Mesh(new SphereGeometry(DIM.ballRadius, 20, 14), m);
     this.mesh.castShadow = true;
     this.mesh.name = 'ball';
     this.streak = new Mesh(
-      new CylinderGeometry(DIM.ballRadius * 0.9, DIM.ballRadius * 0.9, 1, 8, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2),
-      new MeshBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.35, blending: AdditiveBlending, depthWrite: false }),
+      new CylinderGeometry(DIM.ballRadius * 0.55, DIM.ballRadius * 0.3, 1, 8, 1, true).translate(0, 0.5, 0).rotateX(Math.PI / 2),
+      new MeshBasicMaterial({ color: 0xfff3dc, transparent: true, opacity: 0.22, blending: AdditiveBlending, depthWrite: false }),
     );
     this.streak.visible = false;
     // broadcast ball tracer: ribbon of the last second of flight
@@ -90,10 +98,10 @@ export class BallView {
     const idx: number[] = [];
     for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     this.trailGeo.setIndex(idx);
-    const tm = new MeshBasicMaterial({ color: 0xffe28a, transparent: true, opacity: 0.85, side: 2, depthWrite: false, blending: AdditiveBlending, vertexColors: false });
+    const tm = new MeshBasicMaterial({ color: 0xffe28a, transparent: true, opacity: 0.55, side: 2, depthWrite: false, blending: AdditiveBlending, vertexColors: false });
     tm.onBeforeCompile = (s) => {
       s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float alpha; varying float vA;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvA = alpha;');
-      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vA;').replace('#include <opaque_fragment>', 'gl_FragColor = vec4(outgoingLight * 2.2, diffuseColor.a * vA);');
+      s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vA;').replace('#include <opaque_fragment>', 'gl_FragColor = vec4(outgoingLight * 1.7, diffuseColor.a * vA);');
     };
     this.trail = new Mesh(this.trailGeo, tm);
     this.trail.frustumCulled = false;
@@ -105,6 +113,7 @@ export class BallView {
 
   /** Use the Blender ball (`ball.glb`, origin at centre, real size). */
   useModel(model: Object3D, env: Environment) {
+    this.model = model;
     this.mesh.visible = false;
     const m = model.clone(true);
     m.traverse((o) => {
@@ -117,10 +126,35 @@ export class BallView {
     this.spin.add(m);
   }
 
+  /** A ball for a hand or glove: a clone of the ball model (or the procedural ball), real size. */
+  makeHandBall(): Object3D {
+    if (this.model) {
+      const m = this.model.clone(true);
+      m.traverse((o) => {
+        const mm = o as Mesh;
+        if (mm.isMesh) mm.castShadow = true;
+      });
+      return m;
+    }
+    const m = new Mesh(this.mesh.geometry, this.mesh.material);
+    m.castShadow = true;
+    return m;
+  }
+
+  /** The ball has just left a hand at `handPos`: fade the difference to the sim's release point out over ~50 ms. */
+  released(handPos: Vector3, simPos: Vector3) {
+    this.pop.copy(handPos).sub(simPos);
+    this.popT = 0.05;
+  }
+
   update(state: GameState, dt: number, camPos: Vector3, showTrail: boolean) {
     const b = state.ball;
-    this.spin.visible = b.visible;
+    this.spin.visible = b.visible && !this.heldByPlayer;
     toScene(b.pos, this.worldPos);
+    if (this.popT > 0) {
+      this.popT = Math.max(0, this.popT - dt);
+      this.worldPos.addScaledVector(this.pop, this.popT / 0.05);
+    }
     this.spin.position.copy(this.worldPos);
     // spin (sim spin is in sim axes; mirror x)
     const w = new Vector3(b.spin.x, b.spin.y, b.spin.z);
@@ -128,17 +162,17 @@ export class BallView {
     if (wl > 1e-3) this.spin.rotateOnWorldAxis(w.divideScalar(wl), wl * dt);
     const sp = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
     // motion streak along velocity (simulated shutter)
-    if (b.visible && sp > 12) {
+    if (b.visible && !this.heldByPlayer && sp > 12) {
       this.streak.visible = true;
       const v = new Vector3(b.vel.x, b.vel.y, b.vel.z);
       const len = Math.min(sp * (1 / 90), 1.6);
       this.streak.position.copy(this.worldPos);
       this.streak.scale.set(1, 1, len);
       this.streak.lookAt(this.worldPos.clone().sub(v));
-      (this.streak.material as MeshBasicMaterial).opacity = Math.min(0.5, (sp - 12) / 60);
+      (this.streak.material as MeshBasicMaterial).opacity = Math.min(0.3, (sp - 12) / 90);
     } else this.streak.visible = false;
     // tracer
-    if (showTrail && b.visible && sp > 10) {
+    if (showTrail && b.visible && !this.heldByPlayer && sp > 10) {
       this.trailOn = Math.min(1, this.trailOn + dt * 6);
       this.trailPts.push(this.worldPos.clone());
       if (this.trailPts.length > 90) this.trailPts.shift();
@@ -164,7 +198,9 @@ export class BallView {
       toCam.copy(camPos).sub(p);
       const dist = toCam.length();
       side.crossVectors(dir, toCam.normalize()).normalize();
-      const width = 0.03 + dist * 0.0014;
+      // about half the old width, tapering to a hairline at the tail; grows with distance so it stays readable on the far cameras
+      const f = i / Math.max(1, n - 1);
+      const width = (0.014 + dist * 0.0007) * (0.2 + 0.8 * Math.pow(f, 0.8));
       pos.setXYZ(i * 2, p.x + side.x * width, p.y + side.y * width, p.z + side.z * width);
       pos.setXYZ(i * 2 + 1, p.x - side.x * width, p.y - side.y * width, p.z - side.z * width);
       const a = i < n ? Math.pow(i / Math.max(1, n - 1), 1.5) : 0;
@@ -299,10 +335,19 @@ export class PlayerManager {
     this.puppets.clear();
   }
 
-  update(state: GameState, dt: number, ball: Vector3, bat: BatView) {
+  /** true while some puppet carries the ball (pitcher before release, a fielder mid-transfer) */
+  ballHeld = false;
+  readonly heldPos = new Vector3();
+  private heldTmp = new Vector3();
+
+  update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
+    this.penv.makeBall = makeBall;
+    this.penv.positions = this.positions;
+    this.ballHeld = false;
     this.penv.ball = state.ball.visible ? ball : null;
     this.penv.batGrip = bat.visible ? bat.grip : null;
     this.penv.time = state.time;
+    (this.penv.ballVel ??= new Vector3()).set(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z);
     this.penv.ballSpeed = state.ball.visible ? Math.hypot(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z) : 0;
     this.used.clear();
     for (const snap of state.players) {
@@ -322,6 +367,13 @@ export class PlayerManager {
         }
       }
       p.update(snap, dt, this.penv);
+      if (p.ballHeld && !this.ballHeld) {
+        const w = p.heldBallWorld?.(this.heldTmp);
+        if (w) {
+          this.ballHeld = true;
+          this.heldPos.copy(w);
+        }
+      }
       let pos = this.positions.get(snap.id);
       if (!pos) this.positions.set(snap.id, (pos = new Vector3()));
       toScene(snap.pos, pos);
