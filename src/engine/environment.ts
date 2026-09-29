@@ -64,7 +64,7 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     sunColor: 0xffa860,
     sunIntensity: 3.0,
     env: 0.7,
-    exposure: 0.55,
+    exposure: 1.2,
     hemi: [0x8aa0d0, 0x40382a, 0.4],
     lightsOn: true,
     sky: { turbidity: 6, rayleigh: 2.2, mie: 0.006, g: 0.9 },
@@ -267,8 +267,10 @@ export class Environment {
     }
   }
 
-  private async applyHdri(name: TimeOfDay) {
+  private async applyHdri(name0: TimeOfDay) {
+    const name: TimeOfDay = name0;
     const token = ++this.hdriToken;
+    if ((name0 as string) === 'night') return; // night keeps the procedural sky + stars (the HDRI options carry unwanted light pollution)
     const h = await this.loadHdri(name);
     if (!h || token !== this.hdriToken) return;
     // rotate the sky so its sun sits on the side of the park we light from
@@ -289,7 +291,7 @@ export class Environment {
     this.scene.environment = this.hdriEnv.texture;
     const t = this.tod;
     this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.9 : 0.35;
-    this.scene.backgroundIntensity = name === 'night' ? 1.0 : 1.0;
+    this.scene.backgroundIntensity = name === 'dusk' ? 0.6 : 1.0;
     if (name !== 'night') {
       this.sunDir.copy(sunDir).normalize();
       this.csm.lightDirection.copy(this.sunDir).negate();

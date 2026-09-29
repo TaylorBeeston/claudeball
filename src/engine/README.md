@@ -34,3 +34,24 @@ interpolates snapshots for rendering, records 30 s of history (used for replays)
 | `hud.ts` | DOM/CSS: scorebug, pitch tracker, name cards, exit velo/LA/distance, ticker, controls |
 | `quality.ts` | presets + adaptive resolution scale |
 | `mockSim.ts` | dev-only mock game with real ball flight and chasing fielders |
+
+## Sky / lighting
+`npm run hdri` downloads two CC0 Poly Haven HDRIs (2K, not committed) into `public/hdri/`: day (partly cloudy) and dusk drive the
+background and image-based lighting; the sun direction is found from the brightest texel, clamped, and used for the cascaded shadow light.
+Without the files (and at night) the procedural `Sky` + stars are used. Exp2 fog gives aerial perspective; stadium lamp banks get glare
+sprites and bloom when lit; camera-pan motion blur and chromatic aberration live in the grade pass.
+
+## Quality presets
+Measured on an RTX 4090 laptop GPU, 1920x1080, headless Chrome (Vulkan), pitch camera, real sim:
+
+| preset | fps | median | p95 | enables |
+|---|---|---|---|---|
+| low | ~100 | ~10 ms | 13 ms | 2 shadow cascades @1024, no AO/bloom/DoF, 25% crowd, DPR 1 |
+| medium | ~75 | 12.4 ms | 17 ms | 3 cascades @2048, half-res GTAO, bloom, grain, 55% crowd |
+| high | ~70 | 13.6 ms | 22 ms | + MSAA 4x, depth of field, 85% crowd, DPR <= 1.5 |
+| ultra | ~65 | 14.7 ms | 32 ms | 4 cascades @4096, full-res GTAO, full crowd, DPR <= 2 |
+
+Adaptive resolution scale (0.55-1.0) drops internal resolution when smoothed frame time > ~19.5 ms and restores it with headroom.
+Wide/follow shots cost ~3 ms more than the pitch camera. Seat/spectator instances are split into azimuth sectors so off-screen stands are culled.
+GPU-enabled headless Chrome flags: `--use-angle=vulkan --enable-features=Vulkan,UseSkiaRenderer --ignore-gpu-blocklist --enable-gpu-rasterization --disable-vulkan-surface`.
+Not measured on a mid-range GPU.
