@@ -10,6 +10,12 @@ export const BODY_X = 0.98; // bat rotation axis, lateral distance from plate ce
 export const PIVOT_Y = 1.05;
 export const PIVOT_Z = 0.05;
 export const BAT_LEN = 0.84;
+// Batter's body: the hands (knob) are held within arm's reach of the shoulders. SHOULDER_* match the rendered batter
+// (BATTER_X = 0.72 m off the plate centre, shoulders ~1.36 m up and ~0.13 m in front of the feet).
+export const SHOULDER_X = 0.72;
+export const SHOULDER_Y = 1.36;
+export const SHOULDER_Z = 0.13;
+export const ARM_REACH = 0.75; // shoulder axis -> knob (arm ~0.66 to the grip, plus a little lean)
 const BAT_MASS = 0.88;
 const BAT_I_CM = 0.05;
 const BAT_S_CM = 0.55;
@@ -60,6 +66,8 @@ export function stanceFor(bats: PlayerInfo['bats'], pitcherThrows: 'L' | 'R'): S
   if (bats === 'S') return pitcherThrows === 'R' ? 'L' : 'R';
   return bats;
 }
+
+export const shoulderFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? SHOULDER_X : -SHOULDER_X, y: SHOULDER_Y, z: SHOULDER_Z });
 
 export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X : -BODY_X, y: PIVOT_Y, z: PIVOT_Z });
 
@@ -292,9 +300,21 @@ export class BatSwing {
     const dd = { x: -se * st * ep + ce * ct * th, y: ce * ep, z: -se * ct * ep - ce * st * th };
     const pv = p.pivot;
     const rh = p.rh;
+    // The rotation axis is a virtual pivot (it lets the bat meet the ball squarely); the hands themselves cannot leave the
+    // batter's reach, so the knob is pulled toward the shoulders when the arc would take it farther out (early in the
+    // swing, long before the ball arrives; at contact the hands are within reach and this is a no-op).
+    const sh = shoulderFor(p.sgn > 0 ? 'R' : 'L');
+    let kx = pv.x + rh * dir.x, ky = pv.y + rh * dir.y, kz = pv.z + rh * dir.z;
+    const dS = Math.hypot(kx - sh.x, ky - sh.y, kz - sh.z);
+    if (dS > ARM_REACH) {
+      const f = ARM_REACH / dS;
+      kx = sh.x + (kx - sh.x) * f;
+      ky = sh.y + (ky - sh.y) * f;
+      kz = sh.z + (kz - sh.z) * f;
+    }
     return {
-      knob: { x: pv.x + rh * dir.x, y: pv.y + rh * dir.y, z: pv.z + rh * dir.z },
-      tip: { x: pv.x + (rh + BAT_LEN) * dir.x, y: pv.y + (rh + BAT_LEN) * dir.y, z: pv.z + (rh + BAT_LEN) * dir.z },
+      knob: { x: kx, y: ky, z: kz },
+      tip: { x: kx + BAT_LEN * dir.x, y: ky + BAT_LEN * dir.y, z: kz + BAT_LEN * dir.z },
       dir,
       velAt: (s: number) => {
         const r = rh + s;
