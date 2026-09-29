@@ -1,4 +1,4 @@
-for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_headwear"): exec(open(CB_SRC + f"/{f}.py").read())
+for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_headwear", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
 import os
 reset_scene()
 arm = build_armature()
@@ -19,7 +19,7 @@ SH["Pants_Long"] = make_shell_cut(body, "Pants_Long", f_pants(.135), "pants", .0
 SH["Socks"] = make_shell_cut(body, "Socks", f_socks, "socks", .005)
 SH["Cleats"] = make_shell_cut(body, "Cleats", f_cleats, "cleats", .011)
 for side, sx in (("L", 1), ("R", -1)): SH["Gear_ArmSleeve_"+side] = make_shell_cut(body, "Gear_ArmSleeve_"+side, f_armsleeve(sx), "undershirt", .0085)   # compression sleeve over the undershirt
-belt_shell = make_shell_cut(body, "Gear_Belt", f_belt, "x", .0195)                               # 4 cm belt band hugging the waist, outside the tucked jersey
+belt_shell = make_shell_cut(body, "Gear_Belt", f_belt, "x", .0255)                               # 4 cm belt band hugging the waist, outside the tucked jersey
 cut_object(body, f_skin_neck); body.name = "Body_Skin"
 # ---------------- head, eyes, hands
 head = build_head(); ears_ = ears()
@@ -36,7 +36,14 @@ handRB = hand_mesh("Right", curl=.4, thumb_tip=(.058, -.040, .085), name="Hand_R
 gear = {}
 def G(name, bone, fn):
     me = bm_from(fn); o = bpy.data.objects.new(name, me); bpy.context.collection.objects.link(o); set_weight(o, arm, bone); gear[name] = o; return o
-G("Gear_Glove", "LeftHand", glove)
+handLO = open_hand("Left", "Hand_L_Open"); set_weight(handLO, arm, "LeftHand")                  # the hand as it sits inside a glove (fingers nearly straight)
+handLOC = handLO.copy(); handLOC.data = handLO.data.copy(); handLOC.name = "Hand_L_Open_Catcher"; bpy.context.collection.objects.link(handLOC)
+add_glove_keys(handLO, "infield"); add_glove_keys(handLOC, "catcher")                                 # the hand inside closes with its glove (no fingertips through the leather)
+GLOVE_POCKET = {}
+for kind_, K_ in KINDS.items():                                                                       # four role gloves built around that hand (hand fully inside, cuff clear of the forearm)
+    g_, pc_ = build_glove(kind_, "Left"); weight_glove(g_); add_glove_keys(g_, kind_)
+    lc_ = glove_laces(g_, kind_); lc_.name = K_["node"] + "_Laces"; copy_weights(lc_, [g_]); add_glove_keys(lc_, kind_)
+    gear[K_["node"]] = g_; gear[K_["node"] + "_Laces"] = lc_; GLOVE_POCKET[kind_] = pc_
 G("Gear_CatcherMask", "Head", cage_mask); G("Gear_ChestProtector", "Spine1", chest_prot)
 G("Gear_ShinGuard_L", "LeftLeg", lambda bm: shin_guard(bm, 1)); G("Gear_ShinGuard_R", "RightLeg", lambda bm: shin_guard(bm, -1))
 G("Gear_Collar", "Spine2", neck_collar)
@@ -76,17 +83,17 @@ def box_uv(o, tile=4.0):
             c = me.vertices[me.loops[li].vertex_index].co
             uvl.data[li].uv = ((c.y, c.z) if ax == 0 else (c.x, c.z) if ax == 1 else (c.x, c.y))
             uvl.data[li].uv = (uvl.data[li].uv[0]*tile, uvl.data[li].uv[1]*tile)
-for o in list(SH.values()) + [body, handL, handR, handRB] + list(gear.values()): box_uv(o)
+for o in list(SH.values()) + [body, handL, handR, handRB, handLO, handLOC] + list(gear.values()): box_uv(o)
 # ---------------- materials + maps
 exec(open(CB_SRC + "/player_mats.py").read())
-ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Hand_L": "skin", "Hand_R": "skin", "Hand_R_Ball": "skin", "Jersey": "uniform_jersey", "Undershirt": "uniform_undershirt",
+ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Hand_L": "skin", "Hand_R": "skin", "Hand_R_Ball": "skin", "Hand_L_Open": "skin", "Hand_L_Open_Catcher": "skin", "Gear_Glove_Outfield": "glove", "Gear_Glove_FirstBase": "glove", "Gear_Glove_Catcher": "glove", "Gear_Glove_Laces": "glove_laces", "Gear_Glove_Outfield_Laces": "glove_laces", "Gear_Glove_FirstBase_Laces": "glove_laces", "Gear_Glove_Catcher_Laces": "glove_laces", "Jersey": "uniform_jersey", "Undershirt": "uniform_undershirt",
           "Jersey_ShortSleeve": "uniform_jersey", "Jersey_Sleeveless": "uniform_jersey", "Pants_Long": "uniform_pants", "Pants": "uniform_pants", "Socks": "uniform_socks", "Cleats": "cleats", "Gear_Cap": "cap", "Gear_Helmet": "helmet", "Gear_Hair": "hair", "Gear_Glove": "glove",
           "Gear_CatcherMask": "catcher_gear", "Gear_ChestProtector": "catcher_gear", "Gear_ShinGuard_L": "catcher_gear", "Gear_ShinGuard_R": "catcher_gear",
           "Gear_Belt": "belt", "Gear_BeltBuckle": "buckle", "Gear_Collar": "uniform_undershirt",
           "Gear_Hair_Buzz": "hair", "Gear_Hair_Curly": "hair", "Gear_Hair_Long": "hair", "Gear_Beard_Full": "hair", "Gear_Mustache": "hair", "Gear_Goatee": "hair", "Gear_Beard_Stubble": "stubble",
           "Gear_EyeBlack": "eyeblack", "Gear_Piping": "piping", "Gear_Buttons": "button", "Gear_BattingGlove_L": "batting_glove", "Gear_BattingGlove_R": "batting_glove",
           "Gear_Wristband_L": "wristband", "Gear_Wristband_R": "wristband", "Gear_ArmSleeve_L": "arm_sleeve", "Gear_ArmSleeve_R": "arm_sleeve", "Gear_Soles": "sole", "Gear_Laces": "laces"}
-allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Hand_L": handL, "Hand_R": handR, "Hand_R_Ball": handRB, **gear}
+allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Hand_L": handL, "Hand_R": handR, "Hand_R_Ball": handRB, "Hand_L_Open": handLO, "Hand_L_Open_Catcher": handLOC, **gear}
 for n, mname in ASSIGN.items():
     o = allobjs[n]; o.data.materials.clear(); o.data.materials.append(MATS[mname])
     if n == "Head":                                        # ears use the skin material slot too? keep single face material (plain uv region)
@@ -143,8 +150,10 @@ ball_pos = wrR + xr*BALL_C[0] + yr*BALL_C[1] + zr*BALL_C[2]
 E_ball = grip_empty("Ball_Grip", "RightHand", frame_matrix(ball_pos, yr, xr))                    # 4-seam: ball symmetry axis (glTF +Y of ball.glb) along the thumb side of the hand
 E_ball2 = grip_empty("Ball_Grip_2Seam", "RightHand", frame_matrix(ball_pos, zr, xr))            # 2-seam: ball turned 90 deg (symmetry axis along the fingers)
 xl, yl, zl = hand_frame("Left"); wrL = JOINTS["LeftHand"][1]
-E_pocket = grip_empty("Glove_Pocket", "LeftHand", frame_matrix(wrL + xl*.05 + zl*.10, Vector((0, 0, 1)), Vector((1, 0, 0))))
-GRIPS = (E_bat, E_ball, E_ball2, E_pocket)
+POCKET = {}                                                                                        # origin = pocket centre (where the ball sits), local +Z(blender)=+Y(glTF) = pocket opening normal (hand-local +x), X hint = along the fingers
+for kind_, K_ in KINDS.items(): POCKET[kind_] = grip_empty(K_["pocket_node"], "LeftHand", frame_matrix(GLOVE_POCKET[kind_], xl, zl))
+E_pocket = POCKET["infield"]
+GRIPS = (E_bat, E_ball, E_ball2) + tuple(POCKET.values())
 
 def preview_clip(name, frames, path_prefix, cams=((2.6, -2.6, 1.3), (0, -3.6, 1.3), (-3.6, 0, 1.3)), tgt=(0, -.2, 1.0), hide=(), props=True, res=(420, 480)):
     exec(open(CB_SRC + "/render_check.py").read(), globals())
@@ -170,40 +179,71 @@ def setc(name, col):
     mix = [n for n in MATS[name].node_tree.nodes if n.type == 'MIX']
     if mix: mix[0].inputs[7].default_value = col
     else: b.inputs["Base Color"].default_value = col
-CORE = ["Body_Skin", "Head", "Eyes", "Hand_L", "Hand_R", "Hand_R_Ball", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_Hair", "Gear_Piping", "Gear_Buttons", "Gear_Soles", "Gear_Laces", "Bat_Grip", "Ball_Grip", "Ball_Grip_2Seam", "Glove_Pocket"]
+CORE = ["Body_Skin", "Head", "Eyes", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_Hair", "Gear_Piping", "Gear_Buttons", "Gear_Soles", "Gear_Laces", "Bat_Grip", "Ball_Grip", "Ball_Grip_2Seam"]
 NUM = ["Gear_Number_Tens", "Gear_Number_Ones"]
 OPT = ["Jersey_ShortSleeve", "Jersey_Sleeveless", "Pants_Long", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long", "Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee",
        "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R"]                               # optional variants: only in player_base.glb
-HOME = dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), uniform_undershirt=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1), belt=(.02, .02, .02, 1))
+HOME = dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), uniform_undershirt=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1), belt=(.02, .02, .02, 1), piping=(.05, .08, .3, 1))
+AWAY = dict(HOME, uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), uniform_undershirt=(.5, .03, .03, 1), cap=(.5, .03, .03, 1), piping=(.5, .03, .03, 1))
+NAVY = dict(HOME, uniform_jersey=(.015, .03, .10, 1), uniform_pants=(.02, .035, .09, 1), uniform_socks=(.01, .015, .04, 1), uniform_undershirt=(.015, .03, .10, 1), cap=(.012, .022, .07, 1), helmet=(.012, .022, .07, 1), belt=(.01, .01, .012, 1), piping=(.015, .03, .10, 1), catcher_gear=(.015, .025, .08, 1))
+CATCH = ["Gear_Helmet", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"]
+# name: (colours, extra nodes, glove kind (None / role / "ALL"), right hand (fist / claw), left hand (fist / open))
 VARIANTS = {
- "player_base": (HOME, ["Gear_Cap", "Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"] + NUM + OPT),
- "player_home": (HOME, ["Gear_Cap", "Gear_Glove"] + NUM),
- "player_away": (dict(HOME, uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), uniform_undershirt=(.5, .03, .03, 1), cap=(.5, .03, .03, 1)), ["Gear_Cap", "Gear_Glove"] + NUM),
- "player_batter": (HOME, ["Gear_Helmet", "Gear_BattingGlove_L", "Gear_BattingGlove_R"] + NUM),
- "player_catcher": (HOME, ["Gear_Helmet", "Gear_Glove", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"] + NUM),
- "player_umpire": (dict(HOME, uniform_jersey=(.03, .03, .035, 1), uniform_pants=(.22, .23, .25, 1), uniform_socks=(.02, .02, .02, 1), uniform_undershirt=(.03, .03, .035, 1), cap=(.02, .02, .02, 1), helmet=(.02, .02, .02, 1)), ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector"]),
+ "player_base":     (HOME, ["Gear_Cap"] + CATCH + NUM + OPT, "ALL", "both", "both"),
+ "player_home":     (HOME, ["Gear_Cap"] + NUM, "infield", "claw", "open"),
+ "player_away":     (AWAY, ["Gear_Cap"] + NUM, "infield", "claw", "open"),
+ "player_home_of":  (HOME, ["Gear_Cap"] + NUM, "outfield", "claw", "open"),
+ "player_away_of":  (AWAY, ["Gear_Cap"] + NUM, "outfield", "claw", "open"),
+ "player_home_1b":  (HOME, ["Gear_Cap"] + NUM, "firstbase", "claw", "open"),
+ "player_away_1b":  (AWAY, ["Gear_Cap"] + NUM, "firstbase", "claw", "open"),
+ "player_batter":   (HOME, ["Gear_Helmet", "Gear_BattingGlove_L", "Gear_BattingGlove_R"] + NUM, None, "fist", "fist"),
+ "player_catcher":  (HOME, CATCH + NUM, "catcher", "claw", "open"),
+ "player_umpire":   (NAVY, ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"], None, "fist", "fist"),
+ "player_umpire_base": (NAVY, ["Gear_Cap"], None, "fist", "fist"),
 }
 os.makedirs(ROOT+"/players", exist_ok=True); info = {}
 arm.animation_data.action = ACTS["idle"]
-allnodes = {**allobjs, **gear, "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, "Glove_Pocket": E_pocket}
-for vn, (cols, gl) in VARIANTS.items():
+allnodes = {**allobjs, **gear, "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, **{K_["pocket_node"]: POCKET[k_] for k_, K_ in KINDS.items()}}
+GLOVE_NODES = {k_: (gear[K_["node"]], gear[K_["node"] + "_Laces"], POCKET[k_]) for k_, K_ in KINDS.items()}
+GROUPS["accessory"] = tuple(n for n in GROUPS["accessory"] if n != "Gear_Glove") + tuple(K_["node"] for K_ in KINDS.values()) + tuple(K_["node"] + "_Laces" for K_ in KINDS.values())
+GROUPS["hand"] = ("Hand_L", "Hand_L_Open", "Hand_R", "Hand_R_Ball")
+for vn, (cols, gl, gkind, rhand, lhand) in VARIANTS.items():
     for k, c in cols.items(): setc(k, c)
-    bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl]
-    claw = vn in ("player_home", "player_away", "player_catcher", "player_umpire")     # these files export the relaxed claw hand under the name Hand_R (ball-ready); fist in batter/base
-    if claw:
-        sel = [o for o in sel if o not in (handR, handRB)] + [handRB]; handR.name = "Hand_R_fist_tmp"; handRB.name = "Hand_R"
-    if vn == "player_batter": sel = [o for o in sel if o is not handRB]                          # batter: fist hand only (no claw)
-    for o in sel: o.select_set(True)
-    dflt = set(CORE + gl) - set(OPT) if vn != "player_base" else set(CORE + ["Gear_Cap", "Gear_Glove"] + NUM)
+    bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl]; renames = []
+    def rn(o, new): renames.append((o, o.name)); o.name = new
+    dflt = set(CORE + gl) - set(OPT) if vn != "player_base" else set(CORE + ["Gear_Cap"] + NUM)
     if vn == "player_batter": dflt |= {"Gear_BattingGlove_L", "Gear_BattingGlove_R"}
-    dflt.discard("Hand_R_Ball")
-    for nm_, o in allnodes.items():
-        grp = next((g for g, names in GROUPS.items() if nm_ in names), "body"); o["cb_group"] = grp; o["cb_default"] = int(nm_ in dflt)
-    if claw: handRB["cb_default"] = 1
+    # gloves: one role glove exported under the canonical names (Gear_Glove / Gear_Glove_Laces / Glove_Pocket); the base file carries all four under their own names
+    if gkind == "ALL":
+        for k_ in KINDS: sel += list(GLOVE_NODES[k_])
+        dflt |= {"Gear_Glove", "Gear_Glove_Laces", "Glove_Pocket"}
+    elif gkind:
+        g_, l_, p_ = GLOVE_NODES[gkind]
+        if gkind != "infield":
+            rn(gear["Gear_Glove"], "Gear_Glove__tmp"); rn(gear["Gear_Glove_Laces"], "Gear_Glove_Laces__tmp"); rn(E_pocket, "Glove_Pocket__tmp")
+            rn(g_, "Gear_Glove"); rn(l_, "Gear_Glove_Laces"); rn(p_, "Glove_Pocket")
+        sel += [g_, l_, p_]; dflt |= {"Gear_Glove", "Gear_Glove_Laces", "Glove_Pocket"}
+    # hands: Hand_R = fist (bat) or claw (ball) - never both visible by default; Hand_L = fist or the open hand that lives inside the glove
+    if rhand in ("fist", "both"): sel.append(handR)
+    if rhand == "claw": rn(handR, "Hand_R_fist_tmp"); rn(handRB, "Hand_R"); sel.append(handRB); dflt |= {"Hand_R"}
+    if rhand == "both": sel.append(handRB)
+    if lhand in ("fist", "both"): sel.append(handL)
+    ho = handLOC if gkind == "catcher" else handLO
+    if lhand == "open": rn(handL, "Hand_L_fist_tmp"); rn(ho, "Hand_L"); sel.append(ho); dflt |= {"Hand_L"}
+    if lhand == "both": sel.append(handLO)
+    dflt |= {"Hand_L", "Hand_R"} if vn == "player_base" else set()
+    for o in sel:
+        if o.type != 'ARMATURE': o.select_set(True)
+    arm.select_set(True)
+    for o in sel:
+        if o is arm: continue
+        grp = next((g for g, names in GROUPS.items() if o.name in names), "body"); o["cb_group"] = grp; o["cb_default"] = int(o.name in dflt)
+    if rhand == "both": handRB["cb_default"] = 0
+    if lhand == "both": handLO["cb_default"] = 0
     bpy.context.view_layer.objects.active = arm
     bpy.ops.export_scene.gltf(filepath=ROOT+f"/players/{vn}.glb", use_selection=True, export_format='GLB', export_yup=True, export_image_format='JPEG',
         export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False,
         export_vertex_color='NONE', export_extras=True, export_morph=True)
-    if claw: handRB.name = "Hand_R_Ball"; handR.name = "Hand_R"
+    for o, old in reversed(renames): o.name = old
     info[vn] = os.path.getsize(ROOT+f"/players/{vn}.glb")//1024
 result = {"kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values()), "fit": FIT}
