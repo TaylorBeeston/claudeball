@@ -13,6 +13,7 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   'pitchai.ts': { count: 14, why: 'AI mixed strategy for pitch selection / location (aiRng): a decision, not an outcome' },
   'manager.ts': { count: 4, why: 'AI mixed strategy for intentional walk / bunt (aiRng)' },
   'running.ts': { count: 1, why: 'AI pickoff mixed strategy (aiRng)' },
+  'handling.ts': { count: 2, why: 'AI casual behaviour: whether the infield tosses the ball around after an out with nobody on (aiRng)' },
   'batting.ts': { count: 1, why: 'perception: does the batter recognise the pitch type (noise in what he sees, not what happens)' },
   'pitching.ts': { count: 1, why: 'release lapse: a heavy tail on the pitcher\'s command noise; the pitch\'s flight and result still come from physics' },
   'flow.ts': { count: 2, why: 'direction / speed the ball squirts off the catcher\'s block (physical scatter)' },

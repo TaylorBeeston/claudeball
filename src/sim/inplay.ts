@@ -1,4 +1,5 @@
 import { stepBall } from './ball';
+import { tickBallReturn } from './handling';
 import { pickoffRunnerReaction, pickoffSeconds } from './attributes';
 import type { ContactResult } from './batting';
 import { emit } from './events';
@@ -54,6 +55,7 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   w.play = play;
   w.phase = 'inPlay';
   w.ball.lob = null;
+  w.ret = null;
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
@@ -268,7 +270,8 @@ export function tickInPlay(w: World): void {
   if (w.swing && !w.swing.done && w.swingStarted) w.swing.advance(TICK);
 
   // ball
-  if (ball.lob) flow.tickLob(w);
+  if (w.ret) tickBallReturn(w);
+  else if (ball.lob) flow.tickLob(w);
   else if (ball.holder) flow.ballFollowsHolder(w);
   else if (ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown') stepLiveBall(w);
 
@@ -571,7 +574,6 @@ export function finishPlay(w: World): void {
     flow.resetBatterToBox(w);
     flow.readyNextPitch(w, 2.4);
     w.ball.mode = 'dead';
-    returnBallToPitcher(w);
     return;
   }
   if (play.kind === 'battedBall') rules.resolveBattedBall(w);
@@ -590,7 +592,6 @@ export function finishPlay(w: World): void {
   w.walkOffPending = false;
   fixupRunners(w);
   resetFielders(w);
-  returnBallToPitcher(w);
   rules.toPlayOver(w);
 }
 
@@ -620,19 +621,6 @@ function resetFielders(w: World): void {
     F.plan.releaseAt = 0;
     F.hasBall = F === w.ball.holder;
   }
-}
-
-/** The fielder holding the ball tosses it back to the pitcher. */
-function returnBallToPitcher(w: World): void {
-  const ball = w.ball;
-  const P = w.pitcher;
-  if (ball.holder === P) return;
-  if (ball.holder) {
-    const from = ball.holder;
-    ball.lob = { from, to: P, start: w.tick, dur: secToTicks(Math.max(0.5, Math.hypot(from.x - P.x, from.z - P.z) / 28)) };
-    return;
-  }
-  giveBall(w, P);
 }
 
 export { DUGOUT, MOUND_DIST, fenceAt, releaseBall };
