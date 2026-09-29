@@ -5,7 +5,7 @@ import type { StrikeZone } from './pitching';
 import type { PitchSpec, PitchType } from './types';
 import type { PlayerRT, World } from './world';
 
-const FASTBALLS: PitchType[] = ['FF', 'SI', 'FC'];
+const FASTBALLS: PitchType[] = ['FF', 'FT', 'SI', 'FC'];
 const BREAKING: PitchType[] = ['SL', 'CU', 'SW'];
 const isFB = (t: PitchType) => FASTBALLS.includes(t);
 const isBrk = (t: PitchType) => BREAKING.includes(t);
