@@ -6,15 +6,18 @@
  *  base   – low camera near the base a throw is heading to
  *  replay – last play from a second angle in slow motion (from recorded sim history)
  *  cutaway– crowd / dugout / wide stadium shots between half-innings
+ *  action – high-home camera framing the ball, the fielder / throw target and every runner in motion
+ *  hrwall / trot / homeplate – home-run sequence: ball leaving over the wall, crowd reaction, batter tracked leg by leg around
+ *                the bases, celebration at the plate, then a slow-motion replay from a second angle
  */
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
-import type { GameState } from './types';
+import type { GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
-export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide';
+export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate';
 
 interface Desired {
   pos: Vector3;
@@ -67,12 +70,19 @@ export class CameraDirector {
   private cutawayIdx = 0;
   private cutawayUntil = 0;
   private cutaway: 'crowd' | 'wide' | 'dugout' = 'wide';
-  private replay: { frames: GameState[]; t: number; end: number; variant: 'infield' | 'outfield'; until: number } | null = null;
+  private replay: { frames: GameState[]; t: number; end: number; variant: 'infield' | 'outfield' | 'hr'; until: number; cam: Vector3 | null } | null = null;
   private lastEventText = '';
   private lastCutFrame = false;
   private events: TimedEvent[] = [];
   private shotSeq = 0;
   private lastWindup = -99;
+  private throwClock = -99;
+  private crowdPick = -1;
+  private actionQuiet = 0;
+  private legIdx = -1;
+  private legSince = 0;
+  /** home-run sequence state (null when there is none) */
+  private hr: { batterId: string; stage: 'wall' | 'crowd' | 'trot' | 'home' | 'replay'; t: number; contactSimT: number; simT: number; pos: Vector3; dir: Vector3; side: number; still: number } | null = null;
 
   constructor(
     private camera: PerspectiveCamera,
@@ -105,6 +115,10 @@ export class CameraDirector {
   }
 
   private cut(s: ShotName) {
+    if (s === 'trot') {
+      this.legIdx = -1;
+      this.legSince = this.clock;
+    }
     this.shot = s;
     this.shotStart = this.clock;
     this.lastCutFrame = true;
@@ -116,12 +130,14 @@ export class CameraDirector {
     if (this.sim.skipping) return;
     switch (e.type) {
       case 'pitch':
+        this.hr = null;
         this.replay = null;
         this.inPlay = false;
         this.pendingReplay = false;
         this.cut('pitch');
         break;
       case 'contact':
+        this.hr = null;
         this.inPlay = true;
         this.playStart = te.simTime;
         this.ballFar = 0;
@@ -146,6 +162,7 @@ export class CameraDirector {
         break;
       case 'throw': {
         this.thrown = true;
+        this.throwClock = this.clock;
         const t = toScene(e.target);
         this.baseTarget.copy(t);
         this.cut('base');
@@ -155,13 +172,38 @@ export class CameraDirector {
       case 'foul':
         this.holdUntil = this.clock + 1.6;
         break;
+      case 'homerun': {
+        // the ball just cleared the fence: show it leaving, then the crowd, then the trot (see updateHr)
+        const b = live.ball.pos;
+        const fence = e.pos ?? b;
+        const pos = toScene(fence, new Vector3());
+        const dir = new Vector3(pos.x, 0, pos.z);
+        if (dir.lengthSq() < 1) dir.set(0, 0, 1);
+        dir.normalize();
+        this.hr = { batterId: e.batterId, stage: 'wall', t: this.clock, contactSimT: this.playStart, simT: te.simTime, pos, dir, side: dir.x >= 0 ? -1 : 1, still: 0 };
+        this.inPlay = true;
+        this.pendingReplay = false;
+        this.holdUntil = 0;
+        this.ballSm.copy(pos);
+        this.cut('hrwall');
+        break;
+      }
+      case 'wall_leap':
+        if (this.inPlay && !this.hr) {
+          this.fielderId = e.playerId;
+          this.cut('fielder');
+          this.holdUntil = this.clock + 2.4;
+        }
+        break;
       case 'out':
       case 'run':
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
         this.playEnd = te.simTime;
-        if (this.inPlay) this.pendingReplay = true;
+        if (this.inPlay && !this.hr) this.pendingReplay = true;
         break;
       case 'half_inning':
+        this.hr = null;
+        this.crowdPick = -1;
         this.cutawayIdx = (this.cutawayIdx + 1) % 3;
         this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
         this.cutawayUntil = this.clock + 5.5;
@@ -187,8 +229,10 @@ export class CameraDirector {
     const pit = live.players.find((p) => p.role === 'pitcher');
     if (pit?.anim === 'windup' && live.time - this.lastWindup > 2) {
       this.lastWindup = live.time;
-      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide') {
+      const hrBusy = this.hr && this.hr.stage !== 'home' && this.hr.stage !== 'replay';
+      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide' && !hrBusy) {
         this.inPlay = false;
+        this.hr = null;
         this.cut('pitch');
       }
     }
@@ -204,33 +248,40 @@ export class CameraDirector {
     }
 
     // ---- transitions driven by state -----------------------------------------------------
-    if (this.inPlay) {
+    if (this.hr) this.updateHr(live, dt);
+    else if (this.inPlay) {
       const b = live.ball;
       this.ballFar = Math.max(this.ballFar, Math.hypot(b.pos.x, b.pos.z));
       const speed = Math.hypot(b.vel.x, b.vel.y, b.vel.z);
+      const running = this.runnersInMotion(live).length > 0;
       if (this.shot === 'follow') {
         const settled = b.pos.y < 0.6 && speed < 6;
         const heldByPlayer = live.players.some((p) => Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z) < 0.7 && b.pos.y > 0.8 && speed < 1);
         if ((settled || heldByPlayer) && this.clock - this.shotStart > 1.0) {
           this.fielderId = this.nearestFielder(live);
-          if (this.fielderId) this.cut('fielder');
+          // runners on the move: frame the whole play rather than one fielder
+          if (running) this.enterAction();
+          else if (this.fielderId) this.cut('fielder');
           this.holdUntil = this.clock + 1.6;
         }
-        // home run: stay on the ball; cut to crowd afterwards
       }
-    }
-    if (this.inPlay && this.holdUntil && this.clock > this.holdUntil && (this.shot === 'base' || this.shot === 'fielder')) {
-      this.holdUntil = 0;
-      const canReplay = this.replaysEnabled && this.pendingReplay && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live);
-      if (canReplay) this.cut('replay');
-      else {
-        this.inPlay = false;
-        this.cut('pitch');
+      if (this.holdUntil && this.clock > this.holdUntil && (this.shot === 'base' || this.shot === 'fielder')) {
+        this.holdUntil = 0;
+        if (running) this.enterAction();
+        else this.endPlay(live);
       }
-    }
-    if (this.inPlay && this.shot === 'follow' && this.clock - this.shotStart > 9) {
-      this.inPlay = false;
-      this.cut('pitch');
+      if (this.shot === 'follow' && this.clock - this.shotStart > 9) {
+        if (running) this.enterAction();
+        else {
+          this.inPlay = false;
+          this.cut('pitch');
+        }
+      }
+      if (this.shot === 'action') {
+        // stay with the play while anybody is running; leave once it is quiet (or after a long time)
+        this.actionQuiet = running || this.thrown && this.clock - this.throwClock < 2.5 ? 0 : this.actionQuiet + dt;
+        if (this.actionQuiet > 1.4 || this.clock - this.shotStart > 26) this.endPlay(live);
+      }
     }
     if (this.shot === 'cutaway' && this.clock > this.cutawayUntil) this.cut('pitch');
     if (this.shot === 'wide' && this.clock - this.shotStart > 8 && !live.over) this.cut('pitch');
@@ -242,6 +293,7 @@ export class CameraDirector {
       if (r.t >= r.end - 1) {
         this.replay = null;
         this.inPlay = false;
+        this.hr = null;
         this.pendingReplay = false;
         this.cut('pitch');
       } else {
@@ -258,6 +310,88 @@ export class CameraDirector {
     return { renderState: rs, focus, aperture: this.des.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: label === 'REPLAY' };
   }
 
+  /** Runners / the batter-runner that are actually moving (ball in play). */
+  private runnersInMotion(s: GameState): PlayerSnap[] {
+    return s.players.filter(
+      (p) => (p.role === 'runner' || p.role === 'batter') && p.team >= 0 && Math.hypot(p.vel.x, p.vel.z) > 1.5 && (p.anim === 'run' || p.anim === 'trot' || p.anim === 'run_turn' || p.anim === 'slide'),
+    );
+  }
+
+  private enterAction() {
+    if (this.shot === 'action') return;
+    this.actionQuiet = 0;
+    this.cut('action');
+  }
+
+  /** The play is over: replay it if that was wanted and possible, otherwise back to the pitcher. */
+  private endPlay(live: GameState) {
+    const canReplay = this.replaysEnabled && this.pendingReplay && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live);
+    if (canReplay) this.cut('replay');
+    else {
+      this.inPlay = false;
+      this.cut('pitch');
+    }
+  }
+
+  /** Home-run sequence: wall (ball leaving) → crowd → trot around the bases → celebration at the plate → replay. */
+  private updateHr(live: GameState, dt: number) {
+    const h = this.hr!;
+    const st = this.clock - h.t;
+    const next = (stage: NonNullable<typeof this.hr>['stage'], shot: ShotName) => {
+      h.stage = stage;
+      h.t = this.clock;
+      h.still = 0;
+      this.cut(shot);
+    };
+    const runner = live.players.find((p) => p.id === h.batterId);
+    switch (h.stage) {
+      case 'wall':
+        if (st > 2.2) {
+          const cs = this.stadium.crowdShots;
+          if (cs.length) {
+            // the crowd section nearest to where the ball left the park
+            let best = 0, bd = 1e9;
+            cs.forEach((c, i) => {
+              const d = Math.hypot(c.pos.x - h.pos.x, c.pos.z - h.pos.z);
+              if (d < bd) { bd = d; best = i; }
+            });
+            this.crowdPick = best;
+            this.cutaway = 'crowd';
+            this.cutawayUntil = Infinity;
+            next('crowd', 'cutaway');
+          } else next('trot', 'trot');
+        }
+        break;
+      case 'crowd':
+        if (st > 2.8) next('trot', 'trot');
+        break;
+      case 'trot': {
+        const nearHome = !!runner && Math.hypot(runner.pos.x, runner.pos.z) < 9 && runner.pos.z < 12 && this.clock - this.shotStart > 3;
+        if (nearHome || !runner || st > 60) next('home', 'homeplate');
+        break;
+      }
+      case 'home': {
+        const calm = !runner || Math.hypot(runner.vel.x, runner.vel.z) < 0.6 || runner.anim === 'celebrate';
+        h.still = calm ? h.still + dt : 0;
+        if (h.still > 2.6 || st > 9) {
+          this.pendingReplay = true;
+          if (this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live, true)) {
+            h.stage = 'replay';
+            h.t = this.clock;
+            this.cut('replay');
+          } else {
+            this.hr = null;
+            this.inPlay = false;
+            this.cut('pitch');
+          }
+        }
+        break;
+      }
+      case 'replay':
+        break;
+    }
+  }
+
   private nearestFielder(s: GameState): string | null {
     let best: string | null = null;
     let bd = 1e9;
@@ -272,18 +406,27 @@ export class CameraDirector {
     return best;
   }
 
-  private startReplay(live: GameState): boolean {
+  private startReplay(live: GameState, homeRun = false): boolean {
     const hist = this.sim.history;
     if (hist.length < 30) return false;
-    const t0 = this.playStart - 0.8;
-    const t1 = Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5);
+    const h = this.hr;
+    const t0 = (homeRun && h ? h.contactSimT : this.playStart) - 0.8;
+    const t1 = homeRun && h ? h.simT + 2.6 : Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5);
     let i0 = hist.findIndex((s) => s.time >= t0);
     if (i0 < 0) return false;
     let i1 = hist.length - 1;
     for (let i = hist.length - 1; i >= 0; i--) if (hist[i].time <= t1) { i1 = i; break; }
     if (i1 - i0 < 30) return false;
     const frames = hist.slice(i0, i1 + 1);
-    this.replay = { frames, t: 0, end: frames.length, variant: this.ballFar > 55 ? 'outfield' : 'infield', until: 0 };
+    let cam: Vector3 | null = null;
+    if (homeRun && h) {
+      // second angle: from across the field, low and wide of the flight line, looking at the ball all the way out
+      const mid = new Vector3(h.pos.x * 0.5, 0, h.pos.z * 0.5);
+      const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(h.side);
+      cam = mid.addScaledVector(perp, 46).setY(7.5);
+    }
+    this.replay = { frames, t: 0, end: frames.length, variant: homeRun ? 'hr' : this.ballFar > 55 ? 'outfield' : 'infield', until: 0, cam };
+    this.ballSm.copy(toScene(frames[0].ball.pos)); // the replay camera starts on the ball at contact, not where the live shot left it
     void live;
     return true;
   }
@@ -373,7 +516,8 @@ export class CameraDirector {
       }
       case 'replay': {
         const inf = this.replay?.variant === 'infield';
-        if (inf) d.pos.set(-40, 4.2, 30);
+        if (this.replay?.cam) d.pos.copy(this.replay.cam);
+        else if (inf) d.pos.set(-40, 4.2, 30);
         else d.pos.set(40, 6.5, 44);
         const want = ball.clone();
         this.ballSm.lerp(want, 1 - Math.exp(-dt * 5));
@@ -386,10 +530,115 @@ export class CameraDirector {
         this.focusTarget.copy(this.ballSm);
         break;
       }
+      case 'action': {
+        // frame the ball, the fielder with it / the throw target, and every runner in motion from the high-home camera
+        const pts: Vector3[] = [];
+        const runners = this.runnersInMotion(rs);
+        for (const r of runners) pts.push(toScene(r.pos, new Vector3()).setY(1));
+        if (rs.ball.visible && rs.ball.pos.y < 40) pts.push(ball.clone().setY(Math.max(0.5, Math.min(ball.y, 8))));
+        if (this.fielderId) {
+          const fp = players.get(this.fielderId);
+          if (fp) pts.push(fp.clone().setY(1));
+        }
+        if (this.thrown && this.clock - this.throwClock < 3) pts.push(this.baseTarget.clone().setY(1));
+        if (!pts.length) pts.push(ball);
+        const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+        d.pos.set(cx * 0.25, 19, -27);
+        let azMin = 9, azMax = -9, elMin = 9, elMax = -9, dsum = 0;
+        for (const p of pts) {
+          const dx = p.x - d.pos.x, dz = p.z - d.pos.z, dy = p.y - d.pos.y;
+          const hd = Math.hypot(dx, dz);
+          const az = Math.atan2(dx, dz), el = Math.atan2(dy, hd);
+          azMin = Math.min(azMin, az); azMax = Math.max(azMax, az);
+          elMin = Math.min(elMin, el); elMax = Math.max(elMax, el);
+          dsum += Math.hypot(hd, dy);
+        }
+        const azC = (azMin + azMax) / 2, elC = (elMin + elMax) / 2, dist = dsum / pts.length;
+        d.tgt.set(d.pos.x + Math.sin(azC) * Math.cos(elC) * dist, d.pos.y + Math.sin(elC) * dist, d.pos.z + Math.cos(azC) * Math.cos(elC) * dist);
+        const needV = (elMax - elMin) * 1.4 + 0.16;
+        const needH = ((azMax - azMin) * 1.4 + 0.2) / this.camera.aspect;
+        d.fov = MathUtils.clamp(MathUtils.radToDeg(Math.max(needV, needH)), 16, 55);
+        d.focus = dist;
+        d.aperture = 0.1;
+        d.lp = 2; d.lt = 3.5; d.lf = 2;
+        this.focusTarget.copy(d.tgt);
+        break;
+      }
+      case 'hrwall': {
+        // ball leaving the park, seen in profile from just inside the fence; keep it framed as it flies into the seats
+        const h = this.hr;
+        if (h) {
+          const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(h.side);
+          d.pos.copy(h.pos).addScaledVector(perp, 26).addScaledVector(h.dir, -12).setY(5.5);
+          this.ballSm.lerp(ball, 1 - Math.exp(-dt * 10));
+          d.tgt.copy(this.ballSm);
+          const dist = d.pos.distanceTo(d.tgt);
+          d.fov = MathUtils.clamp(this.tele(34, dist), 9, 36);
+          d.focus = dist;
+        }
+        d.aperture = 0.25;
+        d.lp = 20; d.lt = 9; d.lf = 3;
+        this.focusTarget.copy(this.ballSm);
+        break;
+      }
+      case 'trot': {
+        // batter tracked around the bases: a low camera outside the diamond on the side of the current leg
+        const h = this.hr;
+        const r = h && rs.players.find((p) => p.id === h.batterId);
+        const rp = r ? toScene(r.pos, new Vector3()) : new Vector3(0, 0, 0);
+        const path = [new Vector3(0, 0, 0), new Vector3(BASES[0].x, 0, BASES[0].z), new Vector3(BASES[1].x, 0, BASES[1].z), new Vector3(BASES[2].x, 0, BASES[2].z)];
+        const dists = path.map((a, i) => {
+          const b = path[(i + 1) % 4];
+          const ab = b.clone().sub(a);
+          const t = MathUtils.clamp(rp.clone().sub(a).dot(ab) / ab.lengthSq(), 0, 1);
+          return a.clone().addScaledVector(ab, t).distanceTo(rp);
+        });
+        let leg = dists.indexOf(Math.min(...dists));
+        // stay on the current leg's camera until another leg is clearly closer (no flicker at the bags)
+        if (this.legIdx >= 0 && dists[this.legIdx] <= dists[leg] + 2.5) leg = this.legIdx;
+        if (this.legIdx < 0) {
+          this.legIdx = leg;
+          this.legSince = this.clock;
+        } else if (leg !== this.legIdx && this.clock - this.legSince > 1.2) {
+          this.legIdx = leg;
+          this.legSince = this.clock;
+          this.lastCutFrame = true; // hard cut to the next leg's camera
+        }
+        const a = path[this.legIdx], b = path[(this.legIdx + 1) % 4];
+        const mid = a.clone().add(b).multiplyScalar(0.5);
+        const centre = new Vector3(0, 0, 19.4);
+        const n = new Vector3(-(b.z - a.z), 0, b.x - a.x).normalize();
+        if (n.dot(mid.clone().sub(centre)) < 0) n.negate();
+        d.pos.copy(mid).addScaledVector(n, 17).setY(3.0);
+        const lead = r ? new Vector3(r.vel.x, 0, r.vel.z).multiplyScalar(0.5) : new Vector3();
+        d.tgt.copy(rp).add(lead).setY(1.15);
+        const dist = d.pos.distanceTo(d.tgt);
+        d.fov = MathUtils.clamp(this.tele(12, dist), 8, 40);
+        d.focus = dist;
+        d.aperture = 0.7;
+        d.lp = 3; d.lt = 6; d.lf = 3;
+        this.focusTarget.copy(d.tgt);
+        break;
+      }
+      case 'homeplate': {
+        // the plate: batter arriving, teammates gathering
+        const h = this.hr;
+        const r = h && rs.players.find((p) => p.id === h.batterId);
+        const rp = r ? toScene(r.pos, new Vector3()) : new Vector3(0, 0, 0);
+        d.pos.set(-8.5, 1.7, 6.5);
+        d.tgt.set(rp.x * 0.6, 1.25, Math.max(0.3, rp.z * 0.6));
+        const dist = d.pos.distanceTo(d.tgt);
+        d.fov = MathUtils.clamp(this.tele(8, dist), 12, 40);
+        d.focus = dist;
+        d.aperture = 0.8;
+        d.lp = 4; d.lt = 5; d.lf = 3;
+        this.focusTarget.copy(d.tgt);
+        break;
+      }
       case 'cutaway': {
         const cs = this.stadium.crowdShots;
         if (this.cutaway === 'crowd') {
-          const s = cs[this.shotSeq % cs.length];
+          const s = cs[this.crowdPick >= 0 ? this.crowdPick : this.shotSeq % cs.length];
           const t = this.clock - this.shotStart;
           d.pos.copy(s.pos).x += Math.sin(t * 0.2) * 1.0;
           d.tgt.copy(s.target);

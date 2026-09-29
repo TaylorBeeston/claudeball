@@ -43,7 +43,7 @@ const POS_ROLE: Record<string, PlayerRole> = {
   P: 'pitcher', C: 'catcher', '1B': 'first', '2B': 'second', '3B': 'third', SS: 'short', LF: 'left', CF: 'center', RF: 'right', DH: 'first',
 };
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
-const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8 };
+const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2 };
 
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
@@ -75,6 +75,8 @@ export class RealSimAdapter implements GameLike {
   private lastCallTime = -1;
   private last: GameState | null = null;
   private names = new Map<string, string>();
+  /** the sim stops the ball where it crosses the fence; the renderer lets it fly on into the seats (visual only, the outcome is decided) */
+  private carry: { t0: number; p: V; v: V; landedAt: number } | null = null;
 
   constructor(private g: RealGame) {
     g.on('*', (e) => this.onEvent(e));
@@ -130,8 +132,19 @@ export class RealSimAdapter implements GameLike {
       case 'runScored':
         this.emit({ type: 'run', playerId: String(e.playerId), text: `${this.who(e.playerId)} scores.` });
         break;
-      case 'homeRun':
+      case 'homeRun': {
+        const v = s?.ball.vel;
+        const p = (e.pos as V | undefined) ?? s?.ball.pos;
+        if (p && v) this.carry = { t0: Number(e.time), p: { ...p }, v: { ...v }, landedAt: -1 };
+        this.emit({ type: 'homerun', batterId: String(e.batterId), distance: Number(e.distance), pos: e.pos as V | undefined });
         this.emit({ type: 'run', playerId: String(e.batterId), text: `HOME RUN! ${this.who(e.batterId)} — ${Math.round(Number(e.distance) * 3.28084)} ft.` });
+        break;
+      }
+      case 'baseTouch':
+        this.emit({ type: 'base_touch', playerId: String(e.playerId), base: Number(e.base), trot: !!e.trot, pos: e.pos as V | undefined });
+        break;
+      case 'wallLeap':
+        this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
       case 'walk':
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
@@ -156,6 +169,30 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'game_end', winner: e.winner as 'home' | 'away' });
         break;
     }
+  }
+
+  /** Ballistic flight (gravity + light drag) from the fence crossing while the sim's ball sits frozen there. */
+  private applyCarry(st: GameState, simBall: V) {
+    const c = this.carry!;
+    const dt = st.time - c.t0;
+    const frozen = Math.hypot(simBall.x - c.p.x, simBall.y - c.p.y, simBall.z - c.p.z) < 0.5;
+    if (!frozen || dt < 0 || dt > 12) {
+      this.carry = null;
+      return;
+    }
+    const k = Math.exp(-0.05 * dt);
+    const y = c.p.y + c.v.y * dt - 4.905 * dt * dt;
+    let land = c.landedAt;
+    if (land < 0 && y <= 0.1) land = this.carry!.landedAt = dt;
+    const t = land >= 0 ? land : dt;
+    const yy = land >= 0 ? 0.1 : y;
+    const vy = c.v.y - 9.81 * t;
+    st.ball = {
+      ...st.ball,
+      pos: { x: c.p.x + c.v.x * t * (1 + k) * 0.5, y: yy, z: c.p.z + c.v.z * t * (1 + k) * 0.5 },
+      vel: land >= 0 ? { x: 0, y: 0, z: 0 } : { x: c.v.x * k, y: vy, z: c.v.z * k },
+      visible: land < 0 || dt - land < 1.5,
+    };
   }
 
   getState(): GameState {
@@ -202,6 +239,7 @@ export class RealSimAdapter implements GameLike {
       teams: this.teams,
       over: s.gameOver,
     };
+    if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;
     return st;
   }

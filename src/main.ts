@@ -3,6 +3,7 @@ import { Engine } from './engine/engine';
 const root = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
 const engine = new Engine(root, {
+  seed: params.has('seed') ? Number(params.get('seed')) : undefined,
   quality: (params.get('quality') as never) ?? undefined,
   timeOfDay: (params.get('tod') as never) ?? undefined,
   forceMock: params.has('mock'),
