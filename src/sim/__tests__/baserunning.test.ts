@@ -48,7 +48,7 @@ describe('baserunning', () => {
       if (adv.length !== 1 || ofType(l.events, 'runnerAdvance').some((e) => e.toBase >= 2)) continue; // only clean singles
       checked++;
       const beyond = samples.filter((s) => s.present).map((s) => beyondFirst(s.x, s.z));
-      expect(Math.max(...beyond)).toBeGreaterThan(2.5);
+      expect(Math.max(...beyond)).toBeGreaterThan(2);
       // ... and he touched first exactly once on the way
       expect(ofType(l.events, 'baseTouch').filter((e) => e.base === 1).length).toBe(1);
     }

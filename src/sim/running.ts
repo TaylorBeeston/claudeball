@@ -59,6 +59,7 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
   };
   p.role = 'runner';
   p.onField = true;
+  w.leavers = w.leavers.filter((l) => l.p !== p);
   p.vmax = sprintOf(p.info.ratings.speed);
   p.lookAt = null;
   if (isBatter) {
