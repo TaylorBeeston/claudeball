@@ -94,9 +94,9 @@ _lift = {17: .135, 20: .195, 22: .22, 27: .235, 32: .235}
 CLIPS["swing"] = (CLIPS["swing"][0], [(f, (dict(sp, rfoot=(sp['rfoot'][0], sp['rfoot'][1], _lift[f])) if f in _lift else sp)) for f, sp in CLIPS["swing"][1]])
 CLIPS["swing"] = (CLIPS["swing"][0], densify(CLIPS["swing"][1]))       # per-frame IK so the pivoting rear foot follows its toe pitch
 
-# ---------------------------------------------------------------- walk (1.44 m/s, 20 frames = 0.833 s per cycle) and relaxed arms for the trot
-def walk_v2(n=20, duty=.60, half=.36, lean=6):
-    """Relaxed walk: stance foot slides back at exactly the walking speed (2 * half * ... / (duty * n / 24) = 1.44 m/s), toe-clearance swing, hips highest at
+# ---------------------------------------------------------------- walk (1.42 m/s, 18 frames = 0.75 s per cycle) and relaxed arms for the trot
+def walk_v2(n=18, duty=.60, half=.32, lean=5):
+    """Relaxed walk: stance foot slides back at exactly the walking speed (2 * half / (duty * n / 24) = 1.42 m/s), toe-clearance swing, hips highest at
     mid-stance and lowest at double support, small lateral sway and pelvis/shoulder counter-rotation; arms hang with ~25 deg elbow flexion, forearms swing opposite to the legs."""
     fwd = (.08, -.17, -.50); back = (.08, .15, -.52); out = []
     def foot(p):
@@ -106,13 +106,13 @@ def walk_v2(n=20, duty=.60, half=.36, lean=6):
         return (half - 2*half*e, .085 + .11*math.sin(math.pi*q)**1.3)
     for f in range(n+1):
         p = (f % n)/n; ly, lz = foot(p); ry, rz = foot(p+.5); c = _cyc(p)
-        bob = -.145 + .075*(1 + math.cos(4*math.pi*(p - duty/2)))/2
+        bob = -.105 + .06*(1 + math.cos(4*math.pi*(p - duty/2)))/2
         sl = (1 - c)/2; sr = (1 + c)/2
         lh = tuple(back[i]*(1-sl) + fwd[i]*sl for i in range(3)); rh = tuple(back[i]*(1-sr) + fwd[i]*sr for i in range(3))
         out.append((f, dict(hips=(.02*math.sin(2*math.pi*p), 0, bob), lean=lean, yaw=4*c, hyaw=-4*c, head_yaw=0, head_pitch=-3,
                             lfoot=(.09, ly, lz), rfoot=(-.09, ry, rz), lhand_rel=lh, rhand_rel=(-rh[0], rh[1], rh[2]), lpole=(.12, .3, -1), rpole=(-.12, .3, -1))))
     return out
-CLIPS["walk"] = (20, walk_v2()); FRAME0["walk"] = 0
+CLIPS["walk"] = (18, walk_v2()); FRAME0["walk"] = 0
 
 def _trot_arms():
     keys = []

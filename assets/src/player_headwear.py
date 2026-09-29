@@ -65,6 +65,9 @@ def brim_from_edge(bm, inner_bm_verts, length, droop, side_curl, width_taper=0.5
         if abs(ang) <= arc: pts.append((ang, v.co.copy()))
     pts.sort(key=lambda a: a[0])
     if len(pts) < 4: return
+    for _ in range(6):                                                                  # the cut edge is a little irregular: smooth its height so the bill is not rippled
+        zs = [p[1].z for p in pts]
+        for i in range(1, len(pts)-1): pts[i][1].z = (zs[i-1] + 2*zs[i] + zs[i+1])/4
     grid = []
     for t in np.linspace(0, 1, rows):
         row = []
@@ -89,7 +92,7 @@ def build_cap(head):
             v.co = v.co - Vector((q.x, q.y, q.z*.6)).normalized()*.0016*g
         bm.normal_update()
         edge_verts = [v for v in bm.verts if v.is_boundary]
-        brim_from_edge(bm, edge_verts, length=.078, droop=.034, side_curl=.030, thick=.0035, lift=.004)
+        brim_from_edge(bm, edge_verts, length=.074, droop=.034, side_curl=.05, thick=.0035, lift=.004, arc=54)
     bm, inner, hbvh = head_shell(head, "Gear_Cap", lambda co: co.z - edge(co.x, co.y), lambda q: .0105 + .004*_sm1(-.02, .12, q.z), smooth_iters=6, thick=.0035, decorate=decorate, min_clear=.006)
     # button, eyelets
     top = Vector((HC.x, HC.y, 1.95))
@@ -105,11 +108,11 @@ def build_cap(head):
 def build_helmet(head, flap=1):
     ear = Vector((.083*flap, .006, 1.722))
     def edge(x, y):
-        base = _crown_edge(1.762, 1.676, 1.655)(x, y); dip = .085*math.exp(-(((x-.09*flap)/.05)**2 + ((y-.006)/.062)**2)) if x*flap > 0 else 0.0
+        base = _crown_edge(1.762, 1.676, 1.655)(x, y); dip = .085*math.exp(-(((x-.09*flap)/.05)**2 + ((y-.022)/.040)**2)) if x*flap > 0 else 0.0
         return base - dip
     def decorate(bm, inner):
         edge_verts = [v for v in bm.verts if v.is_boundary]
-        brim_from_edge(bm, edge_verts, length=.052, droop=.012, side_curl=.014, thick=.006, arc=48, lift=.002, rows=6)
+        brim_from_edge(bm, edge_verts, length=.052, droop=.012, side_curl=.014, thick=.006, arc=36, lift=.002, rows=6)
     def hole(co):                                                                       # ear opening, big enough for `ears_large` (ear ~ 0.03 x 0.045 m)
         if co.x*flap < .04: return 1.0
         return math.hypot((co.y-ear.y)/.036, (co.z-ear.z)/.050) - 1.0
