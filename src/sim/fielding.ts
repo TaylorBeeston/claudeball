@@ -160,6 +160,7 @@ export function initFielderPlans(w: World, reactSecBase: number): void {
       recheckTick: 0,
       asking: false,
       tagTarget: null,
+      catchZ: null,
       holdUntil: 0,
       releaseAt: 0,
       throwBase: 0,
@@ -595,6 +596,27 @@ function attempt(w: World, F: PlayerRT, stretch: number): void {
   ball.lastTouch = F;
   if (air) ball.touchedGround = ball.touchedGround; // a dropped fly is not a catch
   if (routine) chargeError(w, F, fromThrow ? 'throw' : 'drop');
+}
+
+/** The ball pops out of the glove / hand on contact with the runner: loose at the spot, an error on the fielder. */
+export function dropBall(w: World, F: PlayerRT, at: { x: number; z: number }): void {
+  const b = w.ball.body;
+  releaseBall(w);
+  F.hasBall = false;
+  b.x = at.x;
+  b.z = at.z;
+  b.y = 0.6;
+  b.vx = w.rng.normal(0, 1.2) + F.vx * 0.3;
+  b.vz = w.rng.normal(0, 1.2) + F.vz * 0.3;
+  b.vy = 0.5;
+  b.rolling = false;
+  w.ball.mode = 'loose';
+  w.ball.pathDirty = true;
+  w.ball.touchedGround = true;
+  w.ball.lastTouch = F;
+  F.plan.kind = 'idle';
+  F.plan.lastAttempt = w.tick;
+  chargeError(w, F, 'drop');
 }
 
 function chargeError(w: World, F: PlayerRT, kind: 'drop' | 'bobble' | 'throw'): void {

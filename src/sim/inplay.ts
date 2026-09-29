@@ -12,6 +12,7 @@ import * as fielding from './fielding';
 import * as flow from './flow';
 import * as rules from './rules';
 import * as running from './running';
+import * as tagging from './tagging';
 import { DUGOUT } from './setup';
 import { CallInfo } from './types';
 
@@ -56,6 +57,8 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   w.phase = 'inPlay';
   w.ball.lob = null;
   w.ret = null;
+  w.tags = [];
+  w.bagTags = [];
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
@@ -284,6 +287,8 @@ export function tickInPlay(w: World): void {
     fielding.fieldingAttempts(w);
     if (ball.mode === 'thrown') fielding.checkWildThrow(w);
     checkPlays(w);
+    tagging.tickTagging(w);
+    tagging.catcherBlock(w);
     if (bip && !bip.infieldFlyChecked) checkInfieldFly(w, bip);
     if (bip) determineFairFoul(w, bip);
   }
@@ -469,27 +474,19 @@ function checkPlays(w: World): void {
     const advancingTarget = r.target > r.base ? r.target : 0;
     if (advancingTarget && running.forced(w, r)) {
       const bp = bpos(advancingTarget);
-      if (Math.hypot(F.x - bp.x, F.z - bp.z) <= 0.95 && !r.touched[advancingTarget]) {
-        rules.recordOut(w, r, 'force', [...w.play!.touches.slice(-2), F].filter((x, i, a) => a.indexOf(x) === i), advancingTarget, true);
+      // a foot on the bag with the ball secure, before the runner has touched it (a throw that pulls him off the bag is no force)
+      if (tagging.footOnBase(F, advancingTarget) && !r.touched[advancingTarget]) {
+        rules.recordOut(w, r, 'force', [...w.play!.touches.slice(-2), F].filter((x, i, a) => a.indexOf(x) === i), advancingTarget, true, { margin: Math.max(0, running.runnerETA(r, advancingTarget)) });
         continue;
       }
     }
     // doubled off: failed to retouch after a catch
     if (r.retouch && !r.retouchDone) {
       const bp = bpos(r.retouch);
-      if (Math.hypot(F.x - bp.x, F.z - bp.z) <= 0.95) {
-        rules.recordOut(w, r, 'tagUp', [F], r.retouch, true);
+      if (tagging.footOnBase(F, r.retouch)) {
+        rules.recordOut(w, r, 'tagUp', [F], r.retouch, true, { margin: 0.2 });
         continue;
       }
-    }
-    // tag
-    if (running.vulnerable(r) && Math.hypot(F.x - r.p.x, F.z - r.p.z) <= 0.95) {
-      if (w.play!.kind === 'steal') {
-        // caught stealing
-      }
-      const type = w.play!.kind === 'steal' && r.stealing ? 'caughtStealing' : w.play!.kind === 'pickoff' ? 'pickoff' : 'tag';
-      if (type === 'caughtStealing') r.p.bat.cs++;
-      rules.recordOut(w, r, type, [F], null, false);
     }
   }
   void catchOut;
