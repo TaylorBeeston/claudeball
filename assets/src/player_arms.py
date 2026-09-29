@@ -61,7 +61,12 @@ READY = dict(cc_min=.03, cc_cap=.14, dz_max=-.08, abd_max=.14, w_base=.15, w_pre
 BAT = dict(cc_min=.03, w_base=.35, w_prev=1.2, bonus=0.0)
 OPT_CLIPS = {"run": (LOCO, True), "run_turn": (dict(LOCO, abd_max=.16, dz_max=-.12), True), "trot": (LOCO, True), "walk": (LOCO, True),
              "field_ready": (READY, True), "field_ready_infield": (READY, True), "field_ready_outfield": (READY, True), "field_ready_hands_knees": (dict(READY, abd_max=.18, cc_cap=.2), True),
-             "idle": (READY, True), "catcher_crouch": (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True), "batting_stance": (BAT, True), "swing": (BAT, False)}
+             "idle": (READY, True), "ump_ready": (READY, True), "ump_set_base": (READY, True), "catcher_crouch": (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True), "batting_stance": (BAT, True), "swing": (BAT, False)}
+CATCHCFG = dict(cc_min=.03, w_base=.15, w_prev=.9)
+for _n in ("catch_throw", "catch_throw_high", "catch_throw_low", "catch_stretch", "catch_fly", "catch_fly_run", "catch_line_drive", "catch_backhand", "field_grounder", "field_grounder_backhand",
+           "catch_pitch", "catch_pitch_low", "catch_pitch_high", "catch_comebacker", "pitcher_catch_toss", "throw_casual", "pickoff", "tag_glove", "tag_hand", "catcher_block", "slide_feet", "slide_hook_left", "slide_hook_right", "slide_head", "dive_back",
+           "pop_up", "pop_up_head", "ump_strike", "ump_strike_swinging", "ump_ball", "ump_safe", "ump_out", "ump_out_strikeout", "ump_foul", "ump_fair", "ump_homerun", "ump_time"):
+    OPT_CLIPS[_n] = (CATCHCFG, False)
 ARM_REPORT = {}
 def run_optimiser():
     init = None
