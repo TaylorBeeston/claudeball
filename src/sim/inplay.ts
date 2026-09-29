@@ -1,4 +1,5 @@
 import { stepBall } from './ball';
+import { pickoffRunnerReaction, pickoffSeconds } from './attributes';
 import type { ContactResult } from './batting';
 import { emit } from './events';
 import { BASE_POS, BASE_XZ, MOUND_DIST, fenceAt, isFairXZ } from './field';
@@ -56,7 +57,7 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
-    r.bias = w.aiRng.normal(0, 0.28);
+    r.bias = w.aiRng.normal(0, 0.36 - 0.0016 * r.p.info.ratings.baserunning); // a smart runner reads arrival times better
   }
   fielding.initFielderPlans(w, kind === 'battedBall' ? 0 : 0.05);
   w.ball.pathDirty = true;
@@ -136,11 +137,11 @@ export function beginPickoff(w: World, r: RunnerRT): void {
   // the runner dives back; the fielder covers and the pitcher throws
   r.want = r.base;
   r.target = r.base;
-  r.reaction = w.tick + secToTicks(0.22 - 0.0008 * (r.p.info.ratings.baserunning - 50));
+  r.reaction = w.tick + secToTicks(pickoffRunnerReaction(r.p.info.ratings.baserunning, P.info.ratings));
   const bp = bpos(r.base);
   setGoal(r.p, bp.x, bp.z, true, 1);
   P.plan.holdUntil = w.tick;
-  P.plan.releaseAt = w.tick + secToTicks(0.35);
+  P.plan.releaseAt = w.tick + secToTicks(pickoffSeconds(P.info.ratings));
   P.plan.throwBase = r.base;
   P.plan.throwTo = cover;
   P.goal = null;

@@ -24,7 +24,19 @@
   17.9832
  ],
  "rubber_front_z": 18.4404,
+ "rubber_size": [
+  0.6095999999999999,
+  0.15239999999999998
+ ],
  "mound_height": 0.254,
+ "mound_top_y": 0.254,
+ "mound_radius": 2.7432000000000003,
+ "mound_level_area": {
+  "x_half": 0.762,
+  "z_from": 18.288,
+  "z_to": 19.151600000000002
+ },
+ "mound_slope_per_m": 0.08333333333333333,
  "foul_poles": {
   "left": [
    71.1236284788677,

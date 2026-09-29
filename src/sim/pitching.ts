@@ -1,4 +1,5 @@
 import { BallBody, Environment, flightStep, newFlags, stepBall } from './ball';
+import { STRETCH_COMMAND, STRETCH_MPH, composureScale, releaseSigma } from './attributes';
 import { BALL_RADIUS, MOUND_DIST, PLATE_DEPTH, PLATE_HALF_WIDTH } from './field';
 import { DEG, MPH, RPM, Vec3, clamp, cross, dot, norm, scale, sub } from './math';
 import { Rng } from './rng';
@@ -134,6 +135,11 @@ export interface ThrowContext {
   fatigue: number; // 0 fresh .. 1+ gassed
   /** Pitcher is 'aiming it' (throwing for a strike) rather than working the edges: tighter command, less movement risk. */
   careful?: boolean;
+  /** Working from the stretch: a little less velocity and a slightly less repeatable delivery. */
+  stretch?: boolean;
+  /** Leverage of the moment 0..1 (composure) and the pitcher's rattled state 0..1. */
+  pressure?: number;
+  rattled?: number;
   rng: Rng;
   env: Environment;
 }
@@ -147,7 +153,7 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
   const { rng, env } = ctx;
   const f = ctx.fatigue;
   const rel: Vec3 = { x: slot.x, y: slot.y, z: MOUND_DIST - slot.ext };
-  const mphNominal = spec.mph - 2.6 * f * f - 0.8 * f;
+  const mphNominal = spec.mph - 2.6 * f * f - 0.8 * f - (ctx.stretch ? STRETCH_MPH : 0);
   const speed = Math.max(24, (mphNominal + rng.normal(0, 0.55)) * MPH);
   const rpm = spec.rpm * (1 + rng.normal(0, 0.025)) * (1 - 0.03 * f);
   const eff = clamp(spec.efficiency + rng.normal(0, 0.025), 0.1, 0.99);
@@ -181,12 +187,16 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
   if (spec.type === 'CU' || spec.type === 'SL' || spec.type === 'SW') sigmaPos *= 1.12;
   if (spec.type === 'FS' || spec.type === 'CH') sigmaPos *= 1.05;
   // occasional release lapses (a mistimed release point): a physical heavy tail on command error
-  if (rng.next() < 0.024 + 0.0005 * (60 - ctl) + 0.04 * f) sigmaPos *= 4.0;
+  if (rng.next() < 0.024 + 0.0005 * (60 - ctl) + 0.0004 * (50 - p.ratings.consistency) + 0.04 * f) sigmaPos *= 4.0;
   if (ctx.careful) sigmaPos *= 0.82;
+  // the pitch's own command, composure under pressure / after trouble, and the shorter motion from the stretch
+  sigmaPos *= clamp(1 + 0.006 * (50 - (spec.command ?? ctl)), 0.75, 1.3) * composureScale(p.ratings, ctx.pressure ?? 0, ctx.rattled ?? 0) * (ctx.stretch ? STRETCH_COMMAND : 1);
   const sigmaAng = sigmaPos / (rel.z - PLATE_FRONT_Z);
   // horizontal miss is a bit smaller than vertical for most pitchers
   dir = norm({ x: dir.x + rng.normal(0, sigmaAng * 0.95), y: dir.y + rng.normal(0, sigmaAng * 1.1), z: dir.z });
-  const relN: Vec3 = { x: rel.x + rng.normal(0, 0.03), y: rel.y + rng.normal(0, 0.035), z: rel.z + rng.normal(0, 0.03) };
+  // release-point repeatability is his consistency
+  const rs = releaseSigma(p.ratings);
+  const relN: Vec3 = { x: rel.x + rng.normal(0, rs), y: rel.y + rng.normal(0, rs * 1.15), z: rel.z + rng.normal(0, rs) };
 
   const path: PitchSample[] = [];
   const res = simulatePitch(relN, dir, speed, spec, rpm, eff, breakDir, env, 1 / 240, path);

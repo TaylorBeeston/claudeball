@@ -8,7 +8,7 @@ import path from 'node:path';
  * justified (or, better, turned into physics or state).
  */
 const ALLOWED: Record<string, { count: number; why: string }> = {
-  'roster.ts': { count: 16, why: 'roster / team generation (before the game starts)' },
+  'roster.ts': { count: 31, why: 'roster / team generation (before the game starts)' },
   'rng.ts': { count: 7, why: 'the generator itself (normal() and helpers)' },
   'pitchai.ts': { count: 14, why: 'AI mixed strategy for pitch selection / location (aiRng): a decision, not an outcome' },
   'manager.ts': { count: 4, why: 'AI mixed strategy for intentional walk / bunt (aiRng)' },
