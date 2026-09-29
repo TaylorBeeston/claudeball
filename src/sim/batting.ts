@@ -76,18 +76,34 @@ export function baseBatSpeed(power: number): number {
   return 25.7 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
-/** Perception + decision: does the batter swing, and if so how. Uses only what a real hitter could know at the decision point. */
-export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, ctx: BattingContext, fbMphSeen: number, rng: Rng, buntPsi: number | null = null): SwingPlan {
+/** Time (s after release) at which the batter must commit: swing or take. */
+export const decisionTime = (pitch: ThrownPitch) => Math.max(0.12, pitch.tPlate - TAU_CONTACT - 0.045);
+
+/** What the batter perceives of the pitch at the decision moment (noisy, extrapolated) — the basis of every swing decision. */
+export interface SwingObservation {
+  /** Time since release at which he committed. */
+  tDec: number;
+  pivot: Vec3;
+  /** Where he thinks the pitch crosses the front of the plate. */
+  front: { t: number; x: number; y: number };
+  /** Distance outside the zone as he judges it (m; negative inside), including judgement noise. */
+  dPerceived: number;
+  recognised: boolean;
+  speedMph: number;
+  /** Extrapolate the observed flight to depth z: time since release, x, y. */
+  predictAtZ: (zPlane: number) => { t: number; x: number; y: number };
+}
+
+/** Perception: every draw of perception noise happens here, BEFORE any decision is asked, so the noise stream never depends on the answer. */
+export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, fbMphSeen: number, rng: Rng): SwingObservation {
   const R = b.ratings;
   const ne = clamp(1.55 - 0.011 * R.eye, 0.55, 1.5); // perception noise multiplier
   const pivot = pivotFor(stance);
-  const tPlate = pitch.tPlate;
-  const tDec = Math.max(0.12, tPlate - TAU_CONTACT - 0.045);
+  const tDec = decisionTime(pitch);
   const s0 = pitch.path[0];
   const sd = pathAt(pitch.path, tDec);
 
   // Observed state at the decision moment (noisy)
-  const speedNow = Math.hypot(sd.vx, sd.vy, sd.vz);
   const speedNoise = 1 + rng.normal(0, 0.02 * ne);
   // batters lean on expectation (fastball) unless they recognise the pitch: eye -> recognition
   const pRec = clamp(0.35 + 0.0075 * R.eye + (pitch.type === 'CH' || pitch.type === 'FS' ? -0.12 : 0), 0.15, 0.95);
@@ -111,8 +127,8 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   let ax: number;
   let ay: number;
   if (recognised) {
-    const dtF = Math.max(0.05, tPlate);
-    const end = pathAt(pitch.path, tPlate);
+    const dtF = Math.max(0.05, pitch.tPlate);
+    const end = pathAt(pitch.path, pitch.tPlate);
     ax = ((end.vx - s0.vx) / dtF) * (1 + rng.normal(0, 0.18 * ne));
     ay = ((end.vy - s0.vy) / dtF) * (1 + rng.normal(0, 0.12 * ne));
   } else {
@@ -135,8 +151,13 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
     return { t: tDec + t, x: obs.x + obs.vx * t + 0.5 * ax * t * t, y: obs.y + obs.vy * t + 0.5 * ay * t * t };
   };
   const front = predictAtZ(PLATE_DEPTH);
+  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.125);
+  return { tDec, pivot, front, dPerceived, recognised, speedMph: Math.hypot(obs.vx, obs.vy, obs.vz) / 0.44704, predictAtZ };
+}
 
-  // --- decision -------------------------------------------------------------------------
+/** The built-in batter's swing / take rule (count, discipline, aggression, situation) applied to what he perceived. */
+export function aiSwingDecision(b: PlayerInfo, ctx: BattingContext, dPerceived: number): { swing: boolean; protect: boolean } {
+  const R = b.ratings;
   const disc = (R.discipline - 50) / 50;
   let thr = 0.03 - 0.05 * disc;
   if (ctx.strikes === 2) thr += 0.06;
@@ -144,12 +165,28 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
   else thr -= 0.02;
   thr += 0.025 * b.traits.aggression * (ctx.strikes < 2 ? 1 : 0.4);
-  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.125);
-  const protect = ctx.strikes === 2;
+  return { swing: dPerceived <= thr, protect: ctx.strikes === 2 };
+}
+
+export interface SwingChoice {
+  swing: boolean;
+  timing?: number;
+  aimX?: number;
+  aimY?: number;
+  effort?: number;
+  protect?: boolean;
+}
+
+/** Turn a swing decision into a physical swing: the batter's execution noise (timing, plane, bat speed) is drawn here, AFTER the decision. */
+export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, obsv: SwingObservation, choice: SwingChoice, ctx: BattingContext, rng: Rng, buntPsi: number | null = null, now = 0): SwingPlan {
+  const R = b.ratings;
+  const { pivot, tDec, front, predictAtZ } = obsv;
+  const protect = choice.protect ?? ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
-  if (dPerceived > thr) {
+  if (!choice.swing) {
     return { swing: false, ...baseInfo, startTime: 0, plannedContactTime: 0, pivot, rh: 0, thetaC: 0, epsC: 0, omegaPk: 0, alpha: 0, sgn: 0, tauC: 0, batSpeed: 0, protect };
   }
+  const late = choice.timing ?? 0;
 
   if (buntPsi !== null) {
     // Bunt: square around and present the bat at the predicted location; the ball's speed is absorbed by the bat.
@@ -158,12 +195,12 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
     const tr = pathAt(pitch.path, tB);
     const pb = { t: tB, x: tr.x, y: tr.y };
     const sk = 1.5 - R.contact / 100;
-    const px = pb.x + rng.normal(0, 0.012 * sk);
-    const py = pb.y + 0.0 + rng.normal(0, 0.014 * sk);
+    const px = pb.x + rng.normal(0, 0.012 * sk) + (choice.aimX ?? 0);
+    const py = pb.y + 0.0 + rng.normal(0, 0.014 * sk) + (choice.aimY ?? 0);
     return {
       swing: true,
       ...baseInfo,
-      startTime: pb.t - 0.34,
+      startTime: Math.max(now, pb.t - 0.34 + late),
       plannedContactTime: pb.t,
       pivot,
       rh: 0,
@@ -191,7 +228,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
     zc = clamp(PIVOT_Z + Math.sqrt(Math.max(dz2, 0.04)), 0.1, 1.5);
     pred = predictAtZ(zc);
   }
-  const aim = { x: pred.x, y: pred.y - b.traits.aimBelow, z: zc };
+  const aim = { x: pred.x + (choice.aimX ?? 0), y: pred.y - b.traits.aimBelow + (choice.aimY ?? 0), z: zc };
   const dx = aim.x - pivot.x;
   const dy = aim.y - pivot.y;
   const dz = aim.z - pivot.z;
@@ -200,14 +237,14 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
   const thetaC = Math.atan2(dx, dz);
   const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, 0.009 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004);
 
-  const effort = protect ? 0.965 : 1.0;
+  const effort = clamp(choice.effort ?? (protect ? 0.965 : 1.0), 0.6, 1);
   const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03));
   const rSweet = rh + BAT_S_NODE;
   const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
   const sigmaT = 0.0150 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
-  const startTime = pred.t - TAU_CONTACT + timeErr;
+  const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {
     swing: true,
     ...baseInfo,
@@ -224,6 +261,12 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
     batSpeed,
     protect,
   };
+}
+
+/** Perceive, decide with the built-in rule and plan in one go (lab scripts and tests; the game asks a DecisionProvider in between). */
+export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, ctx: BattingContext, fbMphSeen: number, rng: Rng, buntPsi: number | null = null): SwingPlan {
+  const obs = perceivePitch(b, stance, pitch, zone, fbMphSeen, rng);
+  return buildSwing(b, stance, pitch, obs, aiSwingDecision(b, ctx, obs.dPerceived), ctx, rng, buntPsi);
 }
 
 // --- the bat in motion -----------------------------------------------------------------------

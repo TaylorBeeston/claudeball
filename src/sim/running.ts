@@ -1,4 +1,7 @@
 import { emit } from './events';
+import { PENDING } from './decisions';
+import type { LeadDecision, PickoffDecision, RunnerDecision, RunnerRequest, StealDecision, StealRequest } from './decisions';
+import { ask, situationOf } from './dispatch';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import { setGoal, sprintSpeedOf, travelTime } from './movement';
@@ -41,6 +44,12 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     stealDelay: 0,
     leadX: 0,
     leadZ: 0,
+    askSeq: 0,
+    lastSig: '',
+    recheckTick: 0,
+    leadDist: 3,
+    leadKey: '',
+    asking: false,
   };
   p.role = 'runner';
   p.onField = true;
@@ -136,8 +145,15 @@ export function updateLeads(w: World): void {
     const a = bpos(r.base);
     const b = bpos(nb);
     const d = Math.hypot(b.x - a.x, b.z - a.z);
-    const spd = r.p.info.ratings.speed;
-    const lead = clamp(3.0 + 0.035 * (spd - 50) + 0.015 * (r.p.info.ratings.baserunning - 50), 1.8, 4.6) * (r.base === 3 ? 0.8 : 1);
+    // how far off the bag for this pitch: the runner's own decision, asked once per pitch
+    const key = `${r.p.info.id}:${r.base}:${w.batter?.info.id ?? ''}:${w.paPitches}`;
+    if (r.leadKey !== key) {
+      const ans = ask(w, `lead:${r.p.info.id}`, 'lead', w.battingTeam.side, () => ({ situation: situationOf(w), runner: r.p.info, base: r.base, pitcher: w.pitcher.info, min: 0, max: MAX_LEAD }), { r });
+      if (ans === PENDING) continue;
+      r.leadDist = clamp(ans.lead, 0, MAX_LEAD);
+      r.leadKey = key;
+    }
+    const lead = r.leadDist;
     r.leadX = a.x + ((b.x - a.x) / d) * lead;
     r.leadZ = a.z + ((b.z - a.z) / d) * lead;
     const p = r.p;
@@ -148,6 +164,15 @@ export function updateLeads(w: World): void {
     } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, 0.5);
     p.lookAt = { x: w.pitcher.x, z: w.pitcher.z };
   }
+}
+
+/** Longest lead a runner may take (m): beyond this he is not standing near a base any more. */
+export const MAX_LEAD = 6;
+
+/** The built-in runner's lead: from his speed and baserunning instincts. */
+export function aiLead(req: { runner: { ratings: { speed: number; baserunning: number } }; base: number }): LeadDecision {
+  const R = req.runner.ratings;
+  return { lead: clamp(3.0 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50), 1.8, 4.6) * (req.base === 3 ? 0.8 : 1) };
 }
 
 /** Runners standing off a base should be able to run through their lead point quickly; snap to base when a play ends. */
@@ -175,56 +200,115 @@ export function snapRunnersToBases(w: World): void {
   }
 }
 
-export function considerPickoff(w: World): boolean {
+/** Is there a runner the pitcher could hold with a throw over? */
+function pickoffCandidate(w: World): RunnerRT | null {
   const r = w.runners.find((q) => q.state === 'live' && q.base >= 1 && q.base <= 2 && q.target === q.base && !q.dead);
-  if (!r) return false;
+  if (!r) return null;
   const nextOpen = !w.runners.some((q) => q.state === 'live' && q.base === r.base + 1);
-  if (!nextOpen) return false;
-  const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.2);
-  const p = (r.base === 1 ? 0.012 : 0.002) + (r.base === 1 ? 0.06 : 0.01) * threat;
-  if (w.rng.next() >= p) return false;
-  inplay.beginPickoff(w, r);
-  return true;
+  return nextOpen ? r : null;
 }
 
-export function decideSteals(w: World, windupSecs: number): void {
-  w.stealing.clear();
-  const r = w.runners.find((q) => q.state === 'live' && q.base >= 1 && q.base <= 2 && q.target === q.base && !q.dead);
-  if (!r) return;
-  const nb = r.base + 1;
-  if (w.runners.some((q) => q.state === 'live' && q.base === nb && q !== r)) return;
-  if (w.outs >= 2 && r.base === 2) return;
-  if (w.count.strikes === 2 && w.count.balls < 3 && w.outs < 2) {
-    // less willing to run on a two-strike count with the batter possibly K'd (still allowed)
+/** Ask the pitcher whether to throw over; 'thrown' if he did (the pickoff play starts). */
+export function stagePickoff(w: World): 'none' | 'wait' | 'thrown' {
+  const r = pickoffCandidate(w);
+  if (!r) return 'none';
+  const d = ask(w, 'pickoff', 'pickoff', w.fieldingTeam.side, () => ({ situation: situationOf(w), pitcher: w.pitcher.info, runner: r.p.info, base: r.base, lead: Math.hypot(r.p.x - bpos(r.base).x, r.p.z - bpos(r.base).z) }), { r });
+  if (d === PENDING) return 'wait';
+  if (d.throw && r.state === 'live') {
+    inplay.beginPickoff(w, r);
+    return 'thrown';
   }
+  return 'none';
+}
+
+/** The built-in pitcher's pickoff rule: the more of a running threat, the more often he throws over (a mixed strategy). */
+export function aiPickoff(w: World, r: RunnerRT): PickoffDecision {
+  const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.2);
+  const p = (r.base === 1 ? 0.012 : 0.002) + (r.base === 1 ? 0.06 : 0.01) * threat;
+  return { throw: w.aiRng.next() < p };
+}
+
+/** The runner who could break for the next base on this pitch, if the base is open. */
+function stealCandidate(w: World): RunnerRT | null {
+  const r = w.runners.find((q) => q.state === 'live' && q.base >= 1 && q.base <= 2 && q.target === q.base && !q.dead);
+  if (!r) return null;
+  const nb = r.base + 1;
+  if (w.runners.some((q) => q.state === 'live' && q.base === nb && q !== r)) return null;
+  return r;
+}
+
+/** Nominal times for a steal from the runner's current position (the numbers a runner / coach reads off the situation). */
+export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTime: number; runnerTime: number } {
   const P = r.p;
   const catcher = w.catcher;
+  const nb = r.base + 1;
   const jump = 0.32 - 0.002 * (P.info.ratings.baserunning - 50);
   const bp = bpos(nb);
   const dist = Math.hypot(bp.x - P.x, bp.z - P.z);
-  const tRun = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, dist, 0) - 0.08;
+  const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, dist, 0) - 0.08;
   const armV = 27 + 0.21 * catcher.info.ratings.arm;
-  const tx = bp.x - catcher.x;
-  const tz = bp.z - catcher.z;
-  const D = Math.hypot(tx, tz);
-  const cr = catcher.info.ratings.catching;
-  const exch = 0.72 - 0.0035 * (cr - 50);
-  const tBall = windupSecs + (w.pitcher.info.arsenal.length ? 0.44 : 0.44) + exch + D / (armV * 0.9) + 0.2;
-  const margin = tBall - tRun + w.rng.normal(0, 0.25);
+  const D = Math.hypot(bp.x - catcher.x, bp.z - catcher.z);
+  const exch = 0.72 - 0.0035 * (catcher.info.ratings.catching - 50);
+  const ballTime = windupSecs + 0.44 + exch + D / (armV * 0.9) + 0.2;
+  return { ballTime, runnerTime };
+}
+
+/** Ask the runner (at the start of the windup) whether he goes. */
+export function stageSteals(w: World): boolean {
+  const r = stealCandidate(w);
+  if (!r) {
+    w.prep.steal = null;
+    return true;
+  }
+  const runnersOn = true;
+  const nominalWindup = runnersOn ? 0.84 : 1.12;
+  const d = ask(
+    w,
+    'steal',
+    'steal',
+    w.battingTeam.side,
+    () => {
+      const t = stealTimes(w, r, nominalWindup);
+      return { situation: situationOf(w), runner: r.p.info, fromBase: r.base, toBase: r.base + 1, pitcher: w.pitcher.info, catcher: w.catcher.info, ballTime: t.ballTime, runnerTime: t.runnerTime };
+    },
+    { r },
+  );
+  if (d === PENDING) return false;
+  w.prep.steal = { r, go: d.go };
+  return true;
+}
+
+/** The built-in runner's steal rule: his own time against the battery's, with the situation deciding how much margin he wants. */
+export function aiSteal(w: World, r: RunnerRT, req: StealRequest): StealDecision {
+  const P = r.p;
+  if (w.outs >= 2 && r.base === 2) return { go: false };
+  const margin = req.ballTime - req.runnerTime + w.aiRng.normal(0, 0.25);
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
   const thr = 0.3 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
-  if (margin > thr) {
-    r.stealing = true;
-    r.stealDelay = 0;
-    w.stealing.add(r);
-    // the runner breaks as the pitcher commits to the plate
-    r.want = r.base + 1;
-    r.target = r.base + 1;
-    r.origin = r.base;
-    r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.13)));
-    P.lookAt = null;
-  }
+  return { go: margin > thr };
+}
+
+/** The windup begins: a runner who was told to go breaks with the pitcher's motion. */
+export function commitSteals(w: World): void {
+  w.stealing.clear();
+  const s = w.prep.steal;
+  w.prep.steal = null;
+  if (!s || !s.go) return;
+  const r = s.r;
+  const nb = r.base + 1;
+  if (r.state !== 'live' || r.dead || r.target !== r.base) return;
+  if (w.runners.some((q) => q.state === 'live' && q.base === nb && q !== r)) return;
+  const P = r.p;
+  r.stealing = true;
+  r.stealDelay = 0;
+  w.stealing.add(r);
+  // the runner breaks as the pitcher commits to the plate
+  r.want = r.base + 1;
+  r.target = r.base + 1;
+  r.origin = r.base;
+  r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.13)));
+  w.pitcher.lookAt = null;
 }
 
 export function onPitchRelease(w: World): void {
@@ -334,72 +418,151 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
 }
 
 // ---------------------------------------------------------------------------------------------
-// runner AI (decisions while the ball is in play)
+// runner decisions while the ball is in play
 // ---------------------------------------------------------------------------------------------
 
+/** Everything that should make a runner (or his coach) think again: the ball changing hands, a catch, a throw, a bag reached... */
+function runnerSig(w: World, r: RunnerRT): string {
+  const play = w.play!;
+  const bip = play.bip;
+  const ball = w.ball;
+  return [ball.mode, ball.holder?.info.id ?? '-', play.throws, bip?.caught ? 1 : 0, bip?.landed || ball.touchedGround ? 1 : 0, ball.touchedWall ? 1 : 0, play.errors.length, r.base, r.target, r.retouch, r.retouchDone ? 1 : 0, r.overrun ? 1 : 0, w.outs].join('|');
+}
+
+function buildRunnerRequest(w: World, r: RunnerRT): Omit<RunnerRequest, 'id' | 'kind' | 'side' | 'time' | 'state'> {
+  const play = w.play!;
+  const bip = play.bip;
+  const ball = w.ball;
+  const est = fielding.estimateBallTimes(w);
+  const F = ball.holder && ball.holder.team === w.fieldingTeam ? ball.holder : play.primary;
+  const eta = [0, 0, 0, 0, 0];
+  for (let b = 1; b <= 4; b++) eta[b] = runnerETA(r, b);
+  const b = ball.body;
+  const airFly = !!bip && bip.status !== 'foul' && !bip.landed && !bip.caught && ball.mode === 'batted' && !ball.touchedGround;
+  return {
+    situation: situationOf(w),
+    runner: r.p.info,
+    isBatterRunner: r.isBatter,
+    base: r.base,
+    heading: r.target,
+    want: r.want,
+    pos: { x: r.p.x, y: 0, z: r.p.z },
+    speed: Math.hypot(r.p.vx, r.p.vz),
+    overrun: r.overrun,
+    forced: forced(w, r),
+    mustRetouch: r.retouch && !r.retouchDone ? r.retouch : 0,
+    ball: {
+      mode: ball.mode,
+      pos: { x: b.x, y: b.y, z: b.z },
+      vel: { x: b.vx, y: b.vy, z: b.vz },
+      holderId: ball.holder?.info.id ?? null,
+      inAir: b.y > 0.3 && !b.rolling,
+      caught: !!bip?.caught,
+      landed: !!bip && (bip.landed || ball.touchedGround),
+      hitWall: ball.touchedWall,
+      catchMargin: airFly ? play.catchMargin : null,
+    },
+    fielder: F ? { id: F.info.id, pos: { x: F.x, y: 0, z: F.z }, armMps: fielding.armSpeed(F), hasBall: F === ball.holder } : null,
+    ballToBase: [...est],
+    runnerToBase: eta,
+    others: w.runners.filter((q) => q !== r && q.state === 'live').map((q) => ({ playerId: q.p.info.id, base: q.base, heading: q.target, want: q.want })),
+  };
+}
+
+/** Ask each live runner what he wants to do, whenever the play changes (and after the interval an answer asks for). */
 export function runnerAI(w: World): void {
   const play = w.play;
   if (!play) return;
-  const est = fielding.estimateBallTimes(w);
-  const bip = play.bip;
-  const airFly = !!bip && bip.status !== 'foul' && !bip.landed && !bip.caught && w.ball.mode === 'batted' && !w.ball.touchedGround;
+  let pending = false;
   for (const r of w.runners) {
     if (r.state !== 'live' || r.dead) continue;
-    const p = r.p;
     if (r.stealing && !r.isBatter && r.base === r.origin) {
       // a runner who has broken for the next base is committed
       r.want = Math.max(r.want, r.origin + 1);
       continue;
     }
-    // tag-up on a fly ball that is likely to be caught
-    if (airFly && r.base >= 1 && !r.isBatter && r.target === r.base) {
-      const cm = play.catchMargin;
-      if (w.outs < 2 && cm !== null && cm + r.bias * 0.5 > -0.1) {
-        r.tagWait = true;
-        r.want = r.base;
-        continue;
-      }
-    }
     if (r.tagWait) {
-      if (bip && bip.caught) {
-        r.tagWait = false;
-        r.retouch = r.base;
-      } else if (bip && (bip.landed || w.ball.touchedGround)) r.tagWait = false;
+      // waiting on the bag for the catch (the catch clears this in fielding.secure); a ball that lands frees him to run
+      const bip = play.bip;
+      if (bip && (bip.landed || w.ball.touchedGround) && !bip.caught) r.tagWait = false;
       else continue;
     }
-    // desired final base
-    let want = r.base;
-    const frc = forced(w, r);
-    if (frc) want = Math.max(want, r.base + 1);
-    if (r.isBatter && r.base === 0) want = Math.max(want, 1);
-    const safety = 0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0);
-    const coachExtra = r.base === 2 ? 0.05 : 0; // third-base coach is conservative at the plate
-    for (let b = Math.max(r.base + 1, 1); b <= 4; b++) {
-      if (b > r.base + 1 && b > want + 0) {
-        // extra-base attempt needs the previous base to be attainable
-        if (want < b - 1) break;
-      }
-      const tR = runnerETA(r, b);
-      const m = est[b] - tR - r.bias - safety - (b === 4 ? coachExtra : 0);
-      if (m > 0) want = Math.max(want, b);
-      else break;
+    const sig = runnerSig(w, r);
+    if (!r.asking && sig === r.lastSig && w.tick < r.recheckTick) continue;
+    r.asking = true;
+    const d = ask(w, `run:${r.p.info.id}`, 'runner', w.battingTeam.side, () => buildRunnerRequest(w, r), { r });
+    if (d === PENDING) {
+      pending = true;
+      continue;
     }
-    // if between bases and the current target is a bad bet, consider returning
-    if (r.target > r.base && want < r.target && !frc) {
-      const bp = bpos(r.base);
-      const tBack = travelTime(p, bp.x, bp.z);
-      const mAdv = est[r.target] - runnerETA(r, r.target) - r.bias;
-      const mRet = est[r.base] - tBack;
-      if (mAdv >= -0.05) want = r.target;
-      else if (mRet > mAdv + 0.1 || true) want = r.base;
-    }
-    if (r.retouch && !r.retouchDone) want = r.base;
-    if (want < r.want && r.target > r.base && Math.hypot(p.x - bpos(r.target).x, p.z - bpos(r.target).z) < 3) want = r.want; // committed near the bag
-    if (frc) want = Math.max(want, r.base + 1);
-    r.want = Math.max(want, r.base);
-    if (r.retouch && r.retouchDone) r.retouch = 0;
-    if (r.retouch && r.want > r.base) r.want = r.base;
+    r.asking = false;
+    applyRunnerDecision(w, r, d);
+    r.lastSig = runnerSig(w, r);
+    r.recheckTick = d.recheckSec !== undefined ? w.tick + secToTicks(d.recheckSec) : Infinity;
   }
+  if (pending) play.runnerAiNext = w.tick + 1;
+}
+
+/** The rules around a runner's decision: forces, tag-up obligations and the point of no return are the sim's, not the provider's. */
+function applyRunnerDecision(w: World, r: RunnerRT, d: RunnerDecision): void {
+  const play = w.play!;
+  const bip = play.bip;
+  const p = r.p;
+  const airFly = !!bip && bip.status !== 'foul' && !bip.landed && !bip.caught && w.ball.mode === 'batted' && !w.ball.touchedGround;
+  if (d.tagUp && airFly && r.base >= 1 && !r.isBatter && r.target === r.base) {
+    r.tagWait = true;
+    r.want = r.base;
+    return;
+  }
+  let want = clamp(Math.round(Number.isFinite(d.want) ? d.want : r.base), r.base, 4);
+  const frc = forced(w, r);
+  if (frc) want = Math.max(want, r.base + 1);
+  if (r.isBatter && r.base === 0) want = Math.max(want, 1);
+  if (r.retouch && !r.retouchDone) want = r.base;
+  // point of no return: close to the bag he is running to, he cannot turn around
+  if (want < r.want && r.target > r.base && Math.hypot(p.x - bpos(r.target).x, p.z - bpos(r.target).z) < 3) want = r.want;
+  if (frc) want = Math.max(want, r.base + 1);
+  r.want = Math.max(want, r.base);
+  if (r.retouch && r.retouchDone) r.retouch = 0;
+  if (r.retouch && r.want > r.base) r.want = r.base;
+}
+
+/** The built-in baserunner (and third-base coach): weighs his time to each bag against the defense's time to have the ball there. */
+export function aiRunner(w: World, r: RunnerRT, req: RunnerRequest): RunnerDecision {
+  const play = w.play!;
+  const bip = play.bip;
+  const p = r.p;
+  const est = req.ballToBase;
+  const airFly = !!bip && bip.status !== 'foul' && !bip.landed && !bip.caught && w.ball.mode === 'batted' && !w.ball.touchedGround;
+  const rec = 0.05;
+  // tag up on a fly ball that is likely to be caught
+  if (airFly && r.base >= 1 && !r.isBatter && r.target === r.base) {
+    const cm = play.catchMargin;
+    if (w.outs < 2 && cm !== null && cm + r.bias * 0.5 > -0.1) return { want: r.base, tagUp: true, recheckSec: rec };
+  }
+  let want = r.base;
+  const frc = req.forced;
+  if (frc) want = Math.max(want, r.base + 1);
+  if (r.isBatter && r.base === 0) want = Math.max(want, 1);
+  const safety = 0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0);
+  const coachExtra = r.base === 2 ? 0.05 : 0; // third-base coach is conservative at the plate
+  for (let b = Math.max(r.base + 1, 1); b <= 4; b++) {
+    if (b > r.base + 1 && b > want + 0) {
+      // extra-base attempt needs the previous base to be attainable
+      if (want < b - 1) break;
+    }
+    const tR = req.runnerToBase[b];
+    const m = est[b] - tR - r.bias - safety - (b === 4 ? coachExtra : 0);
+    if (m > 0) want = Math.max(want, b);
+    else break;
+  }
+  // if between bases and the current target is a bad bet, consider returning
+  if (r.target > r.base && want < r.target && !frc) {
+    const mAdv = est[r.target] - req.runnerToBase[r.target] - r.bias;
+    if (mAdv >= -0.05) want = r.target;
+    else want = r.base;
+  }
+  return { want, recheckSec: rec };
 }
 
 export { rules };

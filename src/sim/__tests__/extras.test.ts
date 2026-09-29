@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addRunner, lab, ofType } from './helpers';
 import { balk } from '../rules';
-import { considerIntentionalWalk, planBunt } from '../manager';
+import { aiIntentionalWalk, aiBunt } from '../manager';
 import { startPlateAppearance } from '../flow';
 
 describe('intentional walks', () => {
@@ -23,17 +23,17 @@ describe('intentional walks', () => {
     w.fieldingTeam.runs = 3;
     bt.runs = 3;
     let n = 0;
-    for (let i = 0; i < 20; i++) if (considerIntentionalWalk(w)) n++;
+    for (let i = 0; i < 20; i++) if (aiIntentionalWalk(w)) n++;
     expect(n).toBeGreaterThan(10);
     // not with first base occupied, or early in the game
     addRunner(w, 1, 4);
-    expect(considerIntentionalWalk(w)).toBe(false);
+    expect(aiIntentionalWalk(w)).toBe(false);
   });
 
   it('are not issued with the bases empty', () => {
     const l = lab('ibb-none');
     l.w.inning = 9;
-    for (let i = 0; i < 10; i++) expect(considerIntentionalWalk(l.w)).toBe(false);
+    for (let i = 0; i < 10; i++) expect(aiIntentionalWalk(l.w)).toBe(false);
   });
 
   it('put the batter on first without a pitch and push forced runners', () => {
@@ -61,7 +61,10 @@ describe('intentional walks', () => {
       w.paDone = false;
       w.runners = w.runners.filter((r) => r.state === 'live');
       w.outs = 0;
-      startPlateAppearance(w);
+      for (let k = 0; k < 12 && !ofType(l.events, 'walk').some((e) => e.intentional); k++) {
+        w.tick++;
+        startPlateAppearance(w);
+      }
       sawIntentional = ofType(l.events, 'walk').some((e) => e.intentional);
     }
     expect(sawIntentional).toBe(true);
@@ -135,12 +138,12 @@ describe('bunts', () => {
     w.batter!.info.ratings.contact = 30;
     w.batter!.info.ratings.power = 30;
     let n = 0;
-    for (let i = 0; i < 100; i++) if (planBunt(w)?.kind === 'sac') n++;
+    for (let i = 0; i < 100; i++) if (aiBunt(w)?.kind === 'sac') n++;
     expect(n).toBeGreaterThan(15);
     w.runners = [];
     let m = 0;
     w.batter!.info.ratings.speed = 40;
-    for (let i = 0; i < 100; i++) if (planBunt(w)) m++;
+    for (let i = 0; i < 100; i++) if (aiBunt(w)) m++;
     expect(m).toBe(0);
   });
 });

@@ -298,8 +298,7 @@ export function afterPlayOver(w: World): void {
     return;
   }
   if (w.paDone) {
-    w.paDone = false;
-    // pinch runner / pitching change etc. happen inside startPlateAppearance
+    // pinch runner / pitching change etc. are asked inside startPlateAppearance (which clears paDone when it completes)
     flow.startPlateAppearance(w);
     return;
   }
