@@ -178,6 +178,7 @@ export function startDeadBallMovement(w: World): void {
     r.p.role = 'runner';
     r.p.onField = true;
     r.reaction = w.tick + secToTicks(0.5);
+    r.trot = running.trotSpeed(r.p);
     if (w.cfg.pace === 0) {
       // no dead-ball time: everyone is placed on the awarded base at once
       const from = r.base;
@@ -214,11 +215,12 @@ function homeRun(w: World, bip: BipInfo): void {
     r.dead = true;
     r.awarded = true;
     r.want = 4;
-    r.reaction = w.tick + secToTicks(0.6);
+    r.reaction = w.tick + secToTicks(r.isBatter ? 1.2 : 0.5);
     r.stealing = false;
     r.tagWait = false;
     r.retouch = 0;
-    r.p.vmax = Math.min(r.p.vmax, 6.5);
+    r.overrun = false;
+    r.trot = running.trotSpeed(r.p);
   }
   for (const F of fielding.fielders(w)) {
     F.goal = null;
@@ -239,6 +241,7 @@ function groundRuleDouble(w: World, bip: BipInfo): void {
     r.awarded = true;
     r.want = Math.min(4, r.base + 2);
     if (r.isBatter) r.want = 2;
+    r.trot = running.trotSpeed(r.p);
     r.reaction = w.tick + secToTicks(0.3);
     r.stealing = false;
     r.tagWait = false;
@@ -497,7 +500,6 @@ function checkSettled(w: World): void {
     settled = true;
     for (const r of w.runners) {
       if (r.state !== 'live' || r.dead) continue;
-      const sp = Math.hypot(r.p.vx, r.p.vz);
       if (r.target > r.base || r.want > r.base) {
         settled = false;
         break;
@@ -506,7 +508,7 @@ function checkSettled(w: World): void {
         settled = false;
         break;
       }
-      if (!(running.isOnBase(r) || (r.overrun && sp < 1.2) || r.retouch)) {
+      if (!(running.isOnBase(r) || r.retouch)) {
         settled = false;
         break;
       }
@@ -545,7 +547,7 @@ function deadBallDone(w: World): boolean {
     allDone = (w.tick - play.deadTick) * TICK > 0.6 || w.cfg.pace === 0;
   }
   if (play.deadTick === 0) play.deadTick = w.tick;
-  if ((w.tick - play.startTick) * TICK > 30) allDone = true;
+  if ((w.tick - play.deadTick) * TICK > 75) allDone = true;
   return allDone;
 }
 
@@ -601,8 +603,12 @@ function fixupRunners(w: World): void {
   w.runners = w.runners.filter((r) => {
     if (r.state === 'live') return true;
     r.p.goal = null;
-    // scored/out runners leave the field after a short walk
-    r.p.onField = false;
+    // scored/out runners walk off to their dugout (headless runs skip the walk)
+    if (w.cfg.pace === 0) r.p.onField = false;
+    else {
+      r.p.role = 'runner';
+      w.exiting.push(r);
+    }
     return false;
   });
 }

@@ -170,6 +170,7 @@ export function createWorld(cfg: GameConfig): World {
     pitcher: home.pitcher,
     catcher: home.defense.get('C')!,
     runners: [],
+    exiting: [],
     ball: {
       body: ballBody,
       mode: 'held',

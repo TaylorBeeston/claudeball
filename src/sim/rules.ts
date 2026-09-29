@@ -180,6 +180,9 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   creditOut(w, r.p);
   const play = w.play;
   const brBeforeFirst = r.isBatter && r.base === 0;
+  r.outTick = w.tick;
+  // a batter put out at first (force / tag) still runs through the bag
+  if (brBeforeFirst && (outType === 'force' || outType === 'tag')) r.exitVia = 1;
   if (play) play.outsThisPlay.push({ runner: r, force: force || brBeforeFirst, brBeforeFirst, tick: w.tick });
   if (r.isBatter && play) play.batterOut = true;
   emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base });
@@ -214,6 +217,7 @@ export function scoreRun(w: World, r: RunnerRT): void {
   if (r.state !== 'live') return;
   r.state = 'scored';
   r.scoredTick = w.tick;
+  r.outTick = w.tick;
   const team = r.p.team;
   team.runs++;
   while (team.linescore.length < w.inning) team.linescore.push(0);
@@ -309,7 +313,9 @@ export function endHalfInning(w: World): void {
   emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half });
   // clear bases, ball to pitcher
   for (const r of w.runners) r.p.onField = false;
+  for (const r of w.exiting) r.p.onField = false;
   w.runners = [];
+  w.exiting = [];
   w.paDone = false;
   const bat = w.batter;
   if (bat) bat.onField = false;

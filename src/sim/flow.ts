@@ -42,6 +42,8 @@ export function startHalfInning(w: World): void {
   w.play = null;
   w.inningRuns = 0;
   w.halfStartTick = w.tick;
+  for (const r of w.exiting) r.p.onField = false;
+  w.exiting = [];
   const t = w.battingTeam;
   while (t.linescore.length < w.inning) t.linescore.push(0);
   w.teams.home.linescore.length = Math.max(w.teams.home.linescore.length, w.inning - (bottom ? 0 : 1));
