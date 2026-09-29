@@ -3,18 +3,45 @@
 import math
 S = lambda **k: k
 STAND = dict()
-def run_clip():
+def run_clip(lean=14, side=0, dx=0.0, yaw0=0, hyaw0=0, head_yaw=None, foot_o=((0, 0), (0, 0)), lamp=.38, ramp=.38, hand_dx=0.0):
     out = []
     for f in range(0, 25, 2):
         ph = 2*math.pi*f/24
         lf_y = -0.55*math.cos(ph); rf_y = -0.55*math.cos(ph+math.pi)
         lf_z = .08 + 0.30*max(0.0, -math.sin(ph)); rf_z = .08 + 0.30*max(0.0, -math.sin(ph+math.pi))
         # arms swing opposite to legs; elbows ~90 deg
-        lh = (.22, -.10+.38*math.cos(ph), 1.12 + .12*max(0, -math.sin(ph))*0); rh = (-.22, -.10-.38*math.cos(ph), 1.12)
-        out.append((f, dict(lean=14, hips=(0, 0, -.06+.03*math.cos(2*ph)), yaw=7*math.sin(ph), hyaw=-7*math.sin(ph),
-                            lfoot=(.11, lf_y, lf_z), rfoot=(-.11, rf_y, rf_z), lhand=lh, rhand=rh, lpole=(.6, .3, -.6), rpole=(-.6, .3, -.6),
-                            lfoot_o=(0, 0), rfoot_o=(0, 0))))
+        lh = (.22+hand_dx, -.10+lamp*math.cos(ph), 1.12 + .12*max(0, -math.sin(ph))*0); rh = (-.22+hand_dx, -.10-ramp*math.cos(ph), 1.12)
+        spec = dict(lean=lean, hips=(0, 0, -.06+.03*math.cos(2*ph)), yaw=yaw0+7*math.sin(ph), hyaw=hyaw0-7*math.sin(ph),
+                    lfoot=(.11+dx, lf_y, lf_z), rfoot=(-.11+dx, rf_y, rf_z), lhand=lh, rhand=rh, lpole=(.6, .3, -.6), rpole=(-.6, .3, -.6),
+                    lfoot_o=foot_o[0], rfoot_o=foot_o[1])
+        if side: spec['side'] = side
+        if head_yaw is not None: spec['head_yaw'] = head_yaw
+        out.append((f, spec))
     return out
+# `run_turn`: same 24-frame cadence/phase as `run` (so the two blend cleanly), running a left-hand turn: body banked to the left (+X), pelvis and
+# shoulders turned into the turn, head leading, feet landing to the right of the pelvis (so the whole body leans in), outside (right) arm swings wider.
+def run_turn_clip():
+    return run_clip(lean=17, side=20, dx=-.17, yaw0=7, hyaw0=12, head_yaw=34, foot_o=((10, 0), (16, 0)), lamp=.30, ramp=.44, hand_dx=.10)
+
+# `trot`: relaxed home-run jog, 18 frames = 0.75 s per cycle (two steps). Stance foot slides back at exactly 2.2 m/s so it does not skate:
+# stance 0.42 of the cycle = 0.315 s -> 0.69 m of foot travel (+-0.345 m about the hip).  In place (the engine supplies the ground speed).
+TROT_SPEED = 2.2
+def trot_clip(n=18, duty=.42):
+    travel = TROT_SPEED*duty*n/24.0; half = travel/2; out = []
+    def foot(p):
+        p %= 1.0
+        if p < duty: return (-half+travel*p/duty, .085)
+        q = (p-duty)/(1-duty); e = q*q*(3-2*q)
+        return (half-travel*e, .085 + .27*math.sin(math.pi*q))
+    for f in range(0, n+1):
+        p = (f % n)/n; ly, lz = foot(p); ry, rz = foot(p+.5); c = math.cos(2*math.pi*p)
+        bob = .03*(1-math.cos(4*math.pi*(p-duty/2)))/2
+        out.append((f, dict(hips=(0, 0, -.10+bob), lean=4, yaw=7*c, hyaw=-6*c, head_yaw=0, head_pitch=-6,
+                            lfoot=(.10, ly, lz), rfoot=(-.10, ry, rz),
+                            lhand=(.24, -.14+.18*c, .94+.04*max(0, c)), rhand=(-.24, -.14-.18*c, .94+.04*max(0, -c)),
+                            lpole=(.45, .7, -.6), rpole=(-.45, .7, -.6), lknee=(0, -1, 0), rknee=(0, -1, 0))))
+    return out
+
 def celebrate_clip():
     out = []
     for f in range(0, 41, 5):
@@ -23,6 +50,36 @@ def celebrate_clip():
                             lhand=(.30, -.10+.08*math.sin(ph), 2.12), rhand=(-.30, -.10-.08*math.sin(ph), 2.12), lpole=(.9, .2, 0), rpole=(-.9, .2, 0),
                             head_pitch=-12, yaw=8*math.sin(ph))))
     return out
+
+# Batting stance (right-handed; the engine mirrors lefties). Body faces model-forward, which the engine turns to face the plate: chest/shoulders square to the
+# plate = perpendicular to the mound line, head turned ~78 deg over the front (left) shoulder to the pitcher (neck 39, head 78), knees flexed and out,
+# weight on the back foot, hands back by the rear shoulder, bat cocked over it.  The `swing` clip starts from exactly this pose (frame 0).
+STANCE0 = dict(hips=(-.03, .02, -.12), lean=14, yaw=-7, hyaw=-4, head_yaw=78, head_pitch=-14, lfoot=(.30, 0, .085), rfoot=(-.30, .02, .085),
+               lknee=(.30, -1, 0), rknee=(-.30, -1, 0), bat=((-.17, -.20, 1.36), (-.30, .12, .94)), lpole=(.2, .3, -.9), rpole=(-.5, .8, -.3))
+def S0(**k): d = dict(STANCE0); d.update(k); return d
+def stance_clip():
+    return [(0, S0()),
+            (12, S0(hips=(-.06, .03, -.115), yaw=-10, hyaw=-6, bat=((-.19, -.17, 1.38), (-.33, .17, .93)))),
+            (24, S0(hips=(-.01, .015, -.135), yaw=-5, hyaw=-2, head_pitch=-16, bat=((-.15, -.23, 1.35), (-.27, .05, .96)))),
+            (36, S0(hips=(-.045, .025, -.11), yaw=-8, hyaw=-4, bat=((-.18, -.19, 1.37), (-.31, .14, .94)))),
+            (48, S0())]
+
+# `catch_jump`: outfielder leaping at the wall, 29 frames = 1.21 s (plant 0-4, load 4, take-off 8, apex 14 = glove highest, hang 11-17, touch-down 20, absorb 23, settle 29).
+# Glove arm (model Left; `Glove_Pocket`) reaches up and over the fence; the hip rise is baked in (root motion in z, plus 0.2 m toward the wall).
+def catch_jump_clip():
+    K = dict(lknee=(.3, -1, 0), rknee=(-.3, -1, 0), head_yaw=0)
+    def air(h, ly, ry):                      # feet tucked while airborne, follow the hips up
+        z = .085+h+.03+.14; return dict(lfoot=(.20, ly, z), rfoot=(-.20, ry, z-.10))
+    return [
+     (0,  dict(K, hips=(0, .05, -.14), lean=16, lfoot=(.22, -.12, .085), rfoot=(-.20, .10, .085), lhand=(.28, -.25, .95), rhand=(-.26, -.18, .95), head_pitch=-14, lpole=(.6, .3, -.6), rpole=(-.6, .3, -.6))),
+     (4,  dict(K, hips=(0, .10, -.32), lean=25, lfoot=(.22, -.12, .085), rfoot=(-.20, .10, .085), lhand=(.30, .08, .70), rhand=(-.30, .10, .70), head_pitch=-24, lpole=(.6, .3, -.6), rpole=(-.6, .3, -.6))),
+     (8,  dict(K, hips=(0, -.06, -.03), lean=7, lfoot=(.22, -.14, .085), rfoot=(-.20, .08, .085), lhand=(.24, -.40, 1.78), rhand=(-.28, -.25, 1.40), head_pitch=-28, lpole=(.5, .5, .3), rpole=(-.7, .4, -.3))),
+     (11, dict(K, hips=(0, -.16, .18), lean=3, side=4, lhand=(.22, -.52, 2.16), rhand=(-.42, -.15, 1.62), head_pitch=-30, lpole=(.5, .5, .4), rpole=(-.9, .3, .0), **air(.18, -.32, -.02))),
+     (14, dict(K, hips=(0, -.22, .30), lean=0, side=6, lhand=(.22, -.56, 2.30), rhand=(-.46, -.10, 1.78), head_pitch=-32, lpole=(.5, .5, .4), rpole=(-.9, .3, .0), **air(.30, -.42, -.05))),
+     (17, dict(K, hips=(0, -.20, .19), lean=4, side=4, lhand=(.22, -.52, 2.14), rhand=(-.40, -.16, 1.62), head_pitch=-26, lpole=(.5, .5, .4), rpole=(-.9, .3, .0), **air(.19, -.36, -.08))),
+     (20, dict(K, hips=(0, -.17, -.03), lean=12, lfoot=(.24, -.22, .085), rfoot=(-.22, -.06, .085), lhand=(.18, -.42, 1.70), rhand=(-.26, -.30, 1.45), head_pitch=-18, lpole=(.6, .4, .0), rpole=(-.6, .4, -.3))),
+     (23, dict(K, hips=(0, -.14, -.28), lean=28, lfoot=(.26, -.22, .085), rfoot=(-.24, -.08, .085), lhand=(.14, -.45, 1.22), rhand=(-.12, -.38, 1.15), head_pitch=-16, lpole=(.6, .4, -.3), rpole=(-.6, .4, -.3))),
+     (29, dict(K, hips=(0, -.10, -.20), lean=22, lfoot=(.26, -.22, .085), rfoot=(-.24, -.08, .085), lhand=(.15, -.40, 1.10), rhand=(-.13, -.34, 1.05), head_pitch=-14, lpole=(.6, .4, -.3), rpole=(-.6, .4, -.3)))]
 
 CLIPS = {
  "idle": (60, [
@@ -49,8 +106,7 @@ CLIPS = {
               lpole=(.7, .3, -.3), rpole=(0, .3, .8), head_yaw=0)),
     (36, dict(lean=38, hips=(0, -.70, -.10), yaw=20, hyaw=20, lfoot=(.17, -.90, .08), rfoot=(-.20, -.62, .08), lhand=(.30, -.30, .85), rhand=(.10, -.45, .85), head_yaw=0))]),
  "swing": (32, [
-    (0, dict(hips=(0, .02, -.10), lean=14, yaw=-8, hyaw=-4, head_yaw=90, lfoot=(.30, 0, .085), rfoot=(-.30, .02, .085),
-             bat=((-.17, -.20, 1.36), (-.30, .12, .94)), lpole=(.2, .3, -.9), rpole=(-.5, .8, -.3))),
+    (0, STANCE0),
     (8, dict(hips=(-.05, .02, -.10), lean=14, yaw=-24, hyaw=-12, head_yaw=90, lfoot=(.30, 0, .18), rfoot=(-.30, .02, .085),
              bat=((-.30, -.10, 1.40), (-.55, .18, .81)), lpole=(.2, .3, -.9), rpole=(-.5, .8, -.3))),
     (13, dict(hips=(.10, .0, -.13), lean=14, yaw=-26, hyaw=-12, head_yaw=90, lfoot=(.64, 0, .085), rfoot=(-.30, .02, .085),
@@ -110,14 +166,20 @@ CLIPS = {
               lhand=(.16, -.70, .66), rhand=(-.12, -.32, .55), lpole=(.6, .5, -.2), rpole=(-.6, .5, -.2), head_pitch=-28)),
     (40, dict(hips=(0, .05, -.48), lean=28, lfoot=(.30, -.05, .08), rfoot=(-.30, -.05, .08), lfoot_o=(40, 0), rfoot_o=(-40, 0), lknee=(.6, -1, 0), rknee=(-.6, -1, 0),
               lhand=(.16, -.72, .62), rhand=(-.12, -.32, .55), lpole=(.6, .5, -.2), rpole=(-.6, .5, -.2), head_pitch=-28))]),
+ "batting_stance": (48, stance_clip()),
+ "trot": (18, trot_clip()),
+ "run_turn": (24, run_turn_clip()),
+ "catch_jump": (29, catch_jump_clip()),
 }
+# The 11 original clips are keyed from frame 1 (their first key sits at t = 1/24 s); the loopable/new clips start at frame 0 so t = 0 .. length/24 exactly.
+FRAME0 = {"batting_stance": 0, "trot": 0, "run_turn": 0, "catch_jump": 0}
 def bake_clips(arm, names=None, frame0=1):
     bpy.context.view_layer.objects.active = arm; bpy.ops.object.mode_set(mode='POSE')
     acts = {}
     for nm, (length, keys) in CLIPS.items():
         if names and nm not in names: continue
         act = new_action(arm, nm)
-        for f, spec in keys: key_pose(arm, spec, frame0+f)
+        for f, spec in keys: key_pose(arm, spec, FRAME0.get(nm, frame0)+f)
         acts[nm] = act
     bpy.ops.object.mode_set(mode='OBJECT')
     return acts
