@@ -234,7 +234,11 @@ export class BatView {
   }
   held = false;
 
-  update(state: GameState) {
+  /**
+   * `from`/`t`: while a swing starts, the bat is blended from where the hands hold it (t = 0) to the sim's pose (t = 1) so it
+   * does not pop out of the hands; the sim's early swing arc is far from the batter's stance and the ball is nowhere near yet.
+   */
+  update(state: GameState, from?: { pos: Vector3; quat: Quaternion }, t = 1) {
     const b = state.bat;
     if (this.held) {
       this.visible = false; // no sim pose: hands keep their clip pose
@@ -246,6 +250,11 @@ export class BatView {
     if (!b.visible) return;
     toScene(b.pos, this.obj.position);
     quatToScene(b.quat, this.q);
+    if (from && t < 1) {
+      const k = t * t * (3 - 2 * t);
+      this.obj.position.lerpVectors(from.pos, this.obj.position, k);
+      this.q.copy(from.quat).slerp(this.q, k);
+    }
     this.obj.quaternion.copy(this.q);
     this.grip.bottom.set(0, 0.12, 0).applyQuaternion(this.q).add(this.obj.position);
     this.grip.top.set(0, 0.26, 0).applyQuaternion(this.q).add(this.obj.position);

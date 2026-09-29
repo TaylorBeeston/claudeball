@@ -2,6 +2,7 @@ import {
   ACESFilmicToneMapping,
   Object3D,
   PerspectiveCamera,
+  Quaternion,
   PCFShadowMap,
   Scene,
   SRGBColorSpace,
@@ -34,6 +35,8 @@ export interface EngineOptions {
 
 /** Farthest knob-to-shoulder distance (m) the batter's arms can plausibly cover: arm length plus IK slack. */
 const BAT_REACH_MAX = 0.95;
+/** Seconds over which the bat moves from the batter's hands to the sim's pose at the start of a swing. */
+const BAT_BLEND = 0.07;
 
 export class Engine {
   readonly renderer: WebGLRenderer;
@@ -64,6 +67,8 @@ export class Engine {
   private live: GameState;
   private raf = 0;
   private tmpV = new Vector3();
+  private batAge = 0;
+  private gripFrom = { pos: new Vector3(), quat: new Quaternion() };
   private prevFar: Vector3 | null = null;
   private fieldGroup: Object3D;
   assets: Assets | null = null;
@@ -269,7 +274,14 @@ export class Engine {
       useGrip = this.tmpV.distanceTo(new Vector3(rs.bat.pos.x, rs.bat.pos.y, rs.bat.pos.z)) > BAT_REACH_MAX;
     }
     this.bat.hold(useGrip ? grip : null, this.scene);
-    this.bat.update(rs);
+    this.batAge = rs.bat.visible ? this.batAge + animDt : 0;
+    const blend = this.batAge / BAT_BLEND;
+    if (grip && !useGrip && blend < 1) {
+      grip.updateWorldMatrix(true, false);
+      grip.getWorldPosition(this.gripFrom.pos);
+      grip.getWorldQuaternion(this.gripFrom.quat);
+      this.bat.update(rs, this.gripFrom, blend);
+    } else this.bat.update(rs);
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
     this.players.update(rs, animDt, this.ball.worldPos, this.bat);
 
