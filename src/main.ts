@@ -1,4 +1,5 @@
 import { Engine } from './engine/engine';
+import { attachAudio } from './audio';
 
 const root = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
@@ -10,6 +11,7 @@ const engine = new Engine(root, {
 });
 (window as unknown as { engine: Engine }).engine = engine;
 engine.start();
+attachAudio(engine, root, { off: params.has('noaudio') });
 if (!params.has('noassets')) {
   engine.loadAssets().then(
     (a) => console.info('[assets]', a.missing.length ? `missing: ${a.missing.join(', ')}` : 'all loaded', a.mirrored ? '(mirrored: old +X convention)' : ''),
