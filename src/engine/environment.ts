@@ -25,7 +25,7 @@ import {
 } from 'three';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import type { QualitySettings } from './quality';
 
 export type TimeOfDay = 'day' | 'dusk' | 'night';
@@ -238,10 +238,20 @@ export class Environment {
     void this.applyHdri(name);
   }
 
+  /** Which `sky_<tod>.hdr` files exist (from the `/hdri/index.json` manifest); none when the manifest or files are absent. */
+  private static hdriFiles: Promise<Set<string>> | null = null;
+  private static availableHdris() {
+    return (Environment.hdriFiles ??= fetch('/hdri/index.json')
+      .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? (r.json() as Promise<string[]>) : []))
+      .catch(() => [] as string[])
+      .then((l) => new Set(l)));
+  }
+
   private async loadHdri(name: TimeOfDay) {
     if (this.hdri.has(name)) return this.hdri.get(name)!;
     try {
-      const tex = await new RGBELoader().loadAsync(`/hdri/sky_${name}.hdr`);
+      if (!(await Environment.availableHdris()).has(`sky_${name}.hdr`)) throw new Error('no HDRI'); // procedural sky
+      const tex = await new HDRLoader().loadAsync(`/hdri/sky_${name}.hdr`);
       tex.mapping = EquirectangularReflectionMapping;
       const data = tex.image.data as Uint16Array;
       const w = tex.image.width, h = tex.image.height;
@@ -279,7 +289,8 @@ export class Environment {
     if (name !== 'night') {
       const want = Math.atan2(Environment.SUN_AZ.z, Environment.SUN_AZ.x);
       const have = Math.atan2(h.sun.z, h.sun.x);
-      rot.y = want - have;
+      // three samples the sky with the inverse of this rotation, so the sun's azimuth moves by (have - want) -> `want` needs the opposite sign
+      rot.y = have - want;
       const el = Math.asin(h.sun.y);
       sunDir = new Vector3(Math.cos(el) * Math.cos(want), h.sun.y, Math.cos(el) * Math.sin(want));
     }

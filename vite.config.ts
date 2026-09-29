@@ -34,8 +34,34 @@ function cbAssets(): Plugin {
   };
 }
 
+/**
+ * `public/hdri/*.hdr` is not committed (`npm run hdri` downloads it). The engine asks `/hdri/index.json` which sky files exist
+ * instead of requesting files that may be absent (a 404 would show up as a console error); the manifest is generated on the
+ * fly in dev and written to `dist/hdri/index.json` on build.
+ */
+function cbHdriManifest(): Plugin {
+  const list = () => {
+    const dir = path.resolve('public/hdri');
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^sky_\w+\.hdr$/.test(f)).sort() : [];
+  };
+  return {
+    name: 'cb-hdri-manifest',
+    configureServer(server) {
+      server.middlewares.use('/hdri/index.json', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.end(JSON.stringify(list()));
+      });
+    },
+    closeBundle() {
+      fs.mkdirSync(path.resolve('dist/hdri'), { recursive: true });
+      fs.writeFileSync(path.resolve('dist/hdri/index.json'), JSON.stringify(list()));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [cbAssets()],
+  plugins: [cbAssets(), cbHdriManifest()],
   server: { port: 5173, host: true },
   build: {
     target: 'es2022',
