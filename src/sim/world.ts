@@ -2,6 +2,8 @@ import type { BallBody, BallStepFlags, Environment, PathSample } from './ball';
 import type { BatSwing, SwingPlan, Stance } from './batting';
 import type { StrikeZone, ThrownPitch } from './pitching';
 import type { Rng } from './rng';
+import type { DecState } from './dispatch';
+import type { FullDecisionProvider, PitchDecision, StealDecision } from './decisions';
 import type {
   AnimHint,
   BatterLine,
@@ -63,9 +65,40 @@ export interface PlayerRT {
   onField: boolean;
   /** Fielding plan for the current play. */
   plan: FielderPlan;
+  /** Wall leap in progress. */
+  leap: Leap | null;
+  /** Gait presentation for the renderer: jogging (`trot`) or a hard turn at a bag (`turn`). */
+  gait: 'trot' | 'turn' | null;
+  /** Tick of the last `wallContact` event for this player (rate limit). */
+  wallTick: number;
 }
 
-export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold';
+export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';
+
+/** An outfielder's plan for a ball that will reach (or clear) the outfield wall above his standing reach. */
+export interface WallPlan {
+  /** Predicted tick at which the ball meets the wall plane. */
+  crossTick: number;
+  /** Where he plants (just inside the wall) and where the ball meets the wall. */
+  x: number;
+  z: number;
+  /** Ball height at the wall and how far above the top of the wall it is (m, may be negative). */
+  crossY: number;
+  dy: number;
+  over: boolean;
+  /** Decision to leap (null until decided). */
+  leap: boolean | null;
+  /** Leap timing offset the decision asked for (s, + = later). */
+  timing: number;
+}
+
+/** A jump in progress (wall leap). */
+export interface Leap {
+  t0: number;
+  dur: number;
+  /** Peak height of the jump (m). */
+  h: number;
+}
 
 export interface FielderPlan {
   kind: PlanKind;
@@ -77,12 +110,24 @@ export interface FielderPlan {
   /** Persistent trajectory-judgment bias (m per second of remaining flight). */
   biasX: number;
   biasZ: number;
+  /** Persistent misjudgement of the ball's height (m) and timing (s) at the wall. */
+  biasY: number;
+  biasT: number;
+  /** Wall play (outfielder going to the fence for a ball he may have to leap for). */
+  wall: WallPlan | null;
   /** Ball secured; earliest tick the fielder can throw. */
   holdUntil: number;
   /** Throw wind-up in progress: release at this tick (0 = none). */
   releaseAt: number;
   throwBase: number;
   throwTo: PlayerRT | null;
+  /** Throw decision bookkeeping (sequence, situation at the last answer, when to ask again). */
+  askSeq: number;
+  lastSig: string;
+  recheckTick: number;
+  asking: boolean;
+  /** Runner he is closing on to tag. */
+  tagTarget: RunnerRT | null;
   /** Last tick this fielder attempted a catch (to avoid double attempts). */
   lastAttempt: number;
   /** Ticks since the play started at which this fielder was 'primary'. */
@@ -154,6 +199,24 @@ export interface RunnerRT {
   stealDelay: number;
   leadX: number;
   leadZ: number;
+  /** Decision bookkeeping: sequence for question keys, situation at the last answer, when to ask again. */
+  askSeq: number;
+  lastSig: string;
+  recheckTick: number;
+  /** Lead distance chosen for the current pitch (m) and the key it was chosen for. */
+  leadDist: number;
+  leadKey: string;
+  /** A runner decision has been requested and not yet applied. */
+  asking: boolean;
+  /** Dead-ball trot speed (m/s), 0 = not trotting. */
+  trot: number;
+  /** Put out before reaching this base: he still runs through it before walking off. */
+  exitVia: number;
+  exitDone: boolean;
+  /** Tick the runner was put out / scored (leaving the field). */
+  outTick: number;
+  /** A run scored on a home run: he celebrates at the plate until then. */
+  celebrateUntil: number;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -199,6 +262,8 @@ export interface BipInfo {
   infieldFly: boolean;
   infieldFlyChecked: boolean;
   homeRun: boolean;
+  /** A would-be home run caught over the fence. */
+  robbed: boolean;
   groundRuleDouble: boolean;
   bunt: boolean;
   fielders: PlayerRT[]; // touches in order
@@ -253,9 +318,33 @@ export interface Count {
   strikes: number;
 }
 
+/** Decisions gathered for the pitch about to be thrown (pickoff / pitch / steals), before the windup starts. */
+export interface PrePitch {
+  alignmentDone: boolean;
+  pickoffDone: boolean;
+  pitch: PitchDecision | null;
+  stealsDone: boolean;
+  /** Runner asked about stealing on this pitch and the answer. */
+  steal: { r: RunnerRT; go: boolean } | null;
+}
+
 export interface World {
   cfg: Required<Pick<GameConfig, 'dh' | 'innings' | 'extraInningsRunner' | 'pace'>> & GameConfig;
   rng: Rng;
+  /** Randomness of the AI's own judgement / mixed strategies (separate from physics noise, so another provider never shifts the physics stream). */
+  aiRng: Rng;
+  dec: DecState;
+  ai: FullDecisionProvider;
+  /** Plate-appearance start stage (see flow.startPlateAppearance). */
+  paStage: number;
+  prep: PrePitch;
+  /** Swing decision state for the pitch in flight. */
+  swingObs: import('./batting').SwingObservation | null;
+  swingDecided: boolean;
+  /** Bunt attempt on the pitch about to be thrown / in flight. */
+  buntNow: { kind: 'sac' | 'hit'; psi: number } | null;
+  /** Latest defensive alignment decision (infield in, shifts...). */
+  align: import('./decisions').AlignmentDecision;
   env: Environment;
   tick: number;
   acc: number; // leftover seconds
@@ -274,6 +363,8 @@ export interface World {
   pitcher: PlayerRT;
   catcher: PlayerRT;
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
+  /** Runners who are out or scored and are walking off the field (still on screen). */
+  exiting: RunnerRT[];
   ball: BallRT;
   play: PlayState | null;
   // pitch in progress

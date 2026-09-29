@@ -180,6 +180,9 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   creditOut(w, r.p);
   const play = w.play;
   const brBeforeFirst = r.isBatter && r.base === 0;
+  r.outTick = w.tick;
+  // a batter put out at first (force / tag) still runs through the bag
+  if (brBeforeFirst && (outType === 'force' || outType === 'tag')) r.exitVia = 1;
   if (play) play.outsThisPlay.push({ runner: r, force: force || brBeforeFirst, brBeforeFirst, tick: w.tick });
   if (r.isBatter && play) play.batterOut = true;
   emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base });
@@ -214,6 +217,7 @@ export function scoreRun(w: World, r: RunnerRT): void {
   if (r.state !== 'live') return;
   r.state = 'scored';
   r.scoredTick = w.tick;
+  r.outTick = w.tick;
   const team = r.p.team;
   team.runs++;
   while (team.linescore.length < w.inning) team.linescore.push(0);
@@ -298,8 +302,7 @@ export function afterPlayOver(w: World): void {
     return;
   }
   if (w.paDone) {
-    w.paDone = false;
-    // pinch runner / pitching change etc. happen inside startPlateAppearance
+    // pinch runner / pitching change etc. are asked inside startPlateAppearance (which clears paDone when it completes)
     flow.startPlateAppearance(w);
     return;
   }
@@ -310,7 +313,9 @@ export function endHalfInning(w: World): void {
   emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half });
   // clear bases, ball to pitcher
   for (const r of w.runners) r.p.onField = false;
+  for (const r of w.exiting) r.p.onField = false;
   w.runners = [];
+  w.exiting = [];
   w.paDone = false;
   const bat = w.batter;
   if (bat) bat.onField = false;
@@ -400,7 +405,11 @@ export function resolveBattedBall(w: World): void {
       const kind = bip.launchDeg > 45 ? 'pops out' : bip.line ? 'lines out' : 'flies out';
       result = kind.replace(' out', 'out').replace('pops', 'pop').replace('lines', 'line').replace('flies', 'fly');
       result = bip.launchDeg > 45 ? 'popout' : bip.line ? 'lineout' : 'flyout';
-      if (sacFly) {
+      if (bip.robbed) {
+        result = 'flyout';
+        desc = `${name} is robbed of a home run by ${where}!`;
+        opts = { ab: true };
+      } else if (sacFly) {
         result = 'sac fly';
         desc = `${name} hits a sacrifice fly to ${where}; ${runs} run${runs > 1 ? 's' : ''} score${runs > 1 ? '' : 's'}.`;
         opts = { ab: false, sf: true, rbi: runs };

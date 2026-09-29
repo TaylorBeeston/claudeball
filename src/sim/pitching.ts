@@ -176,7 +176,7 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
 
   // Execution error (angular, in radians). Control 50 ~ 0.17 m 1-sigma at the plate.
   const ctl = p.ratings.control;
-  let sigmaPos = 0.185 - 0.00105 * ctl; // ctl 50 -> 0.133 m 1-sigma at the plate; 80 -> 0.101; 30 -> 0.154
+  let sigmaPos = 0.181 - 0.00105 * ctl; // ctl 50 -> 0.133 m 1-sigma at the plate; 80 -> 0.101; 30 -> 0.154
   sigmaPos *= 1 + 0.9 * f;
   if (spec.type === 'CU' || spec.type === 'SL' || spec.type === 'SW') sigmaPos *= 1.12;
   if (spec.type === 'FS' || spec.type === 'CH') sigmaPos *= 1.05;

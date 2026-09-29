@@ -56,7 +56,7 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
-    r.bias = w.rng.normal(0, 0.28);
+    r.bias = w.aiRng.normal(0, 0.28);
   }
   fielding.initFielderPlans(w, kind === 'battedBall' ? 0 : 0.05);
   w.ball.pathDirty = true;
@@ -80,6 +80,7 @@ export function beginBattedBall(w: World, res: ContactResult): void {
     infieldFly: false,
     infieldFlyChecked: false,
     homeRun: false,
+    robbed: false,
     groundRuleDouble: false,
     bunt: !!w.swingPlan?.bunt,
     fielders: [],
@@ -177,6 +178,7 @@ export function startDeadBallMovement(w: World): void {
     r.p.role = 'runner';
     r.p.onField = true;
     r.reaction = w.tick + secToTicks(0.5);
+    r.trot = running.trotSpeed(r.p);
     if (w.cfg.pace === 0) {
       // no dead-ball time: everyone is placed on the awarded base at once
       const from = r.base;
@@ -206,18 +208,19 @@ function homeRun(w: World, bip: BipInfo): void {
   w.ball.mode = 'dead';
   const b = w.ball.body;
   const dist = Math.hypot(b.x, b.z);
-  emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist });
+  emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist, heightAboveWall: b.y - fenceAt(w.env.fence, b.x, b.z).height, pos: { x: b.x, y: b.y, z: b.z } });
   emit(w, { type: 'call', call: mkCall(w, 'homeRun') });
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.dead = true;
     r.awarded = true;
     r.want = 4;
-    r.reaction = w.tick + secToTicks(0.6);
+    r.reaction = w.tick + secToTicks(r.isBatter ? 1.2 : 0.5);
     r.stealing = false;
     r.tagWait = false;
     r.retouch = 0;
-    r.p.vmax = Math.min(r.p.vmax, 6.5);
+    r.overrun = false;
+    r.trot = running.trotSpeed(r.p);
   }
   for (const F of fielding.fielders(w)) {
     F.goal = null;
@@ -238,6 +241,7 @@ function groundRuleDouble(w: World, bip: BipInfo): void {
     r.awarded = true;
     r.want = Math.min(4, r.base + 2);
     if (r.isBatter) r.want = 2;
+    r.trot = running.trotSpeed(r.p);
     r.reaction = w.tick + secToTicks(0.3);
     r.stealing = false;
     r.tagWait = false;
@@ -267,6 +271,7 @@ export function tickInPlay(w: World): void {
   else if (ball.holder) flow.ballFollowsHolder(w);
   else if (ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown') stepLiveBall(w);
 
+  fielding.tickWallPlay(w);
   if (!play.dead) {
     // throws leave the hand when the wind-up ends
     for (const F of fielding.fielders(w)) {
@@ -324,9 +329,16 @@ function stepLiveBall(w: World): void {
     ball.touchedWall = true;
     ball.pathDirty = true;
     if (bip && bip.status === 'undecided') bip.status = isFairXZ(b.x, b.z) ? 'fair' : 'foul';
+    emit(w, { type: 'wallContact', who: 'ball', pos: { x: b.x, y: b.y, z: b.z }, speed: f.wallSpeed });
   }
   if (f.overFence) {
-    if (bip && bip.status !== 'foul' && isFairXZ(b.x, b.z)) {
+    // a fielder leaping at the wall gets one last try before the ball is gone
+    const held = !play.dead && bip && bip.status !== 'foul' && !ball.touchedGround && fielding.wallLastChance(w);
+    if (held || ball.holder) {
+      /* robbed: the play goes on as a caught fly ball */
+    } else if (ball.mode !== 'batted' && Math.hypot(b.x, b.z) < fenceAt(w.env.fence, b.x, b.z).distance) {
+      /* tipped back into the park: still live */
+    } else if (bip && bip.status !== 'foul' && isFairXZ(b.x, b.z)) {
       if (ball.touchedGround) groundRuleDouble(w, bip);
       else homeRun(w, bip);
     } else if (bip) {
@@ -488,7 +500,6 @@ function checkSettled(w: World): void {
     settled = true;
     for (const r of w.runners) {
       if (r.state !== 'live' || r.dead) continue;
-      const sp = Math.hypot(r.p.vx, r.p.vz);
       if (r.target > r.base || r.want > r.base) {
         settled = false;
         break;
@@ -497,7 +508,7 @@ function checkSettled(w: World): void {
         settled = false;
         break;
       }
-      if (!(running.isOnBase(r) || (r.overrun && sp < 1.2) || r.retouch)) {
+      if (!(running.isOnBase(r) || r.retouch)) {
         settled = false;
         break;
       }
@@ -536,7 +547,7 @@ function deadBallDone(w: World): boolean {
     allDone = (w.tick - play.deadTick) * TICK > 0.6 || w.cfg.pace === 0;
   }
   if (play.deadTick === 0) play.deadTick = w.tick;
-  if ((w.tick - play.startTick) * TICK > 30) allDone = true;
+  if ((w.tick - play.deadTick) * TICK > 75) allDone = true;
   return allDone;
 }
 
@@ -592,8 +603,12 @@ function fixupRunners(w: World): void {
   w.runners = w.runners.filter((r) => {
     if (r.state === 'live') return true;
     r.p.goal = null;
-    // scored/out runners leave the field after a short walk
-    r.p.onField = false;
+    // scored/out runners walk off to their dugout (headless runs skip the walk)
+    if (w.cfg.pace === 0) r.p.onField = false;
+    else {
+      r.p.role = 'runner';
+      w.exiting.push(r);
+    }
     return false;
   });
 }
