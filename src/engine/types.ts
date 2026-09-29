@@ -129,6 +129,12 @@ export type GameEvent =
   | { type: 'throw'; playerId: string; target: Vec3; targetId?: string }
   | { type: 'out'; playerId?: string; text?: string }
   | { type: 'run'; playerId?: string; text?: string }
+  /** the ball cleared the fence; `pos` is where it crossed it */
+  | { type: 'homerun'; batterId: string; distance: number; pos?: Vec3 }
+  /** a runner touched a base (base 1..3, 4 = home); `trot` when it is a dead-ball jog */
+  | { type: 'base_touch'; playerId: string; base: number; trot: boolean; pos?: Vec3 }
+  /** an outfielder left the ground at the wall */
+  | { type: 'wall_leap'; playerId: string; pos?: Vec3 }
   | { type: 'ball' | 'strike' | 'foul' }
   | { type: 'play'; text: string }
   | { type: 'half_inning'; inning: number; half: 'top' | 'bottom' }
