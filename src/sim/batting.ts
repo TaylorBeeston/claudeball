@@ -73,7 +73,7 @@ export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X 
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 25.7 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 26.1 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Time (s after release) at which the batter must commit: swing or take. */
@@ -242,7 +242,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const rSweet = rh + BAT_S_NODE;
   const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0150 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
+  const sigmaT = 0.0145 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {
