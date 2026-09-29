@@ -109,7 +109,8 @@ Listeners are called *during* `step`; do not call `step` from inside a listener.
 | `ball` | `pos`, `vel` (m/s), `spin` (rad/s), `mode` (`held/pitched/batted/thrown/loose/dead`), `holderId` |
 | `bat` | `active`, `knob` and `tip` positions (the bat is that segment), `swingT` 0..1 (−1 when not swinging). While not swinging (`active:false`) knob/tip give a ready-stance pose. |
 | `pendingDecision` | (additive) `{id, decision, side}` while the sim is paused waiting for a deferred decision, else `null` — see *Decision providers* |
-| `players[]` | fielders, batter, runners (including runners who are out or scored and are still walking off), and 4 umpires: `id, name, team, role ('pitcher'\|'catcher'\|'fielder'\|'batter'\|'runner'\|'umpire'), position, jersey, pos, vel, facing, anim, animT, hasBall, bats, throws, height` |
+| `stats` | (additive) live per-game and cumulative box-score stats for every player, see *Stats* |
+| `players[]` | fielders, batter, runners (including runners who are out or scored and are still walking off), and 4 umpires: `id, name, team, role ('pitcher'\|'catcher'\|'fielder'\|'batter'\|'runner'\|'umpire'), position, jersey, pos, vel, facing, anim, animT, hasBall, bats, throws, height`; additively `ratings`, `physique`, `appearance`, `delivery {style, armSlotDeg, tempo, fromStretch}` (pitchers). `pos.y` is the ground height at his spot (the mound for the pitcher) plus wall-leap height |
 | `umpire.lastCall`, `umpire.zone` | last call (`ball/strikeLooking/strikeSwinging/foul/hitByPitch/homeRun/infieldFly…`) with the pitch's plate location; strike-zone rectangle `{left,right,bottom,top}` in metres (x,y at `depthZ` = front edge of the plate) for the current batter |
 | `lastPlay` | text description of the last completed play |
 | `gameOver`, `winner`, `teams` | |
@@ -141,6 +142,75 @@ event, the batter is out); `decisionRequested` / `decisionResolved {id, decision
 
 Good hooks for a camera director: `pitchReleased` → pitcher cam; `contact` → follow the ball (`launchDeg`,
 `exitMph`); `catch`/`fielded`/`throw` → cut to the fielder; `homeRun` → outfield cam; `runScored`/`out` → replay.
+
+## Player attributes (every one feeds a mechanic)
+
+Ratings are on the 20–80 scouting scale (50 = average, 10 points = 1 σ; `velocity` is the fastball in mph). They live in
+`PlayerInfo.ratings` (also on each `PlayerSnapshot.ratings`); `attributes.ts` holds the maps from attribute to mechanic and
+`__tests__/attributes.test.ts` shows each one changing the physics.
+
+| attribute | mechanic |
+|---|---|
+| **contact** | barrel accuracy: aim error and swing-timing error of the swing (and bunts) |
+| **power** | bat speed at the sweet spot (exit velocity) |
+| **pull** | swing timing shifts earlier (pull, contact out front) / later (opposite field): spray angle moves ~1° per 3 points |
+| **gap** | level, repeatable bat path: mean attack angle drawn toward ~11°, launch-angle spread shrinks |
+| **eye / discipline** | perception noise of the pitch (location, speed, recognition) / the swing-or-take threshold |
+| **breaking** | recognition of slider / curve / sweeper / change / splitter and how well he extrapolates their movement (a poor eye misjudges and chases) |
+| **consistency** (hitter) | scale of timing / bat-path / bat-speed noise pitch to pitch, and how far his day-to-day **form** drifts (an AR(1) that moves his effective contact and power a few points) |
+| **clutch** | in high-leverage spots (late, close, runners in scoring position) extra composure noise on the swing for the fragile, less for the clutch |
+| **speed / acceleration** | top sprint speed (6.65 + 0.031·speed m/s) and acceleration (6.6 + 0.03·accel m/s²), as `stepPlayer` moves him |
+| **baserunning** | jumps on steals, lead size, how well he reads arrival times (his misjudgement σ), the margin he wants |
+| **durability** | hard running tires the legs (`legs`, 0–1 over a minute of sprinting); the speed it costs is larger for low durability; also a little extra pitch limit |
+| **range** | first step (reaction time), leaps at the wall, a share of top speed, judgement of the ball's flight |
+| **iq** | fielding IQ: smaller judgement error, more efficient routes (fraction of top speed that becomes progress), quicker first step |
+| **glove** | catch / bobble / drop noise of the glove, and (with **release**) the glove-to-hand transfer |
+| **arm / accuracy / release** | throw speed (27 + 0.21·arm m/s), throw direction noise, wind-up and transfer time |
+| catcher **catching / framing / blocking / pop** | receiving the pitch, borderline strikes he gets called, balls in the dirt he keeps in front of him, exchange + transfer against a steal |
+| **velocity** | fastball mph (each pitch is `velocity − its template delta`; from the stretch 0.6 mph less) |
+| **movement** & each pitch's **grade** | spin rate and spin efficiency of that pitch (Magnus force ⇒ break) |
+| **control** and each pitch's **command** | direction error of the release (scatter at the plate) overall and for that pitch |
+| **consistency** (pitcher) | release-point repeatability (σ of the release coordinates) and the rate of release lapses; the length of his set-position hitch |
+| **stamina** | pitches before he tires (fatigue costs velocity and command) |
+| **composure** | his command noise under pressure and after trouble (runs / walks / hits this outing make him "rattled", decaying between batters and innings) |
+| **holding** | time from the stretch to the plate and how short a leash runners get (their lead) |
+| **pickoff** | how quickly the throw over leaves his hand and how long the move freezes the runner; how often the AI throws over |
+
+**Repertoire.** Pitch types: four-seam `FF`, two-seam `FT`, sinker `SI`, cutter `FC`, slider `SL`, sweeper `SW`, curve `CU`, changeup
+`CH`, splitter `FS`. Starters carry 4–5 pitches, relievers 2–4, low-slot pitchers lean sinker / two-seam / slider / sweeper. Each
+`PitchSpec` has its own velocity, spin (rpm, efficiency, axis) and `grade` / `command`; the arm slot tilts the spin axis (a
+sidearmer's fastball runs, his slider sweeps).
+
+**Delivery** (`PlayerInfo.delivery = {style, armSlotDeg, tempo}`; live in `PlayerSnapshot.delivery` with `fromStretch`). `armSlotDeg` is
+degrees from vertical (0 over the top, ~45 three-quarter, ~90 sidearm, 100+ submarine) and *sets the release point*: height above the
+mound = `height·(0.65 + 0.27·cos slot)` (plus the mound), lateral offset `0.16 + 0.6·sin slot·height/1.9` toward the arm side.
+`tempo` scales the windup and the time to the plate. The pitcher works from the **stretch** whenever a runner is on base (windup with the bases
+empty): the stretch is ~0.28 s quicker (0.84 s vs 1.12 s, adjusted by tempo and `holding`), costs 0.6 mph and 4% command, and is what a
+runner's steal read is measured against.
+
+**Generation.** `generateTeam` draws attributes with MLB-like spread and correlations: power trades off against contact
+(and goes with size), speed goes against weight and age, acceleration follows speed, durability falls with age, pitch quality follows
+`movement`, low-slot pitchers throw a little slower, lefties are better at holding and pickoffs. Every player also has `age`,
+`physique {heightM, weightKg, build: lean|athletic|stocky|heavy}` (BMI by position and size), `appearance {skin, hairColor, hairStyle,
+facialHair, seed}` (palette indices for the renderer), handedness (switch hitters included) and a jersey number.
+`Team.rotation` lists the five starters.
+
+## The mound
+
+`groundHeight(x, z)` (field.ts): flat 0 everywhere except the pitcher's mound — a level top 10 in (0.254 m) above home plate at the
+rubber (60 ft 6 in), 5 ft wide, sloping 1 in per foot for 6 ft toward home from a point 6 in in front of the rubber (MLB spec), then an
+easing skirt to the grass. It is used for **every player's `pos.y`** in the snapshot (the pitcher stands 0.254 m up; a wall leap adds to it),
+for the ball (it bounces and rolls on the mound), for the ball in a fielder's hand, and for the release point (measured above the mound).
+The engine should place a player at `pos.y` (or call `groundHeight` itself for a position it computes).
+
+## Stats
+
+`getState().stats = {home, away}` is a live box score for a HUD: per team `batters[]` (lineup in order, then bench players used) and
+`pitchers[]` (in order of appearance), each entry `{playerId, name, jersey, position, inGame, game: {batting, pitching}, season:
+{batting, pitching}}` with `batting` = PA AB H 2B 3B HR RBI R BB K HBP SB CS SF SH plus `g avg obp slg ops tb`, and `pitching` = outs BF H R ER
+BB K HR HBP pitches strikes WP plus `g ip era whip`; `totals {runs, hits, errors, lob}`. `season` is `priorStats` + this game (`GameConfig.priorStats`).
+`simulateSeason({seed, teams, rounds})` plays a headless round robin (rotation turns over, stats accumulate, standings and player
+lines returned; ~1.5 s per game). `batterStats` / `pitcherStats` compute the derived lines.
 
 ## Decision providers (making it playable)
 

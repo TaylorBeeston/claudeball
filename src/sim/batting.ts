@@ -254,7 +254,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
   const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0148 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
+  const sigmaT = 0.0151 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   // a puller gets the bat out front (contact earlier), an opposite-field hitter lets it travel
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late + pullTimeShift(R.pull));
