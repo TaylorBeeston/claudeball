@@ -73,6 +73,7 @@ export interface DebugCue {
   kind: string;
   id: string;
   gain?: number;
+  delay?: number;
   played: boolean;
   text?: string;
 }
@@ -134,8 +135,14 @@ export class AudioController {
       toggleMute: () => this.toggleMute(),
       changed: () => this.settingsChanged(),
       gesture: () => void this.unlock(),
+      enable: () => void this.enable(),
     });
-    const gesture = () => void this.unlock();
+    // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
+    const gesture = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('.cb-snd, .cb-snd-prompt') || (e as KeyboardEvent).key?.toLowerCase?.() === 'm') return;
+      void this.unlock();
+    };
     for (const t of ['pointerdown', 'keydown', 'touchend'] as const) {
       window.addEventListener(t, gesture, { passive: true });
       this.offs.push(() => window.removeEventListener(t, gesture));
@@ -164,10 +171,22 @@ export class AudioController {
     return ok;
   }
 
+  /** An explicit request for sound (prompt, 🔊, M while locked): unlock and make sure it is not muted. */
+  async enable(): Promise<boolean> {
+    if (this.settings.muted) {
+      this.settings.muted = false;
+      this.settingsChanged();
+    }
+    return this.unlock();
+  }
+
   toggleMute() {
+    if (this.locked) {
+      void this.enable();
+      return;
+    }
     this.settings.muted = !this.settings.muted;
     this.settingsChanged();
-    void this.unlock();
   }
 
   private settingsChanged() {
@@ -272,7 +291,7 @@ export class AudioController {
       const tag = `${c.kind}:${id}`;
       this.debug.played[tag] = (this.debug.played[tag] ?? 0) + 1;
     }
-    if (id !== 'footstep') this.debug.cues.push({ t: Math.round(performance.now()), simInning: key, kind: c.kind, id, gain: 'gain' in c ? c.gain : undefined, played, text: c.kind === 'speak' ? c.text : undefined });
+    if (id !== 'footstep') this.debug.cues.push({ t: Math.round(performance.now()), simInning: key, kind: c.kind, id, gain: 'gain' in c ? c.gain : undefined, delay: 'delay' in c ? c.delay : undefined, played, text: c.kind === 'speak' ? c.text : undefined });
     if (this.debug.cues.length > 300) this.debug.cues.shift();
   }
 
@@ -430,7 +449,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, organ: a.organ.started, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

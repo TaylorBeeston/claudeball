@@ -224,7 +224,7 @@ export class CueMapper {
       }
       case 'fielded': {
         const p = vec(ev.pos) ?? c.pos(ev.fielderId);
-        out.push(cue.sfx('glove_pop', 1, { pos: p, bucket: 0, gain: 0.5 }));
+        out.push(cue.sfx('glove_pop', 1, { pos: p, bucket: 0, gain: 0.65 }));
         if (ev.clean === false) out.push(cue.crowd('ooh', 1, 0.4, 0.1));
         break;
       }
@@ -251,7 +251,7 @@ export class CueMapper {
         if (from && to) {
           const d = Math.hypot(to.x - from.x, to.z - from.z);
           const flight = clamp(d / Math.max(12, mph * MPH * 0.92), 0.08, 2.5);
-          out.push(cue.sfx('glove_pop', casual ? 0 : 1, { pos: to, bucket: casual ? 0 : 1, gain: casual ? 0.3 : 0.55, delay: flight }));
+          out.push(cue.sfx('glove_pop', casual ? 0 : 1, { pos: to, bucket: casual ? 0 : 1, gain: casual ? 0.4 : 0.75, delay: flight }));
         }
         break;
       }

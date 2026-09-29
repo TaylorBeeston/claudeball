@@ -54,8 +54,10 @@ const CSS = `
 export interface UiHandlers {
   toggleMute(): void;
   changed(): void;
-  /** the user clicked the prompt / a control: try to start audio */
+  /** the user touched a control that does not decide mute state: just try to start audio */
   gesture(): void;
+  /** the user asked for sound (the prompt): unlock and unmute */
+  enable(): void;
 }
 
 export class AudioUi {
@@ -63,6 +65,7 @@ export class AudioUi {
   private btn: HTMLButtonElement;
   private prompt: HTMLElement;
   private inputs: Record<string, HTMLInputElement> = {};
+  private locked = true;
 
   constructor(host: HTMLElement, private s: Settings, private h: UiHandlers) {
     const st = document.createElement('style');
@@ -132,18 +135,22 @@ export class AudioUi {
     this.prompt = document.createElement('div');
     this.prompt.className = 'cb-snd-prompt';
     this.prompt.textContent = '🔊 Click to enable sound';
-    this.prompt.onclick = () => h.gesture();
+    this.prompt.onclick = () => h.enable();
     host.append(this.root, this.prompt);
     this.refresh();
   }
 
   refresh() {
-    this.btn.textContent = this.s.muted ? '🔇' : '🔊';
-    this.btn.classList.toggle('on', !this.s.muted);
+    const silent = this.s.muted || this.locked;
+    this.btn.textContent = silent ? '🔇' : '🔊';
+    this.btn.title = this.locked ? 'Enable sound (M)' : silent ? 'Sound off (M)' : 'Sound on (M)';
+    this.btn.classList.toggle('on', !silent);
   }
 
   /** show or hide the "click to enable" prompt */
   setLocked(locked: boolean) {
+    this.locked = locked;
+    this.refresh();
     this.prompt.style.opacity = locked ? '1' : '0';
     this.prompt.style.pointerEvents = locked ? 'auto' : 'none';
     if (!locked) setTimeout(() => (this.prompt.style.display = 'none'), 500);

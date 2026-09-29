@@ -1,15 +1,15 @@
 # Audio (`src/audio/`)
 
 Broadcast/stadium sound for the game: bat, ball and glove effects, a crowd that follows the situation, an organ, a PA announcer,
-umpire calls and two-voice commentary. Everything is **synthesised in the browser** (Web Audio + DSP in plain typed arrays); there
-are no audio files, so it always works and needs no licences (`public/audio/CREDITS.md`). It only *listens* to the game; it never
+umpire calls and two-voice commentary. Everything is **synthesised in the browser** (Web Audio + DSP in plain typed arrays), so it always works;
+the only recordings are three short CC0 applause clips (`public/audio/`, listed in `manifest.json`, credits in `public/audio/CREDITS.md`) that replace the synthesised applause when they load. It only *listens* to the game; it never
 touches sim or engine state.
 
 ```
 main.ts:  attachAudio(engine, root, { off: params.has('noaudio') })     // the whole integration
 ```
 
-Controls: **M** mutes/unmutes, the 🔊 button (top right, under the engine's control row) mutes, the ⚙ button opens volumes
+Controls: **M** mutes/unmutes (while audio is still locked, M / 🔊 / the prompt unlock it *and* unmute), the 🔊 button (top right, under the engine's control row) mutes, the ⚙ button opens volumes
 (master / effects / crowd & organ / voices) and the **PA announcer & umpire** and **Commentary** toggles (default on). Settings persist
 in `localStorage` (`claudeball.audio.v1`, every access in try/catch). Browsers only allow audio after a click or key press, so a
 "Click to enable sound" pill shows until the context runs. `?noaudio` skips the layer completely.
@@ -36,6 +36,7 @@ sim raw event bus ─┐                       ┌─ sfx   → spatialize(camer
 | `ambience.ts` | murmur + roar loops gained by excitement, plus sparse whoops / clap ripples |
 | `organ.ts` | short organ riffs on `PeriodicWave` oscillators with tremolo/vibrato |
 | `speech.ts` | priority queue over `SpeechSynthesis`: one line at a time, TTL for stale lines, big lines interrupt chatter, voice picking, pause/resume |
+| `mixer.ts` samples | `loadSamples()` fetches `${BASE_URL}audio/manifest.json` and only the files it lists (`crowd:*` keys), decodes them and swaps them in for the synth buffer; any failure leaves the synthesised sound |
 | `ui.ts` | button, panel, prompt, settings persistence |
 
 ## Where the events come from

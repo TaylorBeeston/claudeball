@@ -233,9 +233,40 @@ export class Mixer {
       else {
         this.ready = true;
         onDone?.();
+        void this.loadSamples();
       }
     };
     setTimeout(next, 0);
+  }
+
+  /** Real recordings that replace the synthesised version of a crowd sound: only what `audio/manifest.json` lists (so nothing 404s). */
+  samples: string[] = [];
+
+  async loadSamples(base: string = import.meta.env?.BASE_URL ?? '/'): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || typeof fetch === 'undefined') return;
+    try {
+      const res = await fetch(`${base}audio/manifest.json`);
+      if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return;
+      const man = (await res.json()) as Record<string, string[]>;
+      for (const [key, files] of Object.entries(man)) {
+        if (!key.startsWith('crowd:') || !Array.isArray(files)) continue;
+        const decoded: AudioBuffer[] = [];
+        for (const f of files) {
+          try {
+            const r = await fetch(`${base}audio/${f}`);
+            if (!r.ok) continue;
+            decoded.push(await ctx.decodeAudioData(await r.arrayBuffer()));
+            this.samples.push(f);
+          } catch {
+            /* a file that fails to load or decode leaves the synthesised sound in place */
+          }
+        }
+        if (decoded.length) this.buffers.set(key, decoded);
+      }
+    } catch {
+      /* no manifest: synthesised sounds only */
+    }
   }
 
   // ---- playing -------------------------------------------------------------------------------------------------------
@@ -333,7 +364,8 @@ export class Mixer {
   playCrowd(id: CrowdId, gain = 1, delay = 0): boolean {
     const ctx = this.ctx;
     if (!ctx || !this.ready || ctx.state !== 'running') return false;
-    const b = this.buffers.get(`crowd:${id}`)?.[0];
+    const list = this.buffers.get(`crowd:${id}`);
+    const b = list?.[Math.floor(this.rnd() * list.length)];
     if (!b) return false;
     const now = ctx.currentTime;
     const key = `crowd:${id}`;
