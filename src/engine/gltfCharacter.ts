@@ -14,6 +14,7 @@ import {
   Material,
   Mesh,
   MeshStandardMaterial,
+  MeshPhysicalMaterial,
   Object3D,
   Quaternion,
   Vector3,
@@ -58,7 +59,22 @@ const matCache = new Map<string, MeshStandardMaterial>();
 function tinted(base: Material, key: string, color: string): MeshStandardMaterial {
   let m = matCache.get(key);
   if (!m) {
-    m = (base as MeshStandardMaterial).clone();
+    const b = base as MeshStandardMaterial;
+    const name = b.name.replace(/\.\d+$/, '');
+    const fabric = /^uniform_/.test(name);
+    const skin = name === 'skin' || name === 'face';
+    if (fabric || skin) {
+      // fabric sheen / skin rim (cheap subsurface look) via MeshPhysicalMaterial
+      const pm = new MeshPhysicalMaterial({
+        map: b.map, normalMap: b.normalMap, normalScale: b.normalScale.clone(), roughnessMap: b.roughnessMap, metalnessMap: b.metalnessMap,
+        aoMap: b.aoMap, aoMapIntensity: b.aoMapIntensity, roughness: b.roughness, metalness: b.metalness, side: b.side,
+      });
+      pm.sheen = fabric ? 0.7 : 0.45;
+      pm.sheenRoughness = fabric ? 0.55 : 0.75;
+      pm.sheenColor = new Color(fabric ? 0xffffff : 0xff9a80);
+      pm.name = b.name;
+      m = pm;
+    } else m = b.clone();
     m.userData = {};
     m.color = new Color(color);
     reg(m);

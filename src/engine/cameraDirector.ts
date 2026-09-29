@@ -43,6 +43,8 @@ export interface DirectorOutput {
 
 export class CameraDirector {
   auto = true;
+  /** [3B side (+X), 1B side (−X)] camera/target pairs aimed at the real dugouts */
+  dugoutShots: { pos: Vector3; target: Vector3 }[] = [];
   replaysEnabled = true;
   shot: ShotName = 'wide';
   private shotStart = 0;
@@ -160,8 +162,8 @@ export class CameraDirector {
         if (this.inPlay) this.pendingReplay = true;
         break;
       case 'half_inning':
-        this.cutawayIdx = (this.cutawayIdx + 1) % 2;
-        this.cutaway = (['crowd', 'wide'] as const)[this.cutawayIdx];
+        this.cutawayIdx = (this.cutawayIdx + 1) % 3;
+        this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
         this.cutawayUntil = this.clock + 5.5;
         this.cut('cutaway');
         this.inPlay = false;
@@ -393,10 +395,18 @@ export class CameraDirector {
           d.tgt.copy(s.target);
           d.fov = 15;
         } else if (this.cutaway === 'dugout') {
-          const sgn = live.half === 'top' ? 1 : -1;
-          d.pos.set(sgn * 3, 1.7, 15);
-          d.tgt.set(sgn * 19, 1.2, 2.5);
-          d.fov = 15;
+          // the batting team's dugout (top = away = 3B side by convention here; falls back to either)
+          const shots = this.dugoutShots;
+          const s = shots[live.half === 'top' ? 0 : 1] ?? shots[0];
+          if (s) {
+            const t = this.clock - this.shotStart;
+            d.pos.copy(s.pos).x += Math.sin(t * 0.25) * 0.6;
+            d.tgt.copy(s.target);
+          } else {
+            d.pos.set(3, 1.7, 15);
+            d.tgt.set(19, 1.2, 2.5);
+          }
+          d.fov = 26;
         } else {
           const t = this.clock - this.shotStart;
           d.pos.set(-30 + t * 3, 45 - t, -80);

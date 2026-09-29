@@ -21,7 +21,7 @@ import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { loadAssets, type Assets } from './assets';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
-import { Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
+import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 
 export interface EngineOptions {
@@ -145,6 +145,14 @@ export class Engine {
         const m = o as Mesh;
         if (m.isMesh) for (const mt of Array.isArray(m.material) ? m.material : [m.material]) this.env.register(mt as MeshStandardMaterial);
       });
+      // dugout cutaway cameras from the real dugout nodes: 9 m out on the field side, looking in
+      for (const name of ['Dugout_3B', 'Dugout_1B']) {
+        const o = a.field.getObjectByName(name);
+        if (!o) continue;
+        const c = new Box3().setFromObject(o).getCenter(new Vector3());
+        const inward = new Vector3(0, 0, 14).sub(c).setY(0).normalize();
+        this.director.dugoutShots.push({ pos: c.clone().addScaledVector(inward, 17).setY(3.2), target: c.clone().setY(-0.2) });
+      }
       // ground under the stands / beyond the field mesh
       const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
       under.position.y = -0.06;
