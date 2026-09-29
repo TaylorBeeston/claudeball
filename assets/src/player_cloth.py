@@ -217,7 +217,7 @@ def in_arm(p, t, rho): return t > -.05 and rho < .118 and abs(p[0]) > .16 and p[
 
 def f_jersey(Ls):
     def f(p):
-        hem = .955 - .03*max(0.0, min(1.0, p[1]*6))                              # longer tail at the back
+        hem = .968                                                                # tucked in: the hem ends under the belt band (z .955-.995)
         t, rho = arm_t(p); fs = (Ls - t) if in_arm(p, t, rho) else 1.0
         return min(p[2] - hem, neck_f(p), fs)
     return f
@@ -227,6 +227,7 @@ def f_undershirt(p):
 def f_pants(zh):
     def f(p): return min(1.015 - p[2], p[2] - zh, .30 - abs(p[0]))
     return f
+def f_belt(p): return min(p[2] - .955, .995 - p[2], .30 - abs(p[0]))                # belt band: 4 cm wide at the waistline, over the pants top
 def f_socks(p): return min(.53 - p[2], p[2] - .108, .30 - abs(p[0]))
 def f_cleats(p): return min(.128 - p[2], .30 - abs(p[0]))
 def f_skin_neck(p):
