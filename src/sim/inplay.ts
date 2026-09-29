@@ -122,7 +122,7 @@ export function beginStealPlay(w: World): void {
   // ball is already in the catcher's glove
   const C = w.catcher;
   giveBall(w, C);
-  C.plan.holdUntil = w.tick + fielding.transferTicks(C, 0) - secToTicks(0.1) + secToTicks(Math.max(-0.15, w.rng.normal(0, 0.09)));
+  C.plan.holdUntil = w.tick + fielding.transferTicks(C, 0) - secToTicks(0.1) + secToTicks(Math.max(-0.15, w.rng.normal(0, 0.17)));
 }
 
 export function beginPickoff(w: World, r: RunnerRT): void {

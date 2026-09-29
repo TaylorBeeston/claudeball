@@ -214,7 +214,7 @@ export function decideSteals(w: World, windupSecs: number): void {
   if (process.env.DBG_STEAL) console.log('steal eval', { tRun: tRun.toFixed(2), tBall: tBall.toFixed(2), margin: margin.toFixed(2), dist: dist.toFixed(1) });
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
-  const thr = 0.15 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
+  const thr = 0.3 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
   if (margin > thr) {
     r.stealing = true;
     r.stealDelay = 0;
@@ -223,7 +223,7 @@ export function decideSteals(w: World, windupSecs: number): void {
     r.want = r.base + 1;
     r.target = r.base + 1;
     r.origin = r.base;
-    r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.06)));
+    r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.13)));
     P.lookAt = null;
   }
 }

@@ -609,7 +609,7 @@ function decideThrow(w: World, F: PlayerRT): ThrowOption | null {
   }
   if (!options.length) return null;
   // long throws use the cut-off man when the runner's target is beyond a direct throw
-  const viable = options.filter((o) => o.margin > 0.03);
+  const viable = options.filter((o) => o.margin > 0.03 || (play.kind === 'steal' && F.fieldPos === 'C' && o.runner.stealing && o.margin > -0.6));
   if (!viable.length) return null;
   viable.sort((a, c) => (c.kind === 'tag' ? 1 : 0) - (a.kind === 'tag' ? 1 : 0) || c.base - a.base || c.margin - a.margin);
   const pick = viable[0];

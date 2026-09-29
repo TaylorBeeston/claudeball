@@ -20,7 +20,7 @@ export const CATCH_Z = -0.8;
 const WALKUP = 2.4;
 const BETWEEN = 3.6;
 const WINDUP_EMPTY = 1.12;
-const WINDUP_RUNNERS = 0.96;
+const WINDUP_RUNNERS = 0.84;
 
 const paced = (w: World, s: number) => secToTicks(s * w.cfg.pace);
 
