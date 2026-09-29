@@ -29,7 +29,40 @@ export type AnimHint =
   /** home-run / dead-ball jog, rounding a base, an outfielder leaping at the wall */
   | 'trot'
   | 'run_turn'
-  | 'catch_jump';
+  | 'catch_jump'
+  /** easy walk / jog back to position (the sim reports it below ~2 m/s) */
+  | 'walk'
+  /** glove-to-hand ball transfer, standing */
+  | 'transfer'
+  /** easy casual throw (return throws after routine outs) */
+  | 'toss'
+  // catches: the glove meets the ball at `gloveTarget`
+  | 'catch_pitch'
+  | 'catch_throw'
+  | 'catch_stretch'
+  | 'catch_fly'
+  | 'catch_backhand'
+  | 'field_grounder'
+  // tags and slides
+  | 'tag_glove'
+  | 'tag_hand'
+  | 'slide_feet'
+  | 'slide_head'
+  | 'slide_hook_left'
+  | 'slide_hook_right'
+  | 'dive_back'
+  | 'catcher_block'
+  // umpire gestures
+  | 'ump_strike'
+  | 'ump_strike_swinging'
+  | 'ump_ball'
+  | 'ump_safe'
+  | 'ump_out'
+  | 'ump_foul'
+  | 'ump_fair'
+  | 'ump_homerun'
+  | 'ump_time'
+  | 'ump_ready';
 
 export type PlayerRole =
   | 'pitcher'
@@ -64,6 +97,22 @@ export interface PlayerSnap {
   animTime?: number;
   /** 0..1 progress through a windup/swing/throw/slide style animation, if the sim reports it */
   animProgress?: number;
+  /** seconds the current one-shot hint lasts (the windup's real length, tempo included), when known */
+  animDur?: number;
+  hasBall?: boolean;
+  /** height / weight / build and looks, for per-player variety */
+  physique?: { heightM: number; weightKg: number; build: 'lean' | 'athletic' | 'stocky' | 'heavy' };
+  appearance?: { skin: number; hairColor: number; hairStyle: number; facialHair: number; seed: number };
+  /** pitchers: mechanics; `fromStretch` is live (runners on) */
+  delivery?: { style: 'overhand' | 'three_quarter' | 'sidearm' | 'submarine'; armSlotDeg: number; tempo: number; fromStretch: boolean };
+  /** 20-80 scouting ratings (velocity in mph) */
+  ratings?: Record<string, number>;
+  /** where the ball will meet this fielder's glove (world, sim axes), while a catch is coming */
+  gloveTarget?: Vec3;
+  /** umpires: HP, 1B-U, 2B-U, 3B-U */
+  position?: string;
+  /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */
+  pitchType?: string;
 }
 
 export interface BallSnap {
@@ -102,6 +151,29 @@ export interface PersonInfo {
   hand: 'L' | 'R';
   /** free-form stat line, e.g. ".291 AVG  24 HR" */
   stats?: string;
+  ratings?: Record<string, number>;
+  /** pitchers: the pitch mix */
+  arsenal?: { type: string; mph: number; grade?: number }[];
+  height?: number;
+  position?: string;
+}
+
+/** Live box-score stats, as the sim reports them (see `TeamStatsSnapshot`). */
+export interface StatsBat { pa: number; ab: number; h: number; doubles: number; triples: number; hr: number; bb: number; so: number; rbi: number; r: number; sb: number; avg: number; obp: number; slg: number; ops: number }
+export interface StatsPit { outs: number; bf: number; h: number; r: number; er: number; bb: number; so: number; hr: number; pitches: number; strikes: number; ip: string; era: number; whip: number }
+export interface StatsEntry {
+  playerId: string;
+  name: string;
+  jersey: number;
+  position: string;
+  inGame: boolean;
+  game: { batting: StatsBat; pitching: StatsPit | null };
+  season: { batting: StatsBat; pitching: StatsPit | null };
+}
+export interface TeamStatsView {
+  batters: StatsEntry[];
+  pitchers: StatsEntry[];
+  totals: { runs: number; hits: number; errors: number; lob: number };
 }
 
 export interface GameState {
@@ -120,19 +192,32 @@ export interface GameState {
   pitcher: PersonInfo | null;
   teams: { away: TeamInfo; home: TeamInfo };
   over: boolean;
+  /** live box-score stats for both teams, when the sim provides them */
+  stats?: { away: TeamStatsView; home: TeamStatsView };
+  /** pitcher fatigue 0..1 and pitch count, when known */
+  pitchCount?: number;
 }
 
 export type GameEvent =
   | { type: 'pitch'; pitchType: string; speed: number; pitcherId: string }
   | { type: 'contact'; exitVelo: number; launchAngle: number; sprayAngle: number; distance?: number; batterId: string }
-  | { type: 'catch'; playerId: string; inAir: boolean }
+  | { type: 'catch'; playerId: string; inAir: boolean; pos?: Vec3; height?: number; side?: string; kind?: string; firm?: boolean }
   | { type: 'throw'; playerId: string; target: Vec3; targetId?: string }
-  | { type: 'out'; playerId?: string; text?: string }
+  | { type: 'out'; playerId?: string; text?: string; closePlay?: boolean; margin?: number; base?: number | null }
+  | { type: 'safe'; playerId?: string; base?: number; closePlay?: boolean; margin?: number }
+  /** a fielder's tag: attempted, made or avoided by a slide / dodge */
+  | { type: 'tag'; fielderId?: string; runnerId?: string; base?: number; result: 'attempt' | 'tag' | 'avoided'; pos?: Vec3 }
+  /** an umpire's call (`kind` as the sim reports it: ball, strike_called, strike_swinging, foul, fair, safe, out, homerun, foul_tip, time, ball_four, strikeout) */
+  | { type: 'umpire_call'; kind: string; umpireId?: string; pos?: Vec3 }
   | { type: 'run'; playerId?: string; text?: string }
   /** the ball cleared the fence; `pos` is where it crossed it */
   | { type: 'homerun'; batterId: string; distance: number; pos?: Vec3 }
   /** a runner touched a base (base 1..3, 4 = home); `trot` when it is a dead-ball jog */
   | { type: 'base_touch'; playerId: string; base: number; trot: boolean; pos?: Vec3 }
+  /** a fielder reaching over the fence took a home run away */
+  | { type: 'robbed_hr'; playerId: string; batterId: string; distance: number; pos?: Vec3 }
+  /** the ball met the outfield wall, or a fielder ran up to it */
+  | { type: 'wall_contact'; who: 'ball' | 'fielder'; playerId?: string; pos: Vec3; speed: number }
   /** an outfielder left the ground at the wall */
   | { type: 'wall_leap'; playerId: string; pos?: Vec3 }
   | { type: 'ball' | 'strike' | 'foul' }

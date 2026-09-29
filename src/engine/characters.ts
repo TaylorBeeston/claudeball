@@ -326,6 +326,10 @@ export interface PuppetLike {
   batGrip?: Object3D | null;
   /** midpoint of the shoulder joints in scene space (glTF characters only); used to check the sim's bat is within arm's reach */
   shoulderCenter?(out: Vector3): Vector3 | null;
+  /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
+  ballHeld?: boolean;
+  /** world position of that ball */
+  heldBallWorld?(out: Vector3): Vector3 | null;
 }
 
 export interface PuppetEnv {
@@ -337,8 +341,14 @@ export interface PuppetEnv {
   time: number;
   /** ball speed (m/s), 0 when there is no ball */
   ballSpeed?: number;
+  /** ball velocity (scene axes) */
+  ballVel?: Vector3;
   /** where the pitcher's eyes/hands are (scene): what hitters, catchers and umpires look at while no ball is visible */
   mound?: Vector3 | null;
+  /** every player's scene position by id (for tags: where the runner is) */
+  positions?: Map<string, Vector3>;
+  /** makes a ball for a hand / glove (a clone of the ball model) */
+  makeBall?: () => Object3D;
 }
 
 const seedFrom = (id: string) => {

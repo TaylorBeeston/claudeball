@@ -66,6 +66,8 @@ export class SimDriver {
   readonly kind: 'sim' | 'mock';
   speed = 1;
   paused = false;
+  /** set by the camera director while a replay plays: the live game waits (unlike `paused`, animations keep running) */
+  hold = false;
   /** true while fast-forwarding to the next half inning; listeners should not cut cameras */
   skipping = false;
 
@@ -116,7 +118,7 @@ export class SimDriver {
   advance(realDt: number): { state: GameState; alpha: number; steps: number } {
     let steps = 0;
     const budgetEnd = performance.now() + 10;
-    if (!this.paused) {
+    if (!this.paused && !this.hold) {
       this.acc += Math.min(realDt, 0.1) * this.speed;
       const maxSteps = 600;
       while (this.acc >= SIM_DT && steps < maxSteps) {
