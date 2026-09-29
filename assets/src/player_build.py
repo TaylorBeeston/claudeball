@@ -176,14 +176,21 @@ allnodes = {**allobjs, **gear, "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Gri
 for vn, (cols, gl) in VARIANTS.items():
     for k, c in cols.items(): setc(k, c)
     bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl]
+    claw = vn in ("player_home", "player_away", "player_catcher", "player_umpire")     # these files export the relaxed claw hand under the name Hand_R (ball-ready); fist in batter/base
+    if claw:
+        sel = [o for o in sel if o not in (handR, handRB)] + [handRB]; handR.name = "Hand_R_fist_tmp"; handRB.name = "Hand_R"
+    if vn == "player_batter": sel = [o for o in sel if o is not handRB]                          # batter: fist hand only (no claw)
     for o in sel: o.select_set(True)
     dflt = set(CORE + gl) - set(OPT) if vn != "player_base" else set(CORE + ["Gear_Cap", "Gear_Glove"] + NUM)
     if vn == "player_batter": dflt |= {"Gear_BattingGlove_L", "Gear_BattingGlove_R"}
+    dflt.discard("Hand_R_Ball")
     for nm_, o in allnodes.items():
         grp = next((g for g, names in GROUPS.items() if nm_ in names), "body"); o["cb_group"] = grp; o["cb_default"] = int(nm_ in dflt)
+    if claw: handRB["cb_default"] = 1
     bpy.context.view_layer.objects.active = arm
     bpy.ops.export_scene.gltf(filepath=ROOT+f"/players/{vn}.glb", use_selection=True, export_format='GLB', export_yup=True, export_image_format='JPEG',
         export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False,
         export_vertex_color='NONE', export_extras=True, export_morph=True)
+    if claw: handRB.name = "Hand_R_Ball"; handR.name = "Hand_R"
     info[vn] = os.path.getsize(ROOT+f"/players/{vn}.glb")//1024
 result = {"kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values())}
