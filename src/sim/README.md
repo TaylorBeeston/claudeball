@@ -12,7 +12,7 @@ mechanics and decisions** — there are no outcome tables and no "roll for a sin
 | Batted ball | RK4 flight (drag + Magnus), bouncing on grass/dirt with friction & spin & surface irregularity, rolling, outfield wall (configurable shape, wall ricochets, home runs, ground-rule doubles, foul territory). |
 | Defense | each fielder has position, sprint speed, first-step reaction and a *trajectory-judgement error* that shrinks as the ball comes down. Fielders solve interception against the predicted ball path, one is "called" primary, others cover bases / back up / cut off. Catch, bobble and drop come from glove-position noise vs. the ball's speed and how stretched the fielder is. The man with the ball weighs runner arrival times against throw times (force, tag, relay via cut-off man, hold), waits for the base coverer, and throws with real flight time and accuracy noise. |
 | Baserunning | runners lead off, steal (own time vs. pitcher/catcher estimate), tag up on likely catches, read the ball and the fielder's position to take extra bases or retreat, run through / slide. Outs are tags, force outs and appeals decided by who is at the base first. |
-| Game | full rules: count, walks, HBP, strikeouts (incl. dropped third strike), wild pitches, passed balls, pickoffs, force vs tag, infield fly, tag-ups, third-out run nullification, walk-offs, extra innings (ghost runner), DH/no-DH, pinch hitters/runners, bullpen management. |
+| Game | full rules (plus bunts — sacrifice and for-a-hit, decided from situation and batter and played through the same bat–ball collision with a still, soft-handed bat — intentional walks and balks): count, walks, HBP, strikeouts (incl. dropped third strike), wild pitches, passed balls, pickoffs, force vs tag, infield fly, tag-ups, third-out run nullification, walk-offs, extra innings (ghost runner), DH/no-DH, pinch hitters/runners, bullpen management. |
 
 Randomness is *only* physical noise (release variation, swing timing, reaction jitter, bounce
 irregularity, glove offset…) from a seeded PRNG (`sfc32`). **Same seed + same teams ⇒ identical
@@ -153,6 +153,6 @@ compressed; most of it is the 3–4 s between pitches). Use the renderer's own s
 
 ## Known simplifications
 
-No bunts or intentional walks, no balks, no catcher/fielder interference, no fielder collisions, wall
+No catcher/fielder interference, no fielder collisions, wall
 climbing/robbery is limited to reach at the wall, one shared field surface model, and substitutions take
 effect between batters/innings.
