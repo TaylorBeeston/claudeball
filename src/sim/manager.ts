@@ -11,6 +11,49 @@ function slotOf(t: TeamRT, p: PlayerRT) {
 }
 
 /** Manager decisions taken between batters: bullpen, pinch hitters and pinch runners. */
+/** Late-game intentional walk: first base open, runner in scoring position, dangerous hitter due, weaker bat on deck. */
+export function considerIntentionalWalk(w: World): boolean {
+  const t = w.battingTeam;
+  const f = w.fieldingTeam;
+  if (w.inning < 7 || f.runs < t.runs || f.runs - t.runs > 2) return false;
+  const live = w.runners.filter((r) => r.state === 'live');
+  if (live.some((r) => r.base === 1)) return false;
+  if (!live.some((r) => r.base === 2 || r.base === 3)) return false;
+  if (live.length >= 2 && live.some((r) => r.base === 1)) return false;
+  const b = t.lineup[t.batIdx % 9].player;
+  const next = t.lineup[(t.batIdx + 1) % 9].player;
+  if (b.info.isPitcher) return false;
+  const bq = hitterQuality(b);
+  const nq = next.info.isPitcher ? 25 : hitterQuality(next);
+  if (bq < 58 || nq > bq - 7) return false;
+  if (w.outs >= 2 && nq > bq - 12) return false;
+  return w.rng.next() < 0.85;
+}
+
+/** Bunt intent for a plate appearance: sacrifice with weak hitters (and pitchers), or a bunt for a hit by a fast, light hitter. */
+export function planBunt(w: World): { kind: 'sac' | 'hit'; psi: number } | null {
+  const b = w.batter!;
+  const t = w.battingTeam;
+  const live = w.runners.filter((q) => q.state === 'live' && !q.isBatter);
+  const on1 = live.some((q) => q.base === 1);
+  const on2 = live.some((q) => q.base === 2);
+  const on3 = live.some((q) => q.base === 3);
+  const diff = t.runs - w.fieldingTeam.runs;
+  const quality = (b.info.ratings.contact + b.info.ratings.power) / 2;
+  const R = b.info.ratings;
+  if (w.outs === 0 && (on1 || on2) && !on3 || (w.outs === 1 && on2 && !on3 && quality < 40)) {
+    let p = 0;
+    if (b.info.isPitcher) p = 0.75;
+    else if (quality < 45 && w.inning >= 6 && diff >= -1 && diff <= 1) p = 0.4;
+    else if (quality < 40 && w.inning >= 4 && Math.abs(diff) <= 2) p = 0.15;
+    if (p > 0 && w.rng.next() < p) return { kind: 'sac', psi: -(0.05 + w.rng.next() * 0.09) };
+  }
+  if (!on2 && !on3 && R.speed >= 72 && R.power < 46 && w.rng.next() < 0.045) {
+    return { kind: 'hit', psi: w.batStance === 'R' ? 0.13 : -0.13 };
+  }
+  return null;
+}
+
 export function beforePlateAppearance(w: World): void {
   considerPitchingChange(w, w.fieldingTeam);
   considerPinchRunner(w);

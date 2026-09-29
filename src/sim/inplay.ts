@@ -81,13 +81,13 @@ export function beginBattedBall(w: World, res: ContactResult): void {
     infieldFlyChecked: false,
     homeRun: false,
     groundRuleDouble: false,
-    bunt: false,
+    bunt: !!w.swingPlan?.bunt,
     fielders: [],
     fieldersTouched: [],
     errorBy: null,
     firstFielder: null,
     bounced: false,
-    line: res.launchDeg > 8 && res.launchDeg < 26 && res.exitSpeed / 0.44704 > 80,
+    line: res.launchDeg > 8 && res.launchDeg < 26 && res.exitSpeed / 0.44704 > 80 && !w.swingPlan?.bunt,
   };
   const batter = w.batter!;
   const br = running.makeRunner(w, batter, true);

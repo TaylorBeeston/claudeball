@@ -325,4 +325,6 @@ export interface World {
   wildPitchFlag: boolean;
   /** Home team leads in the bottom of the last inning: game ends when the play resolves. */
   walkOffPending: boolean;
+  /** Bunt intent for the current plate appearance (decided by the manager/batter at the start of the PA). */
+  buntPlan: { kind: 'sac' | 'hit'; psi: number } | null;
 }

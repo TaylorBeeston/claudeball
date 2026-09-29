@@ -20,6 +20,7 @@ let swings = 0, zoneP = 0, whiffs = 0, oSw = 0, oP = 0, zSw = 0, zTake = 0, zCal
 const calls: Record<string, number> = {};
 const errKinds: Record<string, number> = {};
 let fairFB = 0, fairFBhr = 0, lastLA = 0, hadContact = false;
+const paRes: Record<string, number> = {};
 let sbAtt = 0, cs = 0, passed = 0, wp = 0, pickoffs = 0;
 const t0 = Date.now();
 const margins: number[] = [];
@@ -36,6 +37,7 @@ for (let i = 0; i < N; i++) {
   g.on('plateAppearanceEnd', (e) => { if (hadContact && lastLA >= 20 && lastLA <= 50 && !['strikeout', 'walk'].includes(e.result)) { fairFB++; if (e.result === 'home run') fairFBhr++; } hadContact = false; });
   g.on('pitchReleased', () => { hadContact = false; });
   g.on('call', (e) => { calls[e.call.kind] = (calls[e.call.kind] ?? 0) + 1; });
+  g.on('plateAppearanceEnd', (e) => { paRes[e.result] = (paRes[e.result] ?? 0) + 1; });
   g.on('error', (e) => { errors++; errKinds[e.kind] = (errKinds[e.kind] ?? 0) + 1; });
   g.on('steal', () => sbAtt++);
   g.on('wildPitch', () => wp++);
@@ -81,3 +83,4 @@ const sw = calls.strikeSwinging ?? 0, fl = calls.foul ?? 0;
 console.log(`per swing: whiff ${pct(sw / swings)}  foul ${pct(fl / swings)}  in-play ${pct(1 - (sw + fl) / swings)}   per pitch: ball ${pct((calls.ball ?? 0) / pit.pitches)}  called K ${pct((calls.strikeLooking ?? 0) / pit.pitches)}  whiff ${pct(sw / pit.pitches)}  foul ${pct(fl / pit.pitches)}`);
 console.log(`Z-swing ${pct(zSw / zoneP)}  O-swing ${pct(oSw / oP)}  called-strike on taken zone pitches ${pct(zCalled / zTake)}  on taken out-of-zone pitches ${pct(oCalled / oTake)}`);
 for (const [k, r] of Object.entries(byCount)) console.log(`  ${k.padEnd(7)} pitches ${r.p}  zone% ${pct(r.z / r.p)}  swing% ${pct(r.sw / r.p)}  Z-swing ${pct(r.zsw / r.z)}  O-swing ${pct((r.sw - r.zsw) / (r.p - r.z))}`);
+console.log(`per team-game: sac bunts ${f((paRes['sac bunt'] ?? 0) / N / 2, 2)}  IBB ${f((paRes['intentional walk'] ?? 0) / N / 2, 2)}  balks ${f((calls.balk ?? 0) / N / 2, 3)}  sac flies ${f(bat.sf / N / 2, 2)}  DP ${f((paRes['double play'] ?? 0) / N / 2, 2)}`);

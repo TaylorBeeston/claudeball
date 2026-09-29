@@ -217,6 +217,7 @@ export function createWorld(cfg: GameConfig): World {
     foulReset: false,
     wildPitchFlag: false,
     walkOffPending: false,
+    buntPlan: null,
   };
   // umpire zone tendencies for this game (physical noise: some umps squeeze, some expand)
   w.umpBias = { width: rng.normal(0, 0.012), low: rng.normal(0, 0.02), high: rng.normal(0, 0.02), noise: 0.018 + Math.abs(rng.normal(0, 0.004)) };

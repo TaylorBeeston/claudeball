@@ -126,6 +126,12 @@ export function startPlateAppearance(w: World): void {
   w.pitcher.pit.bf += 1;
   resetDefense(w);
   emit(w, { type: 'batterUp', batterId: b.info.id, pitcherId: w.pitcher.info.id });
+  if (manager.considerIntentionalWalk(w)) {
+    w.count = { balls: 4, strikes: 0 };
+    rules.intentionalWalk(w);
+    return;
+  }
+  w.buntPlan = manager.planBunt(w);
   w.phase = 'prePitch';
   w.phaseUntil = w.tick + paced(w, WALKUP);
   w.seq = { lastType: null, lastMph: 0, count: 0 };
@@ -176,6 +182,10 @@ export function tickLob(w: World): void {
 }
 
 export function beginWindup(w: World): void {
+  if (w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) && w.rng.next() < 0.0006 * (1 + (50 - w.pitcher.info.ratings.control) / 50)) {
+    rules.balk(w);
+    return;
+  }
   const call = callPitch(w);
   w.pitchAim = { x: call.x, y: call.y, intent: call.intent };
   (w as unknown as { _spec: unknown })._spec = call.spec;
@@ -240,7 +250,8 @@ export function releasePitch(w: World): void {
     scoreDiff: w.battingTeam.runs - w.fieldingTeam.runs,
   };
   const fbMph = P.info.arsenal.length ? Math.max(...P.info.arsenal.map((a) => a.mph)) : 90;
-  w.swingPlan = planSwing(w.batter!.info, w.batStance, pitch, w.zone, ctx, fbMph, w.rng);
+  const buntNow = w.buntPlan && w.count.strikes < 2 ? w.buntPlan.psi : null;
+  w.swingPlan = planSwing(w.batter!.info, w.batStance, pitch, w.zone, ctx, fbMph, w.rng, buntNow);
   if (w.swingPlan.swing) w.swing = new BatSwing(w.swingPlan);
   w.phase = 'pitch';
   setAnim(w, P, 'pitch', 0.5);

@@ -145,10 +145,13 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
 
   if (buntPsi !== null) {
     // Bunt: square around and present the bat at the predicted location; the ball's speed is absorbed by the bat.
-    const pb = predictAtZ(0.7);
+    // a bunter tracks the ball almost to the bat, so his estimate is much better than a full swing's
+    const tB = timeAtZ(pitch.path, 0.7);
+    const tr = pathAt(pitch.path, tB);
+    const pb = { t: tB, x: tr.x, y: tr.y };
     const sk = 1.5 - R.contact / 100;
-    const px = pb.x + rng.normal(0, 0.022 * sk);
-    const py = pb.y - 0.004 + rng.normal(0, 0.03 * sk);
+    const px = pb.x + rng.normal(0, 0.012 * sk);
+    const py = pb.y + 0.0 + rng.normal(0, 0.014 * sk);
     return {
       swing: true,
       ...baseInfo,
@@ -164,7 +167,7 @@ export function planSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zon
       tauC: 0.34,
       batSpeed: 0,
       protect,
-      bunt: { psi: buntPsi + rng.normal(0, 0.06 * sk), x: px, y: py, z: 0.7, stance },
+      bunt: { psi: buntPsi + rng.normal(0, 0.035 * sk), x: px, y: py, z: 0.7, stance },
     };
   }
 
@@ -274,7 +277,8 @@ export class BatSwing {
       const dir = { x: -sgn * Math.cos(bu.psi), y: 0, z: sgn * Math.sin(bu.psi) };
       const s = 0.5;
       const knob = { x: bu.x - dir.x * s, y: bu.y, z: bu.z - dir.z * s };
-      const still = { x: 0, y: 0, z: 0 };
+      // soft hands: the bat gives slightly away from the ball, deadening it
+      const still = { x: -Math.sin(bu.psi) * 1.5, y: 0, z: -Math.cos(bu.psi) * 1.5 };
       return { knob, tip: { x: knob.x + dir.x * BAT_LEN, y: bu.y, z: knob.z + dir.z * BAT_LEN }, dir, velAt: () => still };
     }
     const ce = Math.cos(eps);

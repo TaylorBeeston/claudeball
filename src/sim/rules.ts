@@ -85,6 +85,40 @@ export function walk(w: World): void {
   emit(w, { type: 'playEnd', description: w.lastPlay });
 }
 
+/** Intentional walk: no pitches are thrown. */
+export function intentionalWalk(w: World): void {
+  const b = w.batter!;
+  b.bat.bb++;
+  w.pitcher.pit.bb++;
+  emit(w, { type: 'walk', batterId: b.info.id, intentional: true });
+  awardBases(w, b, 1);
+  endPlateAppearance(w, 'intentional walk', { ab: false, bb: true });
+  w.lastPlay = `${b.info.name} is intentionally walked.`;
+  emit(w, { type: 'playEnd', description: w.lastPlay });
+}
+
+/** Balk: dead ball, every runner advances one base, the pitch does not count. */
+export function balk(w: World): void {
+  emit(w, { type: 'call', call: { kind: 'balk', time: w.tick / 240, balls: w.count.balls, strikes: w.count.strikes } });
+  for (const r of w.runners) {
+    if (r.state !== 'live') continue;
+    r.target = Math.min(4, r.base + 1);
+    r.want = r.target;
+    r.awarded = true;
+    r.dead = true;
+    r.stealing = false;
+  }
+  w.play = inplay.newPlay(w, 'deadBall');
+  w.play.dead = true;
+  w.ball.mode = 'dead';
+  giveBall(w, w.pitcher);
+  w.phase = 'inPlay';
+  w.stealing.clear();
+  inplay.startDeadBallMovement(w);
+  w.lastPlay = `Balk called on ${w.pitcher.info.name}.`;
+  emit(w, { type: 'playEnd', description: w.lastPlay });
+}
+
 export function hitByPitch(w: World): void {
   const b = w.batter!;
   b.bat.hbp++;
@@ -374,6 +408,10 @@ export function resolveBattedBall(w: World): void {
         desc = `${name} ${kind} to ${where}.`;
         opts = { ab: true };
       }
+    } else if (bip.bunt && playOutsBefore(w, play) < 2 && w.runners.some((q) => q.state !== 'out' && q.p !== b && q.base > q.origin)) {
+      result = 'sac bunt';
+      desc = `${name} lays down a sacrifice bunt, ${chain}.`;
+      opts = { ab: false, sh: true, rbi: runs };
     } else {
       result = dp ? 'double play' : 'groundout';
       desc = dp ? `${name} grounds into a double play, ${chain}.` : `${name} grounds out, ${chain}.`;
