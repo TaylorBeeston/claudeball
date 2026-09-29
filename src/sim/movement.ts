@@ -1,6 +1,6 @@
 import { emit } from './events';
 import { fenceAt } from './field';
-import { LEGS_PER_SPRINT_SECOND, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
+import { LEGS_PER_SPRINT_SECOND, brakeDecel, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
 import { clamp } from './math';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
@@ -60,7 +60,8 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     const d = Math.hypot(dx, dz);
     const vmax = p.vmax * g.mul * legsSpeedFactor(p.legs, p.info.ratings.durability);
     let sp = vmax;
-    if (g.stop) sp = Math.min(vmax, Math.sqrt(2 * p.accel * 1.4 * Math.max(0, d - 0.02)));
+    // plan the stop with the braking a person can actually do, starting far enough out to arrive near the spot at a walk
+    if (g.stop) sp = Math.min(vmax, Math.sqrt(2 * Math.min(brakeDecel(p.info.ratings), p.accel * 0.9) * Math.max(0, d - 0.02)));
     if (d < 0.03 && g.stop) sp = 0;
     const tvx = d > 1e-6 ? (dx / d) * sp : 0;
     const tvz = d > 1e-6 ? (dz / d) * sp : 0;
