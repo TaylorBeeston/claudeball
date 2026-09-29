@@ -159,6 +159,8 @@ export interface TeamRT {
   runs: number;
   hits: number;
   errors: number;
+  /** Runners left on base at the end of half-innings. */
+  lob: number;
   linescore: number[];
   dhLostPitcherHits: boolean;
 }
