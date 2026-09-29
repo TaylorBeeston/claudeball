@@ -52,20 +52,36 @@ I["skin_a"] = img("skin_albedo", np.repeat((np.clip(.90 + .12*sh, 0, 1))[..., No
 I["skin_o"] = img("skin_orm", orm(.9 + .1*sh, .55 + .12*(1-sh)), 'Non-Color')
 I["leather_a"] = img("leather_albedo", np.repeat((np.clip(.8 + .3*lh, 0, 1))[..., None], 3, 2)); I["leather_n"] = img("leather_normal", height_to_normal(lh, 5.0), 'Non-Color')
 I["leather_o"] = img("leather_orm", orm(.6 + .4*lh, .5 + .2*lh), 'Non-Color')
-I["face_a"] = img("face_albedo", face_texture()); I["eye_a"] = img("eye_albedo", eye_texture())
+I["face_a"] = img("face_albedo", face_texture()); I["eye_a"] = img("eye_albedo", eye_texture()); I["face_n"] = img("face_normal", height_to_normal(face_height(), 1.6), 'Non-Color')
 MATS = {
  "skin": pbr("skin", (.55, .36, .27, 1), I["skin_a"], I["skin_n"], I["skin_o"], nstrength=.5),
- "face": pbr("face", (.55, .36, .27, 1), I["face_a"], I["skin_n"], I["skin_o"], nstrength=.35),
+ "face": pbr("face", (.55, .36, .27, 1), I["face_a"], I["face_n"], I["skin_o"], nstrength=.45),
  "eye": pbr("eye", (1, 1, 1, 1), I["eye_a"], None, None, rough=.08),
- "hair": pbr("hair", (.09, .06, .035, 1), None, I["leather_n"], None, rough=.6, nstrength=.4),
+ "hair": pbr("hair", (.09, .06, .035, 1), None, I["leather_n"], None, rough=.6, nstrength=.25),
  "uniform_jersey": pbr("uniform_jersey", (.8, .8, .8, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
  "uniform_undershirt": pbr("uniform_undershirt", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
  "uniform_pants": pbr("uniform_pants", (.75, .75, .75, 1), I["pants_a"], I["pants_n"], I["pants_o"]),
  "uniform_socks": pbr("uniform_socks", (.05, .08, .3, 1), I["pants_a"], I["pants_n"], I["pants_o"]),
- "cleats": pbr("cleats", (.03, .03, .03, 1), I["leather_a"], I["leather_n"], I["leather_o"]),
+ "cleats": pbr("cleats", (.03, .03, .03, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
  "cap": pbr("cap", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
  "helmet": pbr("helmet", (.05, .08, .3, 1), None, None, None, rough=.3),
- "glove": pbr("glove", (.28, .14, .07, 1), I["leather_a"], I["leather_n"], I["leather_o"]),
- "catcher_gear": pbr("catcher_gear", (.03, .03, .04, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.45),
- "belt": pbr("belt", (.02, .02, .02, 1), I["leather_a"], I["leather_n"], I["leather_o"]),
+ "glove": pbr("glove", (.28, .14, .07, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
+ "catcher_gear": pbr("catcher_gear", (.03, .03, .04, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.45, nstrength=.2),
+ "belt": pbr("belt", (.02, .02, .02, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
 }
+
+# ---- third-pass materials (recolour via baseColorFactor like the others)
+def flat_mat(name, color, rough=.7, metal=0.0, alpha=None):
+    m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = color; b.inputs["Roughness"].default_value = rough; b.inputs["Metallic"].default_value = metal
+    if alpha is not None: b.inputs["Alpha"].default_value = alpha; m.surface_render_method = 'BLENDED'
+    return m
+MATS["piping"] = pbr("piping", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"])                       # contrast trim (sleeve bands, placket, pants stripe, sock stripes)
+MATS["button"] = flat_mat("button", (.85, .85, .82, 1), .35)
+MATS["batting_glove"] = pbr("batting_glove", (.03, .03, .035, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.55, nstrength=.2)
+MATS["wristband"] = pbr("wristband", (.9, .9, .9, 1), I["pants_a"], I["pants_n"], I["pants_o"])
+MATS["arm_sleeve"] = pbr("arm_sleeve", (.03, .03, .04, 1), I["pants_a"], I["pants_n"], I["pants_o"], rough=.6)
+MATS["eyeblack"] = flat_mat("eyeblack", (.015, .015, .015, 1), .85)
+MATS["stubble"] = flat_mat("stubble", (.06, .045, .035, 1), .9, alpha=.42)
+MATS["laces"] = flat_mat("laces", (.92, .92, .9, 1), .7)
+MATS["sole"] = pbr("sole", (.04, .04, .045, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.7, nstrength=.2)
