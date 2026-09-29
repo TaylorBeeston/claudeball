@@ -14,7 +14,7 @@ import * as running from './running';
 import * as rules from './rules';
 
 /** Tunables (glove noise and throw noise scales). */
-export const TUNE = { fieldSigma: 0.03, throwSigma: 0.0165, pocket: 0.135 };
+export const TUNE = { fieldSigma: 0.033, throwSigma: 0.0165, pocket: 0.135 };
 
 export const fielders = (w: World): PlayerRT[] => [...w.fieldingTeam.defense.values()].filter((p) => p.onField);
 export const armSpeed = (p: PlayerRT) => 27 + 0.21 * p.info.ratings.arm;
