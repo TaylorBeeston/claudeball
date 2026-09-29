@@ -243,7 +243,7 @@ export class RealSimAdapter implements GameLike {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
         animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
-        hasBall: p.hasBall, gloveTarget: p.gloveTarget, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;

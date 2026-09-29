@@ -176,9 +176,9 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const name = snap.role !== 'umpire' && base?.full ? 'player_base' : templateNameFor(snap);
+        const name = snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
-        return tpl ? new GltfPuppet(tpl, snap, a.gear) : new Puppet(snap.id);
+        return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
       };
       this.players.reset();
     }

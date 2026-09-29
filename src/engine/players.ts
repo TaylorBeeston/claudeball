@@ -347,6 +347,7 @@ export class PlayerManager {
     this.penv.ball = state.ball.visible ? ball : null;
     this.penv.batGrip = bat.visible ? bat.grip : null;
     this.penv.time = state.time;
+    (this.penv.ballVel ??= new Vector3()).set(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z);
     this.penv.ballSpeed = state.ball.visible ? Math.hypot(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z) : 0;
     this.used.clear();
     for (const snap of state.players) {

@@ -31,6 +31,11 @@ export interface CharacterTemplate {
   full: boolean;
 }
 
+/** The part of `players/player_manifest.json` the engine uses: per-clip event times and the glove-closing keys of the catch clips. */
+export interface PlayerManifest {
+  clips: Record<string, { frames: number; duration_s: number; loop?: boolean; events_s?: Record<string, number>; glove_closed_keys?: [number, number][] }>;
+}
+
 /** Default node sets of the role-specific files, applied on top of the full base file: fielders / pitchers, batters / runners, catchers. */
 export interface GearSets {
   field?: Set<string>;
@@ -46,12 +51,13 @@ export interface Assets {
   bat?: Object3D;
   characters: Map<string, CharacterTemplate>;
   gear: GearSets;
+  manifest?: PlayerManifest;
   /** true if the files still use the old +X = first base convention (loaded under a mirrored root) */
   mirrored: boolean;
   missing: string[];
 }
 
-const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire'];
+const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base'];
 
 export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (msg: string) => void): Promise<Assets> {
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
@@ -122,6 +128,12 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     });
     out.characters.set(CHARACTERS[i], { scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
   });
+  try {
+    const r = await fetch(base + 'players/player_manifest.json', { cache: 'no-cache' });
+    if (r.ok) out.manifest = (await r.json()) as PlayerManifest;
+  } catch {
+    /* no manifest: glove closing falls back to the clip's catch time */
+  }
   out.gear = {
     field: out.characters.get('player_home')?.defaults,
     batter: out.characters.get('player_batter')?.defaults,
