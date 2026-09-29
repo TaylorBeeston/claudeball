@@ -331,7 +331,7 @@ export class GltfPuppet implements PuppetLike {
       this.current.time = 0;
     } else if ((name === 'run' || name === 'trot' || name === 'run_turn') && this.current) {
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
-      const nominal = name === 'trot' ? 3.2 : 4.5;
+      const nominal = name === 'trot' ? 2.2 : 4.5; // foot speed of the trot clip is 2.2 m/s
       this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / nominal));
     } else if (this.current) this.current.timeScale = 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it

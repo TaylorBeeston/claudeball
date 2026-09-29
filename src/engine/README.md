@@ -76,5 +76,8 @@ Not measured on a mid-range GPU.
 crowd reaction (nearest stand section), batter tracked around the bases from outside the diamond (hard cut per leg), the plate for the celebration, then a slow-motion replay of the
 whole home run from across the field. Other plays: fielder / base shots as before, then an `action` shot framing the ball, throw target and every runner in motion until things go
 quiet, instead of returning to the pitcher while somebody is still running. History is kept for 75 s so the replay can start after the trot.
-Dev URL params: `?seed=N` picks the sim seed (seed 12 has a home run 22 s in).
+A robbed home run (`robbedHomeRun`, engine event `robbed_hr`) is cued as: the fielder at the wall (after the `wallLeap` shot), the nearest crowd section (crowd excitement pulse for the gasp),
+then the play again from the second-angle replay camera. While any replay plays the live sim waits (`SimDriver.hold`; replay animation keeps running), so the next pitch is not missed.
+`wallContact` is mapped to `wall_contact` but does not change the camera (the follow shot already tracks the carom).
+Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).

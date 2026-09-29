@@ -143,6 +143,14 @@ export class RealSimAdapter implements GameLike {
       case 'baseTouch':
         this.emit({ type: 'base_touch', playerId: String(e.playerId), base: Number(e.base), trot: !!e.trot, pos: e.pos as V | undefined });
         break;
+      case 'robbedHomeRun':
+        this.carry = null;
+        this.emit({ type: 'robbed_hr', playerId: String(e.fielderId), batterId: String(e.batterId), distance: Number(e.distance), pos: e.pos as V | undefined });
+        this.emit({ type: 'play', text: `${this.who(e.fielderId)} robs ${this.who(e.batterId)} of a home run!` });
+        break;
+      case 'wallContact':
+        this.emit({ type: 'wall_contact', who: e.who === 'fielder' ? 'fielder' : 'ball', playerId: e.fielderId ? String(e.fielderId) : undefined, pos: e.pos as V, speed: Number(e.speed) });
+        break;
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;

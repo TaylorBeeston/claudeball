@@ -127,6 +127,7 @@ export class Engine {
         this.stadium.crowd.excite(te.event.exitVelo > 40 ? 0.7 : 0.35);
       }
       if (te.event.type === 'run') this.stadium.crowd.excite(1);
+      if (te.event.type === 'robbed_hr') this.stadium.crowd.excite(0.8); // the groan / gasp
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);
     });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
