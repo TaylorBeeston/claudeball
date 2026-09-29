@@ -1,5 +1,6 @@
 import { MPS_TO_MPH, M_TO_FT, DIM } from './dims';
-import type { GameEvent, GameState, PersonInfo } from './types';
+import type { GameEvent, GameState, PersonInfo, TeamStatsView } from './types';
+import { arsenalText, batLine, batterBars, batterTotals, boxBatters, boxPitchers, gradeColor, pitcherBars, pitcherTotals, pitLine, type RatingBar } from './hudStats';
 
 const CSS = /* css */ `
 .cb-hud{position:absolute;inset:0;pointer-events:none;font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;color:#fff;--u:1vh;text-shadow:0 1px 2px rgba(0,0,0,.6);user-select:none}
@@ -56,6 +57,31 @@ const CSS = /* css */ `
 .cb-ctl button,.cb-ctl select{font:inherit;font-weight:700;color:#fff;background:rgba(14,18,26,.85);border:1px solid rgba(255,255,255,.18);border-radius:calc(var(--u)*.5);padding:calc(var(--u)*.6) calc(var(--u)*1.1);cursor:pointer}
 .cb-ctl button:hover,.cb-ctl select:hover{background:rgba(40,50,70,.95)}.cb-ctl button.on{background:#ffcf4a;color:#111;text-shadow:none}
 .cb-fps{font-variant-numeric:tabular-nums;opacity:.85;min-width:6em;text-align:right;text-shadow:0 1px 2px #000}
+.cb-card{min-width:calc(var(--u)*50)}
+.cb-card .txt{padding-bottom:calc(var(--u)*1.1)}
+.cb-card .sub{font-size:calc(var(--u)*1.55);opacity:.9;font-weight:600;letter-spacing:.04em;margin-top:calc(var(--u)*.15);display:flex;gap:calc(var(--u)*1.4);flex-wrap:wrap}
+.cb-card .sub b{color:#ffcf4a;font-weight:800}
+.cb-bars{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--u)*.5) calc(var(--u)*1.8);margin-top:calc(var(--u)*.9)}
+.cb-bar{display:flex;align-items:center;gap:calc(var(--u)*.7);font-size:calc(var(--u)*1.25);letter-spacing:.12em;font-weight:700}
+.cb-bar span.l{width:calc(var(--u)*9.4);opacity:.75}
+.cb-bar .tr{flex:1;height:calc(var(--u)*.85);background:rgba(255,255,255,.12);border-radius:calc(var(--u)*.5);overflow:hidden}
+.cb-bar .tr i{display:block;height:100%;border-radius:calc(var(--u)*.5)}
+.cb-bar span.v{width:calc(var(--u)*2.4);text-align:right;font-variant-numeric:tabular-nums}
+.cb-ars{margin-top:calc(var(--u)*.8);font-size:calc(var(--u)*1.35);letter-spacing:.08em;color:#ffcf4a;font-weight:700;white-space:nowrap}
+.cb-box{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(96vw,calc(var(--u)*170));max-height:88vh;overflow:auto;background:linear-gradient(180deg,rgba(14,18,26,.97),rgba(6,8,12,.97));border-radius:calc(var(--u)*1);box-shadow:0 calc(var(--u)*1) calc(var(--u)*4) rgba(0,0,0,.7),inset 0 0 0 1px rgba(255,255,255,.1);padding:calc(var(--u)*1.6) calc(var(--u)*2);display:none;pointer-events:auto;font-size:calc(var(--u)*1.55)}
+.cb-box.show{display:block}
+.cb-box h3{margin:0 0 calc(var(--u)*.8);font-size:calc(var(--u)*2.1);letter-spacing:.12em;display:flex;justify-content:space-between;align-items:baseline}
+.cb-box h3 small{font-size:calc(var(--u)*1.2);opacity:.6;letter-spacing:.1em;font-weight:600}
+.cb-box .cols{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--u)*2.4)}
+@media (max-width:900px){.cb-box .cols{grid-template-columns:1fr}}
+.cb-box table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;margin-bottom:calc(var(--u)*1.2)}
+.cb-box th{font-size:calc(var(--u)*1.15);letter-spacing:.1em;opacity:.6;text-align:right;font-weight:700;padding:calc(var(--u)*.25) calc(var(--u)*.6);border-bottom:1px solid rgba(255,255,255,.15)}
+.cb-box td{text-align:right;padding:calc(var(--u)*.3) calc(var(--u)*.6);border-bottom:1px solid rgba(255,255,255,.06)}
+.cb-box th:first-child,.cb-box td:first-child,.cb-box th:nth-child(2),.cb-box td:nth-child(2){text-align:left}
+.cb-box td:first-child{opacity:.55;width:2.2em}
+.cb-box tr.tot td{font-weight:800;border-top:1px solid rgba(255,255,255,.25);opacity:1}
+.cb-box tr.out td{opacity:.5}
+.cb-box .foot{opacity:.55;font-size:calc(var(--u)*1.2);margin-top:calc(var(--u)*.4)}
 .cb-final{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,6,10,.55);font-size:calc(var(--u)*8);font-weight:900;letter-spacing:.1em}
 `;
 
@@ -113,6 +139,10 @@ export class Hud {
   private lastCallSeq = 0;
   private ptTimer = 0;
   private replayShown = false;
+  private box = el('div', 'cb-box');
+  private boxOpen = false;
+  private boxTimer = 0;
+  private lastState: GameState | null = null;
 
   constructor(parent: HTMLElement, private act: HudActions) {
     const style = document.createElement('style');
@@ -160,11 +190,11 @@ export class Hud {
     this.pt.append(hd, this.ptCanvas);
     this.pt.style.opacity = '0';
 
-    this.card.innerHTML = '<div class="num"></div><div class="txt"><div class="role"></div><div class="nm"></div><div class="st"></div></div>';
+    this.card.innerHTML = '<div class="num"></div><div class="txt"><div class="role"></div><div class="nm"></div><div class="st"></div><div class="sub"></div><div class="cb-bars"></div><div class="cb-ars"></div></div>';
     this.hit.innerHTML = '<div><b class="ev">--</b><small>EXIT VELO MPH</small></div><div><b class="la">--</b><small>LAUNCH ANGLE</small></div><div><b class="dist">--</b><small>DISTANCE FT</small></div>';
 
     parent.appendChild(this.root);
-    this.root.append(this.bug, this.call, this.pt, this.card, this.hit, this.tick, this.rep, this.wipe, this.buildControls(), this.final);
+    this.root.append(this.bug, this.call, this.pt, this.card, this.hit, this.tick, this.rep, this.wipe, this.box, this.buildControls(), this.final);
   }
 
   private buildControls(): HTMLElement {
@@ -189,6 +219,7 @@ export class Hud {
       if (s === 1) b.classList.add('on');
     }
     btn('⏭ Next half', () => this.act.skipHalf());
+    btn('Box score (B)', () => this.toggleBox());
     const cam = btn('Camera: Auto', (b) => {
       const auto = !b.classList.contains('on');
       b.classList.toggle('on', auto);
@@ -293,17 +324,65 @@ export class Hud {
     }
   }
 
-  private showCard(role: string, p: PersonInfo, color: string) {
+  private showCard(role: string, p: PersonInfo, color: string, s: GameState, kind: 'bat' | 'pit') {
+    const q = (sel: string) => this.card.querySelector(sel) as HTMLElement;
     this.card.style.setProperty('--c', color);
-    (this.card.querySelector('.num') as HTMLElement).textContent = String(p.number);
-    (this.card.querySelector('.role') as HTMLElement).textContent = role;
-    (this.card.querySelector('.nm') as HTMLElement).textContent = p.name;
-    (this.card.querySelector('.st') as HTMLElement).textContent = `${p.hand === 'L' ? 'LEFT' : 'RIGHT'}-HANDED  ·  ${p.stats ?? ''}`;
+    q('.num').textContent = String(p.number);
+    q('.role').textContent = role;
+    q('.nm').textContent = p.name;
+    q('.st').textContent = `${p.hand === 'L' ? 'LEFT' : 'RIGHT'}-HANDED${p.position ? '  ·  ' + p.position : ''}  ·  ${p.stats ?? ''}`;
+    // live game line from the sim's box-score stats
+    const teamSide = kind === 'bat' ? (s.half === 'top' ? 'away' : 'home') : s.half === 'top' ? 'home' : 'away';
+    const entry = (kind === 'bat' ? s.stats?.[teamSide].batters : s.stats?.[teamSide].pitchers)?.find((e) => e.playerId === p.id);
+    const line = kind === 'bat' ? batLine(entry?.game.batting) : pitLine(entry?.game.pitching);
+    q('.sub').innerHTML = line ? `<span>TODAY</span><b>${escapeHtml(line)}</b>` : '';
+    const bars: RatingBar[] = kind === 'bat' ? batterBars(p.ratings) : pitcherBars(p.ratings);
+    q('.cb-bars').innerHTML = bars
+      .map((b) => `<div class="cb-bar"><span class="l">${b.label}</span><span class="tr"><i style="width:${Math.round(b.fill * 100)}%;background:${gradeColor(b.grade)}"></i></span><span class="v">${b.text ?? b.grade}</span></div>`)
+      .join('');
+    q('.cb-ars').textContent = kind === 'pit' ? arsenalText(p.arsenal) : '';
     this.card.classList.add('show');
-    this.cardTimer = 5;
+    this.cardTimer = 7;
+  }
+
+  /** Box-score panel (key B). */
+  toggleBox() {
+    this.boxOpen = !this.boxOpen;
+    this.box.classList.toggle('show', this.boxOpen);
+    if (this.boxOpen) this.renderBox(this.lastState);
+  }
+
+  private renderBox(s: GameState | null) {
+    if (!s) return;
+    const side = (t: TeamStatsView | undefined, name: string, abbr: string, runs: number) => {
+      const bt = boxBatters(t), pt = boxPitchers(t);
+      const btot = batterTotals(bt), ptot = pitcherTotals(pt);
+      const brow = bt.map((r) => `<tr class="${r.inGame ? '' : 'out'}"><td>${r.num}</td><td>${escapeHtml(r.name)} <span style="opacity:.5">${r.pos}</span></td><td>${r.ab}</td><td>${r.r}</td><td>${r.h}</td><td>${r.rbi}</td><td>${r.hr}</td><td>${r.bb}</td><td>${r.so}</td><td>${r.avg}</td></tr>`).join('');
+      const prow = pt.map((r) => `<tr><td>${r.num}</td><td>${escapeHtml(r.name)}</td><td>${r.ip}</td><td>${r.h}</td><td>${r.r}</td><td>${r.er}</td><td>${r.bb}</td><td>${r.so}</td><td>${r.hr}</td><td>${r.pitches}</td><td>${r.era}</td></tr>`).join('');
+      return `<div><h3><span>${escapeHtml(name)} <small>${abbr}</small></span><span>${runs}</span></h3>
+        <table><tr><th></th><th>BATTING</th><th>AB</th><th>R</th><th>H</th><th>RBI</th><th>HR</th><th>BB</th><th>SO</th><th>AVG</th></tr>${brow}
+        <tr class="tot"><td></td><td>TOTALS</td><td>${btot.ab}</td><td>${btot.r}</td><td>${btot.h}</td><td>${btot.rbi}</td><td>${btot.hr}</td><td>${btot.bb}</td><td>${btot.so}</td><td></td></tr></table>
+        <table><tr><th></th><th>PITCHING</th><th>IP</th><th>H</th><th>R</th><th>ER</th><th>BB</th><th>SO</th><th>HR</th><th>P</th><th>ERA</th></tr>${prow}
+        <tr class="tot"><td></td><td>TOTALS</td><td>${ptot.ip}</td><td>${ptot.h}</td><td>${ptot.r}</td><td>${ptot.er}</td><td>${ptot.bb}</td><td>${ptot.so}</td><td>${ptot.hr}</td><td>${ptot.pitches}</td><td></td></tr></table>
+        <div class="foot">${t ? `Runs ${t.totals.runs}  ·  Hits ${t.totals.hits}  ·  Errors ${t.totals.errors}  ·  LOB ${t.totals.lob}` : ''}</div></div>`;
+    };
+    if (!s.stats) {
+      this.box.innerHTML = '<h3><span>BOX SCORE</span></h3><div class="foot">No stats from this sim.</div>';
+      return;
+    }
+    this.box.innerHTML =
+      `<h3><span>BOX SCORE</span><small>${s.half === 'top' ? 'TOP' : 'BOTTOM'} ${s.inning}  ·  PRESS B TO CLOSE</small></h3><div class="cols">` +
+      side(s.stats.away, s.teams.away.name, s.teams.away.abbr, s.score.away) +
+      side(s.stats.home, s.teams.home.name, s.teams.home.abbr, s.score.home) +
+      '</div>';
   }
 
   update(s: GameState, dt: number) {
+    this.lastState = s;
+    if (this.boxOpen && (this.boxTimer -= dt) < 0) {
+      this.boxTimer = 0.5;
+      this.renderBox(s);
+    }
     const key = `${s.score.away}|${s.score.home}|${s.inning}${s.half}|${s.outs}|${s.count.balls}${s.count.strikes}|${s.runners.join()}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
@@ -327,10 +406,10 @@ export class Hud {
     if (p && (p.id !== this.lastPitcher || half !== this.lastHalf) && s.half) {
       this.lastPitcher = p.id;
       this.lastHalf = half;
-      this.showCard('PITCHING', p, s.half === 'top' ? s.teams.home.color : s.teams.away.color);
+      this.showCard('PITCHING', p, s.half === 'top' ? s.teams.home.color : s.teams.away.color, s, 'pit');
     } else if (b && b.id !== this.lastBatter) {
       this.lastBatter = b.id;
-      this.showCard('AT BAT', b, s.half === 'top' ? s.teams.away.color : s.teams.home.color);
+      this.showCard('AT BAT', b, s.half === 'top' ? s.teams.away.color : s.teams.home.color, s, 'bat');
       this.pitches = [];
       this.drawZone();
     }

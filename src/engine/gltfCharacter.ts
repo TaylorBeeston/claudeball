@@ -26,6 +26,7 @@ import type { CharacterTemplate, GearSets } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
+import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
@@ -252,6 +253,11 @@ export class GltfPuppet implements PuppetLike {
   private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
+  private torso: TorsoVolume = torsoVolume(undefined);
+  /** smallest elbow-to-trunk clearance (m) this frame and over the puppet's life; negative = an elbow inside the torso */
+  elbowClear = Infinity;
+  minElbowClear = Infinity;
+  private warnedElbow = false;
   /** the clip time the pitching state machine is seeking to (null: not driving the clip) */
   pitchClipTime: number | null = null;
 
@@ -293,6 +299,7 @@ export class GltfPuppet implements PuppetLike {
       this.skin = this.look.skin;
       this.bodyScale = this.look.scale;
       this.applyMorphs(this.look.morphs);
+      this.torso = torsoVolume(this.look.morphs);
       this.applyGear(gearKindOf(snap.role));
     } else {
       // fixed-look files (umpires): keep their configuration, hair hidden under caps / helmets
@@ -597,6 +604,7 @@ export class GltfPuppet implements PuppetLike {
       this.solveArm('Right', env.batGrip.top, this.ikW);
     }
     this.lookAt(snap, dt, env);
+    this.clearElbows(snap);
     this.updateHeldBall(snap, env, pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none');
   }
   private wasStance = false;
@@ -604,6 +612,50 @@ export class GltfPuppet implements PuppetLike {
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
   private clipPose = new Map<Bone, Quaternion>();
+
+  /**
+   * Keep both elbows outside the torso (the trunk grows with the build morphs): an elbow that ended up inside, from the clip pose or from
+   * the batter's hand IK, is pushed out radially and the forearm re-aimed at the hand, which stays where it was. Records the clearance.
+   */
+  private clearElbows(snap: PlayerSnap) {
+    const spine = this.bones.Spine2;
+    if (!spine) return;
+    const rig = this.rig;
+    this.rig.refresh();
+    const Ps = rig.pos(spine, new Vector3());
+    const Qi = rig.quat(spine, new Quaternion()).invert();
+    let worst = Infinity;
+    for (const side of ['Left', 'Right'] as const) {
+      const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
+      if (!arm || !fore || !hand) continue;
+      const E = rig.pos(fore, new Vector3());
+      const loc = E.clone().sub(Ps).applyQuaternion(Qi);
+      let clear = torsoClearance(loc.x, loc.y, loc.z, this.torso);
+      if (clear < 0.008 && !(globalThis as { __noElbowFix?: boolean }).__noElbowFix) {
+        // swivel the elbow around the shoulder→hand axis: the hand stays where the clip / IK put it, only the elbow leaves the trunk
+        const S = rig.pos(arm, new Vector3());
+        const H = rig.pos(hand, new Vector3());
+        const tmp = new Vector3();
+        const clearAt = (p: V3) => {
+          tmp.set(p[0], p[1], p[2]).sub(Ps).applyQuaternion(Qi);
+          return torsoClearance(tmp.x, tmp.y, tmp.z, this.torso);
+        };
+        const r = swivelElbow([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, 0.02);
+        if (r.angle !== 0) {
+          rig.aim(arm, fore, new Vector3(r.elbow[0], r.elbow[1], r.elbow[2]), 1);
+          rig.aim(fore, hand, H, 1);
+        }
+        clear = r.clear;
+      }
+      worst = Math.min(worst, clear);
+    }
+    this.elbowClear = worst;
+    this.minElbowClear = Math.min(this.minElbowClear, worst);
+    if (import.meta.env?.DEV && worst < -0.04 && !this.warnedElbow) {
+      this.warnedElbow = true;
+      console.error(`[elbow] ${snap.id} elbow ${(-worst * 100).toFixed(1)} cm inside the torso (${snap.anim})`);
+    }
+  }
 
   /**
    * The ball a pitcher carries before release (in the glove until the hand break, then gripped in the throwing hand, whose claw mesh
