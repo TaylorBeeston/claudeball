@@ -157,6 +157,7 @@ export function createWorld(cfg: GameConfig): World {
     ai: undefined as unknown as World['ai'],
     paStage: 0,
     prep: { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, readyBy: 0, steal: null },
+    mitt: null,
     swingObs: null,
     swingDecided: false,
     buntNow: null,

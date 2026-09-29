@@ -407,6 +407,8 @@ export interface World {
   /** Plate-appearance start stage (see flow.startPlateAppearance). */
   paStage: number;
   prep: PrePitch;
+  /** The catcher's mitt plan for the pitch in flight. */
+  mitt: { x0: number; y0: number; x: number; y: number; tC: number; react: number; armed: boolean } | null;
   /** Swing decision state for the pitch in flight. */
   swingObs: import('./batting').SwingObservation | null;
   swingDecided: boolean;

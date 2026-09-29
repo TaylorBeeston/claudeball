@@ -18,7 +18,17 @@ export function handPos(p: PlayerRT): { x: number; y: number; z: number } {
 
 export function placeBallInHand(w: World, p: PlayerRT): void {
   const b = w.ball.body;
-  const h = handPos(p);
+  let h = handPos(p);
+  const gh = p.gloveHold;
+  if (gh) {
+    // right after a catch the ball is still where the glove met it, and settles into the hand over a third of a second
+    const u = (w.tick - gh.t0) / 80;
+    if (u >= 1) p.gloveHold = null;
+    else {
+      const s = u * u * (3 - 2 * u);
+      h = { x: gh.x + (h.x - gh.x) * s, y: gh.y + (h.y - gh.y) * s, z: gh.z + (h.z - gh.z) * s };
+    }
+  }
   b.x = h.x;
   b.y = h.y;
   b.z = h.z;

@@ -279,6 +279,7 @@ export function tickInPlay(w: World): void {
   else if (ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown') stepLiveBall(w);
 
   fielding.tickWallPlay(w);
+  fielding.updateGloveTargets(w);
   if (!play.dead) {
     // throws leave the hand when the wind-up ends
     for (const F of fielding.fielders(w)) {
