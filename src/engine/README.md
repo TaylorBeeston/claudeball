@@ -1,0 +1,57 @@
+# Engine (`src/engine/`)
+
+three.js (WebGL2) broadcast renderer. It only *renders* what the sim reports; it never decides outcomes.
+
+```
+npm install
+npm run dev          # http://localhost:5173  (add ?mock to force the mock sim, ?noassets to skip glTF,
+                     #   ?quality=low|medium|high|ultra, ?tod=day|dusk|night, ?nopost / ?noao / ?nobloom / ?nodof for debugging)
+npm run build        # typecheck + production bundle (copies ./assets to dist/assets)
+```
+Set `CB_ASSETS_DIR=/path/to/assets` to serve a different assets folder in dev.
+
+## Coordinates
+Sim contract: metres, origin at home plate, +Y up, +Z center field, **+X toward third base** (1B at −X). That is a plain
+right-handed frame, so scene == sim (`dims.ts` keeps `toScene()` as the single mapping point). Facing yaw = `atan2(dx, dz)`.
+
+## Sim adapter
+`simAdapter.ts` → `SimDriver`. Uses `src/sim/index.ts` (`createGame({seed})`, `step(dt)`, `getState()`, `on(cb)`) when it exists
+(`import.meta.glob`), otherwise `mockSim.ts`. Types are in `types.ts`. The driver runs the sim on a fixed 120 Hz accumulator,
+interpolates snapshots for rendering, records 30 s of history (used for replays) and derives pitch-crossing-plate from ball state.
+
+## Modules
+| file | what |
+|---|---|
+| `engine.ts` | renderer, main loop, wiring, keyboard (space, 1/2/3 speed, n next half, c camera, q quality, t time of day) |
+| `environment.ts` | Sky → cube env (PMREM), time of day (day/dusk/night), cascaded shadow maps (CSM), ACES |
+| `postfx.ts` | GTAO, depth-of-field (uses the GTAO depth), bloom, output, grade + grain + vignette |
+| `field.ts`, `stadium.ts` | procedural placeholders with real MLB dimensions (used until/unless `field.glb`/`stadium.glb` load) |
+| `assets.ts` | GLTFLoader + meshopt/Draco/KTX2, prefers `optimized/`, everything optional |
+| `gltfCharacter.ts` | skinned glTF players: AnimationMixer state machine, head lookAt, batter arm IK to the sim's bat |
+| `characters.ts` | procedural articulated fallback player (parametric clips + IK) |
+| `players.ts` | player manager, ball (motion streak, batted-ball tracer), bat |
+| `cameraDirector.ts` | broadcast shots: pitch (CF cam), follow, fielder, base, replay (slow-mo from history), cutaways |
+| `hud.ts` | DOM/CSS: scorebug, pitch tracker, name cards, exit velo/LA/distance, ticker, controls |
+| `quality.ts` | presets + adaptive resolution scale |
+| `mockSim.ts` | dev-only mock game with real ball flight and chasing fielders |
+
+## Sky / lighting
+`npm run hdri` downloads two CC0 Poly Haven HDRIs (2K, not committed) into `public/hdri/`: day (partly cloudy) and dusk drive the
+background and image-based lighting; the sun direction is found from the brightest texel, clamped, and used for the cascaded shadow light.
+Without the files (and at night) the procedural `Sky` + stars are used. Exp2 fog gives aerial perspective; stadium lamp banks get glare
+sprites and bloom when lit; camera-pan motion blur and chromatic aberration live in the grade pass.
+
+## Quality presets
+Measured on an RTX 4090 laptop GPU, 1920x1080, headless Chrome (Vulkan), pitch camera, real sim:
+
+| preset | fps | median | p95 | enables |
+|---|---|---|---|---|
+| low | ~100 | ~10 ms | 13 ms | 2 shadow cascades @1024, no AO/bloom/DoF, 25% crowd, DPR 1 |
+| medium | ~75 | 12.4 ms | 17 ms | 3 cascades @2048, half-res GTAO, bloom, grain, 55% crowd |
+| high | ~70 | 13.6 ms | 22 ms | + MSAA 4x, depth of field, 85% crowd, DPR <= 1.5 |
+| ultra | ~65 | 14.7 ms | 32 ms | 4 cascades @4096, full-res GTAO, full crowd, DPR <= 2 |
+
+Adaptive resolution scale (0.55-1.0) drops internal resolution when smoothed frame time > ~19.5 ms and restores it with headroom.
+Wide/follow shots cost ~3 ms more than the pitch camera. Seat/spectator instances are split into azimuth sectors so off-screen stands are culled.
+GPU-enabled headless Chrome flags: `--use-angle=vulkan --enable-features=Vulkan,UseSkiaRenderer --ignore-gpu-blocklist --enable-gpu-rasterization --disable-vulkan-surface`.
+Not measured on a mid-range GPU.
