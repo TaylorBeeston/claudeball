@@ -1,4 +1,4 @@
-import { BALL_MASS, BALL_RADIUS, FenceConfig, fenceAt, surfaceAt, Surface } from './field';
+import { BALL_MASS, BALL_RADIUS, FenceConfig, fenceAt, fenceNormalAt, surfaceAt, Surface } from './field';
 import { Rng } from './rng';
 import { hypot2 } from './math';
 
@@ -237,22 +237,34 @@ function wallCheck(b: BallBody, env: Environment, flags: BallStepFlags, rng: Rng
   if (rho < f.distance) return;
   const rx = b.x / rho;
   const rz = b.z / rho;
-  const vn0 = b.vx * rx + b.vz * rz;
-  if (vn0 <= 0) return; // moving back inside
-  if (b.y > f.height + BALL_RADIUS) {
+  // the wall runs straight between the fence points: its normal is not the radial direction (a ball skimming along a slanted
+  // stretch of wall must not slip out of the park)
+  const wn = fenceNormalAt(env.fence, b.x, b.z);
+  const vn0 = b.vx * wn.x + b.vz * wn.z;
+  const top = b.y > f.height + BALL_RADIUS;
+  const px = f.distance - BALL_RADIUS * 1.5;
+  if (vn0 <= 0) {
+    // moving along / back into the park but not yet inside: pin it to the wall surface
+    if (!top) {
+      b.x = rx * px;
+      b.z = rz * px;
+    }
+    return;
+  }
+  if (top) {
     flags.overFence = true;
     return;
   }
   // wall impact: the panels are not perfectly flat, so the real ball leaves at a slightly different angle than the
   // predicted one (predictions pass rng = null: a flat wall). Reflect the outward component, damp the rest.
-  let nx = rx;
-  let nz = rz;
+  let nx = wn.x;
+  let nz = wn.z;
   if (rng) {
     const a = rng.normal(0, WALL_ROUGHNESS);
     const c = Math.cos(a);
     const s = Math.sin(a);
-    nx = rx * c - rz * s;
-    nz = rx * s + rz * c;
+    nx = wn.x * c - wn.z * s;
+    nz = wn.x * s + wn.z * c;
   }
   const vn = b.vx * nx + b.vz * nz;
   const e = WALL_RESTITUTION;
@@ -263,7 +275,6 @@ function wallCheck(b: BallBody, env: Environment, flags: BallStepFlags, rng: Rng
   b.vx *= 0.9;
   b.vz *= 0.9;
   b.vy *= 0.9;
-  const px = f.distance - BALL_RADIUS * 1.5;
   b.x = rx * px;
   b.z = rz * px;
   if (b.rolling && b.vy > 0) b.rolling = false;

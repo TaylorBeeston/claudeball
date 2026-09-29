@@ -408,6 +408,12 @@ function tickRunner(w: World, r: RunnerRT): void {
     return;
   }
   if (w.tick < r.reaction) return;
+  // a runner can never pass, or share a base with, the runner ahead of him
+  if (r.want > r.base && !r.dead) {
+    for (const q of w.runners) {
+      if (q !== r && q.state === 'live' && q.base > r.base && q.target === q.base && q.want <= q.base && r.want >= q.base) r.want = Math.max(r.base, q.base - 1);
+    }
+  }
   r.target = r.want > r.base ? r.base + 1 : r.base;
   // attempting to advance gives up the protection of a run-through
   if (r.target > r.base) r.overrun = false;

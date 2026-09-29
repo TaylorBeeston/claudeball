@@ -796,7 +796,7 @@ const willRelay = (w: World, F: PlayerRT, receiver: PlayerRT) => {
 };
 
 /** Every play the man with the ball could make (throw to a base, run it in himself, chase a runner down). */
-function throwOptions(w: World, F: PlayerRT): ThrowOptionRT[] {
+export function throwOptions(w: World, F: PlayerRT): ThrowOptionRT[] {
   const play = w.play!;
   const arm = armSpeed(F);
   const options: ThrowOptionRT[] = [];
@@ -840,7 +840,12 @@ export function aiThrow(w: World, F: PlayerRT, options: ThrowOptionRT[]): ThrowD
   const play = w.play!;
   const rec = 0.05;
   const viable = options.filter((o) => o.margin > 0.03 || (play.kind === 'steal' && F.fieldPos === 'C' && o.runner.stealing && o.margin > -0.6));
-  if (!viable.length) return { action: 'hold', recheckSec: rec };
+  if (!viable.length) {
+    // nobody can be stopped, but an outfielder still gets the ball back in (through the cut-off man) to hold the trailing runners
+    const cand = options.filter((o) => o.kind === 'throw').sort((a, c) => c.margin - a.margin)[0];
+    if (cand && (isOutfielder(F) || cand.margin > -0.8)) return { action: 'throw', base: cand.base, viaCutoff: !!play.cutoff && play.cutoff !== F && Math.hypot(play.cutoff.x - F.x, play.cutoff.z - F.z) > 25, recheckSec: rec };
+    return { action: 'hold', recheckSec: rec };
+  }
   viable.sort((a, c) => (c.kind === 'tag' ? 1 : 0) - (a.kind === 'tag' ? 1 : 0) || c.base - a.base || c.margin - a.margin);
   const pick = viable[0];
   if (pick.kind === 'tag') return { action: 'tag', runnerId: pick.runner.p.info.id, recheckSec: rec };
