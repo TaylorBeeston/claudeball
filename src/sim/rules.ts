@@ -400,7 +400,11 @@ export function resolveBattedBall(w: World): void {
       const kind = bip.launchDeg > 45 ? 'pops out' : bip.line ? 'lines out' : 'flies out';
       result = kind.replace(' out', 'out').replace('pops', 'pop').replace('lines', 'line').replace('flies', 'fly');
       result = bip.launchDeg > 45 ? 'popout' : bip.line ? 'lineout' : 'flyout';
-      if (sacFly) {
+      if (bip.robbed) {
+        result = 'flyout';
+        desc = `${name} is robbed of a home run by ${where}!`;
+        opts = { ab: true };
+      } else if (sacFly) {
         result = 'sac fly';
         desc = `${name} hits a sacrifice fly to ${where}; ${runs} run${runs > 1 ? 's' : ''} score${runs > 1 ? '' : 's'}.`;
         opts = { ab: false, sf: true, rbi: runs };
