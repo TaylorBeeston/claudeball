@@ -57,12 +57,17 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     onField: false,
     leap: null,
     home: null,
+    gloveTarget: null,
+    gloveAt: 0,
+    catchArmed: false,
+    gloveHold: null,
+    tagReady: 0,
     legs: 0,
     form: 0,
     rattle: 0,
     gait: null,
     wallTick: -9999,
-    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
+    plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, catchZ: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
   };
 }
 
@@ -176,6 +181,8 @@ export function createWorld(cfg: GameConfig): World {
     runners: [],
     exiting: [],
     leavers: [],
+    tags: [],
+    bagTags: [],
     ret: null,
     hornKind: null,
     ball: {

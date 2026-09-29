@@ -176,7 +176,7 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
 // Outs and runs
 // ---------------------------------------------------------------------------------------------
 
-export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean): void {
+export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean, info: { margin?: number } = {}): void {
   if (r.state !== 'live' || w.outs >= 3) return;
   r.state = 'out';
   w.outs++;
@@ -188,7 +188,8 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   if (brBeforeFirst && (outType === 'force' || outType === 'tag')) r.exitVia = 1;
   if (play) play.outsThisPlay.push({ runner: r, force: force || brBeforeFirst, brBeforeFirst, tick: w.tick });
   if (r.isBatter && play) play.batterOut = true;
-  emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base });
+  const margin = info.margin;
+  emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base, ...(margin !== undefined ? { margin, closePlay: Math.abs(margin) < 0.1 } : {}) });
   if (w.outs >= 3) {
     thirdOut(w, force || brBeforeFirst);
   }
