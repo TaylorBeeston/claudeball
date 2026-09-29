@@ -30,7 +30,8 @@ interpolates snapshots for rendering, records 30 s of history (used for replays)
 | `gltfCharacter.ts` | skinned glTF players: AnimationMixer state machine, head lookAt, batter arm IK to the sim's bat |
 | `characters.ts` | procedural articulated fallback player (parametric clips + IK) |
 | `players.ts` | player manager, ball (motion streak, batted-ball tracer), bat |
-| `cameraDirector.ts` | broadcast shots: pitch (CF cam), follow, fielder, base, replay (slow-mo from history), cutaways |
+| `headLook.ts` | head look-at maths (no three): clamped yaw/pitch offset, target validity, critically damped spring with a speed cap |
+| `cameraDirector.ts` | broadcast shots: pitch (CF cam), follow, fielder, base, action (ball + throw + runners), home-run sequence (wall → crowd → trot → plate → replay from a second angle), replay (slow-mo from history), cutaways |
 | `hud.ts` | DOM/CSS: scorebug, pitch tracker, name cards, exit velo/LA/distance, ticker, controls |
 | `quality.ts` | presets + adaptive resolution scale |
 | `mockSim.ts` | dev-only mock game with real ball flight and chasing fielders |
@@ -55,3 +56,25 @@ Adaptive resolution scale (0.55-1.0) drops internal resolution when smoothed fra
 Wide/follow shots cost ~3 ms more than the pitch camera. Seat/spectator instances are split into azimuth sectors so off-screen stands are culled.
 GPU-enabled headless Chrome flags: `--use-angle=vulkan --enable-features=Vulkan,UseSkiaRenderer --ignore-gpu-blocklist --enable-gpu-rasterization --disable-vulkan-surface`.
 Not measured on a mid-range GPU.
+
+## Players: heads, stance, clips
+- **Head look-at** (`gltfCharacter.ts`, `headLook.ts`): the target is turned into a yaw/pitch *offset from the head pose the clip already has* (relative to Spine2), clamped
+  (neck+head ±70° yaw, ±35° pitch; the upper spine adds up to ±20° yaw), ignored when it is behind the player (>120°) or closer than 1 m, and followed by a critically
+  damped spring capped at 7 rad/s. Idle fielders with a dead ball look ahead; hitters / catchers / umpires look at the mound when there is no ball.
+  All bone maths runs in "rig space" (`Rig`: the model node's mirror divided out), because lefties are the right-handed model with `scale.x = -1` and quaternions taken
+  from mirrored world matrices are meaningless. In dev builds a per-frame assertion logs `[head-look]` if the look step ever exceeds the speed cap.
+  *Root cause of the spinning heads*: three's mixer only writes a bone when its clip value changed, so on held poses (stance frame 0, seeked one-shots) the previous
+  frame's look / IK rotation stayed on the bone and was applied again every frame. Modified bones are now restored to their clip pose before `mixer.update`.
+- **Batter stance**: the sim's `facing` for a batter in the box is a look direction (it turns him toward the pitcher). The puppet instead stands sideways, chest toward the plate
+  (`stanceYaw`: righties on +X face −X, lefties on −X face +X, opened 0.2 rad toward the pitcher) and only the head looks at the pitcher; the body eases between run facing and stance.
+- **Clips**: hints map to clips with fallbacks when a GLB lacks them: `trot`→`run`, `run_turn`→`run`, `catch_jump`→`field_catch`, batter idle → `batting_stance` → `swing` frame 0,
+  `celebrate`→`idle`. Loop clips: idle, run, trot, run_turn, field_ready, celebrate, catcher_crouch, batting_stance; `catch_jump` is a one-shot seeked by the sim's progress.
+- Lefty jersey numbers are flipped back (UV mirror + digit swap).
+
+## Camera director (auto)
+`contact` → follow (high home) → on `homerun` (ball crosses the fence; the adapter keeps the ball flying on into the seats visually): ball leaving the park in profile (~2 s),
+crowd reaction (nearest stand section), batter tracked around the bases from outside the diamond (hard cut per leg), the plate for the celebration, then a slow-motion replay of the
+whole home run from across the field. Other plays: fielder / base shots as before, then an `action` shot framing the ball, throw target and every runner in motion until things go
+quiet, instead of returning to the pitcher while somebody is still running. History is kept for 75 s so the replay can start after the trot.
+Dev URL params: `?seed=N` picks the sim seed (seed 12 has a home run 22 s in).
+Tests: `npm test` (headLook maths + mirror-safe rig).

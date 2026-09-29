@@ -426,6 +426,7 @@ export class CameraDirector {
       cam = mid.addScaledVector(perp, 46).setY(7.5);
     }
     this.replay = { frames, t: 0, end: frames.length, variant: homeRun ? 'hr' : this.ballFar > 55 ? 'outfield' : 'infield', until: 0, cam };
+    this.ballSm.copy(toScene(frames[0].ball.pos)); // the replay camera starts on the ball at contact, not where the live shot left it
     void live;
     return true;
   }
