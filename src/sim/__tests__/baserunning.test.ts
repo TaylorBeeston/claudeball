@@ -39,7 +39,10 @@ describe('baserunning', () => {
 
   it('a safe batter overruns first, then returns to the bag; the play ends with him on it', () => {
     let checked = 0;
-    for (const [seed, mph, la, sp] of [['run-4', 85, 6, 25], ['s5', 82, 7, 0]] as [string, number, number, number][]) {
+    const cands: [string, number, number, number][] = [];
+    for (const seed of ['s5', 's6', 's7', 's8', 's9']) for (const [mph, la, sp] of [[85, 6, 25], [88, 4, 20], [84, 5, -20], [82, 7, 0], [86, 5, -10], [78, 9, 15]]) cands.push([seed, mph, la, sp]);
+    for (const [seed, mph, la, sp] of cands) {
+      if (checked >= 2) break;
       const { l, samples } = track(seed, mph, la, sp);
       const adv = ofType(l.events, 'runnerAdvance').filter((e) => e.fromBase === 0 && e.toBase === 1);
       if (adv.length !== 1 || ofType(l.events, 'runnerAdvance').some((e) => e.toBase >= 2)) continue; // only clean singles

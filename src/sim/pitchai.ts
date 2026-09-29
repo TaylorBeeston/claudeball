@@ -1,10 +1,11 @@
+import { pitchLimit } from './attributes';
 import { PLATE_HALF_WIDTH } from './field';
 import { clamp } from './math';
 import type { StrikeZone } from './pitching';
 import type { PitchSpec, PitchType } from './types';
 import type { PlayerRT, World } from './world';
 
-const FASTBALLS: PitchType[] = ['FF', 'SI', 'FC'];
+const FASTBALLS: PitchType[] = ['FF', 'FT', 'SI', 'FC'];
 const BREAKING: PitchType[] = ['SL', 'CU', 'SW'];
 const isFB = (t: PitchType) => FASTBALLS.includes(t);
 const isBrk = (t: PitchType) => BREAKING.includes(t);
@@ -20,7 +21,7 @@ export interface PitchCall {
 
 /** Fatigue in [0, ~1.3]: 0 while fresh, rising as the pitch count passes ~60% of the pitcher's limit. */
 export function fatigueOf(p: PlayerRT): number {
-  const limit = 30 + p.info.ratings.stamina;
+  const limit = pitchLimit(p.info.ratings);
   const onset = 0.62 * limit;
   return Math.max(0, (p.pitchCount - onset) / onset);
 }
