@@ -244,7 +244,7 @@ export function defenseAI(w: World): void {
       } else {
         if (!F.leap) F.plan.wall = null;
         F.plan.kind = 'chase';
-        setGoal(F, tgt.x, tgt.z, !bestIc.found || bestIc.margin > 0.25, 1);
+        setGoal(F, tgt.x, tgt.z, !bestIc.found || bestIc.margin > 0.12, 1); // he plans his braking unless the ball only just gets there
       }
       F.plan.tx = tgt.x;
       F.plan.tz = tgt.z;
