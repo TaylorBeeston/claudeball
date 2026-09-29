@@ -95,8 +95,8 @@ function makeName(rng: Rng, used: Set<string>): string {
 
 function makePhysique(rng: Rng, pos: string, sizeZ: number): Physique {
   const b = BODY[pos] ?? BODY.P;
-  const heightM = clamp(b.h + 0.055 * (0.55 * sizeZ + 0.85 * rng.normal(0, 1)), 1.68, 2.08);
-  const bmi = clamp(b.bmi + 1.4 * sizeZ + rng.normal(0, 0.7), 22, 33);
+  const heightM = clamp(b.h + 0.055 * (0.55 * sizeZ + 0.85 * rng.normal(0, 1)), 1.70, 2.08);
+  const bmi = clamp(b.bmi + 1.4 * sizeZ + rng.normal(0, 0.7), 23.2, 33);
   const weightKg = Math.round(bmi * heightM * heightM * 10) / 10;
   const build: Build = bmi < 24.2 ? 'lean' : bmi < 26.6 ? 'athletic' : bmi < 28.6 ? 'stocky' : 'heavy';
   return { heightM: Math.round(heightM * 1000) / 1000, weightKg, build };
@@ -213,7 +213,7 @@ function makePitcher(id: string, side: TeamSide, jersey: number, role: 'SP' | 'R
   const fb = clamp(rng.normal(role === 'SP' ? 93.0 : role === 'CL' ? 96 : 94.2, 1.7) + q * 0.12 + 0.5 * sizeZ - (delivery.armSlotDeg > 65 ? 2.3 : 0), 84, 101);
   const movement = rate(rng, 50 + q + (delivery.armSlotDeg > 65 ? 4 : 0), 10);
   const control = rate(rng, 50 + q + (role === 'RP' ? -1 : 0), 10);
-  const stamina = role === 'SP' ? rate(rng, 66, 8, 48, 80) : rate(rng, 32, 8, 15, 55);
+  const stamina = role === 'SP' ? rate(rng, 66, 8, 48, 80) : rate(rng, 32, 8, 20, 55);
   const lowSlot = delivery.armSlotDeg > 65;
   // repertoire: a primary fastball (four-seam / two-seam / sinker) plus breaking and off-speed pitches; more pitches for starters
   const types: PitchType[] = [];
@@ -250,13 +250,13 @@ function makePitcher(id: string, side: TeamSide, jersey: number, role: 'SP' | 'R
     return makePitchSpec(t, fb, grade, left, rng, usage, delivery.armSlotDeg, command);
   });
   const ratings: Ratings = {
-    contact: rate(rng, 22, 4, 15, 40),
-    power: rate(rng, 22, 4, 15, 40),
-    eye: rate(rng, 25, 5, 15, 40),
-    discipline: rate(rng, 30, 8, 15, 55),
+    contact: rate(rng, 22, 4, 20, 40),
+    power: rate(rng, 22, 4, 20, 40),
+    eye: rate(rng, 25, 5, 20, 40),
+    discipline: rate(rng, 30, 8, 20, 55),
     pull: rate(rng, 50, 10),
     gap: rate(rng, 40, 10),
-    breaking: rate(rng, 30, 8, 15, 55),
+    breaking: rate(rng, 30, 8, 20, 55),
     consistency: 50,
     clutch: rate(rng, 50, 10),
     durability: rate(rng, 50 - 0.6 * (age - 28), 10),

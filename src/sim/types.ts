@@ -214,6 +214,54 @@ export interface PitcherLine {
   wp: number;
 }
 
+/** A batting line with the rate stats worked out. */
+export interface BatterStats extends BatterLine {
+  /** Games played. */
+  g: number;
+  avg: number;
+  obp: number;
+  slg: number;
+  ops: number;
+  /** Total bases. */
+  tb: number;
+}
+
+/** A pitching line with innings and rates worked out. */
+export interface PitcherStats extends PitcherLine {
+  g: number;
+  /** Innings pitched as baseball writes it ("6.1" = six and one third). */
+  ip: string;
+  era: number;
+  whip: number;
+}
+
+export interface PlayerStatsEntry {
+  playerId: string;
+  name: string;
+  jersey: number;
+  position: FieldPosition | 'P';
+  /** Currently in the game. */
+  inGame: boolean;
+  /** This game so far. */
+  game: { batting: BatterStats; pitching: PitcherStats | null };
+  /** Cumulative: prior games (`GameConfig.priorStats`, e.g. a simulated season) plus this game. */
+  season: { batting: BatterStats; pitching: PitcherStats | null };
+}
+
+export interface TeamStatsSnapshot {
+  /** Everyone who has batted or been in the lineup, in batting order first, then bench players used. */
+  batters: PlayerStatsEntry[];
+  /** Pitchers used, in order of appearance. */
+  pitchers: PlayerStatsEntry[];
+  /** Team totals this game. */
+  totals: { runs: number; hits: number; errors: number; lob: number };
+}
+
+/** Cumulative stats carried into a game (a season). */
+export interface PriorStats {
+  [playerId: string]: { g: number; bat: BatterLine; pit: PitcherLine; pg: number };
+}
+
 export interface PlayerSnapshot {
   id: string;
   name: string;
@@ -314,6 +362,8 @@ export interface GameStateSnapshot {
     zone: { left: number; right: number; bottom: number; top: number; depthZ: number };
   };
   lastPlay: string;
+  /** (additive) live box-score stats for every player who has appeared, for a HUD. */
+  stats?: { home: TeamStatsSnapshot; away: TeamStatsSnapshot };
   gameOver: boolean;
   winner: TeamSide | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
@@ -402,6 +452,8 @@ export interface GameConfig {
   wind?: { x: number; z: number };
   /** Multiplier on the idle time between pitches / plays (default 1). Use 0 to skip dead time entirely. */
   pace?: number;
+  /** Cumulative stats before this game (see `simulateSeason`); the snapshot's `season` lines add this game to them. */
+  priorStats?: PriorStats;
   /** Team-generation seed base if teams are not supplied (default: derived from seed). */
   teamSeed?: number | string;
   /** Decision providers per side (any subset of decisions; the built-in AI answers the rest). See README "Decision providers". */

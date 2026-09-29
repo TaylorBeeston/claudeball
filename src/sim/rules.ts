@@ -313,6 +313,7 @@ export function afterPlayOver(w: World): void {
 }
 
 export function endHalfInning(w: World): void {
+  w.battingTeam.lob += w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead).length;
   emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half });
   // clear bases, ball to pitcher
   for (const r of w.runners) r.p.onField = false;

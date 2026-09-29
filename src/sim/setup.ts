@@ -80,6 +80,7 @@ export function makeTeamRT(team: Team, side: TeamSide, dh: boolean): TeamRT {
     runs: 0,
     hits: 0,
     errors: 0,
+    lob: 0,
     linescore: [],
     dhLostPitcherHits: false,
   };
