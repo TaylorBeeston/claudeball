@@ -318,9 +318,15 @@ export class CameraDirector {
         const want = ball.clone().add(lead);
         if (this.clock - this.shotStart < 0.05) this.ballSm.copy(want);
         this.ballSm.lerp(want, 1 - Math.exp(-dt * 6));
-        d.tgt.copy(this.ballSm);
+        // high balls: aim between the ball and the ground beneath it so the field stays in frame, then
+        // widen the lens so the ball itself is still inside the picture
+        const hi = MathUtils.clamp((this.ballSm.y - 6) / 55, 0, 0.62);
+        d.tgt.set(this.ballSm.x, this.ballSm.y * (1 - hi), this.ballSm.z);
         const dist = d.pos.distanceTo(d.tgt);
         d.fov = MathUtils.clamp(this.tele(44 + dist * 0.25, dist), 7, 34);
+        const vTo = (p: Vector3) => Math.atan2(p.y - d.pos.y, Math.hypot(p.x - d.pos.x, p.z - d.pos.z));
+        const dv = Math.abs(vTo(this.ballSm) - vTo(d.tgt));
+        d.fov = Math.max(d.fov, MathUtils.radToDeg(dv) * 2.6 + 6);
         d.focus = dist;
         d.aperture = 0.12;
         d.lp = 2; d.lt = 9; d.lf = 1.6;

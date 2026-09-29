@@ -533,6 +533,10 @@ export function buildStadium(env: Environment): Stadium {
   let gltfLamps: MeshStandardMaterial[] = [];
   let gltfLampBase: number[] = [];
   let lightsState = false;
+  const applyLights = () => {
+    setLightsOn(lightsState);
+    gltfLamps.forEach((m, i) => (m.emissiveIntensity = lightsState ? gltfLampBase[i] : 0.03));
+  };
   const adoptGltf = (root: Group, mirrored = false) => {
     structure.visible = false;
     root.name = 'stadium-gltf';
@@ -568,7 +572,8 @@ export function buildStadium(env: Environment): Stadium {
         }
       }
       m.receiveShadow = true;
-      m.castShadow = !mats.some((x) => x.transparent) && !o.name.startsWith('Seats');
+      // the huge bowl / light towers / signage are not worth three extra shadow-cascade passes
+      m.castShadow = !mats.some((x) => x.transparent) && /^(Dugout|Wall_Padding|Scoreboard$)/.test(o.name);
       const im = o as InstancedMesh;
       if (im.isInstancedMesh && o.name.startsWith('Seats_T')) {
         // spectators sit on the seat instances
@@ -594,7 +599,46 @@ export function buildStadium(env: Environment): Stadium {
         }
       }
     });
-    crowd.setMatrices(seatMats);
+    // (placeholder crowd is filled in below, after we know which seats the asset spectators occupy)
+    // split seat + spectator instancing into azimuth sectors so off-screen stands are frustum-culled
+    const seatMeshes: InstancedMesh[] = [];
+    const crowdMeshes: InstancedMesh[] = [];
+    root.traverse((o) => {
+      const im = o as InstancedMesh;
+      if (!im.isInstancedMesh) return;
+      if (o.name.startsWith('Seats_T')) seatMeshes.push(im);
+      else if (o.name.startsWith('Crowd_')) crowdMeshes.push(im);
+    });
+    for (const im of seatMeshes) chunkInstanced(im, 24);
+    if (crowdMeshes.length) {
+      // the asset pack ships real spectators, but at 35-50% seat fill: keep them and top up empty seats with
+      // the lightweight placeholder figures so the stands read as full
+      const occ = new Set<string>();
+      const cell = (x: number, z: number, y: number) => `${Math.round(x / 0.45)},${Math.round(z / 0.45)},${Math.round(y / 0.6)}`;
+      const wp = new Vector3();
+      for (const im of crowdMeshes) {
+        im.updateWorldMatrix(true, false);
+        for (let i = 0; i < im.count; i++) {
+          im.getMatrixAt(i, wm);
+          wp.setFromMatrixPosition(wm.premultiply(im.matrixWorld));
+          for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) occ.add(cell(wp.x + dx * 0.45, wp.z + dz * 0.45, wp.y));
+        }
+      }
+      let rr = 4242;
+      const rnd2 = () => ((rr = (rr * 1664525 + 1013904223) >>> 0) / 4294967296);
+      crowd.setMatrices(
+        seatMats.filter((m) => {
+          wp.setFromMatrixPosition(m);
+          return !occ.has(cell(wp.x, wp.z, wp.y)) && rnd2() < 0.75;
+        }),
+      );
+      for (const im of crowdMeshes) {
+        const mats = (Array.isArray(im.material) ? im.material : [im.material]) as MeshStandardMaterial[];
+        for (const m of mats) env.register(m, crowd.patch);
+        for (const c of chunkInstanced(im, 24)) crowd.extra.push({ mesh: c, total: c.count });
+      }
+      crowd.setDensity(crowd.density);
+    }
     // crowd cutaway shots from the real bowl: lower-deck seats, camera 16 m out on the field side
     const cand = seatMats.filter((m) => {
       m.decompose(p, q, sc);
@@ -611,7 +655,7 @@ export function buildStadium(env: Environment): Stadium {
     }
     gltfLamps = [...lampSet];
     gltfLampBase = gltfLamps.map((m) => m.emissiveIntensity || 1);
-    setLightsOn(lightsState);
+    applyLights();
   };
 
   return {
@@ -630,12 +674,53 @@ export function buildStadium(env: Environment): Stadium {
     updateScoreboard,
     setLightsOn: (on: boolean) => {
       lightsState = on;
-      setLightsOn(on);
-      gltfLamps.forEach((m, i) => (m.emissiveIntensity = on ? gltfLampBase[i] : 0.03));
+      applyLights();
     },
     adoptGltf,
     crowdShots,
   };
+}
+
+/** Replace an InstancedMesh by per-azimuth-sector copies (own bounding spheres) so distant stands are culled. */
+function chunkInstanced(im: InstancedMesh, sectors: number): InstancedMesh[] {
+  const buckets: Matrix4[][] = Array.from({ length: sectors }, () => []);
+  im.updateWorldMatrix(true, false);
+  const mw = im.matrixWorld.clone();
+  const pp = new Vector3();
+  const cols: Color[][] = Array.from({ length: sectors }, () => []);
+  const col = new Color();
+  for (let i = 0; i < im.count; i++) {
+    const m = new Matrix4();
+    im.getMatrixAt(i, m);
+    pp.setFromMatrixPosition(m.clone().premultiply(mw));
+    const k = Math.min(sectors - 1, Math.floor(((Math.atan2(pp.x, pp.z - 30) + Math.PI) / (Math.PI * 2)) * sectors));
+    buckets[k].push(m);
+    if (im.instanceColor) {
+      im.getColorAt(i, col);
+      cols[k].push(col.clone());
+    }
+  }
+  im.visible = false;
+  const out: InstancedMesh[] = [];
+  const parent = im.parent!;
+  buckets.forEach((list, k) => {
+    if (!list.length) return;
+    const c = new InstancedMesh(im.geometry, im.material, list.length);
+    list.forEach((m, n) => {
+      c.setMatrixAt(n, m);
+      if (cols[k].length) c.setColorAt(n, cols[k][n]);
+    });
+    c.position.copy(im.position);
+    c.quaternion.copy(im.quaternion);
+    c.scale.copy(im.scale);
+    c.receiveShadow = true;
+    c.instanceMatrix.needsUpdate = true;
+    c.computeBoundingSphere();
+    c.boundingSphere!.radius += 1.5;
+    parent.add(c);
+    out.push(c);
+  });
+  return out;
 }
 
 function crowdMatrices(path: PathPt[]): Matrix4[] {
@@ -695,54 +780,69 @@ function buildCrowd(env: Environment, group: Group) {
         }`,
       );
   };
-  const body = new CapsuleGeometry(0.19, 0.3, 3, 8);
-  body.scale(1.15, 1, 0.75);
-  body.translate(0, 0.32, 0);
-  const head = new SphereGeometry(0.105, 8, 6);
-  head.translate(0, 0.72, 0.02);
+  const bodyGeo = new CapsuleGeometry(0.19, 0.3, 3, 8);
+  bodyGeo.scale(1.15, 1, 0.75);
+  bodyGeo.translate(0, 0.32, 0);
+  const headGeo = new SphereGeometry(0.105, 8, 6);
+  headGeo.translate(0, 0.72, 0.02);
   const bodyMat = env.register(new MeshStandardMaterial({ roughness: 0.9 }), patch);
   const headMat = env.register(new MeshStandardMaterial({ roughness: 0.7 }), patch);
-  let bodyMesh: InstancedMesh | null = null;
-  let headMesh: InstancedMesh | null = null;
-  let total = 0;
+  const extraRef: { mesh: InstancedMesh; total: number }[] = [];
+  let chunks: { body: InstancedMesh; head: InstancedMesh; total: number }[] = [];
   let density = 1;
   const applyDensity = () => {
-    if (!bodyMesh || !headMesh) return;
-    bodyMesh.count = headMesh.count = Math.floor(total * density);
+    for (const c of chunks) c.body.count = c.head.count = Math.floor(c.total * density);
+    for (const e of extraRef) e.mesh.count = Math.max(1, Math.floor(e.total * density));
   };
+  const SECTORS = 24;
+  const extra = extraRef;
   return {
     uniforms,
+    patch,
+    extra,
+    get density() {
+      return density;
+    },
     baseExcite: 0.12,
-    /** (Re)build the spectators from seat transforms in world space. */
+    /** (Re)build the spectators from seat transforms in world space, in azimuth sectors so off-screen stands are culled. */
     setMatrices(mats: Matrix4[]) {
-      if (bodyMesh) {
-        group.remove(bodyMesh, headMesh!);
-        bodyMesh.dispose();
-        headMesh!.dispose();
+      for (const c of chunks) {
+        group.remove(c.body, c.head);
+        c.body.dispose();
+        c.head.dispose();
       }
-      const order = mats.map((_, i) => i);
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(rnd() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
+      chunks = [];
+      const buckets: Matrix4[][] = Array.from({ length: SECTORS }, () => []);
+      const p = new Vector3();
+      for (const m of mats) {
+        p.setFromMatrixPosition(m);
+        const az = Math.atan2(p.x, p.z - 30);
+        buckets[Math.min(SECTORS - 1, Math.floor(((az + Math.PI) / (Math.PI * 2)) * SECTORS))].push(m);
       }
-      total = mats.length;
-      bodyMesh = new InstancedMesh(body, bodyMat, total);
-      headMesh = new InstancedMesh(head, headMat, total);
-      for (let n = 0; n < total; n++) {
-        const i = order[n];
-        bodyMesh.setMatrixAt(n, mats[i]);
-        headMesh.setMatrixAt(n, mats[i]);
-        bodyMesh.setColorAt(n, shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.35 + rnd() * 0.35));
-        headMesh.setColorAt(n, skinPalette[Math.floor(rnd() * skinPalette.length)]);
-      }
-      for (const m of [bodyMesh, headMesh]) {
-        m.castShadow = false;
-        m.receiveShadow = true;
-        m.frustumCulled = false;
-        m.instanceMatrix.setUsage(DynamicDrawUsage);
-        m.instanceMatrix.needsUpdate = true;
-        m.instanceColor!.needsUpdate = true;
-        group.add(m);
+      for (const list of buckets) {
+        if (!list.length) continue;
+        for (let i = list.length - 1; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          [list[i], list[j]] = [list[j], list[i]];
+        }
+        const body = new InstancedMesh(bodyGeo, bodyMat, list.length);
+        const head = new InstancedMesh(headGeo, headMat, list.length);
+        list.forEach((m, n) => {
+          body.setMatrixAt(n, m);
+          head.setMatrixAt(n, m);
+          body.setColorAt(n, shirtPalette[Math.floor(rnd() * shirtPalette.length)].clone().multiplyScalar(0.35 + rnd() * 0.35));
+          head.setColorAt(n, skinPalette[Math.floor(rnd() * skinPalette.length)]);
+        });
+        for (const m of [body, head]) {
+          m.castShadow = false;
+          m.receiveShadow = true;
+          m.instanceMatrix.needsUpdate = true;
+          m.instanceColor!.needsUpdate = true;
+          m.computeBoundingSphere();
+          m.boundingSphere!.radius += 1.5; // sway / hop
+          group.add(m);
+        }
+        chunks.push({ body, head, total: list.length });
       }
       applyDensity();
     },

@@ -60,6 +60,7 @@ export class Engine {
   private batted = false;
   private live: GameState;
   private raf = 0;
+  private tmpV = new Vector3();
   private fieldGroup: Object3D;
   assets: Assets | null = null;
 
@@ -248,7 +249,14 @@ export class Engine {
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
     const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));
-    this.bat.hold(!rs.bat.visible ? this.players.batterGrip(rs) : null, this.scene);
+    // glTF batters hold the bat in their hands; the sim's bat pose is used only when the hands can reach it
+    const grip = this.players.batterGrip(rs);
+    let useGrip = !rs.bat.visible;
+    if (!useGrip && grip) {
+      grip.getWorldPosition(this.tmpV);
+      useGrip = this.tmpV.distanceTo(new Vector3(rs.bat.pos.x, rs.bat.pos.y, rs.bat.pos.z)) > 0.55;
+    }
+    this.bat.hold(useGrip ? grip : null, this.scene);
     this.bat.update(rs);
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
     this.players.update(rs, animDt, this.ball.worldPos, this.bat);

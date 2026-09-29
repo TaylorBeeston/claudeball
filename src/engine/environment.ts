@@ -2,6 +2,11 @@ import {
   BufferGeometry,
   Camera,
   Color,
+  DataTexture,
+  DataUtils,
+  EquirectangularReflectionMapping,
+  Euler,
+  Matrix4,
   CubeCamera,
   Float32BufferAttribute,
   HalfFloatType,
@@ -18,6 +23,7 @@ import {
 } from 'three';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import type { QualitySettings } from './quality';
 
 export type TimeOfDay = 'day' | 'dusk' | 'night';
@@ -41,9 +47,9 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     sunDir: [0.7, 0.62, 0.22],
     skySun: [0.7, 0.62, 0.22],
     sunColor: 0xfff0dc,
-    sunIntensity: 3.8,
+    sunIntensity: 5.6,
     env: 1.25,
-    exposure: 0.95,
+    exposure: 1.35,
     hemi: [0xbcd6ff, 0x506038, 0.35],
     lightsOn: false,
     sky: { turbidity: 2.0, rayleigh: 2.4, mie: 0.002, g: 0.7 },
@@ -93,6 +99,13 @@ export class Environment {
   private envRT: ReturnType<PMREMGenerator['fromCubemap']> | null = null;
   private materials = new Set<Material>();
   private onLights: ((on: boolean) => void)[] = [];
+  private hdri = new Map<TimeOfDay, { tex: DataTexture; sun: Vector3 } | null>();
+  private hdriEnv: ReturnType<PMREMGenerator['fromEquirectangular']> | null = null;
+  private hdriToken = 0;
+  /** whether a photographic HDRI sky is currently active (else the procedural Sky) */
+  hdriActive = false;
+  /** desired sun azimuth for the HDRI sun after rotation (sim/scene axes) */
+  private static readonly SUN_AZ = new Vector3(0.7, 0, 0.22);
 
   constructor(
     private scene: Scene,
@@ -214,6 +227,74 @@ export class Environment {
     }
     this.renderer.toneMappingExposure = t.exposure;
     for (const cb of this.onLights) cb(t.lightsOn);
+    this.hdriActive = false;
+    void this.applyHdri(name);
+  }
+
+  private async loadHdri(name: TimeOfDay) {
+    if (this.hdri.has(name)) return this.hdri.get(name)!;
+    try {
+      const tex = await new RGBELoader().loadAsync(`/hdri/sky_${name}.hdr`);
+      tex.mapping = EquirectangularReflectionMapping;
+      const data = tex.image.data as Uint16Array;
+      const w = tex.image.width, h = tex.image.height;
+      // locate the sun (brightest texel), then clamp so the disc cannot swamp bloom / IBL
+      let best = 0, bi = 0;
+      for (let i = 0; i < w * h; i++) {
+        const l = DataUtils.fromHalfFloat(data[i * 4]) + DataUtils.fromHalfFloat(data[i * 4 + 1]) + DataUtils.fromHalfFloat(data[i * 4 + 2]);
+        if (l > best) { best = l; bi = i; }
+      }
+      const cap = name === 'night' ? 12 : 30;
+      const capH = DataUtils.toHalfFloat(cap);
+      for (let i = 0; i < w * h * 4; i++) if (i % 4 !== 3 && DataUtils.fromHalfFloat(data[i]) > cap) data[i] = capH;
+      const u = ((bi % w) + 0.5) / w, v = 1 - (Math.floor(bi / w) + 0.5) / h;
+      const az = (u - 0.5) * Math.PI * 2, el = (v - 0.5) * Math.PI;
+      const sun = new Vector3(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az));
+      tex.needsUpdate = true;
+      const r = { tex, sun };
+      this.hdri.set(name, r);
+      return r;
+    } catch {
+      this.hdri.set(name, null); // file missing: keep the procedural sky (run `npm run hdri`)
+      return null;
+    }
+  }
+
+  private async applyHdri(name: TimeOfDay) {
+    const token = ++this.hdriToken;
+    const h = await this.loadHdri(name);
+    if (!h || token !== this.hdriToken) return;
+    // rotate the sky so its sun sits on the side of the park we light from
+    let sunDir = h.sun.clone();
+    const rot = new Euler(0, 0, 0);
+    if (name !== 'night') {
+      const want = Math.atan2(Environment.SUN_AZ.z, Environment.SUN_AZ.x);
+      const have = Math.atan2(h.sun.z, h.sun.x);
+      rot.y = want - have;
+      const el = Math.asin(h.sun.y);
+      sunDir = new Vector3(Math.cos(el) * Math.cos(want), h.sun.y, Math.cos(el) * Math.sin(want));
+    }
+    this.scene.background = h.tex;
+    this.scene.backgroundRotation.copy(rot);
+    this.scene.environmentRotation.copy(rot);
+    this.hdriEnv?.dispose();
+    this.hdriEnv = this.pmrem.fromEquirectangular(h.tex);
+    this.scene.environment = this.hdriEnv.texture;
+    const t = this.tod;
+    this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.9 : 0.35;
+    this.scene.backgroundIntensity = name === 'night' ? 1.0 : 1.0;
+    if (name !== 'night') {
+      this.sunDir.copy(sunDir).normalize();
+      this.csm.lightDirection.copy(this.sunDir).negate();
+      // sun colour/intensity follow elevation
+      const el = Math.asin(this.sunDir.y);
+      const k = Math.min(1, Math.max(0.15, el / 0.9));
+      for (const l of this.csm.lights) {
+        l.intensity = t.sunIntensity * (0.55 + 0.45 * k);
+        l.color.setRGB(1, 0.72 + 0.28 * k, 0.5 + 0.5 * k);
+      }
+    }
+    this.hdriActive = true;
   }
 
   get exposure() {
