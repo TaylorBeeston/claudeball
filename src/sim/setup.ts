@@ -234,12 +234,15 @@ export function createWorld(cfg: GameConfig): World {
     tsTickPlayOver: 0,
     pendingAdvance: [],
     halfStartTick: 0,
-    umpires: [
-      { id: 'ump-hp', name: 'Home Plate Umpire', position: 'HP', x: 0.25, z: -2.6 },
-      { id: 'ump-1b', name: 'First Base Umpire', position: '1B-U', x: -24.5, z: 24.0 },
-      { id: 'ump-2b', name: 'Second Base Umpire', position: '2B-U', x: 6, z: 42.0 },
-      { id: 'ump-3b', name: 'Third Base Umpire', position: '3B-U', x: 24.5, z: 24.0 },
-    ],
+    umpires: (
+      [
+        ['ump-hp', 'Home Plate Umpire', 'HP', 'plate', 0.25, -2.6],
+        ['ump-1b', 'First Base Umpire', '1B-U', 'first', -24.5, 24.0],
+        ['ump-2b', 'Second Base Umpire', '2B-U', 'second', 6, 42.0],
+        ['ump-3b', 'Third Base Umpire', '3B-U', 'third', 24.5, 24.0],
+      ] as const
+    ).map(([id, name, position, key, x, z]) => ({ id, name, position, key, x, z, vx: 0, vz: 0, gx: x, gz: z, goalSince: 0, facing: Math.atan2(-x, position === 'HP' ? 20 : 30 - z), anim: 'ump_ready' as const, animStart: 0, animUntil: 0 })),
+    umpQueue: [],
     ballInPlayEver: false,
     jitter: 0,
     passedBallFlag: false,

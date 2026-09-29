@@ -5,6 +5,7 @@ import { ask, situationOf } from './dispatch';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import * as tagging from './tagging';
+import { baseCallDelay, scheduleCall } from './umpires';
 import { catcherExchange, deliverySeconds, holdingLeadAdjust, sprintOf } from './attributes';
 import { setGoal, travelTime } from './movement';
 import { setAnim } from './util';
@@ -506,6 +507,7 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
   if (!r.dead && fielding.playNearBase(w, b)) {
     const eta = tagging.fielderETA(w, b);
     emit(w, { type: 'safe', playerId: r.p.info.id, base: b, margin: -eta, closePlay: eta < 0.1 });
+    scheduleCall(w, b === 4 ? 'plate' : b === 1 ? 'first' : b === 2 ? 'second' : 'third', 'safe', baseCallDelay(eta < 0.1), { atBase: b, playerId: r.p.info.id });
   }
   if (b === 1 && r.isBatter && r.want === 1) r.overrun = true;
   if (b === 4) {
