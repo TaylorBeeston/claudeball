@@ -89,6 +89,11 @@ export class RealSimAdapter implements GameLike {
   /** the sim stops the ball where it crosses the fence; the renderer lets it fly on into the seats (visual only, the outcome is decided) */
   private carry: { t0: number; p: V; v: V; landedAt: number } | null = null;
 
+  /** The raw simulation game (its own event bus and state), for consumers that need more than the engine contract, e.g. the audio layer. */
+  get game(): RealGame {
+    return this.g;
+  }
+
   constructor(private g: RealGame) {
     g.on('*', (e) => this.onEvent(e));
   }
