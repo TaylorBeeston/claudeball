@@ -1,0 +1,142 @@
+# Tiny mesh builder working in game coordinates. Requires common.py + geom.py already exec'd.
+import bpy, bmesh, math
+from mathutils import Vector, geometry
+
+class MB:
+    def __init__(self, name, uv_scale=4.0):
+        self.name = name; self.v = []; self.f = []; self.uvs = []; self.cols = []; self.uv_scale = uv_scale
+    def vert(self, x, y, z, uv=None, col=(1, 1, 1, 1)):
+        self.v.append(B(x, y, z)); self.uvs.append(uv if uv else (x/self.uv_scale, z/self.uv_scale)); self.cols.append(col)
+        return len(self.v)-1
+    def tri(self, a, b, c, up=True):
+        va, vb, vc = self.v[a], self.v[b], self.v[c]
+        n = (Vector(vb)-Vector(va)).cross(Vector(vc)-Vector(va))
+        if up and n.z < 0: b, c = c, b
+        self.f.append((a, b, c))
+    def quad(self, a, b, c, d):
+        self.f.append((a, b, c)); self.f.append((a, c, d))
+    def poly(self, pts, y, col=(1, 1, 1, 1), holes=()):
+        """Flat horizontal polygon (list of (x,z)) at height y, facing +Y."""
+        loops = [pts] + list(holes)
+        base = len(self.v)
+        vv = [Vector((x, z, 0)) for l in loops for (x, z) in l]
+        for l in loops:
+            for (x, z) in l: self.vert(x, y, z, col=col(x, z) if callable(col) else col)
+        idx = geometry.tessellate_polygon([[Vector((x, z, 0)) for (x, z) in l] for l in loops])
+        for t in idx: self.tri(base+t[0], base+t[1], base+t[2])
+    def strip(self, pts, width, y, col=(1, 1, 1, 1), closed=False):
+        """Ribbon of given width centred on a polyline (x,z) at height y."""
+        n = len(pts); L, R = [], []
+        for i, (x, z) in enumerate(pts):
+            p0 = pts[(i-1) % n] if (closed or i > 0) else pts[i]; p1 = pts[(i+1) % n] if (closed or i < n-1) else pts[i]
+            dx, dz = p1[0]-p0[0], p1[1]-p0[1]; l = math.hypot(dx, dz) or 1
+            nx, nz = -dz/l, dx/l
+            L.append(self.vert(x+nx*width/2, y, z+nz*width/2, col=col)); R.append(self.vert(x-nx*width/2, y, z-nz*width/2, col=col))
+        for i in range(n-1 + (1 if closed else 0)):
+            j = (i+1) % n
+            self.tri(L[i], R[i], R[j]); self.tri(L[i], R[j], L[j])
+    def box(self, cx, cz, sx, sz, y0, y1, rot=0.0, col=(1, 1, 1, 1), top_uv=None):
+        c, s = math.cos(rot), math.sin(rot)
+        def P(lx, lz): return (cx+lx*c-lz*s, cz+lx*s+lz*c)
+        cs = [P(-sx/2, -sz/2), P(sx/2, -sz/2), P(sx/2, sz/2), P(-sx/2, sz/2)]
+        b = [self.vert(x, y0, z, col=col) for x, z in cs]; t = [self.vert(x, y1, z, col=col) for x, z in cs]
+        for i in range(4):
+            j = (i+1) % 4; self.quad_out(b[i], b[j], t[j], t[i], (cx, (y0+y1)/2, cz))
+        self.quad_out(t[0], t[1], t[2], t[3], (cx, y1+1, cz))
+    def quad_out(self, a, b, c, d, away_from):
+        """Quad wound so its normal points away from a reference (game coords) point."""
+        va = Vector(self.v[a]); vb = Vector(self.v[b]); vc = Vector(self.v[c])
+        n = (vb-va).cross(vc-va); ctr = (va+vc)/2
+        ref = Vector(B(*away_from))
+        if n.dot(ctr-ref) < 0: b, d = d, b
+        self.f.append((a, b, c)); self.f.append((a, c, d))
+    def build(self, mat=None, smooth=False, coll=None):
+        me = bpy.data.meshes.new(self.name)
+        me.from_pydata(self.v, [], self.f); me.update()
+        uv = me.uv_layers.new(name="UVMap")
+        for lp in me.loops: uv.data[lp.index].uv = self.uvs[lp.vertex_index]
+        ca = me.color_attributes.new("Color", 'FLOAT_COLOR', 'POINT')
+        for i, c in enumerate(self.cols): ca.data[i].color = c
+        for p in me.polygons: p.use_smooth = smooth
+        if mat: me.materials.append(mat)
+        o = bpy.data.objects.new(self.name, me); (coll or bpy.context.collection).objects.link(o)
+        return o
+
+def clip_poly(poly, nx, nz, d):
+    """Sutherland-Hodgman: keep the half-plane nx*x+nz*z >= d."""
+    out = []
+    for i, p in enumerate(poly):
+        q = poly[(i+1) % len(poly)]
+        dp = nx*p[0]+nz*p[1]-d; dq = nx*q[0]+nz*q[1]-d
+        if dp >= 0: out.append(p)
+        if (dp >= 0) != (dq >= 0):
+            t = dp/(dp-dq); out.append((p[0]+(q[0]-p[0])*t, p[1]+(q[1]-p[1])*t))
+    return out
+
+def bands(poly, ang, width, lo, hi):
+    """Yield (index, polygon) slabs of `poly` cut into parallel bands. Band normal at angle ang."""
+    nx, nz = math.cos(ang), math.sin(ang); k = 0; d = lo
+    while d < hi:
+        p = clip_poly(poly, nx, nz, d); p = clip_poly(p, -nx, -nz, -(d+width))
+        if len(p) >= 3: yield k, p
+        k += 1; d += width
+
+
+def carve(poly, side):
+    """Return pieces of `poly` (list of (x,z)) with the dugout footprint removed."""
+    r = math.sqrt(.5); s0, s1 = DUG_S; o0, o1 = DUG_O
+    # rotated coordinates: s = (side*x + z)*r ; o = (side*x - z)*r  -> half-planes
+    def cut(p, ax, lo, hi):
+        pieces = []
+        a = clip_poly(p, *ax[0], ax[1]) if False else None
+        return pieces
+    out = []
+    S = (side*r, r); O = (side*r, -r)          # gradient vectors of s and o
+    # left of o-range, right of o-range, then within o-range below/above the s-range
+    below = clip_poly(poly, -O[0], -O[1], -o0)                        # o <= o0
+    above = clip_poly(poly, O[0], O[1], o1)                           # o >= o1
+    mid = clip_poly(clip_poly(poly, O[0], O[1], o0), -O[0], -O[1], -o1)   # o0 <= o <= o1
+    lo = clip_poly(mid, -S[0], -S[1], -s0); hi = clip_poly(mid, S[0], S[1], s1)
+    return [p for p in (below, above, lo, hi) if len(p) >= 3]
+
+
+def pip(pts, poly):
+    """vectorised point-in-polygon (ray casting); pts (N,2) numpy, poly list of (x,z)."""
+    import numpy as _np
+    P = _np.asarray(poly); x, z = pts[:, 0], pts[:, 1]; ins = _np.zeros(len(pts), bool); n = len(P)
+    for i in range(n):
+        x1, z1 = P[i]; x2, z2 = P[(i+1) % n]
+        cond = ((z1 > z) != (z2 > z)) & (x < (x2-x1)*(z-z1)/((z2-z1) if z2 != z1 else 1e-12) + x1)
+        ins ^= cond
+    return ins
+
+def grid_cells(subject, cell, ang=0.0, origin=(-70.0, -70.0), extent=(140.0, 140.0), clip_fn=None):
+    """Regular grid of cells (side `cell`) in a frame rotated by `ang` (rad), clipped to `subject` polygon (list of (x,z), world coords).
+    Yields (band_i, cell_j, polygon_world). clip_fn(poly)->list of pieces, applied to boundary cells."""
+    import numpy as _np
+    c, s = math.cos(ang), math.sin(ang)
+    to_uv = lambda p: (p[0]*c + p[1]*s, -p[0]*s + p[1]*c); to_xz = lambda u, v: (u*c - v*s, u*s + v*c)
+    S = [to_uv(p) for p in subject]
+    u0, v0 = origin; nu, nv = int(extent[0]//cell)+1, int(extent[1]//cell)+1
+    su = [p[0] for p in S]; sv = [p[1] for p in S]
+    i0 = max(0, int((min(su)-u0)//cell)); i1 = min(nu, int((max(su)-u0)//cell)+1); j0 = max(0, int((min(sv)-v0)//cell)); j1 = min(nv, int((max(sv)-v0)//cell)+1)
+    II, JJ = _np.meshgrid(_np.arange(i0, i1+1), _np.arange(j0, j1+1), indexing='ij')
+    U = u0 + II*cell; Vv = v0 + JJ*cell
+    inside = pip(_np.stack([U.ravel(), Vv.ravel()], 1), S).reshape(U.shape)
+    for a in range(i1-i0):
+        for b in range(j1-j0):
+            corners = inside[a, b], inside[a+1, b], inside[a+1, b+1], inside[a, b+1]
+            cu, cv = u0+(i0+a)*cell, v0+(j0+b)*cell
+            sq = [(cu, cv), (cu+cell, cv), (cu+cell, cv+cell), (cu, cv+cell)]
+            if not any(corners): 
+                # boundary cell that contains no corner of the grid inside might still overlap the polygon edge; test polygon vertices inside the cell
+                if not any(cu <= p[0] <= cu+cell and cv <= p[1] <= cv+cell for p in S): continue
+            if all(corners):
+                pieces = [[to_xz(*q) for q in sq]]
+            else:
+                pl = S
+                for (nx, nz, d) in ((1, 0, cu), (-1, 0, -(cu+cell)), (0, 1, cv), (0, -1, -(cv+cell))): pl = clip_poly(pl, nx, nz, d)
+                if len(pl) < 3: continue
+                pieces = [[to_xz(*q) for q in pl]]
+            if clip_fn: pieces = [q for p in pieces for q in clip_fn(p)]
+            for p in pieces: yield i0+a, j0+b, p
