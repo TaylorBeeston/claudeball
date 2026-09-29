@@ -323,6 +323,8 @@ export interface PuppetLike {
   dispose(): void;
   /** hand attachment for the bat when the sim reports none (glTF characters only) */
   batGrip?: Object3D | null;
+  /** midpoint of the shoulder joints in scene space (glTF characters only); used to check the sim's bat is within arm's reach */
+  shoulderCenter?(out: Vector3): Vector3 | null;
 }
 
 export interface PuppetEnv {
