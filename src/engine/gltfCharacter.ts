@@ -38,6 +38,7 @@ function clipFor(hint: AnimHint, role: PlayerRole): string {
     case 'slide': return 'slide';
     case 'celebrate': return 'celebrate';
     default:
+      if (role === 'batter') return 'swing'; // frame 0 of the swing is the batting stance (held, see update)
       if (role === 'catcher') return 'catcher_crouch';
       if (FIELDERS.has(role) || role === 'pitcher') return role === 'pitcher' ? 'idle' : 'field_ready';
       return 'idle';
@@ -107,12 +108,15 @@ export class GltfPuppet implements PuppetLike {
   private ikW = 0;
   private skin: string;
   private numberSet = -1;
+  /** empty at the batter's hands (origin = bat knob, +Y = barrel) */
+  batGrip: Object3D | null = null;
   private numMeshes: { tens?: Mesh; ones?: Mesh } = {};
 
   constructor(private tpl: CharacterTemplate, id: string) {
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
     this.model.traverse((o) => {
+      if (o.name === 'Bat_Grip') this.batGrip = o;
       if (o.name === 'Gear_Number_Tens') this.numMeshes.tens = o as Mesh;
       if (o.name === 'Gear_Number_Ones') this.numMeshes.ones = o as Mesh;
       if ((o as Bone).isBone) this.bones[o.name.replace('mixamorig', '').replace(':', '')] = o as Bone;
@@ -126,7 +130,7 @@ export class GltfPuppet implements PuppetLike {
       }
     });
     // hair is hidden under caps / helmets
-    const hair = this.model.getObjectByName('Face_Hair');
+    const hair = this.model.getObjectByName('Gear_Hair') ?? this.model.getObjectByName('Face_Hair');
     if (hair && (this.model.getObjectByName('Gear_Cap') || this.model.getObjectByName('Gear_Helmet'))) hair.visible = false;
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
@@ -143,7 +147,7 @@ export class GltfPuppet implements PuppetLike {
   setTeam(look: Look, team: number) {
     this.team = team;
     const map: Record<string, string> = {
-      uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, cap: look.cap, helmet: look.cap,
+      uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, uniform_undershirt: look.sock, cap: look.cap, helmet: look.cap,
     };
     const dark = team === -1;
     for (const m of this.meshes) {
@@ -151,7 +155,7 @@ export class GltfPuppet implements PuppetLike {
       const next = mats.map((mat) => {
         const n = mat.name.replace(/\.\d+$/, '');
         if (dark && ['uniform_jersey', 'uniform_pants', 'uniform_socks'].includes(n)) return mat; // umpire files come pre-colored
-        if (n === 'skin') return tinted(mat, `${this.tpl.scene.uuid}:skin:${this.skin}`, this.skin);
+        if (n === 'skin' || n === 'face') return tinted(mat, `${this.tpl.scene.uuid}:skin:${this.skin}`, this.skin);
         if (map[n] && !(dark && n !== 'cap')) return tinted(mat, `${this.tpl.scene.uuid}:${n}:${map[n]}`, map[n]);
         return mat;
       });
@@ -211,7 +215,10 @@ export class GltfPuppet implements PuppetLike {
       this.lastHint = snap.anim;
       this.play(name, snap);
     }
-    if (name === 'run' && this.current) {
+    if (snap.role === 'batter' && snap.anim === 'idle' && this.current) {
+      this.current.timeScale = 0;
+      this.current.time = 0;
+    } else if (name === 'run' && this.current) {
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
       this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / 4.5));
     } else if (this.current) this.current.timeScale = 1;

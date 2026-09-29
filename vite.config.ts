@@ -22,6 +22,7 @@ function cbAssets(): Plugin {
         if (!file.startsWith(dir()) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return next();
         res.setHeader('Content-Type', types[path.extname(file)] ?? 'application/octet-stream');
         res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Last-Modified', fs.statSync(file).mtime.toUTCString());
         fs.createReadStream(file).pipe(res);
       });
     },

@@ -29,7 +29,7 @@ import type { Environment } from './environment';
 import type { GameState } from './types';
 
 type P2 = [number, number];
-const SCOREBOARD_FLIP_X = true;
+const SCOREBOARD_FLIP_X = false; // assets fixed the screen UVs after the axis flip
 
 /** Closed outline of the seating bowl's front edge, in SCENE coords (x mirrored). */
 function buildOutline(): P2[] {

@@ -219,8 +219,28 @@ export class BatView {
     this.obj.add(m);
   }
 
+  /** Attach to a hand grip (bat held in stance) or release back to the scene. */
+  hold(grip: Object3D | null, scene: Object3D) {
+    const target = grip ?? scene;
+    if (this.obj.parent !== target) {
+      target.add(this.obj);
+      if (grip) {
+        this.obj.position.set(0, 0, 0);
+        this.obj.quaternion.identity();
+        this.obj.scale.set(1, 1, 1);
+      }
+    }
+    this.held = !!grip;
+  }
+  held = false;
+
   update(state: GameState) {
     const b = state.bat;
+    if (this.held) {
+      this.visible = false; // no sim pose: hands keep their clip pose
+      this.obj.visible = true;
+      return;
+    }
     this.visible = b.visible;
     this.obj.visible = b.visible;
     if (!b.visible) return;
@@ -250,6 +270,12 @@ export class PlayerManager {
   constructor(env: Environment) {
     this.group.name = 'players';
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
+  }
+
+  /** Bat grip empty of the current batter's glTF puppet, if any. */
+  batterGrip(state: GameState): Object3D | null {
+    const b = state.players.find((p) => p.role === 'batter');
+    return (b && this.puppets.get(b.id)?.batGrip) || null;
   }
 
   /** Drop all puppets (they are recreated with the current factory on the next update). */

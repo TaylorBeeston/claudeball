@@ -61,7 +61,18 @@ export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onP
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
   const load = async (file: string) => {
-    for (const path of [`optimized/${file}`, file]) {
+    // use whichever copy is newer (the raw export may have been re-exported after the optimized build)
+    const stamp = async (path: string) => {
+      try {
+        const r = await fetch(base + path, { method: 'HEAD', cache: 'no-cache' });
+        return r.ok ? Date.parse(r.headers.get('last-modified') ?? '') || 1 : 0;
+      } catch {
+        return 0;
+      }
+    };
+    const [to, tr] = await Promise.all([stamp(`optimized/${file}`), stamp(file)]);
+    const order = tr > to ? [file, `optimized/${file}`] : [`optimized/${file}`, file];
+    for (const path of order) {
       try {
         onProgress?.(`loading ${path}`);
         return await loader.loadAsync(base + path);

@@ -321,6 +321,8 @@ export interface PuppetLike {
   setTeam(look: Look, team: number): void;
   update(snap: PlayerSnap, dt: number, env: PuppetEnv): void;
   dispose(): void;
+  /** hand attachment for the bat when the sim reports none (glTF characters only) */
+  batGrip?: Object3D | null;
 }
 
 export interface PuppetEnv {

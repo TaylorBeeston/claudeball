@@ -248,6 +248,7 @@ export class Engine {
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
     const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));
+    this.bat.hold(!rs.bat.visible ? this.players.batterGrip(rs) : null, this.scene);
     this.bat.update(rs);
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
     this.players.update(rs, animDt, this.ball.worldPos, this.bat);
