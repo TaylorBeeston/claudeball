@@ -4,7 +4,9 @@ import type { BallBody } from '../ball';
 import * as A from '../attributes';
 import { BatSwing, batBallCollision, buildSwing, perceivePitch, aiSwingDecision, stanceFor } from '../batting';
 import { DEFAULT_FENCE, MOUND_DIST, groundHeight, MOUND_HEIGHT } from '../field';
-import { fielders, initFielderPlans, solveThrow, transferTicks } from '../fielding';
+import { doThrow, fielders, fieldingAttempts, initFielderPlans, solveThrow, transferTicks } from '../fielding';
+import { newPlay } from '../inplay';
+import { giveBall, releaseBall } from '../util';
 import { MPH } from '../math';
 import { stepPlayer } from '../movement';
 import { strikeZoneFor, throwPitch } from '../pitching';
@@ -99,11 +101,6 @@ describe('attributes: hitters', () => {
   });
 
   it('power: bat speed sets the exit velocity', () => {
-    const ev = (power: number) => {
-      const b = withRatings(baseHitter, { power });
-      return A.pullTimeShift(50) + (b.ratings.power - 50); // marker so the closure is used
-    };
-    void ev;
     const bs = (power: number) => {
       const rng = new Rng('power-a');
       const zone = strikeZoneFor(baseHitter.height);
@@ -200,7 +197,6 @@ describe('attributes: running', () => {
     expect(race({ speed: 50, acceleration: 75 }, 8)).toBeLessThan(race({ speed: 50, acceleration: 25 }, 8));
   });
   it('baserunning: reads of arrival times are tighter and jumps better with baserunning IQ', () => {
-    expect(0.36 - 0.0016 * 75).toBeLessThan(0.36 - 0.0016 * 25); // runner misjudgement sd used in beginLive
     const l = lab('steal-iq');
     const r = addRunner(l.w, 1);
     const good = (() => { r.p.info = withRatings(r.p.info, { baserunning: 80 }); return stealTimes(l.w, r, 0.9).runnerTime; })();
@@ -279,10 +275,70 @@ describe('attributes: fielding', () => {
     expect(A.routeEfficiency({ iq: 80 } as Ratings)).toBeGreaterThan(A.routeEfficiency({ iq: 20 } as Ratings));
   });
 
-  it('accuracy: a more accurate arm puts the ball nearer where it is aimed (existing) and glove skill catches more', () => {
-    // covered by the play-level tests; here the noise scale monotonicity used by doThrow
-    const sigma = (acc: number) => 0.0155 - 0.00011 * acc;
-    expect(sigma(75)).toBeLessThan(sigma(25));
+  it('accuracy: a more accurate arm puts the throw closer to where it is aimed (doThrow, N throws)', () => {
+    const l = lab('accuracy');
+    const w = l.w;
+    const F = fielders(w).find((p) => p.fieldPos === 'SS')!;
+    const R = fielders(w).find((p) => p.fieldPos === '1B')!;
+    const spread = (accuracy: number) => {
+      F.info = withRatings(F.info, { accuracy, arm: 55 });
+      const errs: number[] = [];
+      for (let k = 0; k < 300; k++) {
+        w.rng = new Rng(`acc-${k}`);
+        w.play = newPlay(w, 'battedBall');
+        w.phase = 'inPlay';
+        F.x = 8;
+        F.z = 33;
+        F.vx = F.vz = 0;
+        R.x = -19.4 + 0.5;
+        R.z = 19.4 - 0.5;
+        R.vx = R.vz = 0;
+        giveBall(w, F);
+        F.plan.throwTo = R;
+        F.plan.throwBase = 1;
+        F.plan.delays = 0;
+        doThrow(w, F);
+        const b = w.ball.body;
+        const aimX = -19.4 - F.x;
+        const aimZ = 19.4 - F.z;
+        errs.push(Math.atan2(b.vx, b.vz) - Math.atan2(aimX, aimZ));
+      }
+      return sd(errs);
+    };
+    expect(spread(80)).toBeLessThan(spread(20) * 0.85);
+  });
+
+  it('glove: better hands field routine ground balls cleanly more often (the glove noise model, N attempts)', () => {
+    const l = lab('glove');
+    const w = l.w;
+    const F = fielders(w).find((p) => p.fieldPos === 'SS')!;
+    const clean = (glove: number) => {
+      F.info = withRatings(F.info, { glove });
+      let ok = 0;
+      for (let k = 0; k < 500; k++) {
+        w.rng = new Rng(`glove-${k}`);
+        w.play = newPlay(w, 'looseBall');
+        w.phase = 'inPlay';
+        releaseBall(w);
+        F.hasBall = false;
+        const b = w.ball.body;
+        b.x = F.x + 0.55;
+        b.z = F.z + 0.4;
+        b.y = 0.0366;
+        b.vx = -9;
+        b.vy = 0;
+        b.vz = -3;
+        b.rolling = true;
+        w.ball.mode = 'loose';
+        F.plan.reactTick = 0;
+        F.plan.lastAttempt = -999;
+        F.plan.releaseAt = 0;
+        fieldingAttempts(w);
+        if (w.ball.holder === F) ok++;
+      }
+      return ok / 500;
+    };
+    expect(clean(80)).toBeGreaterThan(clean(20) + 0.05);
   });
 });
 
@@ -451,14 +507,20 @@ describe('attributes: delivery', () => {
     expect(A.pickoffRunnerReaction(50, { pickoff: 80 } as Ratings)).toBeGreaterThan(A.pickoffRunnerReaction(50, { pickoff: 20 } as Ratings));
   });
 
-  it('in a game the stretch is used exactly when runners are on, and the windup is shorter with runners', () => {
-    const l = lab('stretch');
-    const w = l.w;
-    const st = () => l.g.getState().players.find((p) => p.role === 'pitcher')!.delivery!.fromStretch;
-    expect(st()).toBe(false);
-    addRunner(w, 1);
-    expect(st()).toBe(true);
-    void MOUND_DIST;
+  it('in a game the stretch is used exactly when runners are on, and the windup phase really is shorter with a runner on', () => {
+    const windupSeconds = (runner: boolean) => {
+      const l = lab('stretch');
+      const w = l.w;
+      if (runner) addRunner(w, 3); // (a runner on third: no pickoff throws to interrupt)
+      const st = () => l.g.getState().players.find((p) => p.role === 'pitcher')!.delivery!.fromStretch;
+      expect(st()).toBe(runner);
+      for (let i = 0; i < 240 * 30 && w.phase !== 'windup'; i++) l.g.step(1 / 240);
+      expect(w.phase).toBe('windup');
+      return (w.phaseUntil - w.tick) / 240;
+    };
+    const empty = windupSeconds(false);
+    const stretch = windupSeconds(true);
+    expect(stretch).toBeLessThan(empty - 0.15);
   });
 });
 
@@ -523,6 +585,11 @@ describe('roster generation', () => {
     expect(corr(hitters.map((p) => p.ratings.power), hitters.map((p) => p.physique.weightKg))).toBeGreaterThan(0.15);
     expect(corr(hitters.map((p) => p.ratings.speed), hitters.map((p) => p.physique.weightKg))).toBeLessThan(-0.2);
     expect(corr(hitters.map((p) => p.ratings.speed), hitters.map((p) => p.ratings.acceleration))).toBeGreaterThan(0.5);
+  });
+  it('throwing hand follows the position: no left-handed catchers, second basemen, shortstops or third basemen; some at first and in the outfield', () => {
+    const lefties = (pos: string[]) => hitters.filter((p) => pos.includes(p.primaryPosition) && p.throws === 'L').length;
+    expect(lefties(['C', '2B', 'SS', '3B'])).toBe(0);
+    expect(lefties(['1B', 'LF', 'CF', 'RF'])).toBeGreaterThan(20);
   });
   it('physique, looks, age and handedness are filled in and plausible; pitchers have deliveries and repertoires', () => {
     for (const p of players) {
