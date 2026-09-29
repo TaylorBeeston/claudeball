@@ -13,11 +13,13 @@ def emissive(n, c, strength):
     mm = mat(n, c, 0.4); b = mm.node_tree.nodes["Principled BSDF"]
     b.inputs["Emission Color"].default_value = c; b.inputs["Emission Strength"].default_value = strength; return mm
 cd, chn = dirt_tex(seed=9, base=(0.42, 0.42, 0.41), var=0.22)
+_hh = (chn-chn.min())/(chn.max()-chn.min())
 M_CONC = vc_material("concrete", make_image("concrete_albedo", cd, path=ROOT+"/tex/concrete_albedo.png"),
-                     make_image("concrete_normal", height_to_normal(chn, 2.0), 'Non-Color', ROOT+"/tex/concrete_normal.png"), 0.85, 0.5)
+                     make_image("concrete_normal", height_to_normal(chn, 2.0), 'Non-Color', ROOT+"/tex/concrete_normal.png"), 0.85, 0.7,
+                     make_image("concrete_orm", np.stack([.55+.45*_hh, .92-.15*_hh, np.zeros_like(_hh)], -1), 'Non-Color', ROOT+"/tex/concrete_orm.png"))
 M_FASC = mat("fascia_dark", (0.05, 0.06, 0.08, 1), 0.5, 0.2)
 M_PAD = mat("wall_padding", (0.02, 0.10, 0.05, 1), 0.85); M_YEL = mat("wall_yellow_line", (0.95, 0.72, 0.03, 1), 0.5)
-M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = mat("steel", (0.55, 0.57, 0.6, 1), 0.45, 0.9)
+M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = mat("steel", (0.55, 0.57, 0.6, 1), 0.38, 1.0)
 M_DUGR = mat("dugout_roof", (0.15, 0.16, 0.18, 1), 0.7); M_EYE = mat("batters_eye", (0.01, 0.03, 0.02, 1), 0.95)
 M_LAMP = emissive("stadium_light", (1.0, 0.97, 0.88, 1), 40.0)
 SEATC = [(0.02, 0.06, 0.30, 1), (0.03, 0.10, 0.28, 1), (0.05, 0.08, 0.20, 1)]
@@ -207,6 +209,77 @@ for f in afs:
     fs_.append(f if nn.dot(-np.array([N_[jj_][0], 0, N_[jj_][1]])) >= 0 else f[::-1])
 make_mesh("AdBoards", avs, fs_, [M_AD], uv=auv)
 
+# ---------------- fascia signage (tier 1 fascia, infield): 9 m panels cycling through the ad atlas
+def ad_ribbon(name, samples, o_of, y0_of, y1_of, panel):
+    vs, fs, uvs = [], [], []; seg = None; acc = 0.0; k = 0; prev = None
+    for i, j in enumerate(samples):
+        if prev is not None:
+            acc += np.linalg.norm(P[j]-P[prev])
+            if acc >= panel or (j - prev) != 1: seg = None; acc = 0.0; k += 1
+        prev = j
+        if seg is None: seg = True; cell = k % 6; cx, cy = (cell % 3)/3.0, 0.5 - (cell//3)*0.5; first = True
+        else: first = False
+        p = P[j]+N_[j]*o_of(j); vs += [(p[0], y0_of(j), p[1]), (p[0], y1_of(j), p[1])]; u = cx + (acc/panel)/3.0
+        uvs += [(u, cy), (u, cy+0.5)]
+        if not first: fs.append((len(vs)-4, len(vs)-2, len(vs)-1, len(vs)-3))
+    out = []
+    for f in fs:
+        v0, v1, v2 = [np.array(vs[q]) for q in f[:3]]; nn = np.cross(v1-v0, v2-v0); ctr = np.mean([vs[q] for q in f], axis=0)
+        jj_ = samples[int(np.argmin(np.linalg.norm(P[samples]-np.array([ctr[0], ctr[2]]), axis=1)))]
+        out.append(f if nn.dot(-np.array([N_[jj_][0], 0, N_[jj_][1]])) >= 0 else f[::-1])
+    return make_mesh(name, vs, out, [M_AD], uv=uvs)
+mk1 = G['marks'][0]; fsel = np.array([j for j in range(M) if G['N2'][j] >= 3 and G['N3'][j] >= 3 and not G['eye'][j]])
+ad_ribbon("FasciaSignage", fsel, lambda j: mk1[j][0][0]-0.03, lambda j: mk1[j][0][1]+0.5, lambda j: mk1[j][1][1]-0.5, 9.0)
+
+# ---------------- crowd: 8 low-poly seated spectator variants (instanced over ~50% of tier-1/2 seats, ~35% of tier-3)
+def face_tex(n=128):
+    im = np.ones((n, n, 3), np.float32)*.95; uu, vv = np.meshgrid((np.arange(n)+.5)/n, (np.arange(n)+.5)/n)
+    for du in (-.055, .055): im[..., :] *= (1 - .85*np.exp(-(((uu-.5-du)/.022)**2 + ((vv-.60)/.03)**2)))[..., None]     # eyes
+    im[..., :] *= (1 - .5*np.exp(-(((uu-.5)/.05)**2 + ((vv-.38)/.012)**2)))[..., None]; im[..., 0] = np.minimum(1, im[..., 0]*1.02)        # mouth
+    im *= (1 - .18*np.exp(-(((uu-.5)/.35)**2 + ((vv-.85)/.09)**2)))[..., None]                                                  # hair line shading
+    return np.clip(im, 0, 1)
+FACE = make_image("crowd_face", face_tex(), path=ROOT+"/tex/crowd_face.png")
+SKINS = [(.85, .62, .48), (.75, .52, .38), (.6, .4, .29), (.45, .29, .2), (.9, .72, .6), (.32, .2, .14), (.8, .58, .44), (.68, .46, .34)]
+SHIRTS = [(.7, .05, .06), (.05, .12, .5), (.9, .9, .9), (.08, .08, .09), (.9, .75, .1), (.1, .45, .2), (.35, .1, .45), (.9, .4, .08)]
+def crowd_template(i):
+    verts, faces, midx, uvs = [], [], [], []
+    def box(cx, cy, cz, sx, sy, sz, mi):
+        b = len(verts)
+        for (dx, dy, dz) in ((-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1), (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)):
+            verts.append((cx+dx*sx, cy+dy*sy, cz+dz*sz)); uvs.append((.5, .5))
+        for f in ((4, 5, 6, 7), (0, 3, 2, 1), (0, 1, 5, 4), (2, 3, 7, 6), (1, 2, 6, 5), (3, 0, 4, 7)):   # outward (verified below)
+            faces.append(tuple(b+q for q in f)); midx.append(mi)
+    box(0, .72, -.13, .20, .26, .11, 1)          # torso
+    box(0, .47, .00, .17, .045, .26, 1)          # thighs
+    hc = np.array([0, 1.06, -.06]); bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=8, v_segments=4, radius=1.0)
+    b0 = len(verts)
+    for v in bm.verts:
+        p = np.array([v.co.x*.095, v.co.z*.12, v.co.y*.105]) + hc      # blender (x,y,z) -> game: y-up = z, front(+Z game) = -y  => use -y
+        p[2] = hc[2] - v.co.y*.105; verts.append(tuple(p))
+        uvs.append((math.atan2(p[0]-hc[0], p[2]-hc[2])/(2*math.pi)+.5, (p[1]-hc[1])/(2*.12)+.5))
+    for f in bm.faces: faces.append(tuple(b0+l.vert.index for l in f.loops)); midx.append(0)
+    bm.free()
+    # orient every face outward from the template centre of its material group
+    cen = np.array([0, .8, -.05]); fixed = []
+    for f in faces:
+        v0, v1, v2 = [np.array(verts[q]) for q in f[:3]]; nn = np.cross(v1-v0, v2-v0); c = np.mean([verts[q] for q in f], axis=0)
+        fixed.append(f if nn.dot(c-cen) >= 0 else f[::-1])
+    mh = pbr_crowd = None
+    m_skin = bpy.data.materials.new(f"crowd_skin_{i}"); m_skin.use_nodes = True; nt = m_skin.node_tree; b = nt.nodes["Principled BSDF"]
+    t = nt.nodes.new("ShaderNodeTexImage"); t.image = FACE; mx = nt.nodes.new("ShaderNodeMix"); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs[0].default_value = 1.0
+    mx.inputs[7].default_value = (*SKINS[i], 1); nt.links.new(t.outputs["Color"], mx.inputs[6]); nt.links.new(mx.outputs[2], b.inputs["Base Color"]); b.inputs["Roughness"].default_value = .6
+    m_cloth = mat(f"crowd_cloth_{i}", (*SHIRTS[i], 1), .85)
+    return make_mesh(f"Crowd_{i+1}", verts, fixed, [m_skin, m_cloth], midx, uvs, smooth=True)
+import bmesh
+for i in range(8): crowd_template(i)
+rngc = np.random.default_rng(3); CROWD = {i: ([], []) for i in range(8)}
+for t_, fill in enumerate((.5, .5, .35)):
+    pos, yaw = G['seats'][t_]
+    keep_ = rngc.random(len(pos)) < fill; var = rngc.integers(0, 8, len(pos))
+    for i in range(8):
+        sel_i = keep_ & (var == i); CROWD[i][0].append(pos[sel_i]); CROWD[i][1].append(yaw[sel_i])
+np.savez_compressed(ROOT+"/src/crowd.npz", **{f"pos{i}": np.concatenate(CROWD[i][0]) for i in range(8)}, **{f"yaw{i}": np.concatenate(CROWD[i][1]) for i in range(8)})
+
 # ---------------- seat templates (instanced in post-processing): 10 tris, facing +Z (center field)
 def seat_template(name, col):
     mb = MB(name); w = 0.46
@@ -222,7 +295,25 @@ for t in range(3):
     o = seat_template(f"Seats_T{t+1}", SEATC[t]); objs.append(o)
 np.savez_compressed(ROOT+"/src/seats.npz", **{f"pos{t}": G['seats'][t][0] for t in range(3)}, **{f"yaw{t}": G['seats'][t][1] for t in range(3)})
 result = {"objs": len(objs), "seats": [len(G['seats'][t][0]) for t in range(3)], "tris": sum(len(o.data.polygons) for o in objs)}
+# ---------------- bake ambient occlusion into the Bowl's vertex colours (Cycles, geometry of the static scene; instanced seats/crowd not included)
+AO_OK = False
+try:
+    sc = bpy.context.scene; sc.render.engine = 'CYCLES'; sc.cycles.samples = 24; sc.cycles.device = 'CPU'
+    if sc.world is None: sc.world = bpy.data.worlds.new("w")
+    sc.world.light_settings.distance = 10.0
+    bowl = bpy.data.objects["Bowl"]; ca = bowl.data.color_attributes.new("AO", 'FLOAT_COLOR', 'POINT'); bowl.data.color_attributes.active_color = ca
+    bpy.ops.object.select_all(action='DESELECT'); bowl.select_set(True); bpy.context.view_layer.objects.active = bowl
+    bpy.ops.object.bake(type='AO', target='VERTEX_COLORS')
+    n = len(bowl.data.vertices); a_ = np.empty(n*4, np.float32); ca.data.foreach_get("color", a_); a_ = a_.reshape(-1, 4)
+    base = bowl.data.color_attributes["Color"]; c_ = np.empty(n*4, np.float32); base.data.foreach_get("color", c_); c_ = c_.reshape(-1, 4)
+    ao_ = np.clip(a_[:, :1], 0, 1)**0.9; c_[:, :3] *= (.25 + .75*ao_); base.data.foreach_set("color", c_.ravel())
+    bowl.data.color_attributes.remove(ca); bowl.data.color_attributes.active_color = base; AO_OK = True
+except Exception as e:
+    AO_ERR = str(e)[:300]
 export(objs, ROOT+"/stadium.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
 exec(open(CB_SRC + "/inject_instances.py").read())
 _d = np.load(ROOT+"/src/seats.npz")
-inject(ROOT+"/stadium.glb", {f"Seats_T{t+1}": (_d[f"pos{t}"]*np.array([-1, 1, 1], np.float32), -_d[f"yaw{t}"]) for t in range(3)})
+_c = np.load(ROOT+"/src/crowd.npz"); _inst = {f"Seats_T{t+1}": (_d[f"pos{t}"]*np.array([-1, 1, 1], np.float32), -_d[f"yaw{t}"]) for t in range(3)}
+_inst.update({f"Crowd_{i+1}": (_c[f"pos{i}"]*np.array([-1, 1, 1], np.float32), -_c[f"yaw{i}"]) for i in range(8)})
+inject(ROOT+"/stadium.glb", _inst)
+result["ao"] = AO_OK; result["ao_err"] = globals().get("AO_ERR")
