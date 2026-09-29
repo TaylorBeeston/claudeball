@@ -341,7 +341,7 @@ long trip (a reliever from the dugout) is waited for.
 
 `pace: 1` gives a broadcast-like pace (a full 9-inning game is ~45 simulated minutes because dead time is
 compressed; most of it is the 3–4 s between pitches). Use the renderer's own speed multiplier via `step(dt*speed)`.
-`pace: 0` removes walk-ups/inning breaks and the ball handling / getting-set waits (players snap to their spots) for fast headless runs. At `pace: 1` a full game is ~48 simulated minutes.
+`pace: 0` removes walk-ups/inning breaks and the ball handling / getting-set waits (players snap to their spots) for fast headless runs. At `pace: 1` a full nine-inning game is 40–48 simulated minutes (~2 s of compute).
 
 ## Physical model notes
 
