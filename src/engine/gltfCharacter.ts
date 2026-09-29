@@ -310,7 +310,8 @@ export class GltfPuppet implements PuppetLike {
       const m = o as Mesh;
       if (m.isMesh) {
         for (const mt of Array.isArray(m.material) ? m.material : [m.material]) reg(mt);
-        m.castShadow = true;
+        // tiny details add draw calls to every shadow cascade and cast no visible shadow of their own
+        m.castShadow = !/^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache)/.test(m.name);
         m.receiveShadow = true;
         m.frustumCulled = false;
         this.meshes.push(m);
