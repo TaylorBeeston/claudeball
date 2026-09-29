@@ -4,14 +4,18 @@ reset_scene()
 S2 = math.sqrt(.5)
 # ---------------- materials
 g, gh = grass_tex(); d, dh = dirt_tex(); t, th = dirt_tex(seed=5, base=(0.42, 0.19, 0.11), var=0.3)
-def mk(nm, arr, h, ns, rough=0.95):
+def mk(nm, arr, h, ns, rough=0.95, ao=0.5):
+    hh = (h - h.min())/max(1e-6, h.max()-h.min())
+    orm_ = np.stack([np.clip(1-ao*(1-hh), 0, 1), np.clip(rough - .12*hh, 0, 1), np.zeros_like(hh)], -1)
     return vc_material(nm, make_image(nm+"_albedo", arr, path=ROOT+f"/tex/{nm}_albedo.png"),
-                       make_image(nm+"_normal", height_to_normal(h, ns), 'Non-Color', ROOT+f"/tex/{nm}_normal.png"), rough)
-M_GRASS = mk("grass", g, gh, 3.0); M_DIRT = mk("dirt", d, dh, 5.0); M_TRACK = mk("track", t, th, 5.0)
+                       make_image(nm+"_normal", height_to_normal(h, ns), 'Non-Color', ROOT+f"/tex/{nm}_normal.png"), rough, 1.0,
+                       make_image(nm+"_orm", orm_, 'Non-Color', ROOT+f"/tex/{nm}_orm.png"))
+M_GRASS = mk("grass", g, gh, 6.0, .92, .6); M_DIRT = mk("dirt", d, dh, 5.0, .95, .5); M_TRACK = mk("track", t, th, 5.0, .95, .5)
 def flat(name, col, rough=0.8):
     m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = col; b.inputs["Roughness"].default_value = rough; return m
-M_CHALK = flat("chalk", (0.9, 0.9, 0.88, 1), 0.95); M_BASE = flat("base_white", (0.85, 0.85, 0.85, 1), 0.6)
+_ch = noise_tex(512, [16, 64, 256], 21); M_CHALK = vc_material("chalk", make_image("chalk_albedo", np.repeat((.82+.18*_ch)[..., None], 3, 2), path=ROOT+"/tex/chalk_albedo.png"),
+    make_image("chalk_normal", height_to_normal(_ch, 4.0), 'Non-Color', ROOT+"/tex/chalk_normal.png"), .95, .8); M_BASE = flat("base_white", (0.85, 0.85, 0.85, 1), 0.6)
 M_YELLOW = flat("pole_yellow", (0.95, 0.75, 0.05, 1), 0.5); M_DUG = flat("dugout_concrete", (0.45, 0.45, 0.45, 1), 0.9)
 M_BENCH = flat("dugout_bench", (0.35, 0.22, 0.12, 1), 0.7); M_RUB = flat("rubber_white", (0.9, 0.9, 0.9, 1), 0.7)
 M_PLATE = flat("plate_white", (0.9, 0.9, 0.9, 1), 0.7)
@@ -21,36 +25,60 @@ objs = []
 def circle(cx, cz, r, n=96, a0=0.0, a1=2*math.pi):
     return [(cx+r*math.cos(a0+(a1-a0)*i/n), cz+r*math.sin(a0+(a1-a0)*i/n)) for i in range(n)]
 
-# ---------------- outfield / foul grass: 4.6 m mowing bands running toward center field
+# ---------------- ground (regular cells so vertex colours can carry mowing tint, wear and moisture)
 outline = ground_outline()
-mb = MB("Grass_Outfield")
 def carved(p):
     ps = [p]
     for side in (1, -1): ps = [q for pp in ps for q in carve(pp, side)]
     return ps
-for k, p in bands(outline, 0.0, 4.6, -70, 70):
-    for q in carved(p): mb.poly(q, 0.0, LIGHT if k % 2 else DARK)
+b1, b2, b3 = base_center(1), base_center(2), base_center(3)
+rngc = np.random.default_rng(5); band_tint = rngc.normal(1.0, .035, 200)
+def vn(x, z): return .5+.5*math.sin(x*.71+math.sin(z*.43)*2)*math.cos(z*.63+math.sin(x*.37)*2)
+SPOTS = [b1, b2, b3, (-8.5, 27.0), (8.5, 27.0), (-14, 19), (14, 19), (0, 28), (0, 74), (-30, 60), (30, 60)]
+def wear(x, z):
+    w = 0.0
+    for i, (cx, cz) in enumerate(SPOTS): w += (0.55 if i < 3 else .28)*math.exp(-(((x-cx)**2+(z-cz)**2)/(2*(2.6 if i < 3 else 3.5)**2)))
+    d = math.hypot(x, z-0) ; w += .35*math.exp(-((math.hypot(x-C_MOUND[0], z-C_MOUND[1])-6.5)/2.2)**2)         # ring around the mound
+    r = math.hypot(x, z); dd = abs(fence_dist(math.atan2(x, z)) - r) if z > 0 else 99; w += .5*max(0, 1-dd/6.0) if dd < 6 else 0   # scuffing near the track
+    return min(w, .85)
+WEAR_T = np.array([.74, .62, .42])
+def grass_col(k, dark):
+    def f(x, z):
+        base = np.array(DARK[:3]) if dark else np.array(LIGHT[:3]); w = wear(x, z); n = .96+.06*vn(x*1.3, z*1.3)
+        c = (base*(1-w) + WEAR_T*w*base.mean()) * band_tint[k % 200] * n
+        return (min(c[0], 1), min(c[1], 1), min(c[2], 1), 1)
+    return f
+mb = MB("Grass_Outfield"); CELL = 4.6/3
+for i, j, p in grid_cells(outline, CELL, 0.0, (-100.0, -100.0), (200.0, 260.0), clip_fn=carved):
+    k = i//3; mb.poly(p, 0.0, grass_col(k, k % 2 == 0))
 objs.append(mb.build(M_GRASS))
-# ---------------- dirt: skin (95 ft circle around mound), warning track, home area, base paths
+def dirt_col(x, z):
+    w = math.exp(-(math.hypot(x-C_MOUND[0], z-C_MOUND[1])/6.0)**2)*.28 + math.exp(-(math.hypot(x, z)/7.0)**2)*.2
+    for cx, cz in (b1, b2, b3): w += .22*math.exp(-((x-cx)**2+(z-cz)**2)/(2*3.0**2))
+    n = .9+.1*vn(x*.9, z*.9); c = (1-min(w, .4))*n; return (c, c*.97, c*.94, 1)
 mb = MB("Dirt")
-for q in carved(circle(*C_MOUND, 95*FT, 160)): mb.poly(q, Y_DIRT)
-for q in carved(clip_poly(outline, 0.0, -1.0, 6.0)): mb.poly(q, Y_DIRT)   # backstop apron
+cir = circle(*C_MOUND, 95*FT, 160)
+for i, j, p in grid_cells(cir, 2.0, 0.0, (-70.0, -70.0), (140.0, 140.0), clip_fn=carved): mb.poly(p, Y_DIRT, dirt_col)
+ap = clip_poly(outline, 0.0, -1.0, 6.0)
+for i, j, p in grid_cells(ap, 2.0, 0.0, (-70.0, -70.0), (140.0, 140.0), clip_fn=carved): mb.poly(p, Y_DIRT, dirt_col)
 objs.append(mb.build(M_DIRT))
 mb = MB("WarningTrack")
 outer = fence_pts(); inner = fence_pts(off=15*FT)
-mb.poly(outer + list(reversed(inner)), Y_DIRT, holes=())
+trk = outer + list(reversed(inner))
+def track_col(x, z):
+    r = math.hypot(x, z); dd = abs(fence_dist(math.atan2(x, z)) - r); n = .92+.08*vn(x*.6, z*.6); c = n*(.82+.18*min(dd/4.57, 1)); return (c, c, c, 1)
+for i, j, p in grid_cells(trk, 2.0, 0.0, (-100.0, -100.0), (200.0, 260.0)): mb.poly(p, Y_DIRT, track_col)
 objs.append(mb.build(M_TRACK))
 # ---------------- infield grass diamond (diagonal mowing) with dirt cutouts on top
-b1, b2, b3 = base_center(1), base_center(2), base_center(3)
 inset = 3*FT*math.sqrt(2)
-diamond = [(0, inset), (18.1, 18.1+inset), (0, 38.795-inset*1.0+0.0), (-18.1, 18.1+inset)]
-diamond = [(0, inset), ((38.795-2*inset)/2 + 0.0, (38.795)/2), (0, 38.795-inset), (-(38.795-2*inset)/2, 38.795/2)]
+diamond = [(0, inset), ((38.795-2*inset)/2, (38.795)/2), (0, 38.795-inset), (-(38.795-2*inset)/2, 38.795/2)]
 mb = MB("Grass_Infield")
-for k, p in bands(diamond, math.pi/4, 3.0, -30, 60): mb.poly(p, Y_G2, LIGHT if k % 2 else DARK)
+for i, j, p in grid_cells(diamond, 1.0, math.pi/4, (-30.0, -30.0), (100.0, 100.0)):
+    k = i//3; mb.poly(p, Y_G2, grass_col(k+7, k % 2 == 0))
 objs.append(mb.build(M_GRASS))
 mb = MB("Dirt_Cutouts")
-mb.poly(circle(0, 0.2, 13*FT, 72), Y_CUT)                 # home plate circle (13 ft radius)
-for bc in (b1, b2, b3): mb.poly(circle(*bc, 1.6, 40), Y_CUT)
+mb.poly(circle(0, 0.2, 13*FT, 72), Y_CUT, dirt_col)                 # home plate circle (13 ft radius)
+for bc in (b1, b2, b3): mb.poly(circle(*bc, 1.6, 40), Y_CUT, dirt_col)
 objs.append(mb.build(M_DIRT))
 # ---------------- mound (18 ft diameter, 10 in above plate) + rubber
 mb = MB("Mound"); H = 10*IN; RO = 9*FT; RP = 1.4; NR, NS = 20, 72
