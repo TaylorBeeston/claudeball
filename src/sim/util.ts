@@ -1,4 +1,4 @@
-import { BALL_RADIUS } from './field';
+import { BALL_RADIUS, groundHeight } from './field';
 import type { AnimHint } from './types';
 import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
@@ -13,7 +13,7 @@ export function setAnim(w: World, p: PlayerRT, anim: AnimHint, durSec: number): 
 /** Position of the glove / ball hand of a holder (used when the ball is held). */
 export function handPos(p: PlayerRT): { x: number; y: number; z: number } {
   const off = 0.32;
-  return { x: p.x + Math.sin(p.facing) * off, y: 1.15, z: p.z + Math.cos(p.facing) * off };
+  return { x: p.x + Math.sin(p.facing) * off, y: groundHeight(p.x, p.z) + 1.15, z: p.z + Math.cos(p.facing) * off };
 }
 
 export function placeBallInHand(w: World, p: PlayerRT): void {

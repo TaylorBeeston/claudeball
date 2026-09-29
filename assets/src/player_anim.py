@@ -29,7 +29,7 @@ def ik2(root, target, l1, l2, pole):
 
 DEFAULT = dict(hips=(0, 0, 0), hyaw=0, yaw=0, lean=0, side=0, head_yaw=None, head_pitch=0, neck_yaw=None,
                lfoot=(.13, 0, .08), rfoot=(-.13, 0, .08), lknee=(0, -1, 0), rknee=(0, -1, 0), lfoot_o=(0, 0), rfoot_o=(0, 0),
-               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None)
+               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None, lhand_rel=None, rhand_rel=None)   # *_rel: wrist target as an offset from that shoulder
 
 def solve(spec):
     """Return {bone: (M_arm matrix 4x4)} for a pose spec."""
@@ -68,6 +68,7 @@ def solve(spec):
             ang = math.atan2(dd.dot(ya_p.cross(tgt)), ya_p.dot(tgt)); hd_tw = math.degrees(ang) + (P['bat'][2] if len(P['bat']) > 2 else 0)
             qt = Quaternion(dd, math.radians(hd_tw)) @ q; N = qt @ xr
             wr_target = grip - dd*.06 - N*.03; hd_dir = dd
+        if P[k+'hand_rel'] is not None: wr_target = head[sd+"Arm"] + Vector(P[k+'hand_rel'])
         d1, d2 = ik2(head[sd+"Arm"], wr_target, LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
         setb(sd+"Arm", d1); place(sd+"ForeArm"); setb(sd+"ForeArm", d2); place(sd+"Hand")
         setb(sd+"Hand", hd_dir if hd_dir is not None else d2, hd_tw)

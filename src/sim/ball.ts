@@ -1,4 +1,4 @@
-import { BALL_MASS, BALL_RADIUS, FenceConfig, fenceAt, fenceNormalAt, surfaceAt, Surface } from './field';
+import { BALL_MASS, BALL_RADIUS, FenceConfig, fenceAt, fenceNormalAt, groundHeight, surfaceAt, Surface } from './field';
 import { Rng } from './rng';
 import { hypot2 } from './math';
 
@@ -188,10 +188,11 @@ export function stepBall(b: BallBody, dt: number, env: Environment, rng: Rng | n
     rollStep(b, dt, env);
   } else {
     flightStep(b, dt, env);
-    if (b.y <= BALL_RADIUS && b.vy < 0) {
+    const gy = groundHeight(b.x, b.z); // the pitcher's mound is higher than the rest of the field
+    if (b.y <= gy + BALL_RADIUS && b.vy < 0) {
       const surface = surfaceAt(b.x, b.z);
       const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
-      b.y = BALL_RADIUS;
+      b.y = gy + BALL_RADIUS;
       groundBounce(b, surface, rng);
       flags.bounced = true;
       flags.bounceSpeed = speed;
@@ -208,7 +209,7 @@ export function stepBall(b: BallBody, dt: number, env: Environment, rng: Rng | n
 function rollStep(b: BallBody, dt: number, env: Environment): void {
   const surface = surfaceAt(b.x, b.z);
   const hs = hypot2(b.vx, b.vz);
-  b.y = BALL_RADIUS;
+  b.y = groundHeight(b.x, b.z) + BALL_RADIUS;
   b.vy = 0;
   if (hs < 1e-4) {
     b.vx = b.vz = 0;
