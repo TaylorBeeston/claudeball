@@ -14,10 +14,10 @@ import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
-import type { GameState, PlayerSnap } from './types';
+import type { GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
-export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate';
+export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire';
 
 interface Desired {
   pos: Vector3;
@@ -28,6 +28,23 @@ interface Desired {
   lp: number; // position follow rate
   lt: number; // target follow rate
   lf: number; // fov follow rate
+}
+
+interface Replay {
+  frames: GameState[];
+  t: number;
+  end: number;
+  variant: 'infield' | 'outfield' | 'hr' | 'close';
+  until: number;
+  cam: Vector3 | null;
+  /** playback speed (1 = real time) */
+  speed: number;
+  /** on-screen caption (default REPLAY) */
+  caption: string | null;
+  /** where a close play happened (scene) */
+  focus?: Vector3;
+  /** replay that follows this one (the normal-speed second angle) */
+  next?: Replay | null;
 }
 
 const HOME_HIGH = new Vector3(0, 17, -26);
@@ -42,6 +59,8 @@ export interface DirectorOutput {
   /** true on the frame a hard cut happened */
   cut: boolean;
   replaying: boolean;
+  /** playback speed of the replay being shown (animation time scale) */
+  replaySpeed: number;
 }
 
 export class CameraDirector {
@@ -70,7 +89,10 @@ export class CameraDirector {
   private cutawayIdx = 0;
   private cutawayUntil = 0;
   private cutaway: 'crowd' | 'wide' | 'dugout' = 'wide';
-  private replay: { frames: GameState[]; t: number; end: number; variant: 'infield' | 'outfield' | 'hr'; until: number; cam: Vector3 | null } | null = null;
+  private replay: Replay | null = null;
+  /** a contested play (close play / tag) waiting for its slow-motion replay */
+  private close: { simT: number; base: number | null; pos: Vector3; umpireId?: string } | null = null;
+  private umpireUntil = 0;
   private lastEventText = '';
   private lastCutFrame = false;
   private events: TimedEvent[] = [];
@@ -212,8 +234,23 @@ export class CameraDirector {
           this.holdUntil = this.clock + 2.4;
         }
         break;
+      case 'tag':
+        // a play at a base: a low camera at the bag while the tag goes in
+        if (this.inPlay && !this.hr && e.result !== 'avoided') {
+          const t = e.pos ? toScene(e.pos, new Vector3()) : e.base ? new Vector3(BASES[Math.min(3, e.base) - 1]?.x ?? 0, 0, BASES[Math.min(3, e.base) - 1]?.z ?? 0) : null;
+          if (t) {
+            this.baseTarget.copy(t);
+            if (this.shot !== 'base') this.cut('base');
+            this.holdUntil = this.clock + 2.6;
+          }
+        }
+        break;
+      case 'safe':
+        if (this.inPlay && !this.hr) this.noteClosePlay(e, te.simTime, live);
+        break;
       case 'out':
       case 'run':
+        if (e.type === 'out' && this.inPlay && !this.hr) this.noteClosePlay(e, te.simTime, live);
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
         this.playEnd = te.simTime;
         if (this.inPlay && !this.hr) this.pendingReplay = true;
@@ -262,7 +299,7 @@ export class CameraDirector {
       this.orbit.update();
       this.tgt.copy(this.orbit.target);
       this.pos.copy(this.camera.position);
-      return { renderState: live, focus: this.pos.distanceTo(this.tgt), aperture: 0, label: null, shot: this.shot, cut: false, replaying: false };
+      return { renderState: live, focus: this.pos.distanceTo(this.tgt), aperture: 0, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1 };
     }
 
     // ---- transitions driven by state -----------------------------------------------------
@@ -301,14 +338,20 @@ export class CameraDirector {
         if (this.actionQuiet > 1.4 || this.clock - this.shotStart > 26) this.endPlay(live);
       }
     }
+    if (this.shot === 'umpire' && this.clock > this.umpireUntil) this.endPlay(live);
     if (this.shot === 'cutaway' && this.clock > this.cutawayUntil) this.cut('pitch');
     if (this.shot === 'wide' && this.clock - this.shotStart > 8 && !live.over) this.cut('pitch');
 
     // ---- replay playback ---------------------------------------------------------------------
     if (this.shot === 'replay' && this.replay) {
       const r = this.replay;
-      r.t += dt * 0.5 * 60; // frames at 60 Hz, half speed
-      if (r.t >= r.end - 1) {
+      r.t += dt * r.speed * 60; // frames at 60 Hz
+      if (r.t >= r.end - 1 && r.next) {
+        // slow-motion close play finished: the normal-speed replay from the second angle follows
+        this.replay = r.next;
+        this.ballSm.copy(r.next.focus ?? this.ballSm);
+        this.lastCutFrame = true;
+      } else if (r.t >= r.end - 1) {
         this.replay = null;
         this.inPlay = false;
         this.hr = null;
@@ -317,7 +360,7 @@ export class CameraDirector {
       } else {
         const i = Math.floor(r.t);
         rs = interpolateState(r.frames[i], r.frames[i + 1], r.t - i);
-        label = 'REPLAY';
+        label = r.caption ?? 'REPLAY';
       }
     }
 
@@ -325,7 +368,7 @@ export class CameraDirector {
     this.applySmoothing(dt);
     const focus = this.focusTarget.distanceTo(this.pos);
     void ball;
-    return { renderState: rs, focus, aperture: this.des.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: label === 'REPLAY' };
+    return { renderState: rs, focus, aperture: this.des.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: !!label && this.shot === 'replay', replaySpeed: this.shot === 'replay' && this.replay ? this.replay.speed : 1 };
   }
 
   /** Runners / the batter-runner that are actually moving (ball in play). */
@@ -343,7 +386,14 @@ export class CameraDirector {
 
   /** The play is over: replay it if that was wanted and possible, otherwise back to the pitcher. */
   private endPlay(live: GameState) {
-    const canReplay = this.replaysEnabled && this.pendingReplay && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live);
+    const okToReplay = this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping;
+    if (okToReplay && this.close && this.startCloseReplay(live)) {
+      this.close = null;
+      this.cut('replay');
+      return;
+    }
+    this.close = null;
+    const canReplay = okToReplay && this.pendingReplay && this.startReplay(live);
     if (canReplay) this.cut('replay');
     else {
       this.inPlay = false;
@@ -420,6 +470,48 @@ export class CameraDirector {
     }
   }
 
+  /** A contested out / safe call (`closePlay` or a margin under a tenth of a second): the umpire live, then the slow-motion replay. */
+  private noteClosePlay(e: Extract<GameEvent, { type: 'out' | 'safe' }>, simT: number, live: GameState) {
+    const closeCall = e.closePlay === true || (typeof e.margin === 'number' && Math.abs(e.margin) < 0.1);
+    if (!closeCall) return;
+    const base = (e.type === 'safe' ? e.base : e.base) ?? null;
+    const b = base && base >= 1 && base <= 3 ? BASES[base - 1] : { x: 0, z: 0 };
+    this.close = { simT, base, pos: new Vector3(b.x, 0, b.z) };
+    this.pendingReplay = true;
+    // cut to the umpire making the call, briefly, live
+    this.umpireUntil = this.clock + 1.7;
+    this.holdUntil = this.clock + 4;
+    if (this.replaysEnabled) this.cut('umpire');
+    void live;
+  }
+
+  /** Slow-motion replay of a close play from a low camera at the base, then a normal-speed replay from the opposite side. */
+  private startCloseReplay(live: GameState): boolean {
+    const c = this.close;
+    if (!c) return false;
+    const hist = this.sim.history;
+    const t0 = c.simT - 2.6, t1 = c.simT + 1.1;
+    const i0 = hist.findIndex((s) => s.time >= t0);
+    if (i0 < 0) return false;
+    let i1 = hist.length - 1;
+    for (let i = hist.length - 1; i >= 0; i--) if (hist[i].time <= t1) { i1 = i; break; }
+    if (i1 - i0 < 40) return false;
+    const frames = hist.slice(i0, i1 + 1);
+    const centre = new Vector3(0, 0, 19.4);
+    const out = c.pos.clone().sub(centre).setY(0);
+    if (out.lengthSq() < 1) out.set(0, 0, -1);
+    out.normalize();
+    const side = new Vector3(-out.z, 0, out.x);
+    const cam1 = c.pos.clone().addScaledVector(out, 6.5).addScaledVector(side, 5.5).setY(1.25);
+    const cam2 = c.pos.clone().addScaledVector(out, 9).addScaledVector(side, -9).setY(3.2);
+    const focus = c.pos.clone().setY(0.9);
+    const second: Replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam2, speed: 0.5, caption: null, focus };
+    this.replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam1, speed: 0.3, caption: 'CLOSE PLAY', focus, next: second };
+    this.ballSm.copy(focus);
+    void live;
+    return true;
+  }
+
   private nearestFielder(s: GameState): string | null {
     let best: string | null = null;
     let bd = 1e9;
@@ -453,7 +545,7 @@ export class CameraDirector {
       const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(h.side);
       cam = mid.addScaledVector(perp, 46).setY(7.5);
     }
-    this.replay = { frames, t: 0, end: frames.length, variant: homeRun ? 'hr' : this.ballFar > 55 ? 'outfield' : 'infield', until: 0, cam };
+    this.replay = { frames, t: 0, end: frames.length, variant: homeRun ? 'hr' : this.ballFar > 55 ? 'outfield' : 'infield', until: 0, cam, speed: 0.5, caption: null };
     this.ballSm.copy(toScene(frames[0].ball.pos)); // the replay camera starts on the ball at contact, not where the live shot left it
     void live;
     return true;
@@ -543,6 +635,21 @@ export class CameraDirector {
         break;
       }
       case 'replay': {
+        if (this.replay?.variant === 'close' && this.replay.cam && this.replay.focus) {
+          // low at the base, looking at the play; a subtle push-in as the slow motion runs
+          const r = this.replay;
+          d.pos.copy(r.cam!);
+          const f = r.focus!;
+          this.ballSm.lerp(ball, 1 - Math.exp(-dt * 4));
+          d.tgt.copy(f).lerp(this.ballSm, 0.35);
+          const dist = d.pos.distanceTo(d.tgt);
+          d.fov = this.tele(9.5, dist) * (1 - 0.2 * MathUtils.clamp(r.t / r.end, 0, 1));
+          d.focus = dist;
+          d.aperture = 0.5;
+          d.lp = d.lt = 20; d.lf = 6;
+          this.focusTarget.copy(d.tgt);
+          break;
+        }
         const inf = this.replay?.variant === 'infield';
         if (this.replay?.cam) d.pos.copy(this.replay.cam);
         else if (inf) d.pos.set(-40, 4.2, 30);
@@ -556,6 +663,28 @@ export class CameraDirector {
         d.aperture = 0.4;
         d.lp = 4; d.lt = 8; d.lf = 2;
         this.focusTarget.copy(this.ballSm);
+        break;
+      }
+      case 'umpire': {
+        // the umpire making the call on a close play: medium close-up from in front of him
+        const c = this.close;
+        let best: { pos: Vector3; facing: number } | null = null, bd = 1e9;
+        for (const p of rs.players) {
+          if (p.role !== 'umpire' || !c) continue;
+          const pp = toScene(p.pos, new Vector3());
+          const dd = pp.distanceTo(c.pos);
+          if (dd < bd) { bd = dd; best = { pos: pp, facing: p.facing }; }
+        }
+        const u = best ?? { pos: c ? c.pos.clone() : new Vector3(0, 0, 0), facing: 0 };
+        const fwd = new Vector3(Math.sin(u.facing), 0, Math.cos(u.facing));
+        d.pos.copy(u.pos).addScaledVector(fwd, 6).addScaledVector(new Vector3(-fwd.z, 0, fwd.x), 1.2).setY(1.6);
+        d.tgt.copy(u.pos).setY(1.4);
+        const dist = d.pos.distanceTo(d.tgt);
+        d.fov = this.tele(3.4, dist);
+        d.focus = dist;
+        d.aperture = 0.7;
+        d.lp = d.lt = d.lf = 20;
+        this.focusTarget.copy(d.tgt);
         break;
       }
       case 'action': {

@@ -271,7 +271,7 @@ export class Engine {
     const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
-    const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));
+    const animDt = this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
     // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.
     let useGrip = !rs.bat.visible;
@@ -308,7 +308,7 @@ export class Engine {
       this.stadium.updateScoreboard(state);
     }
     this.hud?.update(state, dt);
-    this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color);
+    this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);
     if (this.hud && (this.hudTimer -= dt) < 0) {
       this.hudTimer = 0.5;
       this.hud.setFps(this.fps, this.adaptive.scale);

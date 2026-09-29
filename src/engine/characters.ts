@@ -343,6 +343,8 @@ export interface PuppetEnv {
   ballSpeed?: number;
   /** where the pitcher's eyes/hands are (scene): what hitters, catchers and umpires look at while no ball is visible */
   mound?: Vector3 | null;
+  /** every player's scene position by id (for tags: where the runner is) */
+  positions?: Map<string, Vector3>;
   /** makes a ball for a hand / glove (a clone of the ball model) */
   makeBall?: () => Object3D;
 }

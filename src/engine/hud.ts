@@ -277,6 +277,15 @@ export class Hud {
       case 'out':
         this.flashCall('OUT');
         break;
+      case 'safe':
+        this.flashCall('SAFE');
+        break;
+      case 'umpire_call': {
+        // the caption appears with the umpire's gesture
+        const cap = CALL_CAPTIONS[e.kind];
+        if (cap) this.flashCall(cap);
+        break;
+      }
       case 'half_inning':
         this.push(`${e.half === 'top' ? 'Top' : 'Bottom'} of inning ${e.inning}`);
         break;
@@ -313,8 +322,9 @@ export class Hud {
     this.callTimer = 1.6;
   }
 
-  showReplay(on: boolean, teamColor?: string) {
+  showReplay(on: boolean, teamColor?: string, caption?: string | null) {
     this.rep.classList.toggle('show', on);
+    if (on && caption && this.rep.textContent !== caption) this.rep.textContent = caption;
     if (on !== this.replayShown) {
       this.replayShown = on;
       if (teamColor) this.wipe.style.setProperty('--w1', teamColor);
@@ -468,6 +478,12 @@ export class Hud {
     });
   }
 }
+
+/** what the umpires' calls are called on screen (sim call kinds → caption) */
+export const CALL_CAPTIONS: Record<string, string> = {
+  ball: 'BALL', ball_four: 'BALL FOUR', strike_called: 'STRIKE', strikeLooking: 'STRIKE', strike_swinging: 'STRIKE', strikeSwinging: 'STRIKE', strike: 'STRIKE',
+  strikeout: 'STRIKEOUT', foul: 'FOUL', foul_tip: 'FOUL TIP', foulTip: 'FOUL TIP', fair: 'FAIR', safe: 'SAFE', out: 'OUT', homerun: 'HOME RUN', homeRun: 'HOME RUN', time: 'TIME',
+};
 
 function escapeHtml(s: string) {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
