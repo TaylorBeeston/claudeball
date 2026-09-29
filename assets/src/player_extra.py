@@ -50,7 +50,7 @@ def head_copy(head, name, keep_fn, amount_fn, flatten=None):
 # ---------------------------------------------------------------- hair styles
 def hair_short(bm):   hair(bm)                                                            # existing short crop
 def hair_buzz(bm):
-    dome(bm, (.0865, .1055, .1265), 1.7265, edge=brow_edge(1.775, 1.705, 1.665), cy=.0035, thick=.0012)
+    dome(bm, (.0885, .1125, .1285), 1.7262, edge=brow_edge(1.785, 1.705, 1.665), cy=.0035, thick=.0012)
 def hair_curly(bm):
     dome(bm, (.093, .116, .129), 1.728, edge=brow_edge(1.80, 1.69, 1.655), cy=.004, thick=.002, seg=72, ring=48)
     for v in bm.verts:

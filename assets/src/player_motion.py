@@ -70,3 +70,26 @@ CLIPS["field_ready"] = (40, _ready(dict(hips=(0, -.06, -.34), lean=42, lfoot=(.3
                         lhand_rel=(.08, -.30, -.52), rhand_rel=(-.10, -.28, -.52), lpole=(.6, .6, -.2), rpole=(-.6, .6, -.2), head_pitch=-30)))
 CLIPS["field_ready_infield"] = (40, _ready(READY_INFIELD)); CLIPS["field_ready_outfield"] = (40, _ready(READY_OUTFIELD, sway=.03, bounce=.02)); CLIPS["field_ready_hands_knees"] = (40, _ready(READY_KNEES, sway=.012, bounce=.008))
 for _n in ("field_ready", "field_ready_infield", "field_ready_outfield", "field_ready_hands_knees"): FRAME0[_n] = 0
+
+# ---------------------------------------------------------------- densify: re-solve the IK on every frame so planted feet stay on the ground between sparse keys
+def _lerp(a, b, t):
+    if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)): return tuple(_lerp(x, y, t) for x, y in zip(a, b))
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)): return a + (b-a)*t
+    return a if t < .5 else b
+_DEF = dict(lfoot_o=(0, 0), rfoot_o=(0, 0), side=0, yaw=0, hyaw=0, lean=0, head_pitch=0, hips=(0, 0, 0), lknee=(0, -1, 0), rknee=(0, -1, 0))
+def densify(keys):
+    out = []
+    for (fa, sa), (fb, sb) in zip(keys, keys[1:]):
+        out.append((fa, sa))
+        for f in range(fa+1, fb):
+            t = (f-fa)/(fb-fa); e = t*t*(3-2*t); sp = {}
+            for k in set(sa) | set(sb):
+                a_, b_ = sa.get(k, _DEF.get(k, sb.get(k))), sb.get(k, _DEF.get(k, sa.get(k))); sp[k] = _lerp(a_, b_, e)
+            out.append((f, sp))
+    out.append(keys[-1]); return out
+for _n in ("pitch", "windup", "slide", "field_catch", "catch_jump"): CLIPS[_n] = (CLIPS[_n][0], densify(CLIPS[_n][1]))       # the old delivery clips: same key poses/event frames, no more sinking between keys
+
+# swing: the rear foot pivots onto its toes, so its ankle has to rise with the toe pitch (it used to push the toes through the ground)
+_lift = {17: .135, 20: .195, 22: .22, 27: .235, 32: .235}
+CLIPS["swing"] = (CLIPS["swing"][0], [(f, (dict(sp, rfoot=(sp['rfoot'][0], sp['rfoot'][1], _lift[f])) if f in _lift else sp)) for f, sp in CLIPS["swing"][1]])
+CLIPS["swing"] = (CLIPS["swing"][0], densify(CLIPS["swing"][1]))       # per-frame IK so the pivoting rear foot follows its toe pitch
