@@ -241,6 +241,8 @@ export interface GameStateSnapshot {
   gameOver: boolean;
   winner: TeamSide | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
+  /** Set while the sim is paused waiting for a decision provider (see README "Decision providers"). */
+  pendingDecision?: { id: number; decision: import('./decisions').DecisionKind; side: TeamSide } | null;
 }
 
 export type OutType =
@@ -300,7 +302,10 @@ export type GameEvent =
   | (EBase & { type: 'pitchingChange'; team: TeamSide; inId: string; outId: string })
   | (EBase & { type: 'plateAppearanceEnd'; batterId: string; result: string })
   | (EBase & { type: 'playEnd'; description: string })
-  | (EBase & { type: 'gameEnd'; winner: TeamSide; home: number; away: number });
+  | (EBase & { type: 'gameEnd'; winner: TeamSide; home: number; away: number })
+  /** A provider deferred a decision: the sim is paused until `game.resolveDecision(id, ...)` / the promise settles. */
+  | (EBase & { type: 'decisionRequested'; id: number; decision: import('./decisions').DecisionKind; side: TeamSide })
+  | (EBase & { type: 'decisionResolved'; id: number; decision: import('./decisions').DecisionKind; side: TeamSide });
 
 export type GameEventType = GameEvent['type'];
 
@@ -323,4 +328,6 @@ export interface GameConfig {
   pace?: number;
   /** Team-generation seed base if teams are not supplied (default: derived from seed). */
   teamSeed?: number | string;
+  /** Decision providers per side (any subset of decisions; the built-in AI answers the rest). See README "Decision providers". */
+  providers?: { home?: import('./decisions').DecisionProvider; away?: import('./decisions').DecisionProvider };
 }

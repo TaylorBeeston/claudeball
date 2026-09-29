@@ -2,6 +2,8 @@ import type { BallBody, BallStepFlags, Environment, PathSample } from './ball';
 import type { BatSwing, SwingPlan, Stance } from './batting';
 import type { StrikeZone, ThrownPitch } from './pitching';
 import type { Rng } from './rng';
+import type { DecState } from './dispatch';
+import type { FullDecisionProvider, PitchDecision, StealDecision } from './decisions';
 import type {
   AnimHint,
   BatterLine,
@@ -119,6 +121,13 @@ export interface FielderPlan {
   releaseAt: number;
   throwBase: number;
   throwTo: PlayerRT | null;
+  /** Throw decision bookkeeping (sequence, situation at the last answer, when to ask again). */
+  askSeq: number;
+  lastSig: string;
+  recheckTick: number;
+  asking: boolean;
+  /** Runner he is closing on to tag. */
+  tagTarget: RunnerRT | null;
   /** Last tick this fielder attempted a catch (to avoid double attempts). */
   lastAttempt: number;
   /** Ticks since the play started at which this fielder was 'primary'. */
@@ -190,6 +199,15 @@ export interface RunnerRT {
   stealDelay: number;
   leadX: number;
   leadZ: number;
+  /** Decision bookkeeping: sequence for question keys, situation at the last answer, when to ask again. */
+  askSeq: number;
+  lastSig: string;
+  recheckTick: number;
+  /** Lead distance chosen for the current pitch (m) and the key it was chosen for. */
+  leadDist: number;
+  leadKey: string;
+  /** A runner decision has been requested and not yet applied. */
+  asking: boolean;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -291,9 +309,33 @@ export interface Count {
   strikes: number;
 }
 
+/** Decisions gathered for the pitch about to be thrown (pickoff / pitch / steals), before the windup starts. */
+export interface PrePitch {
+  alignmentDone: boolean;
+  pickoffDone: boolean;
+  pitch: PitchDecision | null;
+  stealsDone: boolean;
+  /** Runner asked about stealing on this pitch and the answer. */
+  steal: { r: RunnerRT; go: boolean } | null;
+}
+
 export interface World {
   cfg: Required<Pick<GameConfig, 'dh' | 'innings' | 'extraInningsRunner' | 'pace'>> & GameConfig;
   rng: Rng;
+  /** Randomness of the AI's own judgement / mixed strategies (separate from physics noise, so another provider never shifts the physics stream). */
+  aiRng: Rng;
+  dec: DecState;
+  ai: FullDecisionProvider;
+  /** Plate-appearance start stage (see flow.startPlateAppearance). */
+  paStage: number;
+  prep: PrePitch;
+  /** Swing decision state for the pitch in flight. */
+  swingObs: import('./batting').SwingObservation | null;
+  swingDecided: boolean;
+  /** Bunt attempt on the pitch about to be thrown / in flight. */
+  buntNow: { kind: 'sac' | 'hit'; psi: number } | null;
+  /** Latest defensive alignment decision (infield in, shifts...). */
+  align: import('./decisions').AlignmentDecision;
   env: Environment;
   tick: number;
   acc: number; // leftover seconds

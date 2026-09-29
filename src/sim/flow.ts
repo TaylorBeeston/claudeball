@@ -1,10 +1,13 @@
 import { flightStep, stepBall } from './ball';
-import { BatSwing, batBallCollision, planSwing, stanceFor } from './batting';
+import { BatSwing, batBallCollision, buildSwing, decisionTime, perceivePitch, stanceFor } from './batting';
+import { ask, situationOf } from './dispatch';
+import { PENDING } from './decisions';
+import type { AlignmentDecision } from './decisions';
 import { emit } from './events';
 import { BALL_RADIUS, MOUND_DIST, PLATE_DEPTH } from './field';
 import { clamp, DEG } from './math';
 import { setGoal } from './movement';
-import { callPitch, fatigueOf } from './pitchai';
+import { fatigueOf } from './pitchai';
 import { pitchTouchesZone, strikeZoneFor, throwPitch, zoneContains } from './pitching';
 import { giveBall, placeBallInHand, releaseBall, setAnim } from './util';
 import type { PlayerRT, World } from './world';
@@ -92,10 +95,58 @@ export function fielderSpeed(p: PlayerRT): number {
   return (6.65 + 0.031 * p.info.ratings.speed) * 0.975;
 }
 
-/** Called when the halfBreak timer elapses. */
+/**
+ * Called when the halfBreak / playOver timer elapses (and every tick after, until it completes): the manager's decisions
+ * (pitching change, pinch runner, pinch hitter), the batter stepping in, then the intentional-walk and bunt decisions.
+ * Each stage asks its decision once and is applied on a later tick, so a deferred (human) answer just pauses the sim here.
+ */
 export function startPlateAppearance(w: World): void {
   if (w.gameOver) return;
-  manager.beforePlateAppearance(w);
+  if (w.paStage === 0) {
+    if (!manager.stagePitchingChange(w)) return;
+    w.paStage = 1;
+  }
+  if (w.paStage === 1) {
+    if (!manager.stagePinchRun(w)) return;
+    w.paStage = 2;
+  }
+  if (w.paStage === 2) {
+    if (!manager.stagePinchHit(w)) return;
+    w.paStage = 3;
+  }
+  if (w.paStage === 3) {
+    stepInBatter(w);
+    w.paStage = 4;
+  }
+  if (w.paStage === 4) {
+    const walk = manager.stageIntentionalWalk(w);
+    if (walk === 'wait') return;
+    if (walk === 'walk') {
+      w.count = { balls: 4, strikes: 0 };
+      w.paStage = 0;
+      w.paDone = false;
+      rules.intentionalWalk(w);
+      return;
+    }
+    w.paStage = 5;
+  }
+  if (w.paStage === 5) {
+    if (!manager.stageBunt(w)) return;
+  }
+  w.paStage = 0;
+  w.paDone = false;
+  w.phase = 'prePitch';
+  w.phaseUntil = w.tick + paced(w, WALKUP);
+  w.seq = { lastType: null, lastMph: 0, count: 0 };
+  w.pitch = null;
+  w.swing = null;
+  w.swingPlan = null;
+  w.swingStarted = false;
+  w.prep = { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, steal: null };
+  if (w.ball.holder !== w.pitcher) giveBall(w, w.pitcher);
+}
+
+function stepInBatter(w: World): void {
   const bt = w.battingTeam;
   const slot = bt.lineup[bt.batIdx % 9];
   const b = slot.player;
@@ -108,6 +159,9 @@ export function startPlateAppearance(w: World): void {
   w.count = { balls: 0, strikes: 0 };
   w.paPitches = 0;
   w.play = null;
+  w.swing = null;
+  w.swingPlan = null;
+  w.swingStarted = false;
   b.vx = b.vz = 0;
   const side = w.batStance === 'R' ? 1 : -1;
   if (w.cfg.pace === 0) {
@@ -124,26 +178,18 @@ export function startPlateAppearance(w: World): void {
   b.vmax = (6.65 + 0.031 * b.info.ratings.speed);
   b.anim = 'idle';
   w.pitcher.pit.bf += 1;
+  w.align = {};
   resetDefense(w);
   emit(w, { type: 'batterUp', batterId: b.info.id, pitcherId: w.pitcher.info.id });
-  if (manager.considerIntentionalWalk(w)) {
-    w.count = { balls: 4, strikes: 0 };
-    rules.intentionalWalk(w);
-    return;
-  }
-  w.buntPlan = manager.planBunt(w);
-  w.phase = 'prePitch';
-  w.phaseUntil = w.tick + paced(w, WALKUP);
-  w.seq = { lastType: null, lastMph: 0, count: 0 };
-  w.pitch = null;
-  w.swing = null;
-  w.swingPlan = null;
-  w.swingStarted = false;
-  if (w.ball.holder !== w.pitcher) giveBall(w, w.pitcher);
 }
 
 export function tickPrePitch(w: World): void {
   running.updateLeads(w);
+  // defensive alignment for this pitch (asked as soon as the pitch is set up, so the fielders move during the walk-up)
+  if (!w.prep.alignmentDone) {
+    if (!stageAlignment(w)) return;
+    w.prep.alignmentDone = true;
+  }
   if (w.tick < w.phaseUntil) return;
   // ball must be with the pitcher before he can begin
   if (w.ball.holder !== w.pitcher) {
@@ -151,8 +197,60 @@ export function tickPrePitch(w: World): void {
     if (w.ball.lob) return;
     if (w.ball.holder !== w.pitcher) return;
   }
-  if (running.considerPickoff(w)) return;
+  if (!w.prep.pickoffDone) {
+    const r = running.stagePickoff(w);
+    if (r === 'wait' || r === 'thrown') return;
+    w.prep.pickoffDone = true;
+  }
+  if (!w.prep.pitch) {
+    if (!stagePitch(w)) return;
+  }
+  if (!w.prep.stealsDone) {
+    if (!running.stageSteals(w)) return;
+    w.prep.stealsDone = true;
+  }
   beginWindup(w);
+}
+
+function stageAlignment(w: World): boolean {
+  const b = w.batter;
+  if (!b) return true;
+  const d = ask(
+    w,
+    'align',
+    'alignment',
+    w.fieldingTeam.side,
+    () => ({
+      situation: situationOf(w),
+      batter: b.info,
+      stance: w.batStance,
+      defense: [...w.fieldingTeam.defense].map(([position, p]) => ({ position, playerId: p.info.id })),
+    }),
+  );
+  if (d === PENDING) return false;
+  w.align = d;
+  resetDefense(w);
+  return true;
+}
+
+function stagePitch(w: World): boolean {
+  const P = w.pitcher;
+  const B = w.batter!;
+  const z = w.zone;
+  const d = ask(w, 'pitch', 'pitch', w.fieldingTeam.side, () => ({
+    situation: situationOf(w),
+    pitcher: P.info,
+    batter: B.info,
+    batterStance: w.batStance,
+    arsenal: P.info.arsenal,
+    lastPitchType: w.seq.lastType as never,
+    pitchCount: P.pitchCount,
+    fatigue: fatigueOf(P),
+    zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top },
+  }));
+  if (d === PENDING) return false;
+  w.prep.pitch = d;
+  return true;
 }
 
 function beginReturn(w: World): void {
@@ -182,21 +280,34 @@ export function tickLob(w: World): void {
 }
 
 export function beginWindup(w: World): void {
-  if (w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) && w.rng.next() < 0.0006 * (1 + (50 - w.pitcher.info.ratings.control) / 50)) {
-    rules.balk(w);
-    return;
+  const P = w.pitcher;
+  // an illegal motion: the pitcher's delivery from the set position hitches (execution noise), and the umpire calls it
+  if (w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) {
+    const hitch = Math.abs(w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 100)));
+    if (hitch > HITCH_BALK) {
+      rules.balk(w);
+      return;
+    }
   }
-  const call = callPitch(w);
-  w.pitchAim = { x: call.x, y: call.y, intent: call.intent };
-  (w as unknown as { _spec: unknown })._spec = call.spec;
+  const d = w.prep.pitch!;
+  const spec = P.info.arsenal.find((a) => a.type === d.pitchType) ?? P.info.arsenal[0];
+  const zn = w.zone;
+  const inner = { x: (zn.right - zn.left) * 0.3, y: (zn.top - zn.bottom) * 0.3 };
+  const cy = (zn.top + zn.bottom) / 2;
+  const careful = d.careful ?? (Math.abs(d.targetX) < inner.x && Math.abs(d.targetY - cy) < inner.y);
+  w.pitchAim = { x: d.targetX, y: d.targetY, intent: careful ? 'middle' : 'edge' };
+  (w as unknown as { _spec: unknown })._spec = spec;
   const runnersOn = w.runners.some((r) => r.state === 'live');
   const dur = (runnersOn ? WINDUP_RUNNERS : WINDUP_EMPTY) + w.rng.normal(0, 0.05);
   w.phase = 'windup';
   w.phaseUntil = w.tick + secToTicks(dur);
-  running.decideSteals(w, dur);
+  running.commitSteals(w);
   setAnim(w, w.pitcher, 'windup', dur);
   emit(w, { type: 'windup', pitcherId: w.pitcher.info.id });
 }
+
+/** A hitch in the set position longer than this (s) is an illegal motion. */
+const HITCH_BALK = 0.171;
 
 export function tickWindup(w: World): void {
   running.updateLeads(w);
@@ -239,20 +350,12 @@ export function releasePitch(w: World): void {
   w.ball.touchedGround = false;
   w.ball.touchedWall = false;
   w.ball.path = [];
-  // batter's plan (perception & decision happen inside the model at the decision moment)
-  const ctx = {
-    balls: w.count.balls,
-    strikes: w.count.strikes,
-    outs: w.outs,
-    runnersOn: w.runners.some((r) => r.state === 'live'),
-    scoringPosition: w.runners.some((r) => r.state === 'live' && r.base >= 2),
-    inning: w.inning,
-    scoreDiff: w.battingTeam.runs - w.fieldingTeam.runs,
-  };
-  const fbMph = P.info.arsenal.length ? Math.max(...P.info.arsenal.map((a) => a.mph)) : 90;
-  const buntNow = w.buntPlan && w.count.strikes < 2 ? w.buntPlan.psi : null;
-  w.swingPlan = planSwing(w.batter!.info, w.batStance, pitch, w.zone, ctx, fbMph, w.rng, buntNow);
-  if (w.swingPlan.swing) w.swing = new BatSwing(w.swingPlan);
+  // the batter's decision (swing / take) is asked while the pitch is in flight, once he has seen enough of it
+  w.swingPlan = null;
+  w.swing = null;
+  w.swingObs = null;
+  w.swingDecided = false;
+  w.buntNow = w.buntPlan && w.count.strikes < 2 ? w.buntPlan : null;
   w.phase = 'pitch';
   setAnim(w, P, 'pitch', 0.5);
   w.seq.lastType = spec.type;
@@ -263,14 +366,59 @@ export function releasePitch(w: World): void {
 
 const BODY_HALF_W = 0.10;
 
+/** Perceive the pitch (perception noise first), ask the batter's decision, then plan the physical swing (execution noise after). */
+function stageSwing(w: World): void {
+  const pitch = w.pitch!;
+  const elapsed = (w.tick - w.pitchTick) * TICK;
+  const bunt = w.buntNow;
+  if (!bunt && elapsed < decisionTime(pitch)) return;
+  const B = w.batter!;
+  const P = w.pitcher;
+  const fbMph = P.info.arsenal.length ? Math.max(...P.info.arsenal.map((a) => a.mph)) : 90;
+  if (!w.swingObs) w.swingObs = perceivePitch(B.info, w.batStance, pitch, w.zone, fbMph, w.rng);
+  const obs = w.swingObs;
+  const z = w.zone;
+  const d = ask(
+    w,
+    'swing',
+    'swing',
+    w.battingTeam.side,
+    () => ({
+      situation: situationOf(w),
+      batter: B.info,
+      stance: w.batStance,
+      elapsed,
+      observed: { plateX: obs.front.x, plateY: obs.front.y, distanceFromZone: obs.dPerceived, timeToPlate: Math.max(0, pitch.tPlate - elapsed), speedMph: obs.speedMph, pitchType: obs.recognised ? pitch.type : null },
+      zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top },
+      bunt: bunt ? { kind: bunt.kind, psi: bunt.psi } : null,
+    }),
+    { obs },
+  );
+  if (d === PENDING) return;
+  const ctx = {
+    balls: w.count.balls,
+    strikes: w.count.strikes,
+    outs: w.outs,
+    runnersOn: w.runners.some((r) => r.state === 'live'),
+    scoringPosition: w.runners.some((r) => r.state === 'live' && r.base >= 2),
+    inning: w.inning,
+    scoreDiff: w.battingTeam.runs - w.fieldingTeam.runs,
+  };
+  w.swingPlan = buildSwing(B.info, w.batStance, pitch, obs, d, ctx, w.rng, bunt ? bunt.psi : null, elapsed);
+  if (w.swingPlan.swing) w.swing = new BatSwing(w.swingPlan);
+  w.swingObs = null;
+  w.swingDecided = true;
+}
+
 export function tickPitch(w: World): void {
   const pitch = w.pitch!;
   const ball = w.ball;
   const b = ball.body;
+  if (!w.swingDecided) stageSwing(w);
   const elapsed0 = (w.tick - 1 - w.pitchTick) * TICK;
   const plan = w.swingPlan!;
   let n = 1;
-  if (w.swing && !w.swing.done && (w.swingStarted || elapsed0 + TICK >= plan.startTime)) n = 8;
+  if (w.swing && !w.swing.done && (w.swingStarted || elapsed0 + TICK >= plan!.startTime)) n = 8;
   const dt = TICK / n;
   const bodyX = (w.batStance === 'R' ? 1 : -1) * BATTER_X;
   for (let i = 0; i < n; i++) {
@@ -286,9 +434,9 @@ export function tickPitch(w: World): void {
     if (ball.flags.bounced && n === 1) ball.touchedGround = true;
     // swing start + bat advance
     if (w.swing && !w.swing.done) {
-      if (!w.swingStarted && tSub >= plan.startTime) {
+      if (!w.swingStarted && tSub >= plan!.startTime) {
         w.swingStarted = true;
-        setAnim(w, w.batter!, 'swing', plan.tauC * 2.1);
+        setAnim(w, w.batter!, 'swing', plan!.tauC * 2.1);
         emit(w, { type: 'swing', batterId: w.batter!.info.id });
       }
       if (w.swingStarted) {
@@ -502,28 +650,26 @@ export function umpireCall(w: World, px: number, py: number): boolean {
 }
 
 /** Batter's pitch-by-pitch state reset helpers for the next pitch. */
-/** Send every fielder back to his spot (shading with the situation). */
+/** Send every fielder back to his spot, shaded by the current alignment decision (`w.align`). */
 export function resetDefense(w: World): void {
   const t = w.fieldingTeam;
-  const runnerThird = w.runners.some((r) => r.state === 'live' && r.base === 3);
-  const runnerFirst = w.runners.some((r) => r.state === 'live' && r.base === 1);
-  const infieldIn = runnerThird && w.outs < 2 && w.inning >= 7 && Math.abs(w.battingTeam.runs - t.runs) <= 1;
-  const dpDepth = runnerFirst && w.outs < 2;
-  const power = w.batter ? w.batter.info.ratings.power : 50;
-  const ofDepth = power > 65 ? 5 : power < 40 ? -4 : 0;
+  const a: AlignmentDecision = w.align ?? {};
+  const pullSide = w.batStance === 'R' ? 1 : -1; // a right-handed batter pulls toward third base (+x)
   for (const [pos, F] of t.defense) {
     if (!F.onField) continue;
     const s = DEFAULT_SPOTS[pos as keyof typeof DEFAULT_SPOTS];
     let x = s.x;
     let z = s.z;
     if (pos === '1B' || pos === '2B' || pos === 'SS' || pos === '3B') {
-      if (infieldIn) z -= 6.5;
-      else if (dpDepth && (pos === '2B' || pos === 'SS')) {
+      if (a.infieldIn) z -= 6.5;
+      else if (a.doublePlayDepth && (pos === '2B' || pos === 'SS')) {
         z -= 2.0;
         x *= 0.85;
       }
+      if (a.shift) x += pullSide * clamp(a.shift, 0, 1) * (pos === '1B' ? 2.5 : 7);
+      if (a.guardLines && (pos === '1B' || pos === '3B')) x = Math.sign(x) * Math.min(Math.abs(x) + 3, z * 0.93);
     }
-    if (pos === 'LF' || pos === 'CF' || pos === 'RF') z += ofDepth;
+    if (pos === 'LF' || pos === 'CF' || pos === 'RF') z += a.outfieldDepth ?? 0;
     F.plan.kind = 'idle';
     F.plan.releaseAt = 0;
     F.lookAt = { x: 0, z: 0 };
@@ -540,6 +686,7 @@ export function resetDefense(w: World): void {
 
 export function readyNextPitch(w: World, seconds = BETWEEN): void {
   resetDefense(w);
+  w.prep = { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, steal: null };
   w.phase = 'prePitch';
   w.phaseUntil = w.tick + paced(w, seconds);
   w.swing = null;

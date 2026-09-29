@@ -1,6 +1,10 @@
 import { emit } from './events';
+import { PENDING } from './decisions';
+import type { BuntDecision } from './decisions';
+import { ask, situationOf } from './dispatch';
+import { fatigueOf } from './pitchai';
 import { DEFAULT_SPOTS } from './setup';
-import type { PlayerRT, TeamRT, World } from './world';
+import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { giveBall } from './util';
 
 const pitcherQuality = (p: PlayerRT) => p.info.ratings.velocity * 0.9 + p.info.ratings.control * 0.5 + p.info.ratings.movement * 0.5;
@@ -10,9 +14,12 @@ function slotOf(t: TeamRT, p: PlayerRT) {
   return t.lineup.find((s) => s.player === p);
 }
 
-/** Manager decisions taken between batters: bullpen, pinch hitters and pinch runners. */
+// ---------------------------------------------------------------------------------------------
+// the built-in manager (AI): decisions as pure functions of the live state
+// ---------------------------------------------------------------------------------------------
+
 /** Late-game intentional walk: first base open, runner in scoring position, dangerous hitter due, weaker bat on deck. */
-export function considerIntentionalWalk(w: World): boolean {
+export function aiIntentionalWalk(w: World): boolean {
   const t = w.battingTeam;
   const f = w.fieldingTeam;
   if (w.inning < 7 || f.runs < t.runs || f.runs - t.runs > 2) return false;
@@ -27,13 +34,14 @@ export function considerIntentionalWalk(w: World): boolean {
   const nq = next.info.isPitcher ? 25 : hitterQuality(next);
   if (bq < 58 || nq > bq - 7) return false;
   if (w.outs >= 2 && nq > bq - 12) return false;
-  return w.rng.next() < 0.85;
+  return w.aiRng.next() < 0.85;
 }
 
 /** Bunt intent for a plate appearance: sacrifice with weak hitters (and pitchers), or a bunt for a hit by a fast, light hitter. */
-export function planBunt(w: World): { kind: 'sac' | 'hit'; psi: number } | null {
+export function aiBunt(w: World): BuntDecision {
   const b = w.batter!;
   const t = w.battingTeam;
+  const rng = w.aiRng;
   const live = w.runners.filter((q) => q.state === 'live' && !q.isBatter);
   const on1 = live.some((q) => q.base === 1);
   const on2 = live.some((q) => q.base === 2);
@@ -46,21 +54,16 @@ export function planBunt(w: World): { kind: 'sac' | 'hit'; psi: number } | null 
     if (b.info.isPitcher) p = 0.75;
     else if (quality < 45 && w.inning >= 6 && diff >= -1 && diff <= 1) p = 0.4;
     else if (quality < 40 && w.inning >= 4 && Math.abs(diff) <= 2) p = 0.15;
-    if (p > 0 && w.rng.next() < p) return { kind: 'sac', psi: -(0.05 + w.rng.next() * 0.09) };
+    if (p > 0 && rng.next() < p) return { kind: 'sac', psi: -(0.05 + rng.next() * 0.09) };
   }
-  if (!on2 && !on3 && R.speed >= 72 && R.power < 46 && w.rng.next() < 0.045) {
+  if (!on2 && !on3 && R.speed >= 72 && R.power < 46 && rng.next() < 0.045) {
     return { kind: 'hit', psi: w.batStance === 'R' ? 0.13 : -0.13 };
   }
   return null;
 }
 
-export function beforePlateAppearance(w: World): void {
-  considerPitchingChange(w, w.fieldingTeam);
-  considerPinchRunner(w);
-  considerPinchHitter(w);
-}
-
-function considerPitchingChange(w: World, t: TeamRT): void {
+/** The reliever the manager would bring in now (or null). */
+export function aiPitchingChange(w: World, t: TeamRT): PlayerRT | null {
   const p = t.pitcher;
   const limit = 30 + p.info.ratings.stamina;
   const isStarter = p.info.id === t.team.startingPitcherId;
@@ -82,18 +85,51 @@ function considerPitchingChange(w: World, t: TeamRT): void {
     if (p.pit.bf >= 6 && p.pit.outs >= 3 && p.pitchCount > 22 && w.count.balls === 0 && w.count.strikes === 0 && !runnersOn && lateAndClose && p.info.id !== t.team.bullpen[0]) pull = true;
   }
   if (lateAndClose && closerAvail && p.info.id !== closerAvail.info.id && inn === 9) pull = true;
-  if (!pull) return;
+  if (!pull) return null;
   const pool = t.bullpen.filter((b) => !b.used);
-  if (!pool.length) return;
-  let pick: PlayerRT;
-  if (lateAndClose && closerAvail) pick = closerAvail;
-  else {
-    const nonCloser = pool.filter((b) => b.info.id !== t.team.bullpen[0]);
-    const list = nonCloser.length ? nonCloser : pool;
-    pick = list.reduce((a, c) => (pitcherQuality(c) > pitcherQuality(a) ? c : a));
-  }
-  substitutePitcher(w, t, pick);
+  if (!pool.length) return null;
+  if (lateAndClose && closerAvail) return closerAvail;
+  const nonCloser = pool.filter((b) => b.info.id !== t.team.bullpen[0]);
+  const list = nonCloser.length ? nonCloser : pool;
+  return list.reduce((a, c) => (pitcherQuality(c) > pitcherQuality(a) ? c : a));
 }
+
+export function aiPinchHitter(w: World): PlayerRT | null {
+  const t = w.battingTeam;
+  const slot = t.lineup[t.batIdx % 9];
+  const b = slot.player;
+  if (w.inning < 7) return null;
+  const diff = t.runs - (t === w.teams.home ? w.teams.away.runs : w.teams.home.runs);
+  const leverage = (w.runners.some((r) => r.state === 'live' && r.base >= 2) ? 1 : 0) + (Math.abs(diff) <= 2 ? 1 : 0) + (w.inning >= 9 ? 1 : 0);
+  if (leverage < 2 && slot.position !== 'P') return null;
+  if (w.outs >= 2 && leverage < 3) return null;
+  const bq = slot.position === 'P' ? 20 : hitterQuality(b);
+  const cands = t.bench.filter((p) => !p.used && !p.info.isPitcher);
+  if (!cands.length) return null;
+  const best = cands.reduce((a, c) => (hitterQuality(c) > hitterQuality(a) ? c : a));
+  if (hitterQuality(best) < bq + 7) return null;
+  if (slot.position === 'P') return null;
+  return best;
+}
+
+export function aiPinchRunner(w: World): { r: RunnerRT; best: PlayerRT } | null {
+  const t = w.battingTeam;
+  if (w.inning < 8) return null;
+  const diff = t.runs - (t === w.teams.home ? w.teams.away.runs : w.teams.home.runs);
+  if (diff > 0 || diff < -1) return null;
+  if (w.outs >= 2) return null;
+  const r = w.runners.find((q) => q.state === 'live' && q.base >= 1 && q.base <= 2 && !q.ghost);
+  if (!r) return null;
+  if (r.p.info.ratings.speed >= 48) return null;
+  const cands = t.bench.filter((p) => !p.used && !p.info.isPitcher && p.info.ratings.speed >= 62);
+  if (!cands.length) return null;
+  const best = cands.reduce((a, c) => (c.info.ratings.speed > a.info.ratings.speed ? c : a));
+  return { r, best };
+}
+
+// ---------------------------------------------------------------------------------------------
+// applying substitutions
+// ---------------------------------------------------------------------------------------------
 
 export function substitutePitcher(w: World, t: TeamRT, np: PlayerRT): void {
   const old = t.pitcher;
@@ -139,42 +175,7 @@ function replaceInLineup(w: World, t: TeamRT, out: PlayerRT, inn: PlayerRT, reas
   emit(w, { type: 'substitution', team: t.side, inId: inn.info.id, outId: out.info.id, reason });
 }
 
-function considerPinchHitter(w: World): void {
-  const t = w.battingTeam;
-  const slot = t.lineup[t.batIdx % 9];
-  const b = slot.player;
-  if (w.inning < 7) return;
-  if (slot.position === 'P') {
-    // pitcher's spot in a no-DH game
-    if (b.pit.pitches > 0 && w.inning >= 6) {
-      /* fall through */
-    }
-  }
-  const diff = t.runs - (t === w.teams.home ? w.teams.away.runs : w.teams.home.runs);
-  const leverage = (w.runners.some((r) => r.state === 'live' && r.base >= 2) ? 1 : 0) + (Math.abs(diff) <= 2 ? 1 : 0) + (w.inning >= 9 ? 1 : 0);
-  if (leverage < 2 && slot.position !== 'P') return;
-  if (w.outs >= 2 && leverage < 3) return;
-  const bq = slot.position === 'P' ? 20 : hitterQuality(b);
-  const cands = t.bench.filter((p) => !p.used && !p.info.isPitcher);
-  if (!cands.length) return;
-  const best = cands.reduce((a, c) => (hitterQuality(c) > hitterQuality(a) ? c : a));
-  if (hitterQuality(best) < bq + 7) return;
-  if (slot.position === 'P') return;
-  replaceInLineup(w, t, b, best, 'pinch hitter');
-}
-
-function considerPinchRunner(w: World): void {
-  const t = w.battingTeam;
-  if (w.inning < 8) return;
-  const diff = t.runs - (t === w.teams.home ? w.teams.away.runs : w.teams.home.runs);
-  if (diff > 0 || diff < -1) return;
-  if (w.outs >= 2) return;
-  const r = w.runners.find((q) => q.state === 'live' && q.base >= 1 && q.base <= 2 && !q.ghost);
-  if (!r) return;
-  if (r.p.info.ratings.speed >= 48) return;
-  const cands = t.bench.filter((p) => !p.used && !p.info.isPitcher && p.info.ratings.speed >= 62);
-  if (!cands.length) return;
-  const best = cands.reduce((a, c) => (c.info.ratings.speed > a.info.ratings.speed ? c : a));
+function pinchRun(w: World, t: TeamRT, r: RunnerRT, best: PlayerRT): void {
   const out = r.p;
   replaceInLineup(w, t, out, best, 'pinch runner');
   r.p = best;
@@ -186,4 +187,78 @@ function considerPinchRunner(w: World): void {
   best.vmax = 6.65 + 0.031 * best.info.ratings.speed;
   best.accel = 6.6 + 0.03 * best.info.ratings.speed;
   out.onField = false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// plate-appearance start: each stage asks its decision (returns true when done, false while waiting)
+// ---------------------------------------------------------------------------------------------
+
+export function stagePitchingChange(w: World): boolean {
+  const t = w.fieldingTeam;
+  const pool = t.bullpen.filter((b) => !b.used);
+  if (!pool.length) return true;
+  const bt = w.battingTeam;
+  const due = bt.lineup[bt.batIdx % 9].player;
+  const d = ask(
+    w,
+    'pc',
+    'pitchingChange',
+    t.side,
+    () => ({
+      situation: situationOf(w),
+      current: { info: t.pitcher.info, pitchCount: t.pitcher.pitchCount, fatigue: fatigueOf(t.pitcher), line: { ...t.pitcher.pit }, isStarter: t.pitcher.info.id === t.team.startingPitcherId },
+      bullpen: pool.map((p) => ({ info: p.info, isCloser: p.info.id === t.team.bullpen[0] })),
+      batter: due.info,
+    }),
+    { t },
+  );
+  if (d === PENDING) return false;
+  const np = d.replaceWith ? pool.find((p) => p.info.id === d.replaceWith) : null;
+  if (np) substitutePitcher(w, t, np);
+  return true;
+}
+
+export function stagePinchRun(w: World): boolean {
+  const t = w.battingTeam;
+  const bench = t.bench.filter((p) => !p.used && !p.info.isPitcher);
+  const cands = w.runners.filter((q) => q.state === 'live' && q.base >= 1 && q.base <= 3 && !q.ghost && !q.isBatter);
+  if (!bench.length || !cands.length) return true;
+  const d = ask(w, 'pr', 'pinchRun', t.side, () => ({ situation: situationOf(w), runners: cands.map((q) => ({ base: q.base, info: q.p.info })), bench: bench.map((p) => p.info) }));
+  if (d === PENDING) return false;
+  if (d) {
+    const r = cands.find((q) => q.base === d.base);
+    const best = bench.find((p) => p.info.id === d.playerId);
+    if (r && best) pinchRun(w, t, r, best);
+  }
+  return true;
+}
+
+export function stagePinchHit(w: World): boolean {
+  const t = w.battingTeam;
+  const bench = t.bench.filter((p) => !p.used && !p.info.isPitcher);
+  if (!bench.length) return true;
+  const slot = t.lineup[t.batIdx % 9];
+  const d = ask(w, 'ph', 'pinchHit', t.side, () => ({ situation: situationOf(w), due: slot.player.info, position: slot.position, bench: bench.map((p) => p.info), pitcher: w.pitcher.info }));
+  if (d === PENDING) return false;
+  const best = d.playerId ? bench.find((p) => p.info.id === d.playerId) : null;
+  if (best && best !== slot.player) replaceInLineup(w, t, slot.player, best, 'pinch hitter');
+  return true;
+}
+
+/** 'wait' while the answer is pending; 'walk' if the batter is to be put on. */
+export function stageIntentionalWalk(w: World): 'wait' | 'walk' | 'pitch' {
+  const t = w.battingTeam;
+  const b = w.batter!;
+  const next = t.lineup[(t.batIdx + 1) % 9].player;
+  const d = ask(w, 'ibb', 'intentionalWalk', w.fieldingTeam.side, () => ({ situation: situationOf(w), batter: b.info, onDeck: next.info }));
+  if (d === PENDING) return 'wait';
+  return d.walk ? 'walk' : 'pitch';
+}
+
+export function stageBunt(w: World): boolean {
+  const b = w.batter!;
+  const d = ask(w, 'bunt', 'bunt', w.battingTeam.side, () => ({ situation: situationOf(w), batter: b.info, stance: w.batStance }));
+  if (d === PENDING) return false;
+  w.buntPlan = d;
+  return true;
 }

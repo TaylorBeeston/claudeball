@@ -56,7 +56,7 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
-    r.bias = w.rng.normal(0, 0.28);
+    r.bias = w.aiRng.normal(0, 0.28);
   }
   fielding.initFielderPlans(w, kind === 'battedBall' ? 0 : 0.05);
   w.ball.pathDirty = true;

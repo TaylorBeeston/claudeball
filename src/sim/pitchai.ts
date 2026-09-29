@@ -27,7 +27,7 @@ export function fatigueOf(p: PlayerRT): number {
 
 /** The catcher / pitcher pitch-calling AI: chooses an intent from the count and batter, then a pitch and a target. */
 export function callPitch(w: World): PitchCall {
-  const rng = w.rng;
+  const rng = w.aiRng;
   const P = w.pitcher;
   const B = w.batter!;
   const { balls, strikes } = w.count;
