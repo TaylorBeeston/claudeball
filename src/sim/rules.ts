@@ -78,6 +78,7 @@ export function walk(w: World): void {
   const b = w.batter!;
   b.bat.bb++;
   w.pitcher.pit.bb++;
+  w.pitcher.rattle = Math.min(1, w.pitcher.rattle + 0.12);
   emit(w, { type: 'walk', batterId: b.info.id, intentional: false });
   awardBases(w, b, 1);
   endPlateAppearance(w, 'walk', { ab: false, bb: true });
@@ -226,6 +227,7 @@ export function scoreRun(w: World, r: RunnerRT): void {
   r.p.bat.r++;
   const resp = r.responsible;
   resp.pit.r++;
+  resp.rattle = Math.min(1, resp.rattle + 0.3);
   const play = w.play;
   const earned = !r.reachedOnError && !r.ghost && !(play && play.hadError && false);
   r.earned = earned;
@@ -278,6 +280,7 @@ export function endPlateAppearance(w: World, result: string, r: PAResult): void 
       w.pitcher.pit.hr++;
     }
     w.pitcher.pit.h++;
+    w.pitcher.rattle = Math.min(1, w.pitcher.rattle + 0.08);
     w.battingTeam.hits++;
   }
   if (r.sf) b.bat.sf++;

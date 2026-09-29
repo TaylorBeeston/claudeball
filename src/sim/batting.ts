@@ -1,4 +1,5 @@
 import { BallBody } from './ball';
+import { breakingNoiseScale, breakingRecognition, clutchScale, consistencyScale, formContactShift, formPowerShift, gapAttackAngle, gapSpread, pullTimeShift } from './attributes';
 import { BALL_MASS, BALL_RADIUS, PLATE_DEPTH } from './field';
 import { DEG, Vec3, clamp } from './math';
 import { PitchSample, StrikeZone, ThrownPitch, pathAt, timeAtZ, zoneDistance } from './pitching';
@@ -106,7 +107,9 @@ export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch,
   // Observed state at the decision moment (noisy)
   const speedNoise = 1 + rng.normal(0, 0.02 * ne);
   // batters lean on expectation (fastball) unless they recognise the pitch: eye -> recognition
-  const pRec = clamp(0.35 + 0.0075 * R.eye + (pitch.type === 'CH' || pitch.type === 'FS' ? -0.12 : 0), 0.15, 0.95);
+  const offspeed = pitch.type === 'CH' || pitch.type === 'FS' || pitch.type === 'SL' || pitch.type === 'CU' || pitch.type === 'SW';
+  const pRec = clamp(0.35 + 0.0075 * R.eye + (pitch.type === 'CH' || pitch.type === 'FS' ? -0.12 : 0) + (offspeed ? breakingRecognition(R.breaking) : 0), 0.15, 0.95);
+  const bs = offspeed ? breakingNoiseScale(R.breaking) : 1; // a poor breaking-ball eye misreads the movement
   const recognised = rng.next() < pRec;
   let vz = sd.vz;
   if (!recognised) {
@@ -129,8 +132,8 @@ export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch,
   if (recognised) {
     const dtF = Math.max(0.05, pitch.tPlate);
     const end = pathAt(pitch.path, pitch.tPlate);
-    ax = ((end.vx - s0.vx) / dtF) * (1 + rng.normal(0, 0.18 * ne));
-    ay = ((end.vy - s0.vy) / dtF) * (1 + rng.normal(0, 0.12 * ne));
+    ax = ((end.vx - s0.vx) / dtF) * (1 + rng.normal(0, 0.18 * ne * bs));
+    ay = ((end.vy - s0.vy) / dtF) * (1 + rng.normal(0, 0.12 * ne * bs));
   } else {
     // assumes a typical (mostly straight, slightly rising) fastball
     ax = rng.normal(0, 0.8);
@@ -151,7 +154,7 @@ export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch,
     return { t: tDec + t, x: obs.x + obs.vx * t + 0.5 * ax * t * t, y: obs.y + obs.vy * t + 0.5 * ay * t * t };
   };
   const front = predictAtZ(PLATE_DEPTH);
-  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.125);
+  const dPerceived = zoneDistance(zone, front.x, front.y) + rng.normal(0, 0.125 * bs);
   return { tDec, pivot, front, dPerceived, recognised, speedMph: Math.hypot(obs.vx, obs.vy, obs.vz) / 0.44704, predictAtZ };
 }
 
@@ -178,8 +181,16 @@ export interface SwingChoice {
 }
 
 /** Turn a swing decision into a physical swing: the batter's execution noise (timing, plane, bat speed) is drawn here, AFTER the decision. */
-export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, obsv: SwingObservation, choice: SwingChoice, ctx: BattingContext, rng: Rng, buntPsi: number | null = null, now = 0): SwingPlan {
-  const R = b.ratings;
+/** What the moment does to the swing: his form today and the pressure he is under. */
+export interface SwingMods {
+  form: number;
+  pressure: number;
+}
+
+export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, obsv: SwingObservation, choice: SwingChoice, ctx: BattingContext, rng: Rng, buntPsi: number | null = null, now = 0, mods: SwingMods = { form: 0, pressure: 0 }): SwingPlan {
+  // effective ratings today: form moves contact / power; consistency and composure scale every noise term below
+  const R = { ...b.ratings, contact: clamp(b.ratings.contact + formContactShift(mods.form), 20, 90), power: clamp(b.ratings.power + formPowerShift(mods.form), 20, 90) };
+  const noise = consistencyScale(R.consistency) * clutchScale(R.clutch, mods.pressure) * Math.exp(rng.normal(0, 0.12 * consistencyScale(R.consistency)));
   const { pivot, tDec, front, predictAtZ } = obsv;
   const protect = choice.protect ?? ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
@@ -235,16 +246,18 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const r3 = Math.hypot(dx, dy, dz);
   const rh = clamp(r3 - S_AIM, 0.3, 0.82);
   const thetaC = Math.atan2(dx, dz);
-  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, 0.009 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004);
+  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.009 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
 
   const effort = clamp(choice.effort ?? (protect ? 0.965 : 1.0), 0.6, 1);
-  const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03));
+  const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03 * noise));
   const rSweet = rh + BAT_S_NODE;
-  const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
+  // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
+  const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0148 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
+  const sigmaT = 0.0148 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
-  const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
+  // a puller gets the bat out front (contact earlier), an opposite-field hitter lets it travel
+  const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late + pullTimeShift(R.pull));
   return {
     swing: true,
     ...baseInfo,

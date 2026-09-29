@@ -71,6 +71,12 @@ export interface PlayerRT {
   gait: 'trot' | 'turn' | null;
   /** Tick of the last `wallContact` event for this player (rate limit). */
   wallTick: number;
+  /** Sprint fatigue 0 (fresh) .. 1. */
+  legs: number;
+  /** Hitter's day-to-day form (standard-normal-ish, AR(1) over his plate appearances). */
+  form: number;
+  /** Pitcher's rattled state 0..1 (runs, walks and hits against him this outing). */
+  rattle: number;
 }
 
 export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';

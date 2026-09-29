@@ -80,7 +80,7 @@ describe('balks', () => {
     const r3 = addRunner(w, 3, 2);
     const before = { ...w.count };
     balk(w);
-    for (let i = 0; i < 200; i++) l.g.step(0.05);
+    for (let i = 0; i < 240 * 30 && !(r1.base >= 2 && (r3.state === 'scored' || r3.base === 4)); i++) l.g.step(1 / 240);
     expect(r1.base).toBe(2);
     expect(w.teams.away.runs + w.teams.home.runs).toBeGreaterThanOrEqual(1);
     expect(r3.state === 'scored' || r3.base === 4).toBe(true);

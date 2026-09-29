@@ -4,7 +4,7 @@ import { Rng } from './rng';
 import { newDecState } from './dispatch';
 import { createAI } from './ai';
 import { generateTeam } from './roster';
-import { accelOf, sprintSpeed } from './movement';
+import { accelOfRating, sprintOf } from './attributes';
 import { strikeZoneFor } from './pitching';
 import type { BatterLine, FieldPosition, GameConfig, PitcherLine, PlayerInfo, Team, TeamSide } from './types';
 import type { LineupSlot, PlayerRT, TeamRT, World } from './world';
@@ -28,7 +28,6 @@ export const DEFAULT_SPOTS: Record<Exclude<FieldPosition, 'DH'>, { x: number; z:
 export const DUGOUT = { home: { x: 30, z: 10 }, away: { x: -30, z: 10 } }; // home dugout on the third-base side
 
 function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
-  const sp = info.ratings.speed;
   return {
     info,
     team,
@@ -46,8 +45,8 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     lookAt: null,
     goal: null,
     reactUntil: 0,
-    vmax: sprintSpeed(sp),
-    accel: accelOf(sp),
+    vmax: sprintOf(info.ratings.speed),
+    accel: accelOfRating(info.ratings.acceleration),
     role: 'fielder',
     anim: 'idle',
     animStart: 0,
@@ -57,6 +56,9 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     fatigue: 0,
     onField: false,
     leap: null,
+    legs: 0,
+    form: 0,
+    rattle: 0,
     gait: null,
     wallTick: -9999,
     plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
