@@ -29,7 +29,13 @@ export type AnimHint =
   /** home-run / dead-ball jog, rounding a base, an outfielder leaping at the wall */
   | 'trot'
   | 'run_turn'
-  | 'catch_jump';
+  | 'catch_jump'
+  /** easy walk / jog back to position (the sim reports it below ~2 m/s) */
+  | 'walk'
+  /** glove-to-hand ball transfer, standing */
+  | 'transfer'
+  /** easy casual throw (return throws after routine outs) */
+  | 'toss';
 
 export type PlayerRole =
   | 'pitcher'
@@ -64,6 +70,18 @@ export interface PlayerSnap {
   animTime?: number;
   /** 0..1 progress through a windup/swing/throw/slide style animation, if the sim reports it */
   animProgress?: number;
+  /** seconds the current one-shot hint lasts (the windup's real length, tempo included), when known */
+  animDur?: number;
+  hasBall?: boolean;
+  /** height / weight / build and looks, for per-player variety */
+  physique?: { heightM: number; weightKg: number; build: 'lean' | 'athletic' | 'stocky' | 'heavy' };
+  appearance?: { skin: number; hairColor: number; hairStyle: number; facialHair: number; seed: number };
+  /** pitchers: mechanics; `fromStretch` is live (runners on) */
+  delivery?: { style: 'overhand' | 'three_quarter' | 'sidearm' | 'submarine'; armSlotDeg: number; tempo: number; fromStretch: boolean };
+  /** 20-80 scouting ratings (velocity in mph) */
+  ratings?: Record<string, number>;
+  /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */
+  pitchType?: string;
 }
 
 export interface BallSnap {
@@ -102,6 +120,29 @@ export interface PersonInfo {
   hand: 'L' | 'R';
   /** free-form stat line, e.g. ".291 AVG  24 HR" */
   stats?: string;
+  ratings?: Record<string, number>;
+  /** pitchers: the pitch mix */
+  arsenal?: { type: string; mph: number; grade?: number }[];
+  height?: number;
+  position?: string;
+}
+
+/** Live box-score stats, as the sim reports them (see `TeamStatsSnapshot`). */
+export interface StatsBat { pa: number; ab: number; h: number; doubles: number; triples: number; hr: number; bb: number; so: number; rbi: number; r: number; sb: number; avg: number; obp: number; slg: number; ops: number }
+export interface StatsPit { outs: number; bf: number; h: number; r: number; er: number; bb: number; so: number; hr: number; pitches: number; strikes: number; ip: string; era: number; whip: number }
+export interface StatsEntry {
+  playerId: string;
+  name: string;
+  jersey: number;
+  position: string;
+  inGame: boolean;
+  game: { batting: StatsBat; pitching: StatsPit | null };
+  season: { batting: StatsBat; pitching: StatsPit | null };
+}
+export interface TeamStatsView {
+  batters: StatsEntry[];
+  pitchers: StatsEntry[];
+  totals: { runs: number; hits: number; errors: number; lob: number };
 }
 
 export interface GameState {
@@ -120,6 +161,10 @@ export interface GameState {
   pitcher: PersonInfo | null;
   teams: { away: TeamInfo; home: TeamInfo };
   over: boolean;
+  /** live box-score stats for both teams, when the sim provides them */
+  stats?: { away: TeamStatsView; home: TeamStatsView };
+  /** pitcher fatigue 0..1 and pitch count, when known */
+  pitchCount?: number;
 }
 
 export type GameEvent =

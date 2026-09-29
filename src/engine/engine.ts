@@ -173,8 +173,12 @@ export class Engine {
     if (a.bat) this.bat.useModel(a.bat, this.env);
     if (a.characters.size) {
       this.players.makePuppet = (snap) => {
-        const tpl = a.characters.get(templateNameFor(snap)) ?? a.characters.get('player_base');
-        return tpl ? new GltfPuppet(tpl, snap.id) : new Puppet(snap.id);
+        // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
+        // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
+        const base = a.characters.get('player_base');
+        const name = snap.role !== 'umpire' && base?.full ? 'player_base' : templateNameFor(snap);
+        const tpl = a.characters.get(name) ?? base;
+        return tpl ? new GltfPuppet(tpl, snap, a.gear) : new Puppet(snap.id);
       };
       this.players.reset();
     }
@@ -283,8 +287,15 @@ export class Engine {
       grip.getWorldQuaternion(this.gripFrom.quat);
       this.bat.update(rs, this.gripFrom, blend);
     } else this.bat.update(rs);
+    this.players.update(rs, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall());
+    // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
+    const held = this.players.ballHeld;
+    if (this.ball.heldByPlayer && !held && rs.ball.visible) {
+      const sim = new Vector3(rs.ball.pos.x, rs.ball.pos.y, rs.ball.pos.z);
+      if (sim.distanceTo(this.players.heldPos) < 1.5) this.ball.released(this.players.heldPos, sim);
+    }
+    this.ball.heldByPlayer = held;
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
-    this.players.update(rs, animDt, this.ball.worldPos, this.bat);
 
     // batted distance once it first lands
     if (!this.landed && !out.replaying && state.ball.visible && state.ball.pos.y < 0.12 && state.ball.pos.z > 1) {
