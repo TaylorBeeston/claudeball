@@ -63,6 +63,12 @@ HDRI download only means the site uses the procedural sky. The build ships `asse
 - Sky HDRIs: [Poly Haven](https://polyhaven.com/hdris) (CC0), *Kloofendal 48d Partly Cloudy (Pure Sky)* and *Qwantani Dusk 2 (Pure Sky)*.
 - Rendering: [three.js](https://threejs.org/). Models and animation are original, built in Blender.
 
+## License
+
+Claudeball's own code and assets are released under the [MIT License](LICENSE). Bundled and downloaded third-party pieces keep
+their own terms: [three.js](https://threejs.org/) is MIT, and the Poly Haven sky HDRIs (fetched by `npm run hdri`, not stored in this
+repo) are CC0.
+
 ## Layout
 
 | path | what |
