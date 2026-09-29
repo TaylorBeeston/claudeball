@@ -1,4 +1,4 @@
-for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_body", "player_cloth", "player_extra", "player_morph"): exec(open(CB_SRC + f"/{f}.py").read())
+for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_body", "player_cloth", "player_extra", "player_morph"): exec(open(CB_SRC + f"/{f}.py").read())
 import os
 reset_scene()
 arm = build_armature()
