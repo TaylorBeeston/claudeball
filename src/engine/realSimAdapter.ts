@@ -204,10 +204,12 @@ export class RealSimAdapter implements GameLike {
       const role: PlayerRole = p.role === 'fielder' ? (POS_ROLE[p.position] ?? 'center') : (p.role as PlayerRole);
       const isBat = p.role === 'batter';
       const hand = isBat ? (p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats) : p.throws;
-      const nominal = NOMINAL[p.anim];
+      // the sim's casual hints have no clip of their own yet: an easy toss plays the throw, the glove-to-hand transfer the ready pose
+      const anim: AnimHint = (p.anim as string) === 'toss' ? 'throw' : (p.anim as string) === 'transfer' ? 'idle' : p.anim;
+      const nominal = NOMINAL[anim];
       return {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
-        pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
+        pos: p.pos, facing: p.facing, vel: p.vel, anim,
         animTime: nominal ? p.animT * nominal : undefined, animProgress: nominal ? p.animT : undefined,
       };
     });

@@ -18,6 +18,8 @@ import * as rules from './rules';
 import * as inplay from './inplay';
 import * as manager from './manager';
 import * as running from './running';
+import { ensureBallReturn, hurryStragglers, readyToPitch, READY_TIMEOUT, sendHome, sendToDugout } from './handling';
+export { tickLob } from './handling';
 
 export const BATTER_X = 0.72;
 export const CATCH_Z = -0.8;
@@ -45,6 +47,10 @@ export function startHalfInning(w: World): void {
   w.fieldingTeam.pitcher.rattle *= 0.4; // a new half-inning: he shakes off trouble
   for (const r of w.exiting) r.p.onField = false;
   w.exiting = [];
+  for (const l of w.leavers) l.p.onField = false;
+  w.leavers = [];
+  w.ret = null;
+  w.hornKind = null;
   const t = w.battingTeam;
   while (t.linescore.length < w.inning) t.linescore.push(0);
   w.teams.home.linescore.length = Math.max(w.teams.home.linescore.length, w.inning - (bottom ? 0 : 1));
@@ -68,19 +74,28 @@ export function startHalfInning(w: World): void {
     } else {
       p.x = dug.x + (p.info.jersey % 5) - 2;
       p.z = dug.z + (p.info.jersey % 3);
-      p.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.7 };
+      p.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.85 }; // they run out to their positions
     }
+    p.home = { x: spot.x, z: spot.z };
     p.facing = Math.atan2(-p.x, -p.z + 0.001);
     p.lookAt = { x: 0, z: 0 };
     p.anim = 'idle';
   }
   // batting team players off the field
   for (const p of w.battingTeam.players.values()) {
-    p.onField = false;
-    p.role = 'batter';
-    p.vx = p.vz = 0;
-    p.goal = null;
+    const wasFielding = p.onField && w.cfg.pace !== 0 && w.tick > 0;
+    p.role = wasFielding && (p.role === 'pitcher' || p.role === 'catcher') ? p.role : 'batter';
     p.hasBall = false;
+    p.home = null;
+    if (wasFielding) {
+      // the side that just took the field jogs in to its dugout
+      p.goal = null;
+      w.leavers.push({ p, since: w.tick });
+    } else {
+      p.onField = false;
+      p.vx = p.vz = 0;
+      p.goal = null;
+    }
   }
   giveBall(w, w.pitcher);
   // extra innings: automatic runner on second
@@ -145,7 +160,7 @@ export function startPlateAppearance(w: World): void {
   w.swing = null;
   w.swingPlan = null;
   w.swingStarted = false;
-  w.prep = { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, steal: null };
+  w.prep = freshPrep();
   if (w.ball.holder !== w.pitcher) giveBall(w, w.pitcher);
 }
 
@@ -165,13 +180,18 @@ function stepInBatter(w: World): void {
   w.swing = null;
   w.swingPlan = null;
   w.swingStarted = false;
-  b.vx = b.vz = 0;
   const side = w.batStance === 'R' ? 1 : -1;
+  const walkingIn = w.leavers.some((l) => l.p === b); // he was still jogging in from the field: he goes on to the box from there
+  w.leavers = w.leavers.filter((l) => l.p !== b);
   if (w.cfg.pace === 0) {
+    b.vx = b.vz = 0;
     b.x = side * BATTER_X;
     b.z = 0.15;
     b.goal = null;
+  } else if (walkingIn) {
+    b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: 0.7 };
   } else {
+    b.vx = b.vz = 0;
     b.x = side * 3.2;
     b.z = -4.0;
     b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: 0.5 };
@@ -196,11 +216,19 @@ export function tickPrePitch(w: World): void {
     w.prep.alignmentDone = true;
   }
   if (w.tick < w.phaseUntil) return;
-  // ball must be with the pitcher before he can begin
-  if (w.ball.holder !== w.pitcher) {
-    if (w.ball.holder === w.catcher && !w.ball.lob) beginReturn(w);
-    if (w.ball.lob) return;
-    if (w.ball.holder !== w.pitcher) return;
+  // ball must be with the pitcher before he can begin (the catcher's / fielder's return is under way)
+  if (w.ball.holder !== w.pitcher || w.ret) {
+    if (!w.ret && !w.ball.lob) ensureBallReturn(w, true);
+    if (w.ret || w.ball.lob || w.ball.holder !== w.pitcher) return;
+  }
+  // everybody set: fielders at their spots, the pitcher on the rubber with the ball, the catcher behind the plate, the batter in the box,
+  // runners on their bases or at their leads; a slow case (a long trot in from the wall, a reliever from the bullpen) is waited for, up to a limit
+  if (w.cfg.pace > 0) {
+    if (w.prep.readyBy === 0) w.prep.readyBy = w.tick + secToTicks(READY_TIMEOUT * Math.min(1, w.cfg.pace));
+    if (!readyToPitch(w).ready && w.tick < w.prep.readyBy) {
+      hurryStragglers(w);
+      return;
+    }
   }
   if (!w.prep.pickoffDone) {
     const r = running.stagePickoff(w);
@@ -256,32 +284,6 @@ function stagePitch(w: World): boolean {
   if (d === PENDING) return false;
   w.prep.pitch = d;
   return true;
-}
-
-function beginReturn(w: World): void {
-  const c = w.catcher;
-  const p = w.pitcher;
-  const dur = 0.75;
-  w.ball.lob = { from: c, to: p, start: w.tick, dur: secToTicks(dur) };
-  setAnim(w, c, 'throw', 0.5);
-}
-
-/** Catcher -> pitcher lob, purely kinematic. */
-export function tickLob(w: World): void {
-  const l = w.ball.lob!;
-  const t = (w.tick - l.start) / l.dur;
-  const b = w.ball.body;
-  if (t >= 1) {
-    giveBall(w, l.to);
-    return;
-  }
-  const ax = l.from.x, az = l.from.z, bx = l.to.x, bz = l.to.z;
-  b.x = ax + (bx - ax) * t;
-  b.z = az + (bz - az) * t;
-  b.y = 1.2 + 1.2 * Math.sin(Math.PI * t);
-  b.vx = ((bx - ax) / l.dur) * 240;
-  b.vz = ((bz - az) / l.dur) * 240;
-  b.vy = 0;
 }
 
 export function beginWindup(w: World): void {
@@ -686,21 +688,26 @@ export function resetDefense(w: World): void {
     if (pos === 'LF' || pos === 'CF' || pos === 'RF') z += a.outfieldDepth ?? 0;
     F.plan.kind = 'idle';
     F.plan.releaseAt = 0;
-    F.lookAt = { x: 0, z: 0 };
+    F.home = { x, z };
     if (w.cfg.pace === 0) {
+      F.lookAt = { x: 0, z: 0 };
       F.x = x;
       F.z = z;
       F.vx = F.vz = 0;
       F.goal = null;
+    } else if (w.ret && w.ret.from === F && w.ret.stage !== 'flight') {
+      // still holding the ball he is returning: he goes back to his spot once it has left his hand
+      F.goal = null;
     } else {
-      F.goal = { x, z, stop: true, mul: 0.75 };
+      F.lookAt = { x: 0, z: 0 };
+      sendHome(w, F);
     }
   }
 }
 
 export function readyNextPitch(w: World, seconds = BETWEEN): void {
   resetDefense(w);
-  w.prep = { alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, steal: null };
+  w.prep = freshPrep();
   w.phase = 'prePitch';
   w.phaseUntil = w.tick + paced(w, seconds);
   w.swing = null;
@@ -710,6 +717,7 @@ export function readyNextPitch(w: World, seconds = BETWEEN): void {
   w.pitchAim = null;
   w.play = null;
   w.stealing.clear();
+  ensureBallReturn(w, true);
 }
 
 export function ballFollowsHolder(w: World): void {
@@ -743,3 +751,5 @@ export function leverage(w: World): number {
   const bases = w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead).map((r) => r.base);
   return pressureOf(w.inning, w.cfg.innings, w.outs, w.battingTeam.runs - w.fieldingTeam.runs, bases);
 }
+
+export const freshPrep = (): World['prep'] => ({ alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, readyBy: 0, steal: null });

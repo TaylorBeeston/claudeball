@@ -120,7 +120,8 @@ Listeners are called *during* `step`; do not call `step` from inside a listener.
 dead-ball running, walking off), `field` (fielding a ground ball / blocking), `catch`, `catch_jump` (leaping / climbing at the wall,
 `animT` = progress through the leap; `pos.y` is the height of the feet while airborne), `throw`, `slide`
 (runner approaching or diving back to a base with a play coming), `celebrate` (a home-run scorer at the plate; winners after the
-last out). `animT` runs 0..1 over the animation's duration.
+last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `toss` (an
+easy short return toss; longer casual returns use `throw`; the engine adapter plays `toss` as `throw` and `transfer` as the ready pose until clips exist). `animT` runs 0..1 over the animation's duration.
 
 ### Events (`game.on(type, cb)`)
 
@@ -134,7 +135,7 @@ Every event has `time` (sim seconds). Types (see `types.ts` for exact fields):
 `steal`, `pickoffAttempt`, `walk`, `hitByPitch`, `wildPitch`, `passedBall`, `homeRun {distance, heightAboveWall?, pos?}`,
 `substitution`, `pitchingChange`, `plateAppearanceEnd {result}`, `playEnd {description}`, `gameEnd`.
 
-New (additive) events: `baseTouch {playerId, base, trot, pos}` each time a runner touches a base (`trot` = dead-ball running, e.g. the
+New (additive) events: `ballReturn {fromId, toId, mph, casual: true}` (a fielder's easy return of the ball after a dead ball or a pitch leaves his hand: after the transfer and a look; also each leg of an around-the-horn toss); `baseTouch {playerId, base, trot, pos}` each time a runner touches a base (`trot` = dead-ball running, e.g. the
 home-run trot: follow the batter around with it); `wallContact {who: 'ball'|'fielder', fielderId?, pos, speed}` (the ball meets the
 wall in play / a fielder runs up to it); `wallLeap {fielderId, pos, ballHeightAboveWall}` (a fielder leaves the ground at the
 wall); `robbedHomeRun {fielderId, batterId, distance, heightAboveWall, pos}` (the would-be home run is caught: there is no `homeRun`
@@ -312,11 +313,35 @@ back into the park keeps the ball live. Balls that hit the wall in play rebound 
 * after a home run every runner trots (`trot` hint, ~4.3–5.6 m/s by speed) through all bases, touching each (`baseTouch`), the scorer
   celebrates at the plate for ~1.8 s, and the play finishes only when the last runner has crossed home.
 
+## Between plays: getting set and handling the ball
+
+**Ball handling after a dead ball or a pitch** (`handling.ts`). Whoever holds the ball when the play is dead — a first baseman after a force
+out, the catcher after every caught pitch — does not fire it back:
+1. **transfer** (hint `transfer`, he stands): glove to throwing hand. After an out: `0.62 s` (+0.15 s after a force out, nobody in a
+   rush), quicker with a good `release` and `iq`, clamped 0.4–1.0 s. A catcher's transfer of a pitch: ~0.34 s, `pop` helps.
+2. **look** at the runners / the situation: 0.2 s (+0.35 s with a runner on), 0.15 s after a pitch.
+3. **easy return** (`ballReturn` event; hint `toss` under 14 m, else `throw`): 25–40 m/s by distance (`24 + 0.3·d`), never his real
+   arm strength, along an arc into the pitcher's hand, while he comes to meet it and the passer goes back to his spot.
+After an out with the bases empty the infield sometimes tosses it around first (a strikeout: half the time, 3B–SS–2B–1B–pitcher; other outs:
+occasionally a short chain); those draw from the AI's `aiRng`. Live-ball throws (a runner still going) are urgent exactly as before. A ball nobody
+has (over the fence, foul territory) is replaced by a fresh one in the pitcher's hand. `pace: 0` skips all of this: the ball is simply back
+with the pitcher.
+
+**Everybody back in place before the next pitch.** When a play ends every fielder heads back to his alignment spot (a walk when it is a few
+metres, a jog further out, a run from the wall or when the game is waiting on him: speed by distance and urgency); replaced pitchers,
+replaced runners and the fielders at the end of an inning jog to their dugout (`leavers`, still in `players[]` until they arrive); a
+reliever jogs in from the dugout side, a pinch runner comes out to his base, the fielders run out at the start of an inning and the
+batter walks in. The **pitch waits** until: the pitcher has the ball on the rubber (within 0.6 m), no return is under way, every fielder is
+within 1.5 m of his spot (catcher 1 m) and not running, the batter is in the box and still, and runners are on their bases or at their leads
+(umpires are stationary in the sim: they are always in place). The wait is bounded — at most 25 s of sim time (`READY_TIMEOUT`, scaled by `pace`) — and
+stragglers speed up while the game is waiting. In a full game the pitch starts with everyone in place essentially always; only a genuinely
+long trip (a reliever from the dugout) is waited for.
+
 ## Pacing
 
 `pace: 1` gives a broadcast-like pace (a full 9-inning game is ~45 simulated minutes because dead time is
 compressed; most of it is the 3–4 s between pitches). Use the renderer's own speed multiplier via `step(dt*speed)`.
-`pace: 0` removes walk-ups/inning breaks (players snap to their spots) for fast headless runs.
+`pace: 0` removes walk-ups/inning breaks and the ball handling / getting-set waits (players snap to their spots) for fast headless runs. At `pace: 1` a full game is ~48 simulated minutes.
 
 ## Physical model notes
 
