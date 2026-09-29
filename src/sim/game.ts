@@ -7,6 +7,7 @@ import { createWorld } from './setup';
 import { pendingDecisions, resolveDecision } from './dispatch';
 import type { DecisionKind, DecisionProvider, DecisionRequest, FullDecisionProvider } from './decisions';
 import { snapshot } from './snapshot';
+import { tickBallReturn, tickLeavers } from './handling';
 import { TICK } from './world';
 import type { PlayerRT, World } from './world';
 import type {
@@ -94,7 +95,8 @@ export class Game {
         if (w.tick >= w.phaseUntil) startPlateAppearance(w);
         break;
       case 'prePitch':
-        if (w.ball.lob) tickLob(w);
+        if (w.ret) tickBallReturn(w);
+        else if (w.ball.lob) tickLob(w);
         else if (w.ball.holder) ballFollowsHolder(w);
         tickPrePitch(w);
         tickRunners(w);
@@ -112,7 +114,8 @@ export class Game {
         tickInPlay(w);
         break;
       case 'playOver':
-        if (w.ball.lob) tickLob(w);
+        if (w.ret) tickBallReturn(w);
+        else if (w.ball.lob) tickLob(w);
         else if (w.ball.holder) ballFollowsHolder(w);
         tickRunners(w);
         if (w.swing && !w.swing.done && w.swingStarted) w.swing.advance(TICK);
@@ -122,6 +125,7 @@ export class Game {
         break;
     }
     if (w.gameOver && w.phase !== 'final') return;
+    tickLeavers(w);
     for (const t of [w.teams.home, w.teams.away]) for (const p of t.players.values()) if (p.onField) stepPlayer(p, w);
   }
 
