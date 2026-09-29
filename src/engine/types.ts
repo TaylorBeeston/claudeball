@@ -35,7 +35,34 @@ export type AnimHint =
   /** glove-to-hand ball transfer, standing */
   | 'transfer'
   /** easy casual throw (return throws after routine outs) */
-  | 'toss';
+  | 'toss'
+  // catches: the glove meets the ball at `gloveTarget`
+  | 'catch_pitch'
+  | 'catch_throw'
+  | 'catch_stretch'
+  | 'catch_fly'
+  | 'catch_backhand'
+  | 'field_grounder'
+  // tags and slides
+  | 'tag_glove'
+  | 'tag_hand'
+  | 'slide_feet'
+  | 'slide_head'
+  | 'slide_hook_left'
+  | 'slide_hook_right'
+  | 'dive_back'
+  | 'catcher_block'
+  // umpire gestures
+  | 'ump_strike'
+  | 'ump_strike_swinging'
+  | 'ump_ball'
+  | 'ump_safe'
+  | 'ump_out'
+  | 'ump_foul'
+  | 'ump_fair'
+  | 'ump_homerun'
+  | 'ump_time'
+  | 'ump_ready';
 
 export type PlayerRole =
   | 'pitcher'
@@ -80,6 +107,8 @@ export interface PlayerSnap {
   delivery?: { style: 'overhand' | 'three_quarter' | 'sidearm' | 'submarine'; armSlotDeg: number; tempo: number; fromStretch: boolean };
   /** 20-80 scouting ratings (velocity in mph) */
   ratings?: Record<string, number>;
+  /** where the ball will meet this fielder's glove (world, sim axes), while a catch is coming */
+  gloveTarget?: Vec3;
   /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */
   pitchType?: string;
 }
@@ -170,9 +199,14 @@ export interface GameState {
 export type GameEvent =
   | { type: 'pitch'; pitchType: string; speed: number; pitcherId: string }
   | { type: 'contact'; exitVelo: number; launchAngle: number; sprayAngle: number; distance?: number; batterId: string }
-  | { type: 'catch'; playerId: string; inAir: boolean }
+  | { type: 'catch'; playerId: string; inAir: boolean; pos?: Vec3; height?: number; side?: string; kind?: string; firm?: boolean }
   | { type: 'throw'; playerId: string; target: Vec3; targetId?: string }
-  | { type: 'out'; playerId?: string; text?: string }
+  | { type: 'out'; playerId?: string; text?: string; closePlay?: boolean; margin?: number; base?: number | null }
+  | { type: 'safe'; playerId?: string; base?: number; closePlay?: boolean; margin?: number }
+  /** a fielder's tag: attempted, made or avoided by a slide / dodge */
+  | { type: 'tag'; fielderId?: string; runnerId?: string; base?: number; result: 'attempt' | 'tag' | 'avoided'; pos?: Vec3 }
+  /** an umpire's call (`kind` as the sim reports it: ball, strike_called, strike_swinging, foul, fair, safe, out, homerun, foul_tip, time, ball_four, strikeout) */
+  | { type: 'umpire_call'; kind: string; umpireId?: string; pos?: Vec3 }
   | { type: 'run'; playerId?: string; text?: string }
   /** the ball cleared the fence; `pos` is where it crossed it */
   | { type: 'homerun'; batterId: string; distance: number; pos?: Vec3 }

@@ -342,6 +342,7 @@ export class PlayerManager {
 
   update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
     this.penv.makeBall = makeBall;
+    this.penv.positions = this.positions;
     this.ballHeld = false;
     this.penv.ball = state.ball.visible ? ball : null;
     this.penv.batGrip = bat.visible ? bat.grip : null;

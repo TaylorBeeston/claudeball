@@ -70,6 +70,19 @@ Not measured on a mid-range GPU.
 - **Clips**: hints map to clips with fallbacks when a GLB lacks them: `trot`→`run`, `run_turn`→`run`, `catch_jump`→`field_catch`, batter idle → `batting_stance` → `swing` frame 0,
   `celebrate`→`idle`. Loop clips: idle, run, trot, run_turn, field_ready, celebrate, catcher_crouch, batting_stance; `catch_jump` is a one-shot seeked by the sim's progress.
 - Lefty jersey numbers are flipped back (UV mirror + digit swap).
+- **Per-player variety** (`playerLook.ts`): every player is built from `player_base.glb` (all optional nodes and morph targets) and configured from what the sim reports: uniform scale from
+  `physique.heightM`, `build_lean/stocky/muscular` from build and BMI, head / jaw / nose / ears morphs, skin tone, hair colour and style, facial hair, jersey / pants variants, eye black,
+  wristbands, arm sleeves and batting gloves from `appearance.seed` (deterministic). Role gear (cap+glove / helmet+batting gloves / catcher gear) comes from the role files' `cb_default` extras.
+  Umpires keep their fixed file.
+- **Pitching** (`pitchTiming.ts`): `pitch_<style>_windup|stretch` chosen from `delivery.style` and the live `fromStretch`; the rock / set pose is held, then the delivery is played at natural
+  speed so its release frame lands exactly on the end of the sim's windup (the release); the sim's `pitch` hint drives the follow-through. Falls back to `windup` / `pitch`.
+  The ball sits in the glove pocket until the clip's hand-break frame, then in the hand (`Ball_Grip` / `Ball_Grip_2Seam`, `Hand_R_Ball` claw shown), then is the sim's ball; the change of
+  owner is blended over 50 ms so there is no pop. Fielders holding the ball carry it in the glove (in the hand while throwing); a `transfer` moves it glove → hand.
+- **Catching / tags** (`reachIK` in `gltfCharacter.ts`): when the sim reports `gloveTarget` the glove hand's IK puts the pocket on it, the glove closes (`glove_closed` morph if the GLB has
+  one) and the ball settles into the pocket; `tag_glove` / `tag_hand` sweep the glove / hand through the nearest opposing runner. Hints without clips fall back (see `clipCandidates`).
+- **Locomotion**: clip time is scaled by ground speed / the clip's own stance-foot speed (measured from the clip), creeping players use `walk` (or the slowed `trot`), body yaw is limited
+  to ~540°/s, elbows are swivelled out of the torso volume (`armClear.ts`) with the hand fixed.
+- **Ball trail** is a thin tapering ribbon (about half the old width) with a faint streak.
 
 ## Camera director (auto)
 `contact` → follow (high home) → on `homerun` (ball crosses the fence; the adapter keeps the ball flying on into the seats visually): ball leaving the park in profile (~2 s),
@@ -79,5 +92,8 @@ quiet, instead of returning to the pitcher while somebody is still running. Hist
 A robbed home run (`robbedHomeRun`, engine event `robbed_hr`) is cued as: the fielder at the wall (after the `wallLeap` shot), the nearest crowd section (crowd excitement pulse for the gasp),
 then the play again from the second-angle replay camera. While any replay plays the live sim waits (`SimDriver.hold`; replay animation keeps running), so the next pitch is not missed.
 `wallContact` is mapped to `wall_contact` but does not change the camera (the follow shot already tracks the carom).
+A contested `out` / `safe` (`closePlay` or |`margin`| < 0.10 s) cuts to the umpire making the call, then plays a slow-motion (0.3x) replay from a low camera at the base with a slow push-in and a
+`CLOSE PLAY` caption, then a normal-speed replay from the opposite side; a `tag` event puts the low base camera on the tag. HUD captions (`STRIKE`, `BALL`, `SAFE`, `OUT`, …) come from `umpire_call`.
+HUD: name cards show 20-80 rating bars, today's line and the pitch arsenal; `B` toggles the box score.
 Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).
