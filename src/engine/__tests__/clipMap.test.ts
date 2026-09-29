@@ -8,7 +8,7 @@ describe('hint → clip mapping with fallbacks', () => {
     expect(clipCandidates('trot', 'runner')).toEqual(['trot', 'run']);
     expect(clipCandidates('walk', 'runner')).toEqual(['walk', 'trot', 'run']);
     expect(clipCandidates('catch_jump', 'left')).toEqual(['catch_jump', 'field_catch']);
-    expect(clipCandidates('toss', 'short')).toEqual(['toss', 'throw']);
+    expect(clipCandidates('toss', 'short')).toEqual(['throw_casual', 'toss', 'throw']);
     expect(clipCandidates('catch_fly', 'center')).toEqual(['catch_fly', 'field_catch']);
     expect(clipCandidates('field_grounder', 'short')).toEqual(['field_grounder', 'field_catch']);
     expect(clipCandidates('tag_glove', 'first')).toEqual(['tag_glove', 'field_catch']);
