@@ -62,7 +62,9 @@ function cbHdriManifest(): Plugin {
 
 export default defineConfig({
   plugins: [cbAssets(), cbHdriManifest()],
-  server: { port: 5173, host: true },
+  // host: true listens on every interface (LAN + tailscale); allowedHosts lets it be opened by machine name (e.g. http://frenchfry:5173)
+  server: { port: 5173, host: true, allowedHosts: true },
+  preview: { port: 4173, host: true, allowedHosts: true, strictPort: true },
   build: {
     target: 'es2022',
     assetsDir: 'bundle',

@@ -13,6 +13,7 @@ npm install
 npm run hdri      # optional: downloads two CC0 sky HDRIs (~10 MB) into public/hdri/
 npm run dev       # http://localhost:5173  (Vite picks the next free port if that one is taken)
 npm run build     # typecheck + production bundle in dist/  (npm run preview serves it)
+npm run preview   # serves dist/ on 0.0.0.0:4173 (reachable over the LAN / tailscale, e.g. http://frenchfry:4173/?quality=medium)
 ```
 
 Other commands:
