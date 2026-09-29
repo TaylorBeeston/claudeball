@@ -144,27 +144,32 @@ def capsule(bm, a, b, r, seg=8):
     R = z.to_track_quat('Z', 'Y').to_matrix(); vs = ret["verts"]
     for v in vs: v.co = R @ v.co + (a+b)/2
     for p in (a, b):
-        s = bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=5, radius=r*.96)
+        s = bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=max(5, seg//2+1), radius=r*.96)
         for v in s["verts"]: v.co += p
 
-def hand_mesh(side):
-    """Rigid, semi-curled bare hand (palm + 4 fingers + thumb), wrist at the ForeArm tail; fingertips along the Hand bone."""
+def hand_mesh(side, curl=1.0, spread=0.0, thumb=(1.0, 0.0), name=None, seg=10, curls=None, thumb_out=0.0, thumb_tip=None):
+    """Rigid hand (palm + 4 fingers + thumb), wrist at the ForeArm tail; fingertips along the Hand bone. Defaults = the firm grip used for bats (fist-like).
+    curl scales the finger flexion (0 = straight), curls = optional per-finger scale, spread fans the fingers apart (degrees), thumb_out abducts the thumb."""
     sx = 1 if side == "Left" else -1
     wr = JOINTS[side+"Hand"][1]; dvec = JOINTS[side+"Hand"][2]-wr; dvec.normalize()
     bm = bmesh.new()
     # local frame: Z along hand, X = palm normal (toward the body), Y = forward (thumb side)
     zdir = dvec; xdir = Vector((-sx, 0, 0)); ydir = zdir.cross(xdir).normalized(); xdir = ydir.cross(zdir).normalized()
     def W(lx, ly, lz): return wr + xdir*lx + ydir*ly + zdir*lz
-    capsule(bm, W(0, 0, .012), W(0, 0, .085), .030)                                   # palm
+    capsule(bm, W(0, 0, .012), W(0, 0, .085), .030, seg+2)                            # palm
     for i, (ly, ln) in enumerate(((-.020, 1.0), (-.007, 1.1), (.007, 1.05), (.020, .9))):
-        p0 = W(0, ly, .090); ang = 0.0; pos = p0; seglen = (.030*ln, .022*ln, .018*ln)
+        p0 = W(0, ly, .090); ang = 0.0; pos = p0; seglen = (.030*ln, .022*ln, .018*ln); cs = curl*(curls[i] if curls else 1.0)
+        fan = math.radians(spread)*(i-1.5)/1.5
         for k, sl in enumerate(seglen):
-            ang += math.radians((38, 62, 50)[k]); dl = (math.sin(ang), 0, math.cos(ang))     # curls toward the palm (+X local)
-            q = pos + (xdir*dl[0] + zdir*dl[2])*sl; capsule(bm, pos, q, .0085 - .0008*k, 6); pos = q
+            ang += math.radians((38, 62, 50)[k])*cs; dl = (math.sin(ang), 0, math.cos(ang))     # curls toward the palm (+X local)
+            q = pos + (xdir*dl[0] + zdir*dl[2])*sl + ydir*(math.sin(fan)*sl); capsule(bm, pos, q, .0085 - .0008*k, seg); pos = q
     p0 = W(.005, -.032, .030); pos = p0                                                  # thumb
-    for k, (sl, an) in enumerate(((.034, (35, -40)), (.028, (20, -60)))):
-        dvv = (ydir*(-math.sin(math.radians(an[1]))*.3 - .5) + zdir*.85 + xdir*.35*k).normalized()
-        q = pos + dvv*sl; capsule(bm, pos, q, .0105-.001*k, 6); pos = q
-    me = bpy.data.meshes.new("Hand"+side); bm.to_mesh(me); bm.free()
+    if thumb_tip is not None:                                                            # reach a given local point (ball hold): two segments with a slight bulge
+        T = W(*thumb_tip); mid = (p0+T)/2 + xdir*.006 - zdir*.004
+        capsule(bm, p0, mid, .0105, seg); capsule(bm, mid, T, .0095, seg)
+    for k, (sl, an) in enumerate(() if thumb_tip is not None else ((.034, (35, -40)), (.028, (20, -60)))):
+        dvv = (ydir*(-math.sin(math.radians(an[1]))*.3 - .5 - thumb_out) + zdir*.85*thumb[0] + xdir*(.35*k + thumb[1])).normalized()
+        q = pos + dvv*sl; capsule(bm, pos, q, .0105-.001*k, seg); pos = q
+    me = bpy.data.meshes.new(name or "Hand"+side); bm.to_mesh(me); bm.free()
     for p in me.polygons: p.use_smooth = True
-    o = bpy.data.objects.new("Hand"+side, me); bpy.context.collection.objects.link(o); return o
+    o = bpy.data.objects.new(name or "Hand"+side, me); bpy.context.collection.objects.link(o); return o
