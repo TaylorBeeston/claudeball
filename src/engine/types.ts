@@ -109,6 +109,8 @@ export interface PlayerSnap {
   ratings?: Record<string, number>;
   /** where the ball will meet this fielder's glove (world, sim axes), while a catch is coming */
   gloveTarget?: Vec3;
+  /** umpires: HP, 1B-U, 2B-U, 3B-U */
+  position?: string;
   /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */
   pitchType?: string;
 }

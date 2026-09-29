@@ -341,6 +341,8 @@ export interface PuppetEnv {
   time: number;
   /** ball speed (m/s), 0 when there is no ball */
   ballSpeed?: number;
+  /** ball velocity (scene axes) */
+  ballVel?: Vector3;
   /** where the pitcher's eyes/hands are (scene): what hitters, catchers and umpires look at while no ball is visible */
   mound?: Vector3 | null;
   /** every player's scene position by id (for tags: where the runner is) */
