@@ -20,13 +20,16 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
+import { AnimationClip } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import type { CharacterTemplate } from './assets';
+import type { CharacterTemplate, GearSets } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
+import { computeLook, hashString, type PlayerLook } from './playerLook';
+import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
-const LOOPING = new Set(['idle', 'run', 'trot', 'run_turn', 'field_ready', 'celebrate', 'catcher_crouch', 'batting_stance']);
+const LOOPING = new Set(['idle', 'run', 'trot', 'run_turn', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
@@ -41,17 +44,24 @@ function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'run_turn': return ['run_turn', 'run'];
     case 'field': case 'catch': return ['field_catch'];
     case 'catch_jump': return ['catch_jump', 'field_catch'];
+    case 'walk': return ['walk', 'trot', 'run'];
+    case 'transfer': return ['transfer', ...idleFor(role)];
+    case 'toss': return ['toss', 'throw'];
     case 'throw': return ['throw'];
     case 'slide': return ['slide'];
     case 'celebrate': return ['celebrate', 'idle'];
-    default:
-      // frame 0 of the swing is the batting stance (held, see update) until a dedicated `batting_stance` clip exists
-      if (role === 'batter') return ['batting_stance', 'swing'];
-      if (role === 'catcher') return ['catcher_crouch'];
-      if (role === 'pitcher') return ['idle'];
-      if (FIELDERS.has(role)) return ['field_ready', 'idle'];
-      return ['idle'];
+    default: return idleFor(role);
   }
+}
+
+/** the standing pose of a role between plays (frame 0 of the swing is the batting stance until a `batting_stance` clip exists) */
+function idleFor(role: PlayerRole): string[] {
+  if (role === 'batter') return ['batting_stance', 'swing'];
+  if (role === 'catcher') return ['catcher_crouch'];
+  if (role === 'pitcher') return ['idle'];
+  if (role === 'first' || role === 'second' || role === 'third' || role === 'short') return ['field_ready_infield', 'field_ready', 'idle'];
+  if (role === 'left' || role === 'center' || role === 'right') return ['field_ready_outfield', 'field_ready', 'idle'];
+  return ['idle'];
 }
 
 /** Yaw (rad, direction = (sin f, cos f)) a batter's body faces in the box: chest toward the plate, a little open to the pitcher. */
@@ -146,6 +156,66 @@ export class Rig {
   }
 }
 
+/**
+ * Ground speed (m/s) at which a locomotion clip's stance foot stops sliding: the median backward speed of a foot that is on the
+ * ground, measured from the clip itself once (so it stays right when the clips are re-authored). Playing the clip at
+ * `speed / stanceFootSpeed` keeps the feet planted.
+ */
+const footSpeedCache = new WeakMap<AnimationClip, number>();
+export function stanceFootSpeed(scene: Object3D, clip: AnimationClip, fallback: number): number {
+  const hit = footSpeedCache.get(clip);
+  if (hit !== undefined) return hit;
+  let result = fallback;
+  try {
+    // measured on a throwaway clone: posing the template or a live puppet would leave stale bone poses behind (the mixer skips unchanged bones)
+    scene = SkeletonUtils.clone(scene);
+    const feet: Object3D[] = [];
+    scene.traverse((o) => {
+      if (/(Left|Right)Foot$/.test(o.name)) feet.push(o);
+    });
+    if (feet.length === 2) {
+      const mixer = new AnimationMixer(scene);
+      const act = mixer.clipAction(clip);
+      act.play();
+      const N = 48;
+      const zs: number[][] = [[], []], ys: number[][] = [[], []];
+      const v = new Vector3();
+      for (let i = 0; i < N; i++) {
+        act.time = (i / N) * clip.duration * 0.999;
+        mixer.update(0);
+        scene.updateMatrixWorld(true);
+        feet.forEach((f, k) => {
+          v.setFromMatrixPosition(f.matrixWorld);
+          ys[k].push(v.y);
+          zs[k].push(v.z);
+        });
+      }
+      const dt = clip.duration / N;
+      const sp: number[] = [];
+      for (let k = 0; k < 2; k++) for (let i = 0; i < N; i++) {
+        const j = (i + 1) % N;
+        if (ys[k][i] < 0.12 && ys[k][j] < 0.12) sp.push(-(zs[k][j] - zs[k][i]) / dt);
+      }
+      sp.sort((a, b) => a - b);
+      if (sp.length > 6) result = Math.max(0.3, sp[Math.floor(sp.length * 0.6)]);
+      mixer.stopAllAction();
+      mixer.uncacheClip(clip);
+    }
+  } catch {
+    /* keep the fallback */
+  }
+  footSpeedCache.set(clip, result);
+  return result;
+}
+
+type GearKind = 'field' | 'batter' | 'catcher';
+const gearKindOf = (role: PlayerRole): GearKind => (role === 'batter' || role === 'runner' || role === 'coach' ? 'batter' : role === 'catcher' ? 'catcher' : 'field');
+const HAIR_NODES = ['Gear_Hair', 'Gear_Hair_Buzz', 'Gear_Hair_Curly', 'Gear_Hair_Long'];
+const FACIAL_NODES = ['Gear_Beard_Stubble', 'Gear_Beard_Full', 'Gear_Goatee', 'Gear_Mustache'];
+const JERSEY_NODES = ['Jersey', 'Jersey_ShortSleeve', 'Jersey_Sleeveless'];
+const PANTS_NODES = ['Pants', 'Pants_Long'];
+const TRIM_WHITE = '#f2f2ee', TRIM_BLACK = '#17181b';
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   team = -2;
@@ -156,6 +226,7 @@ export class GltfPuppet implements PuppetLike {
   private currentName = '';
   private lastHint: AnimHint | '' = '';
   private bones: Record<string, Bone> = {};
+  private nodes = new Map<string, Object3D>();
   private meshes: Mesh[] = [];
   private headLook = new HeadLook();
   private rig: Rig;
@@ -171,11 +242,25 @@ export class GltfPuppet implements PuppetLike {
   /** empty at the batter's hands (origin = bat knob, +Y = barrel) */
   batGrip: Object3D | null = null;
   private numMeshes: { tens?: Mesh; ones?: Mesh } = {};
+  /** per-player look (null for the fixed umpire file) */
+  look: PlayerLook | null = null;
+  private gearKind: GearKind | null = null;
+  private bodyScale = 1;
+  // pitching
+  private dlv: { ev: DeliveryEvents; plan: DeliveryPlan; dur: number; grip: string } | null = null;
+  private ballObj: Object3D | null = null;
+  private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
+  private ballGrip = 'Ball_Grip';
+  ballHeld = false;
+  /** the clip time the pitching state machine is seeking to (null: not driving the clip) */
+  pitchClipTime: number | null = null;
 
-  constructor(private tpl: CharacterTemplate, id: string) {
+  constructor(private tpl: CharacterTemplate, snap: PlayerSnap, private gearSets: GearSets = {}) {
+    const id = snap.id;
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
     this.model.traverse((o) => {
+      if (o.name) this.nodes.set(o.name, o);
       if (o.name === 'Bat_Grip') this.batGrip = o;
       if (o.name === 'Gear_Number_Tens') this.numMeshes.tens = o as Mesh;
       if (o.name === 'Gear_Number_Ones') this.numMeshes.ones = o as Mesh;
@@ -189,9 +274,6 @@ export class GltfPuppet implements PuppetLike {
         this.meshes.push(m);
       }
     });
-    // hair is hidden under caps / helmets
-    const hair = this.model.getObjectByName('Gear_Hair') ?? this.model.getObjectByName('Face_Hair');
-    if (hair && (this.model.getObjectByName('Gear_Cap') || this.model.getObjectByName('Gear_Helmet'))) hair.visible = false;
     this.rig = new Rig(this.model);
     for (const n of ['Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
       const b = this.bones[n];
@@ -204,16 +286,94 @@ export class GltfPuppet implements PuppetLike {
       a.clampWhenFinished = true;
       this.actions.set(name, a);
     }
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    const h = hashString(id);
     this.skin = SKINS[h % SKINS.length];
+    if (tpl.full) {
+      this.look = computeLook(snap.physique, snap.appearance, h);
+      this.skin = this.look.skin;
+      this.bodyScale = this.look.scale;
+      this.applyMorphs(this.look.morphs);
+      this.applyGear(gearKindOf(snap.role));
+    } else {
+      // fixed-look files (umpires): keep their configuration, hair hidden under caps / helmets
+      const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
+      if (hair && (this.nodes.get('Gear_Cap') || this.nodes.get('Gear_Helmet'))) hair.visible = false;
+    }
+  }
+
+  private applyMorphs(morphs: Record<string, number>) {
+    for (const m of this.meshes) {
+      const dict = (m as Mesh).morphTargetDictionary, inf = (m as Mesh).morphTargetInfluences;
+      if (!dict || !inf) continue;
+      for (const k in morphs) {
+        const i = dict[k];
+        if (i !== undefined) inf[i] = morphs[k];
+      }
+    }
+  }
+
+  /**
+   * Which optional nodes are visible: the role's pre-configured look (from the role-specific files' extras) plus this player's own
+   * hair / beard / sleeve length / accessories. Re-run when his role class changes (batter → fielder etc.).
+   */
+  private applyGear(kind: GearKind) {
+    if (!this.look || kind === this.gearKind) return;
+    this.gearKind = kind;
+    const L = this.look;
+    const defaults = this.gearSets[kind] ?? this.gearSets.field ?? this.tpl.defaults;
+    for (const [name, o] of this.nodes) {
+      const grp = o.userData?.cb_group;
+      if (grp === undefined || grp === 'hand') continue;
+      o.visible = defaults.has(name);
+    }
+    const show = (name: string, on: boolean) => {
+      const o = this.nodes.get(name);
+      if (o) o.visible = on;
+    };
+    // clothes variants
+    if (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible) {
+      for (const n of JERSEY_NODES) show(n, n === L.jerseyNode);
+    }
+    for (const n of PANTS_NODES) show(n, n === L.pantsNode);
+    // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
+    const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
+    for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
+    for (const n of FACIAL_NODES) show(n, n === L.facialNode);
+    show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
+    // arms
+    show('Gear_Wristband_L', L.wristbands.L);
+    show('Gear_Wristband_R', L.wristbands.R);
+    show('Gear_ArmSleeve_L', L.armSleeves.L && kind !== 'batter');
+    show('Gear_ArmSleeve_R', L.armSleeves.R && kind !== 'batter');
+    // hands: fist (bat, glove hand) unless the pitcher is gripping a ball
+    this.setGripHand(false);
+    this.materialsDirty = true;
+  }
+  private materialsDirty = false;
+  private lastLook: { look: Look; team: number } | null = null;
+
+  private setGripHand(ball: boolean) {
+    const fist = this.nodes.get('Hand_R'), claw = this.nodes.get('Hand_R_Ball');
+    if (!claw) return; // umpire-style files: Hand_R is the only hand
+    if (fist) fist.visible = !ball;
+    claw.visible = ball;
   }
 
   setTeam(look: Look, team: number) {
     this.team = team;
+    this.lastLook = { look, team };
+    const L = this.look;
+    const trimOf = (c: 'trim' | 'white' | 'black') => (c === 'trim' ? look.sock : c === 'white' ? TRIM_WHITE : TRIM_BLACK);
     const map: Record<string, string> = {
-      uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, uniform_undershirt: look.sock, cap: look.cap, helmet: look.cap,
+      uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, uniform_undershirt: look.sock, cap: look.cap, helmet: look.cap, piping: look.sock,
     };
+    if (L) {
+      map.hair = L.hairColor;
+      map.stubble = L.hairColor;
+      map.wristband = trimOf(L.wristbandColor);
+      map.arm_sleeve = trimOf(L.sleeveColor);
+      map.batting_glove = L.battingGlove;
+    }
     const dark = team === -1;
     for (const m of this.meshes) {
       const mats = Array.isArray(m.material) ? m.material : [m.material];
@@ -226,6 +386,7 @@ export class GltfPuppet implements PuppetLike {
       });
       m.material = Array.isArray(m.material) ? next : next[0];
     }
+    this.materialsDirty = false;
   }
 
   /** First candidate clip this GLB actually has (falls back to idle). */
@@ -255,12 +416,18 @@ export class GltfPuppet implements PuppetLike {
    * be flipped on their own: instead the texture is flipped inside its cell and the two quads swap digits.
    */
   private mirrored = false;
+  private mirrorSet = false;
   private setMirrored(m: boolean) {
-    if (m === this.mirrored && this.model.scale.x === (m ? -1 : 1)) return;
+    if (this.mirrorSet && m === this.mirrored) return;
+    const changed = m !== this.mirrored;
+    this.mirrorSet = true;
     this.mirrored = m;
-    this.model.scale.x = m ? -1 : 1;
-    this.numberSet = -1;
-    this.setNumber(this.numberValue);
+    // uniform scale from the player's height, mirrored across X for left-handers
+    this.model.scale.set(m ? -this.bodyScale : this.bodyScale, this.bodyScale, this.bodyScale);
+    if (changed) {
+      this.numberSet = -1;
+      this.setNumber(this.numberValue);
+    }
   }
   private numberValue: number | undefined;
 
@@ -317,25 +484,79 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  /** Locomotion hint adjusted to the real speed: creeping players walk, they do not slide in a stance. */
+  private moveHint(snap: PlayerSnap): AnimHint {
+    const sp = Math.hypot(snap.vel.x, snap.vel.z);
+    const walkable = this.actions.has('walk');
+    if (walkable && (snap.anim === 'run' || snap.anim === 'trot') && sp < 1.9) return 'walk';
+    if (walkable && snap.anim === 'idle' && sp > 0.3 && snap.role !== 'batter') return 'walk';
+    return snap.anim;
+  }
+
+  /**
+   * Pitching: which delivery clip (style × windup / stretch), where it is, and where the ball is. The sim's windup ends exactly at
+   * release, so the rock / set pose is held and the delivery is timed so its release frame lands on that moment (see pitchTiming.ts).
+   * Returns null when the pitcher has no delivery info or the GLB lacks the clips (the old `windup` / `pitch` clips take over).
+   */
+  private pitcherPlan(snap: PlayerSnap): { name: string; time: number | null; place: BallPlace | 'none' } | null {
+    const d = snap.delivery;
+    if (!d) return null;
+    const idle = d.fromStretch && this.actions.has('pitcher_set') ? 'pitcher_set' : this.actions.has('pitcher_rock') ? 'pitcher_rock' : null;
+    if (!idle) return null;
+    if (snap.anim === 'windup' || snap.anim === 'pitch') {
+      if (snap.anim === 'windup' && (!this.dlv || this.lastHint !== 'windup')) {
+        const ev = deliveryClip(d.style, d.fromStretch);
+        if (!this.actions.has(ev.clip)) return null;
+        const dur = snap.animDur ?? windupSeconds(d.tempo, d.fromStretch, snap.ratings?.holding ?? 50);
+        this.dlv = { ev, plan: planDelivery(dur, ev.release), dur, grip: gripFor(snap.pitchType) };
+      }
+      const dl = this.dlv;
+      if (!dl) return null;
+      if (snap.anim === 'windup') {
+        const t = deliveryClipTime(dl.plan, (snap.animProgress ?? 0) * dl.dur);
+        return t === null ? { name: idle, time: null, place: 'glove' } : { name: dl.ev.clip, time: t, place: pitchBallPlace(t, dl.ev) };
+      }
+      // follow-through: the sim's `pitch` hint runs 0.5 s after the release
+      return { name: dl.ev.clip, time: dl.ev.release + (snap.animProgress ?? 0) * 0.5 * dl.plan.speed, place: 'world' };
+    }
+    this.dlv = null;
+    if (snap.anim === 'idle') return { name: idle, time: null, place: snap.hasBall ? 'glove' : 'none' };
+    return null;
+  }
+
   update(snap: PlayerSnap, dt: number, env: PuppetEnv) {
     this.setNumber(snap.number);
     this.setMirrored(snap.hand === 'L');
-    const name = this.resolveClip(snap.anim, snap.role);
-    if (snap.anim !== this.lastHint || name !== this.currentName) {
-      this.lastHint = snap.anim;
+    if (this.look) this.applyGear(gearKindOf(snap.role));
+    const pit = snap.role === 'pitcher' ? this.pitcherPlan(snap) : null;
+    const hint = this.moveHint(snap);
+    const name = pit ? pit.name : this.resolveClip(hint, snap.role);
+    this.pitchClipTime = pit ? pit.time : null;
+    if (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint)) {
       this.play(name, snap);
     }
+    this.lastHint = snap.anim;
+    this.lastMoveHint = hint;
     const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
-    if (stanceHeld && snap.anim === 'idle' && this.currentName === 'swing' && this.current) {
+    const sp = Math.hypot(snap.vel.x, snap.vel.z);
+    const locomotion = name === 'run' || name === 'trot' || name === 'run_turn' || name === 'walk';
+    if (pit && pit.time !== null && this.current) {
+      // seek: the delivery clip is placed exactly on the sim's timeline
+      const dur = this.current.getClip().duration;
+      this.current.paused = false;
+      this.current.timeScale = 0;
+      this.current.time = Math.min(dur - 0.001, Math.max(0, pit.time));
+    } else if (stanceHeld && snap.anim === 'idle' && this.currentName === 'swing' && this.current) {
       this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
-    } else if ((name === 'run' || name === 'trot' || name === 'run_turn') && this.current) {
-      const sp = Math.hypot(snap.vel.x, snap.vel.z);
-      const nominal = name === 'trot' ? 2.2 : 4.5; // foot speed of the trot clip is 2.2 m/s
-      this.current.timeScale = Math.min(1.8, Math.max(0.5, sp / nominal));
-    } else if (this.current) this.current.timeScale = 1;
+    } else if (locomotion && this.current) {
+      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at)
+      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.4 : 1.6;
+      const foot = stanceFootSpeed(this.tpl.scene, this.current.getClip(), fallback);
+      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 2.4, Math.max(0.4, sp / foot));
+    } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
-    if (this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
+    if (!pit && this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
@@ -376,11 +597,67 @@ export class GltfPuppet implements PuppetLike {
       this.solveArm('Right', env.batGrip.top, this.ikW);
     }
     this.lookAt(snap, dt, env);
+    this.updateHeldBall(snap, env, pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none');
   }
   private wasStance = false;
+  private lastMoveHint: AnimHint | '' = '';
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
   private clipPose = new Map<Bone, Quaternion>();
+
+  /**
+   * The ball a pitcher carries before release (in the glove until the hand break, then gripped in the throwing hand, whose claw mesh
+   * replaces the fist) and the ball a fielder moves from glove to hand during a `transfer`. While the puppet has it the world ball is hidden.
+   */
+  private updateHeldBall(snap: PlayerSnap, env: PuppetEnv, place: BallPlace | 'none' | 'transfer') {
+    const want = place === 'glove' || place === 'hand' || place === 'transfer';
+    this.ballHeld = want && !!env.makeBall;
+    if (this.look) this.setGripHand(place === 'hand');
+    if (!this.ballHeld) {
+      if (this.ballObj) this.ballObj.visible = false;
+      this.ballPlace = 'none';
+      return;
+    }
+    if (!this.ballObj) this.ballObj = env.makeBall!();
+    const ball = this.ballObj;
+    ball.visible = true;
+    const pocket = this.nodes.get('Glove_Pocket');
+    const grip = this.nodes.get(this.dlv?.grip ?? 'Ball_Grip') ?? this.nodes.get('Ball_Grip');
+    if (!pocket || !grip) {
+      this.ballHeld = false;
+      ball.visible = false;
+      return;
+    }
+    // real size and handedness whatever the player's height scale / mirror
+    ball.scale.set((this.mirrored ? -1 : 1) / this.bodyScale, 1 / this.bodyScale, 1 / this.bodyScale);
+    let target: Object3D | null = place === 'glove' ? pocket : place === 'hand' ? grip : null;
+    let u = 0;
+    if (place === 'transfer') {
+      const p = snap.animProgress ?? 0;
+      u = p <= 0.3 ? 0 : p >= 0.7 ? 1 : ((p - 0.3) / 0.4) * ((p - 0.3) / 0.4) * (3 - 2 * ((p - 0.3) / 0.4));
+      if (u <= 0.001) target = pocket;
+      else if (u >= 0.999) target = grip;
+    }
+    if (target) {
+      if (ball.parent !== target) target.add(ball);
+      ball.position.set(0, 0, 0);
+      ball.quaternion.identity();
+    } else {
+      // mid-transfer: carried across in the model's own space
+      if (ball.parent !== this.model) this.model.add(ball);
+      this.rig.refresh();
+      const a = this.rig.pos(pocket, new Vector3()), b = this.rig.pos(grip, new Vector3());
+      ball.position.lerpVectors(a, b, u);
+      ball.quaternion.identity();
+    }
+    this.ballPlace = place;
+  }
+
+  heldBallWorld(out: Vector3): Vector3 | null {
+    if (!this.ballHeld || !this.ballObj) return null;
+    this.ballObj.updateWorldMatrix(true, false);
+    return out.setFromMatrixPosition(this.ballObj.matrixWorld);
+  }
 
   shoulderCenter(out: Vector3): Vector3 | null {
     const l = this.bones.LeftArm, r = this.bones.RightArm;
@@ -464,6 +741,7 @@ export class GltfPuppet implements PuppetLike {
   }
 
   dispose() {
+    this.ballObj?.removeFromParent();
     this.mixer.stopAllAction();
     this.root.removeFromParent();
   }

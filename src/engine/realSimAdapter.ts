@@ -3,15 +3,24 @@
  * to the engine's own `GameLike` contract (`types.ts`). Structural types only, so the engine
  * compiles whether or not `src/sim` exists.
  */
-import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, TeamInfo, Vec3 } from './types';
+import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, TeamInfo, TeamStatsView, Vec3 } from './types';
+import { windupSeconds } from './pitchTiming';
 import { BASES } from './dims';
 
 type V = Vec3;
 interface RSPlayer {
   id: string; name: string; team: 'home' | 'away'; role: string; position: string; jersey: number;
   pos: V; vel: V; facing: number; anim: AnimHint; animT: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R';
+  hasBall?: boolean;
+  physique?: PlayerSnap['physique'];
+  appearance?: PlayerSnap['appearance'];
+  delivery?: PlayerSnap['delivery'];
+  ratings?: Record<string, number>;
 }
-interface RSInfo { id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R' }
+interface RSInfo {
+  id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R'; height?: number; primaryPosition?: string;
+  ratings?: Record<string, number>; arsenal?: { type: string; mph: number; grade?: number }[];
+}
 interface RSState {
   time: number; phase: string; inning: number; half: 'top' | 'bottom'; outs: number; balls: number; strikes: number;
   score: { home: number; away: number };
@@ -25,6 +34,7 @@ interface RSState {
   gameOver: boolean;
   winner: 'home' | 'away' | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
+  stats?: { home: TeamStatsView; away: TeamStatsView };
 }
 type RSEvent = { type: string; time: number } & Record<string, unknown>;
 export interface RealGame {
@@ -213,10 +223,13 @@ export class RealSimAdapter implements GameLike {
       const isBat = p.role === 'batter';
       const hand = isBat ? (p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats) : p.throws;
       const nominal = NOMINAL[p.anim];
+      // a pitcher's windup lasts as long as the sim's delivery (tempo, holding, stretch); everything else uses a nominal clip length
+      const dur = p.anim === 'windup' && p.delivery ? windupSeconds(p.delivery.tempo, p.delivery.fromStretch, p.ratings?.holding ?? 50) : p.anim === 'pitch' ? 0.5 : nominal;
       return {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
-        animTime: nominal ? p.animT * nominal : undefined, animProgress: nominal ? p.animT : undefined,
+        animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
+        hasBall: p.hasBall, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;
@@ -227,7 +240,7 @@ export class RealSimAdapter implements GameLike {
       this.lastCallTime = call.time;
       this.callSeq++;
     }
-    const person = (i: RSInfo, stats: string): PersonInfo => ({ id: i.id, name: i.name, number: i.jersey, hand: i.throws, stats });
+    const person = (i: RSInfo, stats: string): PersonInfo => ({ id: i.id, name: i.name, number: i.jersey, hand: i.throws, stats, ratings: i.ratings, arsenal: i.arsenal, height: i.height, position: i.primaryPosition });
     const b = s.batter;
     const p = s.pitcher;
     const st: GameState = {
@@ -246,6 +259,8 @@ export class RealSimAdapter implements GameLike {
       pitcher: p ? person(p.info, `${Math.floor(p.line.outs / 3)}.${p.line.outs % 3} IP  ${p.line.so} K  ${p.pitchCount} P`) : null,
       teams: this.teams,
       over: s.gameOver,
+      stats: s.stats ? { away: s.stats.away, home: s.stats.home } : undefined,
+      pitchCount: p?.pitchCount,
     };
     if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;
