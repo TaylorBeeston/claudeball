@@ -183,7 +183,9 @@ function makeHitter(id: string, side: TeamSide, jersey: number, pos: FieldPositi
   };
   const r = rng.next();
   const bats: Handed = r < 0.56 ? 'R' : r < 0.86 ? 'L' : 'S';
-  const throwsL = rng.next() >= 0.88;
+  // throwing hand by position: almost nobody throws left-handed at C, 2B, SS or 3B
+  const pLeft = pos === 'C' || pos === '2B' || pos === 'SS' || pos === '3B' ? 0 : pos === '1B' ? 0.25 : 0.2;
+  const throwsL = rng.next() < pLeft;
   const physique = makePhysique(rng, pos, sizeZ);
   return {
     id,
