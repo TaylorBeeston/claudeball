@@ -25,6 +25,22 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 export interface CharacterTemplate {
   scene: Group;
   clips: Map<string, AnimationClip>;
+  /** names of the nodes this file shows by default (glTF extras `cb_default`), i.e. its pre-configured look */
+  defaults: Set<string>;
+  /** true for the full `player_base` file, which holds every optional variant (hair styles, beards, accessories, …) */
+  full: boolean;
+}
+
+/** The part of `players/player_manifest.json` the engine uses: per-clip event times and the glove-closing keys of the catch clips. */
+export interface PlayerManifest {
+  clips: Record<string, { frames: number; duration_s: number; loop?: boolean; events_s?: Record<string, number>; glove_closed_keys?: [number, number][] }>;
+}
+
+/** Default node sets of the role-specific files, applied on top of the full base file: fielders / pitchers, batters / runners, catchers. */
+export interface GearSets {
+  field?: Set<string>;
+  batter?: Set<string>;
+  catcher?: Set<string>;
 }
 
 export interface Assets {
@@ -34,18 +50,20 @@ export interface Assets {
   ball?: Object3D;
   bat?: Object3D;
   characters: Map<string, CharacterTemplate>;
+  gear: GearSets;
+  manifest?: PlayerManifest;
   /** true if the files still use the old +X = first base convention (loaded under a mirrored root) */
   mirrored: boolean;
   missing: string[];
 }
 
-const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire'];
+const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base'];
 
 export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (msg: string) => void): Promise<Assets> {
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
   const ktx2 = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}libs/basis/`).detectSupport(renderer);
   const loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
-  const out: Assets = { base, characters: new Map(), mirrored: false, missing: [] };
+  const out: Assets = { base, characters: new Map(), gear: {}, mirrored: false, missing: [] };
 
   // Detect the axis convention the files were exported with (old: +X toward first base).
   try {
@@ -104,8 +122,23 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     if (!c) return;
     const clips = new Map<string, AnimationClip>();
     for (const clip of c.animations) clips.set(clip.name, clip);
-    out.characters.set(CHARACTERS[i], { scene: c.scene, clips });
+    const defaults = new Set<string>();
+    c.scene.traverse((o) => {
+      if (o.userData?.cb_default === 1 || o.userData?.cb_default === true) defaults.add(o.name);
+    });
+    out.characters.set(CHARACTERS[i], { scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
   });
+  try {
+    const r = await fetch(base + 'players/player_manifest.json', { cache: 'no-cache' });
+    if (r.ok) out.manifest = (await r.json()) as PlayerManifest;
+  } catch {
+    /* no manifest: glove closing falls back to the clip's catch time */
+  }
+  out.gear = {
+    field: out.characters.get('player_home')?.defaults,
+    batter: out.characters.get('player_batter')?.defaults,
+    catcher: out.characters.get('player_catcher')?.defaults,
+  };
   return out;
 }
 

@@ -3,15 +3,25 @@
  * to the engine's own `GameLike` contract (`types.ts`). Structural types only, so the engine
  * compiles whether or not `src/sim` exists.
  */
-import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, TeamInfo, Vec3 } from './types';
+import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, TeamInfo, TeamStatsView, Vec3 } from './types';
+import { windupSeconds } from './pitchTiming';
 import { BASES } from './dims';
 
 type V = Vec3;
 interface RSPlayer {
   id: string; name: string; team: 'home' | 'away'; role: string; position: string; jersey: number;
   pos: V; vel: V; facing: number; anim: AnimHint; animT: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R';
+  hasBall?: boolean;
+  physique?: PlayerSnap['physique'];
+  appearance?: PlayerSnap['appearance'];
+  delivery?: PlayerSnap['delivery'];
+  ratings?: Record<string, number>;
+  gloveTarget?: V;
 }
-interface RSInfo { id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R' }
+interface RSInfo {
+  id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R'; height?: number; primaryPosition?: string;
+  ratings?: Record<string, number>; arsenal?: { type: string; mph: number; grade?: number }[];
+}
 interface RSState {
   time: number; phase: string; inning: number; half: 'top' | 'bottom'; outs: number; balls: number; strikes: number;
   score: { home: number; away: number };
@@ -25,6 +35,7 @@ interface RSState {
   gameOver: boolean;
   winner: 'home' | 'away' | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
+  stats?: { home: TeamStatsView; away: TeamStatsView };
 }
 type RSEvent = { type: string; time: number } & Record<string, unknown>;
 export interface RealGame {
@@ -43,37 +54,7 @@ const POS_ROLE: Record<string, PlayerRole> = {
   P: 'pitcher', C: 'catcher', '1B': 'first', '2B': 'second', '3B': 'third', SS: 'short', LF: 'left', CF: 'center', RF: 'right', DH: 'first',
 };
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
-const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2 };
-
-/** Hints the sim emits that the renderer has no clip for yet, and the clip that stands in (the sim's `README.md` lists them all). */
-const SIM_ALIAS: Record<string, AnimHint> = {
-  toss: 'throw',
-  transfer: 'idle',
-  tag_glove: 'field',
-  tag_hand: 'field',
-  slide_feet: 'slide',
-  slide_head: 'slide',
-  slide_hook_left: 'slide',
-  slide_hook_right: 'slide',
-  dive_back: 'slide',
-  catcher_block: 'field',
-  catch_pitch: 'catch',
-  catch_throw: 'catch',
-  catch_stretch: 'catch',
-  catch_fly: 'catch',
-  catch_backhand: 'catch',
-  field_grounder: 'field',
-  ump_ready: 'idle',
-  ump_strike: 'idle',
-  ump_strike_swinging: 'idle',
-  ump_ball: 'idle',
-  ump_safe: 'idle',
-  ump_out: 'idle',
-  ump_foul: 'idle',
-  ump_fair: 'idle',
-  ump_homerun: 'idle',
-  ump_time: 'idle',
-};
+const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0 };
 
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
@@ -108,6 +89,11 @@ export class RealSimAdapter implements GameLike {
   /** the sim stops the ball where it crosses the fence; the renderer lets it fly on into the seats (visual only, the outcome is decided) */
   private carry: { t0: number; p: V; v: V; landedAt: number } | null = null;
 
+  /** The raw simulation game (its own event bus and state), for consumers that need more than the engine contract, e.g. the audio layer. */
+  get game(): RealGame {
+    return this.g;
+  }
+
   constructor(private g: RealGame) {
     g.on('*', (e) => this.onEvent(e));
   }
@@ -137,7 +123,12 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'contact', exitVelo: Number(e.exitMph) * MPH, launchAngle: Number(e.launchDeg), sprayAngle: Number(e.sprayDeg), batterId: String(e.batterId) });
         break;
       case 'catch':
-        this.emit({ type: 'catch', playerId: String(e.fielderId), inAir: !!e.fly });
+        this.emit({ type: 'catch', playerId: String(e.fielderId), inAir: !!e.fly, pos: (e.pos as V | undefined), height: e.height as number | undefined, side: e.side as string | undefined, kind: e.kind as string | undefined, firm: e.firm as boolean | undefined });
+        break;
+      case 'tag':
+      case 'tagAttempt':
+      case 'tagAvoided':
+        this.emit({ type: 'tag', fielderId: (e.fielderId ?? e.fromId) as string | undefined, runnerId: (e.runnerId ?? e.playerId) as string | undefined, base: e.base as number | undefined, result: e.type === 'tag' ? 'tag' : e.type === 'tagAvoided' ? 'avoided' : 'attempt', pos: e.pos as V | undefined });
         break;
       case 'fielded':
         this.emit({ type: 'catch', playerId: String(e.fielderId), inAir: false });
@@ -154,9 +145,10 @@ export class RealSimAdapter implements GameLike {
         break;
       }
       case 'out':
-        this.emit({ type: 'out', playerId: String(e.playerId), text: `${this.who(e.playerId)} is out (${String(e.outType)}).` });
+        this.emit({ type: 'out', playerId: String(e.playerId), text: `${this.who(e.playerId)} is out (${String(e.outType)}).`, closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined, base: (e.base as number | null | undefined) ?? null });
         break;
       case 'safe':
+        this.emit({ type: 'safe', playerId: String(e.playerId), base: Number(e.base), closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined });
         this.emit({ type: 'play', text: `${this.who(e.playerId)} is safe.` });
         break;
       case 'runScored':
@@ -173,6 +165,14 @@ export class RealSimAdapter implements GameLike {
       case 'baseTouch':
         this.emit({ type: 'base_touch', playerId: String(e.playerId), base: Number(e.base), trot: !!e.trot, pos: e.pos as V | undefined });
         break;
+      case 'robbedHomeRun':
+        this.carry = null;
+        this.emit({ type: 'robbed_hr', playerId: String(e.fielderId), batterId: String(e.batterId), distance: Number(e.distance), pos: e.pos as V | undefined });
+        this.emit({ type: 'play', text: `${this.who(e.fielderId)} robs ${this.who(e.batterId)} of a home run!` });
+        break;
+      case 'wallContact':
+        this.emit({ type: 'wall_contact', who: e.who === 'fielder' ? 'fielder' : 'ball', playerId: e.fielderId ? String(e.fielderId) : undefined, pos: e.pos as V, speed: Number(e.speed) });
+        break;
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
@@ -180,6 +180,8 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
         break;
       case 'call': {
+        const call = e.call as { kind: string; umpire?: string; pos?: V } | undefined;
+        if (call) this.emit({ type: 'umpire_call', kind: call.kind, umpireId: call.umpire ?? (e.umpire as string | undefined), pos: call.pos ?? (e.pos as V | undefined) });
         const kind = (e.call as { kind: string }).kind;
         if (kind === 'ball') this.emit({ type: 'ball' });
         else if (kind === 'strikeLooking' || kind === 'strikeSwinging') this.emit({ type: 'strike' });
@@ -234,13 +236,14 @@ export class RealSimAdapter implements GameLike {
       const role: PlayerRole = p.role === 'fielder' ? (POS_ROLE[p.position] ?? 'center') : (p.role as PlayerRole);
       const isBat = p.role === 'batter';
       const hand = isBat ? (p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats) : p.throws;
-      // the sim's finer hints (tags, slide types, catch kinds, umpire gestures, casual returns) have no clips of their own yet: they play the nearest existing one
-      const anim: AnimHint = SIM_ALIAS[p.anim as string] ?? p.anim;
-      const nominal = NOMINAL[anim];
+      const nominal = NOMINAL[p.anim];
+      // a pitcher's windup lasts as long as the sim's delivery (tempo, holding, stretch); everything else uses a nominal clip length
+      const dur = p.anim === 'windup' && p.delivery ? windupSeconds(p.delivery.tempo, p.delivery.fromStretch, p.ratings?.holding ?? 50) : p.anim === 'pitch' ? 0.5 : nominal;
       return {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
-        pos: p.pos, facing: p.facing, vel: p.vel, anim,
-        animTime: nominal ? p.animT * nominal : undefined, animProgress: nominal ? p.animT : undefined,
+        pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
+        animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;
@@ -251,7 +254,7 @@ export class RealSimAdapter implements GameLike {
       this.lastCallTime = call.time;
       this.callSeq++;
     }
-    const person = (i: RSInfo, stats: string): PersonInfo => ({ id: i.id, name: i.name, number: i.jersey, hand: i.throws, stats });
+    const person = (i: RSInfo, stats: string): PersonInfo => ({ id: i.id, name: i.name, number: i.jersey, hand: i.throws, stats, ratings: i.ratings, arsenal: i.arsenal, height: i.height, position: i.primaryPosition });
     const b = s.batter;
     const p = s.pitcher;
     const st: GameState = {
@@ -270,6 +273,8 @@ export class RealSimAdapter implements GameLike {
       pitcher: p ? person(p.info, `${Math.floor(p.line.outs / 3)}.${p.line.outs % 3} IP  ${p.line.so} K  ${p.pitchCount} P`) : null,
       teams: this.teams,
       over: s.gameOver,
+      stats: s.stats ? { away: s.stats.away, home: s.stats.home } : undefined,
+      pitchCount: p?.pitchCount,
     };
     if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;
