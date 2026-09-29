@@ -19,7 +19,8 @@ export function lab(seed: string | number, cfg: Partial<GameConfig> = {}): Lab {
   const w = g._world;
   const events: GameEvent[] = [];
   g.on('*', (e) => events.push(e));
-  for (let i = 0; i < 2000 && !(w.phase === 'prePitch' && w.batter); i++) g.step(0.05);
+  // (tick by tick: a whole windup can fit inside one 0.05 s step)
+  for (let i = 0; i < 24000 && !(w.phase === 'prePitch' && w.batter); i++) g.step(1 / 240);
   w.ball.lob = null;
   for (const r of w.runners) r.p.onField = false;
   w.runners = [];
