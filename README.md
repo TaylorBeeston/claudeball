@@ -47,8 +47,16 @@ overrides the folder). Re-run `assets/optimize.sh` after re-exporting from Blend
 ### Controls and URL parameters
 
 Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` skip to next half inning · `c` auto camera on/off · `q` quality ·
-`t` time of day. `?quality=low|medium|high|ultra`, `?tod=day|dusk|night`, `?mock` (dev mock game instead of the real
-sim), `?noassets`, `?nopost`. Details in [`src/engine/README.md`](src/engine/README.md).
+`t` time of day · `m` sound on/off. `?quality=low|medium|high|ultra`, `?tod=day|dusk|night`, `?mock` (dev mock game instead of the real
+sim), `?noassets`, `?nopost`, `?noaudio`. Details in [`src/engine/README.md`](src/engine/README.md).
+
+### Sound
+
+A stadium soundscape driven by the same events as the picture: bat cracks that depend on how hard and how well the ball was hit, mitt pops scaled by pitch speed, glove pops, throws, bounces, dirt, fence and slide sounds panned and
+attenuated by the broadcast camera, a crowd whose murmur and roar follow the situation (late innings, close score, runners in scoring position, two strikes, a ball in the air) and that reacts to the outcome (cheers for the home team,
+groans, a gasp on a robbed home run), an organ, fireworks after home-team homers, a PA announcer (`Now batting, number 23, ...`), umpire calls and two-voice commentary that reuses the sim's play-by-play text. Replays go dull and slow, pause quiets the field, fast-forward is silent.
+Press `m` or click 🔊 (top right) to mute; ⚙ has volumes and the announcer / commentary toggles. Browsers need one click or key press before they play audio (a small prompt says so). Sounds are synthesised in the browser (plus three CC0 applause clips),
+and voices use your browser's speech synthesis (none in some headless/Linux setups: then only the effects play). See [`src/audio/README.md`](src/audio/README.md).
 
 ## Deployment
 
@@ -62,6 +70,7 @@ HDRI download only means the site uses the procedural sky. The build ships `asse
 
 - Sky HDRIs: [Poly Haven](https://polyhaven.com/hdris) (CC0), *Kloofendal 48d Partly Cloudy (Pure Sky)* and *Qwantani Dusk 2 (Pure Sky)*.
 - Rendering: [three.js](https://threejs.org/). Models and animation are original, built in Blender.
+- Sound: synthesised in the browser by `src/audio` plus three CC0 applause clips (Wikimedia Commons: Amada44, Sandermotions), voices from your browser's speech synthesis; see [`public/audio/CREDITS.md`](public/audio/CREDITS.md).
 
 ## License
 
@@ -75,6 +84,7 @@ repo) are CC0.
 |---|---|
 | `src/sim/` | pure TypeScript baseball simulation (no rendering dependencies), see [`src/sim/README.md`](src/sim/README.md) |
 | `src/engine/` | three.js renderer: stadium, players, cameras/replays, HUD, post-processing |
+| `src/audio/` | Web Audio sound: synthesised effects, crowd, organ, PA/umpire/commentary voices; listens to the game's events, see [`src/audio/README.md`](src/audio/README.md) |
 | `assets/` | Blender sources, glTF exports and the optimize script |
 | `scripts/` | headless season sim (`simulate.ts`), diagnostics, HDRI fetch |
 
