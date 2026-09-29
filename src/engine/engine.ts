@@ -199,6 +199,7 @@ export class Engine {
       case '3': this.sim.speed = 4; break;
       case 'n': this.sim.skipToNextHalfInning(); break;
       case 'c': this.director.setAuto(!this.director.auto); break;
+      case 'b': this.hud?.toggleBox(); break;
       case 'q': this.setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(this.qualityName) + 1) % 4]); break;
       case 't': this.setTimeOfDay(tods[(tods.indexOf(this.env.todName) + 1) % 3]); break;
     }
