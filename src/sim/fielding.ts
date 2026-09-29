@@ -774,7 +774,6 @@ export function checkWildThrow(w: World): void {
   const closing = (b.x - R.x) * b.vx + (b.z - R.z) * b.vz < 0;
   if (!closing && d > 3.2 && w.tick - play.lastThrowTick > 12) {
     play.throwChecked = true;
-    if (process.env.DBG_THROW) console.log('wild throw', { tgt: ball.throwTarget && [ball.throwTarget.x.toFixed(1), ball.throwTarget.z.toFixed(1)], from: F.fieldPos, to: R.fieldPos, d: d.toFixed(1), rpos: [R.x.toFixed(1), R.z.toFixed(1)], ball: [b.x.toFixed(1), b.y.toFixed(1), b.z.toFixed(1)], base: ball.throwBase, kind: R.plan.kind });
     // charge the thrower: the throw was beyond the receiver's reach
     play.hadError = true;
     if (!play.errors.includes(F)) {

@@ -211,7 +211,6 @@ export function decideSteals(w: World, windupSecs: number): void {
   const exch = 0.72 - 0.0035 * (cr - 50);
   const tBall = windupSecs + (w.pitcher.info.arsenal.length ? 0.44 : 0.44) + exch + D / (armV * 0.9) + 0.2;
   const margin = tBall - tRun + w.rng.normal(0, 0.25);
-  if (process.env.DBG_STEAL) console.log('steal eval', { tRun: tRun.toFixed(2), tBall: tBall.toFixed(2), margin: margin.toFixed(2), dist: dist.toFixed(1) });
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
   const thr = 0.3 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
