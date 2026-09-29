@@ -52,6 +52,9 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     ratings: p.info.ratings,
     physique: p.info.physique,
     appearance: p.info.appearance,
+    gloveTarget: p.gloveTarget ? { ...p.gloveTarget } : null,
+    gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
+    gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     delivery: p.info.delivery ? { ...p.info.delivery, fromStretch: p === w.pitcher && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) } : undefined,
   };
 }

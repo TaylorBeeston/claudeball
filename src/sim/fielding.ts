@@ -5,6 +5,7 @@ import { clamp, MPH, RPM } from './math';
 import { armMps, catcherTransfer, firstStepSeconds, judgementSigma, throwWindup, transferSeconds } from './attributes';
 import { WALL_STAND, insideFence, setGoal, travelTime } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
+import type { AnimHint } from './types';
 import { PENDING } from './decisions';
 import type { ThrowDecision, WallPlayDecision, WallPlayRequest } from './decisions';
 import { ask, situationOf } from './dispatch';
@@ -561,14 +562,20 @@ function attempt(w: World, F: PlayerRT, stretch: number): void {
   const isCatcher = F.fieldPos === 'C';
   const skill = isCatcher ? (g + F.info.ratings.catching) / 2 : g;
   const sigma = TUNE.fieldSigma * (air ? 1 : 1.12) * (0.55 + rel / 38) * (1 + 1.1 * stretch * stretch) * (1 + 0.1 * (fs / 8)) * (1.75 - 0.015 * skill);
-  const e = gauss2(w, sigma * (ball.mode === 'thrown' ? 0.6 : 1));
+  // his glove's miss was drawn when he first committed to the catch (so the renderer can show it coming); its size is set by the difficulty now
+  const zz = F.plan.catchZ;
+  F.plan.catchZ = null;
+  const sg = sigma * (ball.mode === 'thrown' ? 0.6 : 1);
+  const e = zz ? sg * Math.hypot(zz[0], zz[1]) : gauss2(w, sg);
   const pocket = TUNE.pocket;
   const fromThrow = ball.mode === 'thrown';
   const routine = stretch < 0.6 && sp < 40;
   if (e <= pocket) {
-    secure(w, F, air, fromThrow, fs);
+    secure(w, F, air, fromThrow, fs, { firm: e <= pocket * 0.7, stretch });
     return;
   }
+  F.catchArmed = false;
+  F.gloveTarget = null;
   if (e <= pocket * 1.7 && sp < 32) {
     // bobble: ball spills a short distance in front of the fielder
     const ang = w.rng.range(0, Math.PI * 2);
@@ -631,8 +638,34 @@ function chargeError(w: World, F: PlayerRT, kind: 'drop' | 'bobble' | 'throw'): 
   for (const r of w.runners) if (r.state === 'live' && r.isBatter && r.base === 0) r.reachedOnError = true;
 }
 
+/** Which side of his body a catch is on: `lateral` > 0 is toward his throwing-arm side (the glove is on the other hand). */
+function lateralOf(F: PlayerRT, x: number, z: number): number {
+  const rx = -Math.cos(F.facing);
+  const rz = Math.sin(F.facing);
+  const l = (x - F.x) * rx + (z - F.z) * rz; // + = his right
+  return F.info.throws === 'R' ? l : -l; // for a right-hander the throwing arm is the right one
+}
+
+/** How a catch is made, from where the ball meets the glove: height, side, kind and the animation hint that shows it. */
+function catchDetail(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, how: { firm: boolean; stretch: number }) {
+  const b = w.ball.body;
+  const lat = lateralOf(F, b.x, b.z);
+  const height: 'low' | 'chest' | 'high' = b.y < 0.6 ? 'low' : b.y < 1.5 ? 'chest' : 'high';
+  const bip = w.play?.bip;
+  const kind: 'throw' | 'pickoff' | 'fly' | 'line' | 'ground' = fromThrow ? (w.play?.kind === 'pickoff' ? 'pickoff' : 'throw') : air && !w.ball.touchedGround ? (bip?.line ? 'line' : 'fly') : 'ground';
+  let side: 'glove' | 'arm' | 'backhand' | 'forehand';
+  if (kind === 'ground') side = lat > 0.35 ? 'backhand' : 'forehand';
+  else side = lat > 0.6 ? 'backhand' : lat > 0.3 ? 'arm' : 'glove';
+  const reachOut = Math.hypot(b.x - F.x, b.z - F.z);
+  let hint: AnimHint;
+  if (kind === 'ground') hint = 'field_grounder';
+  else if (kind === 'throw' || kind === 'pickoff') hint = F.fieldPos === '1B' || reachOut > 1.0 || how.stretch > 0.6 ? 'catch_stretch' : 'catch_throw';
+  else hint = side === 'backhand' ? 'catch_backhand' : 'catch_fly';
+  return { hint, fields: { kind, height, side, firm: how.firm } as const };
+}
+
 /** A fielder controls the ball. */
-export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, fs: number): void {
+export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, fs: number, how: { firm: boolean; stretch: number } = { firm: true, stretch: 0 }): void {
   const play = w.play!;
   const ball = w.ball;
   const b = ball.body;
@@ -647,13 +680,18 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
   const bx0 = b.x;
   const by0 = b.y;
   const bz0 = b.z;
+  const detail = catchDetail(w, F, air, fromThrow, how);
   giveBall(w, F);
+  F.gloveHold = { x: bx0, y: by0, z: bz0, t0: w.tick };
+  F.gloveTarget = null;
   F.plan.kind = 'hold';
   F.plan.holdUntil = w.tick + transferTicks(F, fs > 4 ? 1 : 0);
   F.plan.releaseAt = 0;
   F.goal = null;
   play.touches.push(F);
-  setAnim(w, F, air ? 'catch' : 'field', 0.45);
+  // the catch animation was started ~0.3 s ahead so that the catch is at about its half-way point; if it was not, start it now
+  if (!F.catchArmed) setAnim(w, F, detail.hint, 0.6);
+  F.catchArmed = false;
   if (!fromThrow && bip && !bip.firstFielder) {
     bip.firstFielder = F;
     bip.fielders.push(F);
@@ -661,7 +699,7 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
       bip.status = fairHere ? 'fair' : 'foul';
       bip.firstTouch = { x: b.x, z: b.z };
     }
-    emit(w, { type: air && !ball.touchedGround ? 'catch' : 'fielded', fielderId: F.info.id, ...(air && !ball.touchedGround ? { fly: true, pos: { x: b.x, y: b.y, z: b.z } } : { clean: true, pos: { x: b.x, y: b.y, z: b.z } }) } as never);
+    emit(w, { type: air && !ball.touchedGround ? 'catch' : 'fielded', fielderId: F.info.id, ...(air && !ball.touchedGround ? { fly: true, pos: { x: bx0, y: by0, z: bz0 } } : { clean: true, pos: { x: bx0, y: by0, z: bz0 } }), ...detail.fields } as never);
     if (air && !ball.touchedGround && !bip.caught) {
       bip.caught = true;
       bip.landed = false;
@@ -685,9 +723,9 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
     }
   } else if (fromThrow) {
     if (!bip?.fielders.includes(F)) bip?.fielders.push(F);
-    emit(w, { type: 'catch', fielderId: F.info.id, fly: false, pos: { x: b.x, y: b.y, z: b.z } });
+    emit(w, { type: 'catch', fielderId: F.info.id, fly: false, pos: { x: bx0, y: by0, z: bz0 }, ...detail.fields });
   } else if (!bip) {
-    emit(w, { type: 'fielded', fielderId: F.info.id, clean: true, pos: { x: b.x, y: b.y, z: b.z } });
+    emit(w, { type: 'fielded', fielderId: F.info.id, clean: true, pos: { x: bx0, y: by0, z: bz0 }, ...detail.fields });
   }
   void fairHere;
 }
@@ -1047,4 +1085,80 @@ export type { PathSample };
 /** The built-in outfielder's call at the wall: go up if the ball looks reachable (a near miss is worth a try). */
 export function aiWallPlay(F: PlayerRT, req: WallPlayRequest): WallPlayDecision {
   return { leap: req.ballHeightAtWall > req.standingReach - 0.15 && req.ballHeightAtWall <= req.jumpReach + 0.2 };
+}
+
+// ---------------------------------------------------------------------------------------------
+// the glove: where the ball will meet it, and the catch animation ahead of it
+// ---------------------------------------------------------------------------------------------
+
+/** First point of the ball's predicted flight that a fielder heading for his plan spot can reach (position, height, seconds from now). */
+function meetPoint(w: World, F: PlayerRT): { x: number; y: number; z: number; t: number } | null {
+  const path = w.ball.path;
+  if (!path.length) return null;
+  const tNow = (w.tick - w.ball.pathStart) * TICK;
+  const T = Math.max(0.05, travelTime(F, F.plan.tx, F.plan.tz));
+  let prev: { x: number; y: number; z: number; t: number; d: number } | null = null;
+  for (let i = Math.max(1, Math.floor(tNow * 60)); i < path.length; i++) {
+    const s = path[i];
+    const t = s.t - tNow;
+    if (t < 0.02) continue;
+    const k = Math.min(1, t / T);
+    const px = F.x + (F.plan.tx - F.x) * k;
+    const pz = F.z + (F.plan.tz - F.z) * k;
+    // the same reach test the attempt uses (a low ball is within 0.92 m, a higher one 1.15 m, more at a run)
+    const reach = (s.y < 0.5 ? 0.92 : 1.15) + (Math.hypot(F.vx, F.vz) > 5 ? 0.22 : 0);
+    const d = Math.hypot(s.x - px, s.z - pz);
+    if (d <= reach && s.y <= 2.7) {
+      // interpolate to the instant the ball crosses into reach (the prediction samples are 1/60 s apart)
+      if (prev && prev.d > reach) {
+        const f = (prev.d - reach) / Math.max(1e-6, prev.d - d);
+        return { x: prev.x + (s.x - prev.x) * f, y: Math.max(0.12, prev.y + (s.y - prev.y) * f), z: prev.z + (s.z - prev.z) * f, t: prev.t + (t - prev.t) * f };
+      }
+      return { x: s.x, y: Math.max(0.12, s.y), z: s.z, t };
+    }
+    prev = { x: s.x, y: s.y, z: s.z, t, d };
+  }
+  return null;
+}
+
+/** Each tick a ball is in flight: publish the glove target of the fielder about to catch it, and start his catch animation ~0.3 s ahead. */
+export function updateGloveTargets(w: World): void {
+  const ball = w.ball;
+  for (const F of fielders(w)) {
+    if (F.gloveTarget && F !== w.catcher && (ball.holder || w.tick > F.gloveAt + 30)) {
+      F.gloveTarget = null;
+      F.catchArmed = false;
+    }
+  }
+  if (ball.holder || !(ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown')) return;
+  ensurePath(w);
+  const cand: PlayerRT[] = [];
+  if (ball.mode === 'thrown' && ball.throwTo) cand.push(ball.throwTo);
+  else if (w.play?.primary) cand.push(w.play.primary);
+  for (const F of cand) {
+    const m = meetPoint(w, F);
+    if (!m) {
+      F.gloveTarget = null;
+      continue;
+    }
+    if (!F.plan.catchZ) F.plan.catchZ = [w.rng.normal(0, 1), w.rng.normal(0, 1)];
+    const z = F.plan.catchZ;
+    // the glove is a little off the ball's line by the miss he is going to make (small: it is scaled up at the instant by the difficulty)
+    // in the last few hundredths of a second the glove simply tracks the ball itself
+    const bb = ball.body;
+    const last = m.t <= 0.07;
+    F.gloveTarget = last ? { x: bb.x + z[0] * 0.02, y: Math.max(0.12, bb.y) + z[1] * 0.02, z: bb.z } : { x: m.x + z[0] * 0.03, y: m.y + z[1] * 0.03, z: m.z };
+    F.gloveAt = w.tick + Math.round(m.t / TICK);
+    if (!F.catchArmed && m.t <= 0.32) {
+      F.catchArmed = true;
+      const air = m.y > 0.4 && !ball.touchedGround;
+      const fromThrow = ball.mode === 'thrown';
+      const d = catchDetail(w, F, air, fromThrow, { firm: true, stretch: 0 });
+      // (side is computed from where the glove will be)
+      const lat = lateralOf(F, m.x, m.z);
+      const hint: AnimHint = air && !fromThrow && lat > 0.6 ? 'catch_backhand' : !air && !fromThrow ? 'field_grounder' : fromThrow ? (F.fieldPos === '1B' || Math.hypot(m.x - F.x, m.z - F.z) > 1.0 ? 'catch_stretch' : 'catch_throw') : 'catch_fly';
+      void d;
+      setAnim(w, F, hint, 0.6);
+    }
+  }
 }
