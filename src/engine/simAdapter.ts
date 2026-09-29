@@ -34,7 +34,7 @@ export interface TimedEvent {
 
 export const SIM_DT = 1 / 120;
 const HISTORY_DT = 1 / 60;
-const HISTORY_SECONDS = 30;
+const HISTORY_SECONDS = 75; // a home-run replay starts after the whole trot
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t) });
