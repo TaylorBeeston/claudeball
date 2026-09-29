@@ -58,7 +58,17 @@ export function runnerBody(r: RunnerRT): Body {
   const bp = bpos(bagOf(r));
   const d = unit(bp.x - p.x, bp.z - p.z);
   const L = limbLength(r.slideKind);
-  return { cx: p.x, cz: p.z, tx: p.x + d.x * L, tz: p.z + d.z * L, radius: 0.14 };
+  let tx = p.x + d.x * L;
+  let tz = p.z + d.z * L;
+  if (r.slideKind === 'hookL' || r.slideKind === 'hookR') {
+    // the hooking foot swings out to the side and back in to catch the corner of the bag: away from a glove waiting on the line
+    const dd = Math.hypot(bp.x - p.x, bp.z - p.z);
+    const prog = clamp((4.8 - dd) / 4.2, 0, 1);
+    const s = (r.slideKind === 'hookL' ? 1 : -1) * 0.75 * Math.sin(Math.PI * prog);
+    tx += d.z * s;
+    tz += -d.x * s;
+  }
+  return { cx: p.x, cz: p.z, tx, tz, radius: 0.14 };
 }
 
 /** Does the runner's foot / hand (or body) touch the bag of `b`? */
@@ -109,11 +119,11 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
   const dd = Math.hypot(p.x - bp.x, p.z - bp.z);
   const speed = Math.hypot(p.vx, p.vz);
   if (r.slideKind) {
-    if (dd > 4.2 || w.tick - r.slideAt > 200) r.slideKind = null; // slide is over
+    if (dd > 5.6 || w.tick - r.slideAt > 200) r.slideKind = null; // slide is over
     else return slideAim(r, b);
     return null;
   }
-  const trigger = returning ? dd > 0.5 && dd < 3.0 : dd < 3.4;
+  const trigger = returning ? dd > 0.5 && dd < 3.0 : dd < 4.8;
   if (!trigger || speed < 3) return null;
   const threat = threatAt(w, b);
   if (!threat && !r.stealing) return null;
@@ -129,13 +139,15 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
     if (onLine || b === 4) kind = lat > 0 ? 'hookR' : 'hookL'; // away from the glove
     else if (speed > 7.4 && p.info.ratings.baserunning > 58) kind = 'head';
   } else if (speed > 7.6 && p.info.ratings.baserunning > 60) kind = 'head';
+  // a hook has to be started earlier: the body needs the room to swing out around the glove
+  if (kind !== 'hookL' && kind !== 'hookR' && dd > 3.4) return null;
   r.slideKind = kind;
   r.slideAt = w.tick;
   setAnim(w, p, SLIDE_HINT[kind], 0.9);
   return slideAim(r, b);
 }
 
-/** A hook slide aims half a metre to the side of the bag so the leading foot swings in around the tag. */
+/** A hook slide aims a little to the side of the bag; the leading foot swings out and in around the glove (see `runnerBody`). */
 function slideAim(r: RunnerRT, b: number): { x: number; z: number } | null {
   if (r.slideKind !== 'hookL' && r.slideKind !== 'hookR') return null;
   const bp = bpos(b);
@@ -143,7 +155,7 @@ function slideAim(r: RunnerRT, b: number): { x: number; z: number } | null {
   const dir = unit(bp.x - p.x, bp.z - p.z);
   const left = { x: dir.z, z: -dir.x };
   const s = r.slideKind === 'hookL' ? 1 : -1;
-  return { x: left.x * 0.5 * s, z: left.z * 0.5 * s };
+  return { x: left.x * 0.6 * s, z: left.z * 0.6 * s };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -170,7 +182,10 @@ const GLOVE_SET = 0.6;
 function bagGlove(F: PlayerRT, r: RunnerRT, b: number, err: { x: number; z: number }) {
   const bp = bpos(b);
   const d = unit(r.p.x - bp.x, r.p.z - bp.z);
-  return { x: bp.x + d.x * GLOVE_SET + err.x, z: bp.z + d.z * GLOVE_SET + err.z };
+  // the glove is on his side of the line: he sets it a little toward where he stands (a runner who slides into that side finds it)
+  const left = { x: -d.z, z: d.x }; // left of the runner's heading toward the bag
+  const lat = clamp((F.x - bp.x) * left.x + (F.z - bp.z) * left.z, -0.5, 0.5) * 0.4;
+  return { x: bp.x + d.x * GLOVE_SET + left.x * lat + err.x, z: bp.z + d.z * GLOVE_SET + left.z * lat + err.z };
 }
 
 /** Start sweeps and bag tags for the man holding the ball; advance and resolve those in progress. */
@@ -202,6 +217,16 @@ export function tickTagging(w: World): void {
           const sigma = 0.08 * clamp(1.5 - rr.glove / 100, 0.7, 1.3) * clamp(1.2 - rr.iq / 250, 0.85, 1.1);
           g.glove.x += w.rng.normal(0, sigma);
           g.glove.z += w.rng.normal(0, sigma);
+          // he sees the foot swinging out and moves the glove partway toward it (the foot comes back in as it hooks the bag)
+          if (r.slideKind === 'hookL' || r.slideKind === 'hookR') {
+            const bp = bpos(g.base);
+            const hd = unit(bp.x - r.p.x, bp.z - r.p.z);
+            const lf = { x: hd.z, z: -hd.x };
+            const body = runnerBody(r);
+            const lateral = clamp((body.tx - bp.x) * lf.x + (body.tz - bp.z) * lf.z, -0.7, 0.7);
+            g.glove.x += lf.x * 0.20 * lateral;
+            g.glove.z += lf.z * 0.20 * lateral;
+          }
           g.announced = true;
           emit(w, { type: 'tagAttempt', fielderId: g.F.info.id, runnerId: r.p.info.id, base: g.base, hand: g.hand, pos: { x: g.glove.x, y: r.slideKind ? 0.3 : 0.7, z: g.glove.z } });
           setAnim(w, g.F, g.hand === 'glove' ? 'tag_glove' : 'tag_hand', 0.7);
