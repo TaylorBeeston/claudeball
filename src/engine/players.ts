@@ -271,7 +271,7 @@ export class PlayerManager {
   readonly group = new Group();
   private puppets = new Map<string, PuppetLike>();
   private used = new Set<string>();
-  private penv: PuppetEnv = { ball: null, batGrip: null, time: 0 };
+  private penv: PuppetEnv = { ball: null, batGrip: null, time: 0, ballSpeed: 0, mound: new Vector3(0, 1.5, DIM.moundDist) };
   /** override factory to swap in glTF characters */
   makePuppet: (snap: PlayerSnap) => PuppetLike = (s) => new Puppet(s.id);
   readonly positions = new Map<string, Vector3>();
@@ -303,6 +303,7 @@ export class PlayerManager {
     this.penv.ball = state.ball.visible ? ball : null;
     this.penv.batGrip = bat.visible ? bat.grip : null;
     this.penv.time = state.time;
+    this.penv.ballSpeed = state.ball.visible ? Math.hypot(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z) : 0;
     this.used.clear();
     for (const snap of state.players) {
       this.used.add(snap.id);

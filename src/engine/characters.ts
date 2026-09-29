@@ -334,6 +334,10 @@ export interface PuppetEnv {
   batGrip: { top: Vector3; bottom: Vector3 } | null;
   /** simulation time in seconds, for idle variety */
   time: number;
+  /** ball speed (m/s), 0 when there is no ball */
+  ballSpeed?: number;
+  /** where the pitcher's eyes/hands are (scene): what hitters, catchers and umpires look at while no ball is visible */
+  mound?: Vector3 | null;
 }
 
 const seedFrom = (id: string) => {
