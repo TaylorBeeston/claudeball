@@ -75,6 +75,8 @@ export class RealSimAdapter implements GameLike {
   private lastCallTime = -1;
   private last: GameState | null = null;
   private names = new Map<string, string>();
+  /** the sim stops the ball where it crosses the fence; the renderer lets it fly on into the seats (visual only, the outcome is decided) */
+  private carry: { t0: number; p: V; v: V; landedAt: number } | null = null;
 
   constructor(private g: RealGame) {
     g.on('*', (e) => this.onEvent(e));
@@ -130,10 +132,14 @@ export class RealSimAdapter implements GameLike {
       case 'runScored':
         this.emit({ type: 'run', playerId: String(e.playerId), text: `${this.who(e.playerId)} scores.` });
         break;
-      case 'homeRun':
+      case 'homeRun': {
+        const v = s?.ball.vel;
+        const p = (e.pos as V | undefined) ?? s?.ball.pos;
+        if (p && v) this.carry = { t0: Number(e.time), p: { ...p }, v: { ...v }, landedAt: -1 };
         this.emit({ type: 'homerun', batterId: String(e.batterId), distance: Number(e.distance), pos: e.pos as V | undefined });
         this.emit({ type: 'run', playerId: String(e.batterId), text: `HOME RUN! ${this.who(e.batterId)} — ${Math.round(Number(e.distance) * 3.28084)} ft.` });
         break;
+      }
       case 'baseTouch':
         this.emit({ type: 'base_touch', playerId: String(e.playerId), base: Number(e.base), trot: !!e.trot, pos: e.pos as V | undefined });
         break;
@@ -163,6 +169,30 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'game_end', winner: e.winner as 'home' | 'away' });
         break;
     }
+  }
+
+  /** Ballistic flight (gravity + light drag) from the fence crossing while the sim's ball sits frozen there. */
+  private applyCarry(st: GameState, simBall: V) {
+    const c = this.carry!;
+    const dt = st.time - c.t0;
+    const frozen = Math.hypot(simBall.x - c.p.x, simBall.y - c.p.y, simBall.z - c.p.z) < 0.5;
+    if (!frozen || dt < 0 || dt > 12) {
+      this.carry = null;
+      return;
+    }
+    const k = Math.exp(-0.05 * dt);
+    const y = c.p.y + c.v.y * dt - 4.905 * dt * dt;
+    let land = c.landedAt;
+    if (land < 0 && y <= 0.1) land = this.carry!.landedAt = dt;
+    const t = land >= 0 ? land : dt;
+    const yy = land >= 0 ? 0.1 : y;
+    const vy = c.v.y - 9.81 * t;
+    st.ball = {
+      ...st.ball,
+      pos: { x: c.p.x + c.v.x * t * (1 + k) * 0.5, y: yy, z: c.p.z + c.v.z * t * (1 + k) * 0.5 },
+      vel: land >= 0 ? { x: 0, y: 0, z: 0 } : { x: c.v.x * k, y: vy, z: c.v.z * k },
+      visible: land < 0 || dt - land < 1.5,
+    };
   }
 
   getState(): GameState {
@@ -209,6 +239,7 @@ export class RealSimAdapter implements GameLike {
       teams: this.teams,
       over: s.gameOver,
     };
+    if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;
     return st;
   }

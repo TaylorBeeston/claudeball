@@ -21,6 +21,7 @@ import {
   Vector3,
 } from 'three';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
+import { HeadLook, lookTarget, type LookTarget } from './headLook';
 
 // ---------------------------------------------------------------------------------- pose
 const KEYS = [
@@ -376,6 +377,8 @@ export class Puppet implements PuppetLike {
   private blend = 1;
   private seed: number;
   private look = { yaw: 0, pitch: 0 };
+  private headLook = new HeadLook();
+  private lookT: LookTarget = { yaw: 0, pitch: 0, valid: false };
   private role: PlayerRole = 'idle' as PlayerRole;
   private ikW = 0;
   private clock = 0;
@@ -528,7 +531,8 @@ export class Puppet implements PuppetLike {
     if (snap.role !== this.role) this.setRoleGear(snap.role);
     this.clock += dt;
     const hand = snap.hand ?? (this.seed < 0.28 ? 'L' : 'R');
-    const hint = snap.anim;
+    // hints this rig has no dedicated pose for fall back to the nearest one
+    const hint: AnimHint = snap.anim === 'trot' || snap.anim === 'run_turn' ? 'run' : snap.anim === 'catch_jump' ? 'catch' : snap.anim;
     if (hint !== this.cur) {
       // capture what is currently displayed and cross-fade into the new clip
       Object.assign(this.from, this.pose);
@@ -550,23 +554,22 @@ export class Puppet implements PuppetLike {
 
     // root & gear
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
-    this.root.rotation.y = snap.facing;
+    // a batter in the box stands sideways, chest toward the plate (the sim's facing is where he looks: at the pitcher)
+    const stance = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
+    this.root.rotation.y = stance ? (hand === 'L' ? Math.PI / 2 - 0.2 : -Math.PI / 2 + 0.2) : snap.facing;
     this.root.updateMatrixWorld(true);
 
-    // head lookAt toward ball (or straight ahead)
-    let lyaw = 0, lpit = 0.05;
-    if (env.ball && snap.role !== 'umpire' || (env.ball && snap.role === 'umpire')) {
-      const b = env.ball!;
-      _v.copy(b);
+    // head lookAt toward the ball (or the mound): clamped, speed-limited, ignored when behind / too close
+    let t: LookTarget | null = null;
+    const focus = env.ball ?? env.mound ?? null;
+    if (focus) {
+      _v.copy(focus);
       this.spine.worldToLocal(_v);
-      lyaw = Math.atan2(_v.x, _v.z);
-      lpit = Math.atan2(-(_v.y - 0.65), Math.hypot(_v.x, _v.z));
+      t = lookTarget(_v.x, _v.y - 0.65, _v.z, 0, 0, this.lookT);
     }
-    lyaw = clamp(lyaw, -1.15, 1.15);
-    lpit = clamp(lpit, -0.6, 0.7);
-    const k = 1 - Math.exp(-dt * 10);
-    this.look.yaw += (lyaw - this.look.yaw) * k;
-    this.look.pitch += (lpit - this.look.pitch) * k;
+    this.headLook.step(t, dt);
+    this.look.yaw = this.headLook.yaw;
+    this.look.pitch = this.headLook.pitch;
     this.neck.rotation.set(this.pose.nkRx + this.look.pitch - this.spine.rotation.x * 0.3, this.pose.nkRy + this.look.yaw, 0, 'YXZ');
 
     // arm IK to the bat for the batter
