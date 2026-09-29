@@ -28,7 +28,11 @@ export type AnimHint =
   /** Easy home-run / dead-ball jog (`run` is a full sprint). */
   | 'trot'
   /** Rounding a base: a sprint with a hard curve into the bag. */
-  | 'run_turn';
+  | 'run_turn'
+  /** A fielder moving the ball from glove to throwing hand, standing (after a catch, an out, a pitch). */
+  | 'transfer'
+  /** An easy, non-urgent toss back in (a short underhand / short-arm flip). Longer casual returns use `throw`. */
+  | 'toss';
 
 /** What the person is doing on the field right now. */
 export type PlayerRole = 'pitcher' | 'catcher' | 'fielder' | 'batter' | 'runner' | 'umpire';
@@ -422,6 +426,8 @@ export type GameEvent =
   | (EBase & { type: 'wallLeap'; fielderId: string; pos: Vec3; ballHeightAboveWall: number })
   /** A would-be home run was caught by a fielder reaching over the fence. */
   | (EBase & { type: 'robbedHomeRun'; fielderId: string; batterId: string; distance: number; heightAboveWall: number; pos: Vec3 })
+  /** A fielder returns the ball after a dead ball or a pitch (casual, non-urgent): glove-to-hand transfer is over, the ball leaves his hand. */
+  | (EBase & { type: 'ballReturn'; fromId: string; toId: string; mph: number; casual: true })
   /** A runner touched a base (also for dead-ball trots): `trot` is true when it is not a live-ball touch. */
   | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3 })
   | (EBase & { type: 'substitution'; team: TeamSide; inId: string; outId: string; reason: string })

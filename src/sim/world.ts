@@ -71,6 +71,8 @@ export interface PlayerRT {
   gait: 'trot' | 'turn' | null;
   /** Tick of the last `wallContact` event for this player (rate limit). */
   wallTick: number;
+  /** Where he belongs for the current alignment (fielders) — set by `resetDefense`. */
+  home: { x: number; z: number } | null;
   /** Sprint fatigue 0 (fresh) .. 1. */
   legs: number;
   /** Hitter's day-to-day form (standard-normal-ish, AR(1) over his plate appearances). */
@@ -240,7 +242,7 @@ export interface BallRT {
   thrower: PlayerRT | null;
   throwTarget: { x: number; z: number } | null;
   /** For throws that are not physics (catcher -> pitcher lobs). */
-  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number } | null;
+  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number; arc?: number } | null;
   /** Cached prediction for fielders. */
   path: PathSample[];
   pathStart: number; // tick when path was computed
@@ -332,8 +334,25 @@ export interface PrePitch {
   pickoffDone: boolean;
   pitch: PitchDecision | null;
   stealsDone: boolean;
+  /** Tick by which the pitch goes anyway if someone is still not in place (0 = not started waiting). */
+  readyBy: number;
   /** Runner asked about stealing on this pitch and the answer. */
   steal: { r: RunnerRT; go: boolean } | null;
+}
+
+/** Casual ball handling: glove-to-hand transfer, a look at the situation, then an easy toss (possibly around the horn) to the pitcher. */
+export interface BallReturn {
+  stage: 'transfer' | 'look' | 'flight';
+  from: PlayerRT;
+  to: PlayerRT;
+  /** Tick the current stage ends (transfer / look). */
+  until: number;
+  /** Seconds he looks over the situation after the transfer. */
+  look: number;
+  /** Further recipients after `to` (the pitcher last). */
+  chain: PlayerRT[];
+  /** After a pitch (catcher's return) rather than after a play. */
+  afterPitch: boolean;
 }
 
 export interface World {
@@ -373,6 +392,12 @@ export interface World {
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
   /** Runners who are out or scored and are walking off the field (still on screen). */
   exiting: RunnerRT[];
+  /** Fielders / replaced players jogging to their dugout. */
+  leavers: { p: PlayerRT; since: number }[];
+  /** A casual ball return in progress (after a dead ball or a pitch). */
+  ret: BallReturn | null;
+  /** After an out with the bases empty the infield may toss it around (set by the rules, consumed by the return). */
+  hornKind: 'k' | 'out' | null;
   ball: BallRT;
   play: PlayState | null;
   // pitch in progress

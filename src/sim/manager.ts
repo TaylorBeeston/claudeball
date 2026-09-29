@@ -4,7 +4,8 @@ import { PENDING } from './decisions';
 import type { BuntDecision } from './decisions';
 import { ask, situationOf } from './dispatch';
 import { fatigueOf } from './pitchai';
-import { DEFAULT_SPOTS } from './setup';
+import { sendToDugout } from './handling';
+import { DEFAULT_SPOTS, DUGOUT } from './setup';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { giveBall } from './util';
 
@@ -138,8 +139,8 @@ export function substitutePitcher(w: World, t: TeamRT, np: PlayerRT): void {
   np.used = true;
   np.fieldPos = 'P';
   old.inGame = false;
-  old.onField = false;
   old.hasBall = false;
+  sendToDugout(w, old); // the pitcher he replaces walks off
   t.defense.set('P', np);
   t.pitcher = np;
   const slot = t.lineup.find((s) => s.player === old);
@@ -148,12 +149,21 @@ export function substitutePitcher(w: World, t: TeamRT, np: PlayerRT): void {
   const spot = DEFAULT_SPOTS.P;
   np.onField = true;
   np.role = 'pitcher';
-  np.x = spot.x;
-  np.z = spot.z;
   np.vx = np.vz = 0;
-  np.goal = null;
   np.facing = Math.PI;
   np.lookAt = { x: 0, z: 0 };
+  np.home = { x: spot.x, z: spot.z };
+  if (w.cfg.pace === 0 || w.tick === 0) {
+    np.x = spot.x;
+    np.z = spot.z;
+    np.goal = null;
+  } else {
+    // the reliever jogs in from the dugout side
+    const d = DUGOUT[t.side];
+    np.x = d.x;
+    np.z = d.z;
+    np.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.8 };
+  }
   if (t === w.fieldingTeam) {
     w.pitcher = np;
     giveBall(w, np);
@@ -182,12 +192,24 @@ function pinchRun(w: World, t: TeamRT, r: RunnerRT, best: PlayerRT): void {
   r.p = best;
   best.role = 'runner';
   best.onField = true;
-  best.x = out.x;
-  best.z = out.z;
   best.vx = best.vz = 0;
+  if (w.cfg.pace === 0 || w.tick === 0) {
+    best.x = out.x;
+    best.z = out.z;
+  } else {
+    // the pinch runner comes out of the dugout to the base (he walks to his lead like anyone else on base)
+    const d = DUGOUT[t.side];
+    best.x = d.x;
+    best.z = d.z;
+    best.goal = null;
+  }
   best.vmax = sprintOf(best.info.ratings.speed);
   best.accel = accelOfRating(best.info.ratings.acceleration);
-  out.onField = false;
+  if (w.cfg.pace === 0 || w.tick === 0) out.onField = false;
+  else {
+    out.vx = out.vz = 0;
+    sendToDugout(w, out);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

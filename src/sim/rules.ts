@@ -7,6 +7,7 @@ import type { FieldPosition, OutType, TeamSide } from './types';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { secToTicks } from './world';
 import * as flow from './flow';
+import * as handling from './handling';
 import * as inplay from './inplay';
 import * as running from './running';
 
@@ -62,6 +63,7 @@ export function strikeout(w: World, swinging: boolean): void {
   b.bat.so++;
   w.pitcher.pit.so++;
   emit(w, { type: 'out', playerId: b.info.id, outType: 'strikeout', fielders: [w.catcher.info.id], base: null });
+  if (!w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) w.hornKind = 'k';
   endPlateAppearance(w, swinging ? 'strikeout swinging' : 'strikeout looking', { ab: true, so: true });
   const desc = `${b.info.name} strikes out ${swinging ? 'swinging' : 'looking'}.`;
   w.lastPlay = desc;
@@ -292,6 +294,9 @@ export function endPlateAppearance(w: World, result: string, r: PAResult): void 
 }
 
 export function toPlayOver(w: World, seconds = 2.6): void {
+  // the ball is dead: everyone heads back to his spot and whoever holds the ball starts the casual return
+  flow.resetDefense(w);
+  handling.ensureBallReturn(w, false);
   w.phase = 'playOver';
   w.phaseUntil = w.tick + paced(w, seconds);
   w.ball.mode = w.ball.mode === 'held' ? 'held' : w.ball.mode;
@@ -458,6 +463,7 @@ export function resolveBattedBall(w: World): void {
     desc = `${name} hits a ground-rule double.`;
     opts = { ab: true, h: 2, rbi: runs };
   }
+  if (br.state === 'out' && !w.hornKind && !w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) w.hornKind = 'out';
   endPlateAppearance(w, result, opts);
   w.lastPlay = desc;
   emit(w, { type: 'playEnd', description: desc });

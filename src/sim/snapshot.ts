@@ -69,6 +69,11 @@ export function snapshot(w: World): GameStateSnapshot {
     seen.add(r.p);
     players.push(snapPlayer(w, r.p, 'runner'));
   }
+  for (const l of w.leavers) {
+    if (seen.has(l.p) || !l.p.onField) continue;
+    seen.add(l.p);
+    players.push(snapPlayer(w, l.p, l.p.role === 'batter' ? 'runner' : l.p.role));
+  }
   for (const r of w.exiting) {
     if (seen.has(r.p) || !r.p.onField) continue;
     seen.add(r.p);
