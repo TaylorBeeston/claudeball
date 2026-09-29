@@ -179,3 +179,44 @@ def hair(bm):
     dome(bm, (.087, .108, .118), 1.728, edge=brow_edge(1.805, 1.70, 1.66), cy=.004, thick=.002)
     for v in bm.verts:
         v.co.z += .003*math.sin(v.co.x*260)*math.cos(v.co.y*210)
+
+# ------------------------------------------------------------ smooth cuts (no stepped edges)
+def cut_bm(bm, fn):
+    """Cut `bm` exactly along the isoline fn(co) == 0 and delete the negative side (fn > 0 is kept). Crossing edges are split (custom data such as
+    vertex-group weights is interpolated) and the faces re-split between the new vertices, so the boundary is a smooth curve rather than a
+    staircase of whole faces."""
+    bm.verts.ensure_lookup_table(); val = {v: fn(v.co) for v in bm.verts}
+    for v, x in val.items():
+        if x == 0.0: val[v] = 1e-9
+    cross = [e for e in bm.edges if (val[e.verts[0]] > 0) != (val[e.verts[1]] > 0)]
+    new = set()
+    for e in cross:
+        a, b = e.verts; t = val[a]/(val[a]-val[b]); ne, nv = bmesh.utils.edge_split(e, a, t); val[nv] = 0.0; new.add(nv)
+    for f in list(bm.faces):
+        zs = [v for v in f.verts if v in new]
+        if len(zs) >= 2:
+            vs = list(f.verts)
+            # split between consecutive (in loop order) pairs of new vertices, keeping the pieces that straddle the isoline
+            pieces = [f]; i = 0
+            while len(zs) >= 2 and i < 4:
+                a, b = zs[0], zs[1]; fs = [p for p in pieces if a in p.verts and b in p.verts]
+                if not fs: break
+                p = fs[0]; la = [l.vert for l in p.loops]; ia, ib = la.index(a), la.index(b)
+                if abs(ia-ib) in (1, len(la)-1): zs = zs[1:]; continue
+                try: nf, nl = bmesh.utils.face_split(p, a, b)
+                except Exception: break
+                pieces = [q for q in pieces if q.is_valid] + [nf]; zs = zs[2:]; i += 1
+    dead = [f for f in bm.faces if any(val.get(v, 1.0) < -1e-12 for v in f.verts)]
+    bmesh.ops.delete(bm, geom=dead, context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+
+NECK_C = (0.0, -.006); NECK_R = (.098, .084)
+def neck_z0(y): return 1.50 + .03*max(-1.0, min(1.0, (y-NECK_C[1])/.08))       # crew-neck scoop: lower in front (-Y), higher at the back
+def neck_f(p):
+    """> 0 outside the neck opening (or below its scoop), < 0 inside it."""
+    e = math.hypot((p[0]-NECK_C[0])/NECK_R[0], (p[1]-NECK_C[1])/NECK_R[1]) - 1.0
+    return max(e*.05, (neck_z0(p[1]) - .03 - p[2])*.8) if False else min(max(e, (neck_z0(p[1]) - p[2])*8.0), 1.0)
+D_ARM_ = Vector((.766, 0, -.643)); SH_ = Vector((.21, 0, 1.50))
+def arm_t(p):
+    """(t, rho): position along the arm axis from the shoulder, and distance from that axis (left arm; x is mirrored)."""
+    q = Vector((abs(p[0]), p[1], p[2])) - SH_; t = q.dot(D_ARM_); return t, (q - D_ARM_*t).length
