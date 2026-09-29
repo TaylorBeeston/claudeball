@@ -242,7 +242,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const rSweet = rh + BAT_S_NODE;
   const alpha = (b.traits.attackAngleDeg + rng.normal(0, 3.2)) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0145 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
+  const sigmaT = 0.0148 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1);
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {
