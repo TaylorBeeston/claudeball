@@ -217,7 +217,7 @@ def in_arm(p, t, rho): return t > -.05 and rho < .118 and abs(p[0]) > .16 and p[
 
 def f_jersey(Ls):
     def f(p):
-        hem = .955 - .03*max(0.0, min(1.0, p[1]*6))                              # longer tail at the back
+        hem = .968                                                                # tucked in: the hem ends under the belt band (z .955-.995)
         t, rho = arm_t(p); fs = (Ls - t) if in_arm(p, t, rho) else 1.0
         return min(p[2] - hem, neck_f(p), fs)
     return f
@@ -227,6 +227,7 @@ def f_undershirt(p):
 def f_pants(zh):
     def f(p): return min(1.015 - p[2], p[2] - zh, .30 - abs(p[0]))
     return f
+f_belt = (lambda p: p[2] - .955, lambda p: .995 - p[2], lambda p: .30 - abs(p[0]))   # belt band: 4 cm wide at the waistline (three separate isoline cuts: a quad row can hold both edges)
 def f_socks(p): return min(.53 - p[2], p[2] - .108, .30 - abs(p[0]))
 def f_cleats(p): return min(.128 - p[2], .30 - abs(p[0]))
 def f_skin_neck(p):
@@ -236,7 +237,8 @@ def f_skin_neck(p):
 def make_shell_cut(body, name, fn, kind, offset, taper_top=0.0):
     """Clothing shell: copy of the whole skinned body cut along the smooth field `fn`, then pushed out along the normals (+ fabric folds)."""
     o = body.copy(); o.data = body.data.copy(); o.name = name; bpy.context.collection.objects.link(o)
-    bm = bmesh.new(); bm.from_mesh(o.data); cut_bm(bm, lambda co: fn(co))
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    for fn_ in (fn if isinstance(fn, (list, tuple)) else [fn]): cut_bm(bm, lambda co, fn_=fn_: fn_(co))
     bm.verts.ensure_lookup_table(); bm.normal_update()
     P = np.array([v.co[:] for v in bm.verts]); Nn = np.array([v.normal[:] for v in bm.verts])
     ff = fold_field(P, kind if kind in ("jersey", "pants", "undershirt") else "x")
