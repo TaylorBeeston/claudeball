@@ -102,3 +102,27 @@ export function surfaceAt(x: number, z: number): Surface {
   if (dm < 28.96 && dm > 22.5 && z > MOUND_DIST - 6) return 'dirt';
   return 'grass';
 }
+
+/** Outward unit normal of the fence segment at a ground position (the wall runs between the polyline's points, not along a circle). */
+export function fenceNormalAt(fence: FenceConfig, x: number, z: number): { x: number; z: number } {
+  const ang = Math.atan2(x, z) / DEG;
+  const pts = fence.points;
+  let i = 1;
+  while (i < pts.length - 1 && ang > pts[i].angleDeg) i++;
+  const a = pts[i - 1];
+  const b = pts[i];
+  const ax = a.distance * Math.sin(a.angleDeg * DEG);
+  const az = a.distance * Math.cos(a.angleDeg * DEG);
+  const bx = b.distance * Math.sin(b.angleDeg * DEG);
+  const bz = b.distance * Math.cos(b.angleDeg * DEG);
+  let nx = bz - az;
+  let nz = -(bx - ax);
+  const l = Math.hypot(nx, nz) || 1;
+  nx /= l;
+  nz /= l;
+  if (nx * x + nz * z < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  return { x: nx, z: nz };
+}
