@@ -278,6 +278,12 @@ export class PlayerManager {
     return (b && this.puppets.get(b.id)?.batGrip) || null;
   }
 
+  /** Midpoint of the current batter's shoulders (scene space), or null for puppets without a skeleton. */
+  batterShoulder(state: GameState, out: Vector3): Vector3 | null {
+    const b = state.players.find((p) => p.role === 'batter');
+    return (b && this.puppets.get(b.id)?.shoulderCenter?.(out)) || null;
+  }
+
   /** Drop all puppets (they are recreated with the current factory on the next update). */
   reset() {
     for (const p of this.puppets.values()) p.dispose();

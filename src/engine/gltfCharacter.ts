@@ -253,13 +253,20 @@ export class GltfPuppet implements PuppetLike {
 
     // arm IK: batter's hands follow the sim's bat
     const wantIK = !!(env.batGrip && snap.role === 'batter');
-    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * 25));
+    // grab the sim's bat almost at once (the swing starts abruptly), let go smoothly
+    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
     if (this.ikW > 0.02 && env.batGrip) {
       // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
       this.solveArm('Left', env.batGrip.bottom, this.ikW);
       this.solveArm('Right', env.batGrip.top, this.ikW);
     }
     this.lookAt(env.ball, dt, snap.role);
+  }
+
+  shoulderCenter(out: Vector3): Vector3 | null {
+    const l = this.bones.LeftArm, r = this.bones.RightArm;
+    if (!l || !r) return null;
+    return out.copy(l.getWorldPosition(new Vector3())).add(r.getWorldPosition(new Vector3())).multiplyScalar(0.5);
   }
 
   private solveArm(side: 'Left' | 'Right', target: Vector3, w: number) {

@@ -32,6 +32,9 @@ export interface EngineOptions {
   hud?: boolean;
 }
 
+/** Farthest knob-to-shoulder distance (m) the batter's arms can plausibly cover: arm length plus IK slack. */
+const BAT_REACH_MAX = 0.95;
+
 export class Engine {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
@@ -258,12 +261,12 @@ export class Engine {
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
     const animDt = this.sim.paused ? 0 : dt * (out.replaying ? 0.5 : Math.min(this.sim.speed, 3));
-    // glTF batters hold the bat in their hands; the sim's bat pose is used only when the hands can reach it
-    const grip = this.players.batterGrip(rs);
+    // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
+    // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.
     let useGrip = !rs.bat.visible;
-    if (!useGrip && grip) {
-      grip.getWorldPosition(this.tmpV);
-      useGrip = this.tmpV.distanceTo(new Vector3(rs.bat.pos.x, rs.bat.pos.y, rs.bat.pos.z)) > 0.55;
+    const grip = this.players.batterGrip(rs);
+    if (!useGrip && grip && this.players.batterShoulder(rs, this.tmpV)) {
+      useGrip = this.tmpV.distanceTo(new Vector3(rs.bat.pos.x, rs.bat.pos.y, rs.bat.pos.z)) > BAT_REACH_MAX;
     }
     this.bat.hold(useGrip ? grip : null, this.scene);
     this.bat.update(rs);
