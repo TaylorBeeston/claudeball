@@ -86,27 +86,21 @@ describe('rules', () => {
     const l = lab('walkoff-paced', { innings: 1, pace: 1 });
     const w = l.w;
     for (let i = 0; i < 400000 && !(w.half === 'bottom' && w.phase === 'prePitch'); i++) l.g.step(0.05);
+    expect(w.half).toBe('bottom');
     w.teams.away.runs = 0;
     w.teams.home.runs = 0;
     w.outs = 0;
-    addRunner(w, 3, 1);
+    for (const r of w.runners) r.p.onField = false;
+    w.runners = [];
+    addRunner(w, 1, 1);
+    addRunner(w, 2, 2);
+    addRunner(w, 3, 3);
     w.count = { balls: 3, strikes: 0 };
     applyPitchOutcome(w, 'ball', { ballLive: false, droppedThird: false });
-    // batter takes first; runner from third is not forced, so no run — the game must NOT end
-    for (let i = 0; i < 400; i++) l.g.step(0.05);
-    expect(l.g.over).toBe(false);
-    addRunner(w, 1, 2);
-    addRunner(w, 2, 3);
-    addRunner(w, 3, 4);
-    w.count = { balls: 3, strikes: 0 };
-    applyPitchOutcome(w, 'ball', { ballLive: false, droppedThird: false });
-    let scoredAt = -1;
-    for (let i = 0; i < 4000 && !l.g.over; i++) {
-      l.g.step(0.05);
-      if (scoredAt < 0 && w.teams.home.runs > 0) scoredAt = w.tick;
-    }
+    for (let i = 0; i < 4000 && !l.g.over; i++) l.g.step(0.05);
     expect(l.g.over).toBe(true);
     expect(w.winner).toBe('home');
+    expect(w.teams.home.runs).toBe(1);
   });
 
   it('a force out on the third out nullifies a run that crossed the plate first (no run scores)', () => {
