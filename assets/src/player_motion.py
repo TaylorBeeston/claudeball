@@ -8,7 +8,7 @@ def _cyc(p): return math.cos(2*math.pi*p)
 def run_v2(n=24, duty=.40, half=.32, lean=26, bank=0, dx=0.0, yaw0=0, hyaw0=0, head_yaw=0, foot_o=((0, 0), (0, 0)), amp=(1.0, 1.0), hand_dx=0.0, rot=(7, 9)):
     """One running cycle (left foot contact at frame 0): stance foot slides back at constant speed, swing foot heel-kicks up and reaches forward,
     hips are lowest at mid-stance and highest in the flight phase."""
-    fwd = (-.04, -.30, .02); back = (.14, .24, -.30); out = []
+    fwd = (-.04, -.30, -.12); back = (.10, .20, -.40); out = []
     def foot(p):
         p %= 1.0
         if p < duty: return (-half + 2*half*p/duty, .085)
@@ -21,12 +21,12 @@ def run_v2(n=24, duty=.40, half=.32, lean=26, bank=0, dx=0.0, yaw0=0, hyaw0=0, h
         lh = tuple((back[i]*(1-sl) + fwd[i]*sl) for i in range(3)); rh = tuple((back[i]*(1-sr) + fwd[i]*sr) for i in range(3))
         lh = (lh[0]*amp[0] + .02, lh[1]*amp[0], lh[2]*amp[0] + (1-amp[0])*(-.1)); rh = (rh[0]*amp[1] + .02, rh[1]*amp[1], rh[2]*amp[1] + (1-amp[1])*(-.1))
         spec = dict(hips=(0, 0, bob), lean=lean, yaw=yaw0 + rot[0]*_cyc(p), hyaw=hyaw0 - rot[1]*_cyc(p), head_yaw=head_yaw, head_pitch=-.5*lean,
-                    lfoot=(.10+dx, ly, lz), rfoot=(-.10+dx, ry, rz), lhand_rel=(lh[0]+hand_dx, lh[1], lh[2]), rhand_rel=(-rh[0] + hand_dx, rh[1], rh[2]),
-                    lpole=(.7, .7, -.1), rpole=(-.7, .7, -.1), lfoot_o=foot_o[0], rfoot_o=foot_o[1])
+                    lfoot=(.10+dx, ly, lz), rfoot=(-.10+dx, ry, rz), lhand_rel=(lh[0]+hand_dx, lh[1], lh[2]), rhand_rel=(-rh[0] - abs(hand_dx)*.6, rh[1], rh[2]),
+                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1])
         if bank: spec['side'] = bank
         out.append((f, spec))
     return out
-def run_turn_v2(): return run_v2(lean=28, bank=18, dx=-.15, yaw0=8, hyaw0=12, head_yaw=34, foot_o=((10, 0), (16, 0)), amp=(.8, 1.1), hand_dx=.04)
+def run_turn_v2(): return run_v2(lean=28, bank=18, dx=-.15, yaw0=8, hyaw0=12, head_yaw=34, foot_o=((10, 0), (16, 0)), amp=(.8, 1.0), hand_dx=.03)
 
 # ---------------------------------------------------------------- throw (release frame 12, 30 frames, root motion .3 m)
 def throw_v2():
@@ -93,3 +93,42 @@ for _n in ("pitch", "windup", "slide", "field_catch", "catch_jump"): CLIPS[_n] =
 _lift = {17: .135, 20: .195, 22: .22, 27: .235, 32: .235}
 CLIPS["swing"] = (CLIPS["swing"][0], [(f, (dict(sp, rfoot=(sp['rfoot'][0], sp['rfoot'][1], _lift[f])) if f in _lift else sp)) for f, sp in CLIPS["swing"][1]])
 CLIPS["swing"] = (CLIPS["swing"][0], densify(CLIPS["swing"][1]))       # per-frame IK so the pivoting rear foot follows its toe pitch
+
+# ---------------------------------------------------------------- walk (1.44 m/s, 20 frames = 0.833 s per cycle) and relaxed arms for the trot
+def walk_v2(n=20, duty=.60, half=.36, lean=6):
+    """Relaxed walk: stance foot slides back at exactly the walking speed (2 * half * ... / (duty * n / 24) = 1.44 m/s), toe-clearance swing, hips highest at
+    mid-stance and lowest at double support, small lateral sway and pelvis/shoulder counter-rotation; arms hang with ~25 deg elbow flexion, forearms swing opposite to the legs."""
+    fwd = (.08, -.17, -.50); back = (.08, .15, -.52); out = []
+    def foot(p):
+        p %= 1.0
+        if p < duty: return (-half + 2*half*p/duty, .085)
+        q = (p-duty)/(1-duty); e = q*q*(3-2*q)
+        return (half - 2*half*e, .085 + .11*math.sin(math.pi*q)**1.3)
+    for f in range(n+1):
+        p = (f % n)/n; ly, lz = foot(p); ry, rz = foot(p+.5); c = _cyc(p)
+        bob = -.145 + .075*(1 + math.cos(4*math.pi*(p - duty/2)))/2
+        sl = (1 - c)/2; sr = (1 + c)/2
+        lh = tuple(back[i]*(1-sl) + fwd[i]*sl for i in range(3)); rh = tuple(back[i]*(1-sr) + fwd[i]*sr for i in range(3))
+        out.append((f, dict(hips=(.02*math.sin(2*math.pi*p), 0, bob), lean=lean, yaw=4*c, hyaw=-4*c, head_yaw=0, head_pitch=-3,
+                            lfoot=(.09, ly, lz), rfoot=(-.09, ry, rz), lhand_rel=lh, rhand_rel=(-rh[0], rh[1], rh[2]), lpole=(.12, .3, -1), rpole=(-.12, .3, -1))))
+    return out
+CLIPS["walk"] = (20, walk_v2()); FRAME0["walk"] = 0
+
+def _trot_arms():
+    keys = []
+    for f, sp in CLIPS["trot"][1]:
+        p = (f % 18)/18; c = _cyc(p); sl = (1 - c)/2; sr = (1 + c)/2
+        fwd = (.0, -.22, -.16); back = (.10, .14, -.40)
+        lh = tuple(back[i]*(1-sl) + fwd[i]*sl for i in range(3)); rh = tuple(back[i]*(1-sr) + fwd[i]*sr for i in range(3))
+        sp = dict(sp); sp.pop('lhand', None); sp.pop('rhand', None); sp.update(lhand_rel=lh, rhand_rel=(-rh[0], rh[1], rh[2]), lpole=(.15, .35, -1), rpole=(-.15, .35, -1)); keys.append((f, sp))
+    return keys
+CLIPS["trot"] = (18, _trot_arms())
+
+# idle: relaxed arms hanging a little away from the body (they used to hang with the elbows pressed into the torso)
+def _idle_arms():
+    keys = []
+    for f, sp in CLIPS["idle"][1]:
+        sp = dict(sp); sp.pop('lhand', None); sp.pop('rhand', None); y = -.03 if f in (0, 60) else -.06
+        sp.update(lhand_rel=(.125, y, -.55), rhand_rel=(-.125, y, -.55), lpole=(.15, .35, -1), rpole=(-.15, .35, -1)); keys.append((f, sp))
+    return keys
+CLIPS["idle"] = (60, _idle_arms())

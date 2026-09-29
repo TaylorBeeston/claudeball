@@ -6,7 +6,7 @@ here = os.path.dirname(os.path.abspath(__file__)); ns = {}
 for f in ("player_clips.py", "player_pitch.py", "player_motion.py"): exec(open(os.path.join(here, f)).read(), ns)
 CLIPS, FRAME0, EV = ns["CLIPS"], ns["FRAME0"], ns["PITCH_EVENTS"]
 FPS = 24
-LOOPS = {"idle", "run", "field_ready", "celebrate", "catcher_crouch", "batting_stance", "trot", "run_turn", "pitcher_set", "pitcher_rock", "field_ready_infield", "field_ready_outfield", "field_ready_hands_knees"}
+LOOPS = {"idle", "run", "walk", "field_ready", "celebrate", "catcher_crouch", "batting_stance", "trot", "run_turn", "pitcher_set", "pitcher_rock", "field_ready_infield", "field_ready_outfield", "field_ready_hands_knees"}
 OLD_EVENTS = {"pitch": {"release": 20}, "swing": {"contact": 21}, "throw": {"release": 12}, "catch_jump": {"take_off": 8, "apex": 14, "touch_down": 20},
               "windup": {}, "field_catch": {}, "slide": {}}
 clips = {}
