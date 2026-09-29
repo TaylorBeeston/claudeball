@@ -72,10 +72,10 @@ describe('overrun: people brake for the spot they are going to', () => {
     expect(pct(arrive, 0.9)).toBeLessThan(4.5);
   });
 
-  it('braking is a human limit (5-7.5 m/s²), a bit better with fielding IQ and range', () => {
+  it('braking is a human limit (5-7.5 m/s², about 6.6 for an average fielder), a bit better with fielding IQ and range', () => {
     const a = brakeDecel({ iq: 50, range: 50 } as Ratings);
     expect(a).toBeGreaterThanOrEqual(5);
-    expect(a).toBeLessThanOrEqual(6);
+    expect(a).toBeLessThanOrEqual(7);
     expect(brakeDecel({ iq: 80, range: 80 } as Ratings)).toBeGreaterThan(a);
     expect(brakeDecel({ iq: 80, range: 80 } as Ratings)).toBeLessThanOrEqual(7.5);
     expect(brakeDecel({ iq: 20, range: 20 } as Ratings)).toBeLessThan(a);

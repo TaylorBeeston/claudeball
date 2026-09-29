@@ -119,7 +119,7 @@ export const armMps = (r: Ratings) => 27 + 0.21 * r.arm;
 /** Legs: fatigue from sprinting (0 fresh .. 1), the speed it costs (fraction) and how quickly it comes back. */
 export const legsSpeedFactor = (legs: number, durability: number) => 1 - 0.06 * legs * clamp(1.7 - durability / 50, 0.1, 1.5);
 /** How hard a runner / fielder can brake for a stop (m/s²): a human limit, a little better with a good read of the play (iq) and range. */
-export const brakeDecel = (r: Ratings) => clamp(5.5 + 0.02 * (r.iq - 50) + 0.01 * (r.range - 50), 4.5, 7.5);
+export const brakeDecel = (r: Ratings) => clamp(6.6 + 0.02 * (r.iq - 50) + 0.01 * (r.range - 50), 4.5, 7.5);
 export const LEGS_PER_SPRINT_SECOND = 1 / 60;
 export const LEGS_RECOVERY_PER_SECOND = 1 / 240;
 

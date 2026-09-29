@@ -111,7 +111,7 @@ export function startHalfInning(w: World): void {
 }
 
 export function fielderSpeed(p: PlayerRT): number {
-  return fielderTopSpeed(p.info.ratings) * (routeEfficiency(p.info.ratings) / 0.955) * 0.975;
+  return fielderTopSpeed(p.info.ratings) * (routeEfficiency(p.info.ratings) / 0.955) * 0.958;
 }
 
 /**

@@ -120,7 +120,7 @@ Listeners are called *during* `step`; do not call `step` from inside a listener.
 dead-ball running, walking off), `field` (fielding a ground ball / blocking), `catch`, `catch_jump` (leaping / climbing at the wall,
 `animT` = progress through the leap; `pos.y` is the height of the feet while airborne), `throw`, `slide`
 (runner approaching or diving back to a base with a play coming), `celebrate` (a home-run scorer at the plate; winners after the
-last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `toss` (an
+last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `tag_glove` / `tag_hand` (a tag sweep, contact at `animT` ≈ 0.45), `slide_feet` / `slide_head` / `slide_hook_left` / `slide_hook_right` / `dive_back`, `catcher_block`, `catch_pitch` / `catch_throw` / `catch_stretch` / `catch_fly` / `catch_backhand` / `field_grounder` (timed so the catch is at `animT` ≈ 0.5), `ump_*` (umpires), `toss` (an
 easy short return toss; longer casual returns use `throw`; the engine adapter plays `toss` as `throw` and `transfer` as the ready pose until clips exist). `animT` runs 0..1 over the animation's duration.
 
 ### Events (`game.on(type, cb)`)
@@ -135,7 +135,7 @@ Every event has `time` (sim seconds). Types (see `types.ts` for exact fields):
 `steal`, `pickoffAttempt`, `walk`, `hitByPitch`, `wildPitch`, `passedBall`, `homeRun {distance, heightAboveWall?, pos?}`,
 `substitution`, `pitchingChange`, `plateAppearanceEnd {result}`, `playEnd {description}`, `gameEnd`.
 
-New (additive) events: `ballReturn {fromId, toId, mph, casual: true}` (a fielder's easy return of the ball after a dead ball or a pitch leaves his hand: after the transfer and a look; also each leg of an around-the-horn toss); `baseTouch {playerId, base, trot, pos}` each time a runner touches a base (`trot` = dead-ball running, e.g. the
+New (additive) events: `tagAttempt {fielderId, runnerId, base|null, hand: 'glove'|'hand', pos}`, `tag {fielderId, runnerId, pos}`, `tagAvoided {fielderId, runnerId, slide}`, `umpireCall {...}` (see *Tagging, catching and the umpires*); `out` / `safe` gained `margin` and `closePlay`; `catch` / `fielded` gained `kind`, `height`, `side`, `firm`; `ballReturn {fromId, toId, mph, casual: true}` (a fielder's easy return of the ball after a dead ball or a pitch leaves his hand: after the transfer and a look; also each leg of an around-the-horn toss); `baseTouch {playerId, base, trot, pos}` each time a runner touches a base (`trot` = dead-ball running, e.g. the
 home-run trot: follow the batter around with it); `wallContact {who: 'ball'|'fielder', fielderId?, pos, speed}` (the ball meets the
 wall in play / a fielder runs up to it); `wallLeap {fielderId, pos, ballHeightAboveWall}` (a fielder leaves the ground at the
 wall); `robbedHomeRun {fielderId, batterId, distance, heightAboveWall, pos}` (the would-be home run is caught: there is no `homeRun`
@@ -337,6 +337,62 @@ within 1.5 m of his spot (catcher 1 m) and not running, the batter is in the box
 stragglers speed up while the game is waiting. In a full game the pitch starts with everyone in place essentially always; only a genuinely
 long trip (a reliever from the dugout) is waited for.
 
+## Tagging, catching and the umpires
+
+**Audit: what tagging was before this pass.** Honestly, there was no tagging mechanism: a runner was out when the fielder holding the ball was
+within 0.95 m of him (a 2-D distance between the two centres, checked every tick), whether he was sliding or upright, and nothing else
+mattered — no glove or hand, no swipe time or reach, no aim, no way for a runner to avoid it, no drop on contact; the `slide` hint was
+only an animation. A force out was "the man with the ball within 0.95 m of the bag". Tag-ups (doubled off) and pickoff tags used the same
+distance test. What did exist: force / tag-up logic, forcing chains, fielders chasing runners in a rundown.
+
+**Now** (`tagging.ts`):
+* **Bag tag** — a fielder holding the ball secure (0.1 s after the catch) within 1.1 m of the bag a runner is coming to (or back to, on a pickoff)
+  sets his glove down on the runner's line 0.6 m up from the bag, slightly toward the side he stands on. He tracks the runner until he is
+  ~2.4 m out, then commits (`tagAttempt`, hint `tag_glove` / `tag_hand`), with aim error from `glove` / `iq`. The tag is made the moment the runner's body or
+  leading foot / hand reaches the glove (within glove 0.22 m + limb thickness) — before it reaches the bag; a runner whose foot / hand touches the bag
+  first is safe (a `safe` with a negative `margin`). A late throw = safe.
+* **Open-field sweep** (rundowns, a batter caught off the plate) — the man with the ball starts a swipe when the runner is within 1.8 m: the hand arrives
+  after 0.16-0.34 s (glove 0.27 s, bare hand 0.21 s, quicker with `glove` / `iq`), aimed where the runner will be then (+ aim error growing with the closing
+  speed), reach 0.95 m (glove) / 0.85 m (hand) + a 0.35 m lunge. The runner sees it and sidesteps (a sidestep of ~2 m/s away from the glove after his reaction
+  time) unless he is about to reach a bag. A miss by a runner who slid or dodged is `tagAvoided`.
+* **The runner** is a body: upright = a fat point (0.28 m); sliding = a thin segment (0.14 m) from his centre to the leading foot (feet-first, 1.0 m) or hands
+  (head-first, 1.25 m; `dive_back` 1.2 m). A base is touched when the body centre is within 0.9 m or the foot / hand within 0.45 m of the bag.
+* **Slide choice** (state driven, when he is ~3.4 m out with a play on or a steal): away from the glove — a *hook* (`slide_hook_left` / `_right`, started ~4.8 m out,
+  the foot swings out around the glove and back to catch the corner of the bag) when the fielder is on his line or at the plate; head-first when he is fast and
+  experienced (`slide_head`); otherwise feet-first (`slide_feet`); a `dive_back` when returning to the bag on a pickoff; never into first (he runs through it). The
+  existing `slide` remains a valid fallback hint.
+* **Drops** — on contact the ball can jar loose (closing-speed and glove dependent, ~1-2 %): loose ball, an error on the fielder, the runner is safe.
+* **Force plays** — the fielder needs the ball secure and a foot on the bag (his centre within 0.65 m) before the runner touches it. A throw that pulls him off the
+  bag (he moves more than 0.65 m from it to catch it, emergent from `receiverLogic`) is no force: he has to tag. Stretching keeps the foot on the bag while the glove
+  reaches (the covering man stands 0.5 m in toward the throw).
+* **Catcher** — he blocks the plate lane (`catcher_block`, standing a step up the line) **only when he has the ball**; otherwise he gives the lane up (so there is no
+  obstruction in the sim; the rule is honoured by construction).
+* `out` events carry `margin` (seconds by which the fielder beat the runner: the runner's projected arrival) and `closePlay` (|margin| < 0.10 s); `safe` events carry a
+  negative `margin` (the seconds the defense still needed) and `closePlay` — hooks for slow-motion replays.
+
+**Catching.** For every catch the snapshot carries `PlayerSnapshot.gloveTarget` (world position where the ball will meet the glove / mitt: pitches — the catcher's
+mitt plan from his read of the pitch, moving from where he set up toward the ball and limited by how fast his hand can move; throws and batted balls — the
+first point of the predicted flight inside the fielder's reach, and in the last hundredths of a second the ball itself), `gloveEta` (s) and `gloveHand`. The hint starts ~0.3 s before the
+catch (0.35 s for a pitch) so the catch instant is at `animT` ≈ 0.5: `catch_pitch`, `catch_throw`, `catch_stretch` (first baseman / a reach), `catch_fly`,
+`catch_backhand` (a fly ball on the throwing-arm side), `field_grounder` (forehand or backhand by the side). The glove's random miss is drawn when he commits to the
+catch (so the renderer can show it coming). `catch` / `fielded` events carry `pos` (where the ball met the glove), `kind` (`pitch|throw|fly|line|ground|pickoff`),
+`height` (`low|chest|high`), `side` (`glove|arm|backhand|forehand`) and `firm`. After a catch the ball stays at the glove and settles into the hand over a third of
+a second.
+
+**Overrun.** Stops are planned with the braking a person can do (`brakeDecel`, ~6.6 m/s², a little better with `iq` / `range`): the fielder starts slowing far enough out to
+arrive near his spot at a walk (before, he planned 11 m/s² but could only brake at his 8 m/s² acceleration, so he ran through and turned back). Measured over full games:
+overshoot past a stop goal is 0 at the median, p90 ≈ 0, p99 ≈ 0.7 m (max ≈ 1.5 m) — it was p90 0.9 m, p99 1.8 m, max 3 m; fielders arrive at their spot at ~0 m/s (p90 2.3 m/s).
+A batter running through first still overruns by ~2-6 m by design.
+
+**Umpires** (`umpires.ts`). The four umpires move (4.5 m/s) to see the play: the umpire of a bag the play is at goes to his ideal spot (first / third: foul territory ~4.6 m from the bag;
+second: outfield grass 3.4 m beyond the bag; the plate umpire steps to the first-base side of the lane on a play at the plate), then back to rest. Calls follow the play
+as `umpireCall {umpire: 'plate'|'first'|'second'|'third', umpireId, kind, pos, atBase?, playerId?}` (the umpire's position at the call) with a gesture hint on his `anim`
+for ~1.3 s (0.6 s for a ball): `ball` / `ball_four` → `ump_ball` (no big gesture), `strike_called` / `strikeout` → `ump_strike`, `strike_swinging` (and a swinging strikeout)
+→ `ump_strike_swinging`, `foul` / `foul_tip` → `ump_foul`, `fair` → `ump_fair` (a ball that lands within 2.5 m of the line), `safe` → `ump_safe`, `out` → `ump_out`, `homerun`
+→ `ump_homerun` (the foul-line umpire on that side, 0.4 s after the ball clears), `time` → `ump_time` (substitutions); the default is `ump_ready`. Timing: a strike / ball 0.25 / 0.2 s
+after the catch, a base call 0.25 s after the tag / touch (0.55 s when it was close). `umpireCall` is separate from the existing `call` event (the ruling itself, whose shape did not change).
+Not modelled: umpires do not avoid fielders who chase balls into foul territory (players do not collide in the sim).
+
 ## Pacing
 
 `pace: 1` gives a broadcast-like pace (a full 9-inning game is ~45 simulated minutes because dead time is
@@ -366,6 +422,6 @@ compressed; most of it is the 3–4 s between pitches). Use the renderer's own s
 
 ## Known simplifications
 
-No catcher/fielder interference, no fielder collisions, wall
+No catcher/fielder interference (the catcher blocks only with the ball), no obstruction awards, no fielder collisions (players and umpires may overlap), wall
 climbing is a jump plus a glove reach over the fence (no scaling the wall, no bullpen/stands), one shared field surface model, and substitutions take
 effect between batters/innings. Stealing home and double steals are not offered as decisions. A bunt's bat pose is outside the arm-reach limit.
