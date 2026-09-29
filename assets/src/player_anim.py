@@ -15,6 +15,7 @@ LEN = {n: (JOINTS[n][2]-JOINTS[n][1]).length for n in ORDER}
 REST_DIR = {n: (JOINTS[n][2]-JOINTS[n][1]).normalized() for n in ORDER}
 REST_HEAD = {n: JOINTS[n][1].copy() for n in ORDER}
 
+NECK_YAW_SHARE = 0.5
 CLAMPS = []
 def ik2(root, target, l1, l2, pole):
     dv = target-root; dist = dv.length
@@ -26,7 +27,7 @@ def ik2(root, target, l1, l2, pole):
     elbow = root + dn*a + pv*h; tip = root + dn*d
     return (elbow-root).normalized(), (tip-elbow).normalized()
 
-DEFAULT = dict(hips=(0, 0, 0), hyaw=0, yaw=0, lean=0, side=0, head_yaw=None, head_pitch=0,
+DEFAULT = dict(hips=(0, 0, 0), hyaw=0, yaw=0, lean=0, side=0, head_yaw=None, head_pitch=0, neck_yaw=None,
                lfoot=(.13, 0, .08), rfoot=(-.13, 0, .08), lknee=(0, -1, 0), rknee=(0, -1, 0), lfoot_o=(0, 0), rfoot_o=(0, 0),
                lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None)
 
@@ -47,7 +48,8 @@ def solve(spec):
     for n, w in (('Spine', .3), ('Spine1', .65), ('Spine2', 1.0)):
         place(n); setb(n, Rz(yaw*w) @ lean_dir(lean*w, side*w), yaw*w)
     hy = P['head_yaw'] if P['head_yaw'] is not None else yaw
-    place('Neck'); setb('Neck', Rz(hy) @ lean_dir(P['head_pitch']*.5), hy)
+    ny = P['neck_yaw'] if P['neck_yaw'] is not None else yaw + NECK_YAW_SHARE*(hy - yaw)   # neck turns only part of the way from the torso to the head (no candy-wrapper twist at the collar)
+    place('Neck'); setb('Neck', Rz(ny) @ lean_dir(P['head_pitch']*.5), ny)
     place('Head'); setb('Head', Rz(hy) @ lean_dir(P['head_pitch']), hy)
     for sd, sx in (("Left", 1), ("Right", -1)):
         k = sd[0].lower()
