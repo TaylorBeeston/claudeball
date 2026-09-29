@@ -1,0 +1,11 @@
+import { createGame } from '../src/sim/game';
+const seed = process.argv[2] ?? '1';
+const g = createGame({ seed, pace: 0.05 });
+const t0 = Date.now();
+const evs: string[] = [];
+g.on('*', (e) => { if (['playEnd','out','runScored','error','homeRun','gameEnd','halfInningStart','pitchingChange'].includes(e.type)) evs.push(e.time.toFixed(0) + ' ' + JSON.stringify(e)); });
+const secs = g.simulateToEnd(6*3600);
+console.log('sim seconds', secs.toFixed(0), 'wall ms', Date.now()-t0);
+const s = g.getState();
+console.log(s.score, s.inning, s.half, s.outs, s.phase, s.gameOver);
+if (process.argv[3]) console.log(evs.slice(0, Number(process.argv[3])).join('\n'));

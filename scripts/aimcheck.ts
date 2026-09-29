@@ -1,0 +1,10 @@
+import { createGame } from '../src/sim/game';
+const g = createGame({ seed: '1', pace: 0 });
+let tx = 0, ty = 0; const ex: number[] = [], ey: number[] = [], px: number[] = [], py: number[] = [];
+g.on('pitchReleased', (e) => { tx = e.targetX; ty = e.targetY; });
+g.on('pitchCrossed', (e) => { ex.push(e.x - tx); ey.push(e.y - ty); px.push(e.x); py.push(e.y); });
+while (ex.length < 400 && !g.over) g.step(1);
+const m = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
+const sd = (a: number[]) => { const mm = m(a); return Math.sqrt(m(a.map((x) => (x - mm) ** 2))); };
+console.log('miss x mean/sd', m(ex).toFixed(3), sd(ex).toFixed(3), 'y', m(ey).toFixed(3), sd(ey).toFixed(3));
+console.log('plate x mean/sd', m(px).toFixed(3), sd(px).toFixed(3), 'y', m(py).toFixed(3), sd(py).toFixed(3));
