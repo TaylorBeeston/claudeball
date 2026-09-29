@@ -45,7 +45,7 @@ def head_morph(P, kind):
     if kind == "head_narrow": out[:, 0] += x*(-.08); out[:, 1] += y*.03
     elif kind == "head_wide": out[:, 0] += x*.08; out[:, 1] += y*(-.03)
     elif kind == "jaw_square":
-        m = (1-_sm(-.03, .05, z))*(y < .02); out[:, 0] += x*.12*m; out[:, 1] -= .004*m*(y < -.03)
+        m = (1-_sm(-.085, -.035, z))*(y < .02); out[:, 0] += x*.12*m; out[:, 1] -= .004*m*(y < -.03)
     elif kind == "nose_large":
         m = _g(x, 0, .020)*_g(z, -.012, .034)*(y < -.06); out[:, 1] -= .010*m; out[:, 2] -= .003*m
     elif kind == "ears_large":

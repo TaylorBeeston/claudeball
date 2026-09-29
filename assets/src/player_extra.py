@@ -204,3 +204,38 @@ def weights_by(dst, fn):
     for v in dst.data.vertices:
         for nm, w in fn(v.co).items():
             if w > 0: vg = dst.vertex_groups.get(PFX+nm) or dst.vertex_groups.new(name=PFX+nm); vg.add([v.index], w, 'REPLACE')
+
+# ---------------------------------------------------------------- belt: a 4 cm band cut from the body (so it follows the waist and the build morphs), loops, buckle
+BELT_C = Vector((0, -.005, .975))
+def finish_belt(belt, thickness=.0055):
+    """belt: shell object from make_shell_cut(f_belt). Adds thickness (inward), 7 belt loops; returns (belt, buckle object)."""
+    from mathutils.kdtree import KDTree
+    src = [(v.co.copy(), [(belt.vertex_groups[g.group].name, g.weight) for g in v.groups]) for v in belt.data.vertices]
+    bm = bmesh.new(); bm.from_mesh(belt.data); bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=-thickness); bvh = BVHTree.FromBMesh(bm)
+    for ang in (-112, -72, -36, 36, 72, 112, 180):
+        a = math.radians(ang); d = Vector((math.sin(a), -math.cos(a), 0)); l, n, i, dist = bvh.ray_cast(BELT_C + d*.5, -d)
+        if l is None: continue
+        t = n.cross(Vector((0, 0, 1))).normalized(); up = Vector((0, 0, 1)); M = Matrix((t, up, n)).transposed()
+        c = bmesh.ops.create_cube(bm, size=1.0)
+        for v in c["verts"]: v.co = M @ Vector((v.co.x*.015, v.co.y*.054, v.co.z*.0045)) + l + n*.0016
+    bm.to_mesh(belt.data); bm.free()
+    for p in belt.data.polygons: p.use_smooth = True
+    kd = KDTree(len(src))
+    for i, (c, _) in enumerate(src): kd.insert(c, i)
+    kd.balance()
+    for v in belt.data.vertices:                                                        # weights for the new (solidify / loop) vertices: nearest original belt vertex
+        if len(v.groups): continue
+        _, i, _ = kd.find(v.co)
+        for nm, w in src[i][1]: vg = belt.vertex_groups.get(nm) or belt.vertex_groups.new(name=nm); vg.add([v.index], w, 'REPLACE')
+    # buckle: rectangular frame + prong bar at the front centre, weighted like the belt
+    bm2 = bmesh.new(); bm3 = bmesh.new(); bm3.from_mesh(belt.data); hb = BVHTree.FromBMesh(bm3); bm3.free()
+    l, n, i, dist = hb.ray_cast(BELT_C + Vector((0, -.5, 0)), Vector((0, 1, 0)))
+    if l is not None:
+        t = Vector((1, 0, 0)); up = Vector((0, 0, 1)); M = Matrix((t, up, n)).transposed()
+        def box(cx, cz, sx, sz, th=.0075):
+            c = bmesh.ops.create_cube(bm2, size=1.0)
+            for v in c["verts"]: v.co = M @ Vector((v.co.x*sx + cx, v.co.y*sz + cz, v.co.z*th)) + l + n*.0022
+        W, H, B = .056, .040, .0075
+        box(0, H/2-B/2, W, B); box(0, -H/2+B/2, W, B); box(-W/2+B/2, 0, B, H); box(W/2-B/2, 0, B, H); box(.008, 0, .0045, H*.86, .0055)
+    bo = _obj("Gear_BeltBuckle", bm2, smooth=False)
+    return belt, bo

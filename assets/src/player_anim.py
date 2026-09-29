@@ -29,7 +29,7 @@ def ik2(root, target, l1, l2, pole):
 
 DEFAULT = dict(hips=(0, 0, 0), hyaw=0, yaw=0, lean=0, side=0, head_yaw=None, head_pitch=0, neck_yaw=None,
                lfoot=(.13, 0, .08), rfoot=(-.13, 0, .08), lknee=(0, -1, 0), rknee=(0, -1, 0), lfoot_o=(0, 0), rfoot_o=(0, 0),
-               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None, lhand_rel=None, rhand_rel=None)   # *_rel: wrist target as an offset from that shoulder
+               lhand=(.27, -.06, .90), rhand=(-.27, -.06, .90), lpole=(.5, .9, 0), rpole=(-.5, .9, 0), lhand_dir=None, rhand_dir=None, lhand_twist=0, rhand_twist=0, bat=None, lhand_rel=None, rhand_rel=None, lhand_face=None, rhand_face=None)   # *_rel: wrist target as an offset from that shoulder; *_face: world direction the palm / glove pocket should face
 
 def solve(spec):
     """Return {bone: (M_arm matrix 4x4)} for a pose spec."""
@@ -70,8 +70,13 @@ def solve(spec):
             wr_target = grip - dd*.06 - N*.03; hd_dir = dd
         if P[k+'hand_rel'] is not None: wr_target = head[sd+"Arm"] + Vector(P[k+'hand_rel'])
         d1, d2 = ik2(head[sd+"Arm"], wr_target, LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
-        setb(sd+"Arm", d1); place(sd+"ForeArm"); setb(sd+"ForeArm", d2); place(sd+"Hand")
-        setb(sd+"Hand", hd_dir if hd_dir is not None else d2, hd_tw)
+        setb(sd+"Arm", d1); place(sd+"ForeArm")
+        dd_ = Vector(hd_dir).normalized() if hd_dir is not None else d2
+        if P[k+'hand_face'] is not None:                                            # twist about the hand axis so that the palm (pocket) faces the requested direction
+            xr_, yr_, zr_ = hand_frame(sd); pn = REST_DIR[sd+"Hand"].rotation_difference(dd_) @ xr_; tg = Vector(P[k+'hand_face']); tg = tg - dd_*tg.dot(dd_)
+            if tg.length > 1e-4: tg.normalize(); hd_tw = math.degrees(math.atan2(dd_.dot(pn.cross(tg)), pn.dot(tg)))
+        setb(sd+"ForeArm", d2, .65*hd_tw if P[k+'hand_face'] is not None else 0.0)   # forearm takes two thirds of a palm-facing twist (no candy-wrapped wrist / glove cuff)
+        place(sd+"Hand"); setb(sd+"Hand", dd_, hd_tw)
         # leg IK
         place(sd+"UpLeg"); l1, l2 = LEN[sd+"UpLeg"], LEN[sd+"Leg"]
         d1, d2 = ik2(head[sd+"UpLeg"], Vector(P[k+'foot']), l1, l2, Vector(P[k+'knee']))

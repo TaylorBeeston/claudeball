@@ -140,3 +140,102 @@ The old ball wrapped an equirect UV sphere (texture pinch at the poles, coarse n
 Originals (names/lengths/event frames unchanged): `idle` `windup` `pitch` (release f20) `swing` (contact ~f21) `run` `field_ready` `field_catch` `throw` (release f12) `slide` `celebrate` `catcher_crouch`; second pass: `batting_stance` `trot` `run_turn` `catch_jump`; this pass: the 8 deliveries, `pitcher_set`, `pitcher_rock` (table above) and `field_ready_infield` (deep crouch, glove low, wide stance), `field_ready_outfield` (upright athletic stance, hands hanging), `field_ready_hands_knees` (hands on the knees), all 1.667 s loops. 28 clips in total, same skeleton.
 - Realism pass on `run` / `run_turn` (stance foot slides back at constant speed, heel-kick swing foot, hips lowest at mid-stance and highest in flight, ~90 deg elbows swinging opposite the legs, hips and shoulders counter-rotate, head stays level; both now start at t = 0 and are exactly 1.000 s), `throw` (weight transfer over the planted foot, hips open before the shoulders, cocked ball-up position, follow-through across the body; 1.292 s, release f12 unchanged), the ready poses (micro weight shift and bounce) and `swing` (hips lead the shoulders; the rear foot now rises onto its toes instead of pushing the toes through the ground). Every frame of `windup`, `pitch`, `swing`, `slide`, `field_catch`, `catch_jump` now solves the IK per frame, so planted feet stay on the ground between the sparse key poses (worst sole penetration of any clip: 25 mm in `slide`, otherwise <= 14 mm).
 - `NECK_YAW_SHARE`, `rhand_rel` / `lhand_rel` (wrist target as an offset from the shoulder) and `densify()` are new authoring tools (see `player_anim.py` / `player_motion.py`).
+
+## Fifth pass: arms, headwear, belts, gloves, catching/tag/slide/umpire clips (supersedes older notes where they differ)
+All clip names below are new (nothing was renamed or removed; 68 clips per player GLB, `players/player_manifest.json` has every duration and event frame). Times are seconds in the GLB (frame / 24). Axes/coordinates unchanged.
+
+### Elbows and arm swing (`src/player_arms.py`, `src/player_motion.py`)
+- A per-frame **elbow pole optimiser** picks the elbow direction of every arm in every clip (200 candidate poles, continuity between frames, cyclic for loops): the elbow stays outside the torso ellipse of every build (`build_lean` / `build_stocky` / `build_muscular` are inflated in the test), below the shoulder and close to the ribs (no chicken wing, no raised elbows).
+- `run`, `run_turn`, `trot`, new **`walk`** (loop, 0.75 s / 18 frames = two steps, ~1.4 m/s, relaxed arms, hands hip to belly height, forearm swing opposite to the legs): ~90 deg elbow flexion in `run`, hands between hip and chest height. `field_ready*`, `idle`, `catcher_crouch`, `ump_*` use the same optimiser with relaxed arms.
+- Measured on the real skinned mesh (arm vertices vs torso, every frame, stocky build): `run`/`walk`/`trot`/ready clips **0 violations, min clearance >= 45 mm**; analytic centre-line clearance >= 26-35 mm in all optimised clips (worst is `pickoff` 27 mm).
+- **Batters**: `batting_stance` and `swing` (incl. follow-through) have **0 penetration frames** at all builds (min clearance in `swing` 80 mm); the bat-knob keys of the swing were retouched so both elbows can stay outside the torso.
+
+### Headwear (`src/player_headwear.py`)
+Cap, batting helmet and hair are now built from the head mesh (cut along a smooth line, ear islands removed, offset, pushed out of the head by a BVH test, solidified), so they sit on the head with a curved angled brim, back seam, button and eyelets (cap) and an ear flap with an ear hole (helmet). Every shell has the head morph shape keys (`head_narrow`, `head_wide`, `jaw_square`, `nose_large`, `ears_large`) and the hair has `hair_under_cap` (squashes hair under a cap; use it with `Gear_Cap`). Measured minimum distance shell to head (mm) at rest and at all morph extremes (incl. combined `head_narrow+jaw_square+nose_large`, `head_wide+ears_large`):
+
+| node | worst-case clearance |
+|---|---|
+| `Gear_Cap` | 5.3 mm |
+| `Gear_Helmet` | 2.3 mm |
+| `Gear_Hair` (short) | 0.6 mm |
+| `Gear_Hair_Buzz` | 0.3 mm (-0.5 mm with `ears_large`, i.e. a hair-thin overlap at the ear tip) |
+| `Gear_Hair_Curly` / `Gear_Hair_Long` | 4.3 mm / 1.0 mm |
+
+Hair vs the cap inner surface without `hair_under_cap`: short +2.4 mm, buzz +4.7 mm, curly -7.5 mm (curly hair needs the key). 6-angle close-up renders of both hats at rest and at the morph extremes were checked.
+
+### Belt (`Gear_Belt`, `Gear_BeltBuckle`)
+The band (about 4 cm wide) is cut from the body along the waist curve, offset just outside the pants and under the tucked-in jersey hem (hem at a fixed height), so it follows the waist curvature and all `build_*` morphs (same displacement function), with 7 belt loops and a buckle (`Gear_BeltBuckle`, material `buckle`); no gaps, no clipping at any build.
+
+### Gloves (`src/player_glove.py`)
+Voxel-built from finger/thumb/palm/web volumes (finger slots, thumb slot, palm pad, pocket, web, wrist strap, welt) with a bored wrist opening, so the hand lives inside the glove. Four kinds:
+
+| kind | node names | in file | size (approx.) | pocket ball clearance |
+|---|---|---|---|---|
+| infield | `Gear_Glove`, `Gear_Glove_Laces`, `Glove_Pocket` | `player_home/away`, `player_base` | standard | 5.2 mm |
+| outfield | `Gear_Glove` (renamed on export; `Gear_Glove_Outfield` in base) | `player_home_of/away_of`, base | larger, deeper pocket | 6.3 mm |
+| first base | `Gear_Glove` (`Gear_Glove_FirstBase` in base) | `player_home_1b/away_1b`, base | long scooped 1B mitt | 5.3 mm |
+| catcher | `Gear_Glove` (`Gear_Glove_Catcher` in base) | `player_catcher`, base | big round padded mitt | 7.9 mm |
+
+- In every file the glove and its laces are named `Gear_Glove` / `Gear_Glove_Laces`, its pocket empty `Glove_Pocket` (parent = LeftHand; origin = pocket centre where the ball sits; +X along the fingers, glTF +Y = pocket opening normal), the hand inside is `Hand_L`, the ball-ready right hand is `Hand_R` (claw, `Ball_Grip`, `Ball_Grip_2Seam`); `player_base.glb` holds all four gloves (`Gear_Glove*`, `Glove_Pocket*`).
+- **Morph targets `glove_open` / `glove_closed`** (also on the laces and the hand inside): open = fingers spread back, closed = fingers fold over the ball. The clips do not animate them (glTF animation targets bones); the engine drives the weight: the manifest gives `glove_closed_keys` per catch clip as `[frame, weight]` pairs (0 before the catch, 1 at the catch frame, held through the give, released 5 frames later). The ball never intersects the leather (pocket clearance above at open / neutral / closed).
+- Fit numbers (rest pose, real meshes): 1841/1843 hand verts inside (the 2 outside are the wrist-end ring, 0 mm), min hand-to-leather clearance 2.1 mm, 0 glove verts inside the forearm, cuff-to-forearm margin 4.9 mm at rest and >= 1.2 mm in the catch clips (worst -1.7 mm in `catch_fly_run`, -0.8 mm in `field_grounder_backhand`, -1.2 mm in `tag_glove`: cuff edge grazes the sleeve, not visible). The forearm takes 65% of a palm-facing twist (`lhand_face` in `player_anim.py`) so the cuff does not candy-wrap.
+- Close-up renders from 6 angles, open and closed, for all four kinds and on the skinned arm were checked.
+
+### Ball in the hand (`src/ball_check.py`)
+The "ball floats above the hand" came from the fist `Hand_R` (28 mm penetration by the ball in the old export, the fingers hid it and the ball looked lifted). With the claw hand `Hand_R_Ball` (used with `Ball_Grip` / `Ball_Grip_2Seam`) the ball surface is **2 mm inside the fingertip pads (touching), >= 91 hand vertices within 3.5 mm of the ball surface, constant over all frames from hand-break to release** of all 8 `pitch_*` clips, `pitch`, `throw`, `throw_casual` and `pickoff`; the ball centre is ~3.7 cm (ball radius) from the pads. Before the hand-break the ball sits in `Glove_Pocket` (5-8 mm clearance). The engine must show `Hand_R_Ball` (and hide `Hand_R`) while the ball is attached to a grip node.
+
+### New clips (24 fps, right-handed fielder, glove on the LEFT hand; the engine mirrors lefties). `catch` = ball in the pocket / glove at full reach, `contact` = glove or hand touches the runner, `release` = ball leaves the hand
+#### catching / fielding / throws
+| clip | frames | duration | loop | event frames |
+|---|---|---|---|---|
+| `catch_throw` | 14 | 0.583 s | one-shot | catch f6 (0.250 s), give f8 (0.333 s) |
+| `catch_throw_high` | 16 | 0.667 s | one-shot | catch f6 (0.250 s), give f9 (0.375 s) |
+| `catch_throw_low` | 16 | 0.667 s | one-shot | catch f7 (0.292 s), scoop_up f10 (0.417 s) |
+| `catch_stretch` | 22 | 0.917 s | one-shot | catch f8 (0.333 s), hold f12 (0.500 s) |
+| `catch_fly` | 24 | 1.000 s | one-shot | catch f10 (0.417 s), give f13 (0.542 s) |
+| `catch_line_drive` | 12 | 0.500 s | one-shot | catch f5 (0.208 s), give f8 (0.333 s) |
+| `catch_backhand` | 20 | 0.833 s | one-shot | catch f8 (0.333 s), give f11 (0.458 s) |
+| `catch_fly_run` | 24 | 1.000 s | one-shot | catch f12 (0.500 s), give f16 (0.667 s) |
+| `field_grounder` | 30 | 1.250 s | one-shot | catch f11 (0.458 s), funnel f14 (0.583 s), throw_ready f24 (1.000 s) |
+| `field_grounder_backhand` | 30 | 1.250 s | one-shot | catch f11 (0.458 s), funnel f14 (0.583 s), throw_ready f24 (1.000 s) |
+| `catch_comebacker` | 16 | 0.667 s | one-shot | catch f7 (0.292 s), give f10 (0.417 s) |
+| `pitcher_catch_toss` | 18 | 0.750 s | one-shot | catch f8 (0.333 s), give f11 (0.458 s) |
+| `throw_casual` | 28 | 1.167 s | one-shot | release f10 (0.417 s) |
+| `pickoff` | 20 | 0.833 s | one-shot | release f9 (0.375 s) |
+| `catch_pitch` | 18 | 0.750 s | one-shot | catch f7 (0.292 s), give f10 (0.417 s), frame f13 (0.542 s) |
+| `catch_pitch_low` | 18 | 0.750 s | one-shot | catch f7 (0.292 s), give f10 (0.417 s), frame f13 (0.542 s) |
+| `catch_pitch_high` | 18 | 0.750 s | one-shot | catch f7 (0.292 s), give f10 (0.417 s), frame f13 (0.542 s) |
+#### tags, blocks, slides
+| clip | frames | duration | loop | event frames |
+|---|---|---|---|---|
+| `tag_glove` | 14 | 0.583 s | one-shot | contact f8 (0.333 s), sweep_end f10 (0.417 s) |
+| `tag_hand` | 14 | 0.583 s | one-shot | contact f8 (0.333 s), sweep_end f10 (0.417 s) |
+| `catcher_block` | 36 | 1.500 s | one-shot | block f9 (0.375 s), tag_contact f26 (1.083 s) |
+| `slide_feet` | 29 | 1.208 s | one-shot | slide_start f6 (0.250 s), rest f24 (1.000 s) |
+| `slide_hook_left` | 29 | 1.208 s | one-shot | slide_start f6 (0.250 s), rest f24 (1.000 s) |
+| `slide_hook_right` | 29 | 1.208 s | one-shot | slide_start f6 (0.250 s), rest f24 (1.000 s) |
+| `slide_head` | 26 | 1.083 s | one-shot | dive_start f6 (0.250 s), land f14 (0.583 s), rest f22 (0.917 s) |
+| `dive_back` | 18 | 0.750 s | one-shot | dive_start f3 (0.125 s), land f9 (0.375 s) |
+| `pop_up` | 30 | 1.250 s | one-shot | sit_up f6 (0.250 s), stand f20 (0.833 s) |
+| `pop_up_head` | 30 | 1.250 s | one-shot | push_up f8 (0.333 s), stand f16 (0.667 s) |
+#### umpire
+| clip | frames | duration | loop | event frames |
+|---|---|---|---|---|
+| `ump_strike` | 19 | 0.792 s | one-shot | strike f8 (0.333 s) |
+| `ump_strike_swinging` | 22 | 0.917 s | one-shot | strike f9 (0.375 s) |
+| `ump_ball` | 14 | 0.583 s | one-shot | gesture f6 (0.250 s) |
+| `ump_safe` | 24 | 1.000 s | one-shot | sweep_peak f9 (0.375 s) |
+| `ump_out` | 20 | 0.833 s | one-shot | hammer f9 (0.375 s) |
+| `ump_out_strikeout` | 22 | 0.917 s | one-shot | punch f9 (0.375 s) |
+| `ump_foul` | 20 | 0.833 s | one-shot | peak f7 (0.292 s) |
+| `ump_fair` | 16 | 0.667 s | one-shot | point f6 (0.250 s) |
+| `ump_homerun` | 32 | 1.333 s | one-shot | twirl_start f6 (0.250 s), twirl_end f26 (1.083 s) |
+| `ump_time` | 18 | 0.750 s | one-shot | peak f6 (0.250 s) |
+
+Notes: the glove target in every catch clip is a plausible default; the engine may move the wrist by IK so `Glove_Pocket` meets the ball anywhere within arm's reach (the clips supply body, reach, lean, footwork and give). `catch_pitch*` start and end in `catcher_crouch` (they cross-fade with it): `catch_pitch` (mitt at the knee-to-belt zone), `catch_pitch_low` (scoop, palm up), `catch_pitch_high` (mitt above the belt, palm down): mitt to the ball at `catch`, `give` draws it back, `frame` is the small framing pull. `catch_throw` / `catch_throw_high` / `catch_throw_low` / `catch_stretch` are one-shots for receiving throws (`catch_stretch` = first baseman off the bag), `catch_fly` (1.0 s), `catch_fly_run` (on the run), `catch_backhand`, `field_grounder(_backhand)` (`funnel` = ball into the belly, `throw_ready` = ball hand back), `catch_comebacker`, `catch_line_drive` (0.5 s), `pitcher_catch_toss`. `tag_glove` (0.583 s) / `tag_hand` (bare hand + ball hand) contact at f8; `catcher_block` blocks at f9 and sweeps the tag at f26; `slide_feet` (1.208 s), `slide_hook_left/right`, `slide_head` (dive, land f14), `dive_back`, `pop_up` / `pop_up_head`; the old `slide` is unchanged. Slide clips bake root motion (hips travel toward -Y).
+
+### Umpires (`player_umpire.glb` plate umpire: `Gear_CatcherMask`, `Gear_ChestProtector`, `Gear_ShinGuard_L/R`, dark-navy uniform and cap; `player_umpire_base.glb` base umpire: plain navy uniform and cap; both use the shared rig)
+`ump_ready` (2.5 s loop, plate crouch behind the catcher) and `ump_set_base` (2.0 s loop, slot stance) are loops; every gesture clip starts and ends in the ready crouch so they cross-fade. Gestures (events in the table above): `ump_strike` (0.792 s, fist punch at f8), `ump_strike_swinging`, `ump_ball`, `ump_safe` (1.0 s, arms sweep out, peak f9), `ump_out` (hammer f9), `ump_out_strikeout`, `ump_foul` (arms up, peak f7), `ump_fair` (point, f6), `ump_homerun` (finger twirl f6..f26), `ump_time` (both hands up, f6).
+
+### Files
+`players/`: `player_base` (everything), `player_home`, `player_away`, `player_home_of`, `player_away_of`, `player_home_1b`, `player_away_1b`, `player_batter`, `player_catcher`, `player_umpire`, `player_umpire_base` (plain, `optimized/players/` and `optimized/lod1/` for each; lod1 keeps the morph targets, the grip empties and all 68 clips). Sizes: `player_home` 7.9 MB plain / 3.3 MB optimized / 1.9 MB lod1, `player_base` 16.7 MB / 5.0 MB / 2.8 MB. Regenerate with `src/player_build.py` in Blender (players) and `python3 src/gen_manifest.py assets/` (manifest + tables).
