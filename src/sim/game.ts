@@ -167,8 +167,16 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
   if (w.tick < p.animUntil) return { anim: p.anim, t: Math.min(1, (w.tick - p.animStart) / Math.max(1, p.animDur)) };
   if (p.anim === 'celebrate' && w.gameOver) return { anim: 'celebrate', t: 0 };
   const sp = Math.hypot(p.vx, p.vz);
-  if (sp > 1.2) return { anim: 'run', t: 0 };
+  if (sp > 1.2) return { anim: p.gait === 'trot' ? 'trot' : p.gait === 'turn' ? 'run_turn' : 'run', t: 0 };
   return { anim: 'idle', t: 0 };
+}
+
+/** Height of the feet above the ground: non-zero only in mid-leap at the wall. */
+function feetY(w: World, p: PlayerRT): number {
+  const L = p.leap;
+  if (!L) return 0;
+  const u = (w.tick - L.t0) / L.dur;
+  return u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0;
 }
 
 function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): PlayerSnapshot {
@@ -180,7 +188,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     role,
     position: (p.fieldPos ?? p.info.primaryPosition) as PlayerSnapshot['position'],
     jersey: p.info.jersey,
-    pos: { x: p.x, y: 0, z: p.z },
+    pos: { x: p.x, y: feetY(w, p), z: p.z },
     vel: { x: p.vx, y: 0, z: p.vz },
     facing: p.facing,
     anim: a.anim,

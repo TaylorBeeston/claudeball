@@ -21,7 +21,13 @@ export type AnimHint =
   | 'throw'
   | 'catch'
   | 'slide'
-  | 'celebrate';
+  | 'celebrate'
+  /** Jump / leap / climb at the outfield wall (`animT` runs over the leap). */
+  | 'catch_jump'
+  /** Easy home-run / dead-ball jog (`run` is a full sprint). */
+  | 'trot'
+  /** Rounding a base: a sprint with a hard curve into the bag. */
+  | 'run_turn';
 
 /** What the person is doing on the field right now. */
 export type PlayerRole = 'pitcher' | 'catcher' | 'fielder' | 'batter' | 'runner' | 'umpire';
@@ -281,7 +287,15 @@ export type GameEvent =
   | (EBase & { type: 'hitByPitch'; batterId: string })
   | (EBase & { type: 'wildPitch'; pitcherId: string })
   | (EBase & { type: 'passedBall'; catcherId: string })
-  | (EBase & { type: 'homeRun'; batterId: string; distance: number })
+  | (EBase & { type: 'homeRun'; batterId: string; distance: number; /** metres the ball cleared the top of the wall by */ heightAboveWall?: number; pos?: Vec3 })
+  /** The ball met the outfield wall (`who: 'ball'`, in play) or a fielder ran up to it (`who: 'fielder'`). */
+  | (EBase & { type: 'wallContact'; who: 'ball' | 'fielder'; fielderId?: string; pos: Vec3; speed: number })
+  /** A fielder leaves the ground at the wall for a ball he may reach over the fence. */
+  | (EBase & { type: 'wallLeap'; fielderId: string; pos: Vec3; ballHeightAboveWall: number })
+  /** A would-be home run was caught by a fielder reaching over the fence. */
+  | (EBase & { type: 'robbedHomeRun'; fielderId: string; batterId: string; distance: number; heightAboveWall: number; pos: Vec3 })
+  /** A runner touched a base (also for dead-ball trots): `trot` is true when it is not a live-ball touch. */
+  | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3 })
   | (EBase & { type: 'substitution'; team: TeamSide; inId: string; outId: string; reason: string })
   | (EBase & { type: 'pitchingChange'; team: TeamSide; inId: string; outId: string })
   | (EBase & { type: 'plateAppearanceEnd'; batterId: string; result: string })

@@ -63,9 +63,40 @@ export interface PlayerRT {
   onField: boolean;
   /** Fielding plan for the current play. */
   plan: FielderPlan;
+  /** Wall leap in progress. */
+  leap: Leap | null;
+  /** Gait presentation for the renderer: jogging (`trot`) or a hard turn at a bag (`turn`). */
+  gait: 'trot' | 'turn' | null;
+  /** Tick of the last `wallContact` event for this player (rate limit). */
+  wallTick: number;
 }
 
-export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold';
+export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';
+
+/** An outfielder's plan for a ball that will reach (or clear) the outfield wall above his standing reach. */
+export interface WallPlan {
+  /** Predicted tick at which the ball meets the wall plane. */
+  crossTick: number;
+  /** Where he plants (just inside the wall) and where the ball meets the wall. */
+  x: number;
+  z: number;
+  /** Ball height at the wall and how far above the top of the wall it is (m, may be negative). */
+  crossY: number;
+  dy: number;
+  over: boolean;
+  /** Decision to leap (null until decided). */
+  leap: boolean | null;
+  /** Leap timing offset the decision asked for (s, + = later). */
+  timing: number;
+}
+
+/** A jump in progress (wall leap). */
+export interface Leap {
+  t0: number;
+  dur: number;
+  /** Peak height of the jump (m). */
+  h: number;
+}
 
 export interface FielderPlan {
   kind: PlanKind;
@@ -77,6 +108,11 @@ export interface FielderPlan {
   /** Persistent trajectory-judgment bias (m per second of remaining flight). */
   biasX: number;
   biasZ: number;
+  /** Persistent misjudgement of the ball's height (m) and timing (s) at the wall. */
+  biasY: number;
+  biasT: number;
+  /** Wall play (outfielder going to the fence for a ball he may have to leap for). */
+  wall: WallPlan | null;
   /** Ball secured; earliest tick the fielder can throw. */
   holdUntil: number;
   /** Throw wind-up in progress: release at this tick (0 = none). */
@@ -199,6 +235,8 @@ export interface BipInfo {
   infieldFly: boolean;
   infieldFlyChecked: boolean;
   homeRun: boolean;
+  /** A would-be home run caught over the fence. */
+  robbed: boolean;
   groundRuleDouble: boolean;
   bunt: boolean;
   fielders: PlayerRT[]; // touches in order

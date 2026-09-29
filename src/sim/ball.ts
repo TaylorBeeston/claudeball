@@ -202,7 +202,7 @@ export function stepBall(b: BallBody, dt: number, env: Environment, rng: Rng | n
       }
     }
   }
-  if (checkFence) wallCheck(b, env, flags);
+  if (checkFence) wallCheck(b, env, flags, rng);
 }
 
 function rollStep(b: BallBody, dt: number, env: Environment): void {
@@ -230,33 +230,50 @@ function rollStep(b: BallBody, dt: number, env: Environment): void {
   b.wz = (0 - 1 * b.vx) / BALL_RADIUS;
 }
 
-function wallCheck(b: BallBody, env: Environment, flags: BallStepFlags): void {
+function wallCheck(b: BallBody, env: Environment, flags: BallStepFlags, rng: Rng | null): void {
   const rho = hypot2(b.x, b.z);
   if (rho < 15) return;
   const f = fenceAt(env.fence, b.x, b.z);
   if (rho < f.distance) return;
-  const nx = b.x / rho;
-  const nz = b.z / rho;
-  const vn = b.vx * nx + b.vz * nz;
-  if (vn <= 0) return; // moving back inside
+  const rx = b.x / rho;
+  const rz = b.z / rho;
+  const vn0 = b.vx * rx + b.vz * rz;
+  if (vn0 <= 0) return; // moving back inside
   if (b.y > f.height + BALL_RADIUS) {
     flags.overFence = true;
     return;
   }
-  // wall impact: reflect the outward component, damp tangential
-  const e = 0.38;
-  b.vx -= (1 + e) * vn * nx;
-  b.vz -= (1 + e) * vn * nz;
+  // wall impact: the panels are not perfectly flat, so the real ball leaves at a slightly different angle than the
+  // predicted one (predictions pass rng = null: a flat wall). Reflect the outward component, damp the rest.
+  let nx = rx;
+  let nz = rz;
+  if (rng) {
+    const a = rng.normal(0, WALL_ROUGHNESS);
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    nx = rx * c - rz * s;
+    nz = rx * s + rz * c;
+  }
+  const vn = b.vx * nx + b.vz * nz;
+  const e = WALL_RESTITUTION;
+  if (vn > 0) {
+    b.vx -= (1 + e) * vn * nx;
+    b.vz -= (1 + e) * vn * nz;
+  }
   b.vx *= 0.9;
   b.vz *= 0.9;
   b.vy *= 0.9;
   const px = f.distance - BALL_RADIUS * 1.5;
-  b.x = nx * px;
-  b.z = nz * px;
+  b.x = rx * px;
+  b.z = rz * px;
   if (b.rolling && b.vy > 0) b.rolling = false;
   flags.wallHit = true;
-  flags.wallSpeed = vn;
+  flags.wallSpeed = vn0;
 }
+
+/** Wall restitution and panel roughness (rad of normal jitter for the real ball; the fielders' predictions assume a flat wall). */
+export const WALL_RESTITUTION = 0.38;
+export const WALL_ROUGHNESS = 0.11;
 
 export interface PathSample {
   t: number;
@@ -267,6 +284,8 @@ export interface PathSample {
   vy: number;
   vz: number;
   rolling: boolean;
+  /** Set on the step where the ball meets the outfield wall: 'hit' (rebounds) or 'over' (clears the top). */
+  wall?: 'hit' | 'over';
 }
 
 /** Deterministic forward prediction (no surface irregularity). Stops at rest / out of park / tMax. */
@@ -279,7 +298,10 @@ export function predictPath(b: BallBody, env: Environment, tMax: number, dt = 1 
   while (t < tMax) {
     stepBall(c, dt, env, null, flags);
     t += dt;
-    out.push({ t, x: c.x, y: c.y, z: c.z, vx: c.vx, vy: c.vy, vz: c.vz, rolling: c.rolling });
+    const smp: PathSample = { t, x: c.x, y: c.y, z: c.z, vx: c.vx, vy: c.vy, vz: c.vz, rolling: c.rolling };
+    if (flags.overFence) smp.wall = 'over';
+    else if (flags.wallHit) smp.wall = 'hit';
+    out.push(smp);
     if (flags.overFence) break;
     if (c.rolling && c.vx * c.vx + c.vz * c.vz < 0.0004) break;
   }
