@@ -50,6 +50,11 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     leadDist: 3,
     leadKey: '',
     asking: false,
+    trot: 0,
+    exitVia: 0,
+    exitDone: false,
+    outTick: 0,
+    celebrateUntil: 0,
   };
   p.role = 'runner';
   p.onField = true;
@@ -328,73 +333,143 @@ export function onPitchRelease(w: World): void {
 // per-tick runner movement and base touching
 // ---------------------------------------------------------------------------------------------
 
+/** How far past first base a runner who is not turning runs through the bag before he pulls up (m). */
+const RUN_THROUGH = 6.5;
+/** A runner rounding a base starts his arc this far before it (m) and swings this wide (m). */
+const ROUND_L = 7;
+const ROUND_W = 2.2;
+
+const unit = (x: number, z: number) => {
+  const l = Math.hypot(x, z) || 1;
+  return { x: x / l, z: z / l };
+};
+
+/** Trot speed of a runner on a dead ball (m/s): a home-run jog, about 22 s around the bases. */
+export const trotSpeed = (p: PlayerRT) => clamp(4.9 + 0.012 * (p.info.ratings.speed - 50), 4.3, 5.6);
+
 export function tickRunners(w: World): void {
-  for (const r of w.runners) {
-    const p = r.p;
-    if (r.state === 'out') {
-      if (!p.goal || p.goal.mul !== 0.45) {
-        const d = DUGOUT[p.team.side];
-        setGoal(p, d.x, d.z, true, 0.45);
+  for (const r of w.runners) tickRunner(w, r);
+  for (const r of w.exiting) tickRunner(w, r);
+  if (w.exiting.length) {
+    w.exiting = w.exiting.filter((r) => {
+      const d = DUGOUT[r.p.team.side];
+      const done = Math.hypot(r.p.x - d.x, r.p.z - d.z) < 1.8 || w.tick - r.outTick > 12 * 240;
+      if (done) {
+        r.p.onField = false;
+        r.p.gait = null;
+        r.p.goal = null;
       }
-      continue;
+      return !done;
+    });
+  }
+}
+
+/** A runner who is out or has scored: finish the run-through, celebrate a home run, then walk to the dugout. */
+function tickLeaving(w: World, r: RunnerRT): void {
+  const p = r.p;
+  const d = DUGOUT[p.team.side];
+  p.gait = 'trot';
+  if (r.state === 'scored' && w.tick < r.celebrateUntil) {
+    const h = bpos(4);
+    setGoal(p, h.x, h.z, true, 0.5);
+    p.gait = null;
+    return;
+  }
+  if (r.exitVia && !r.exitDone) {
+    // put out at first before reaching the bag: he still runs through it
+    const tp = bpos(r.exitVia);
+    const prev = bpos(r.exitVia - 1);
+    const dIn = unit(tp.x - prev.x, tp.z - prev.z);
+    const along = (p.x - tp.x) * dIn.x + (p.z - tp.z) * dIn.z;
+    const speed = Math.hypot(p.vx, p.vz);
+    if ((along > 3 && speed < 3.5) || w.tick - r.outTick > 3 * 240) r.exitDone = true;
+    else {
+      setGoal(p, tp.x + dIn.x * RUN_THROUGH, tp.z + dIn.z * RUN_THROUGH, true, 1);
+      p.gait = null;
+      return;
     }
-    if (r.state === 'scored') {
-      const d = DUGOUT[p.team.side];
-      setGoal(p, d.x, d.z, true, 0.45);
-      continue;
-    }
-    if (r.tagWait && !r.stealing) {
-      // stay on the bag until the catch
-      if (r.base >= 1) {
-        const b = bpos(r.base);
-        if (Math.hypot(p.x - b.x, p.z - b.z) > 0.3) setGoal(p, b.x, b.z, true, 0.9);
-      }
-      continue;
-    }
-    if (w.tick < r.reaction) continue;
-    const nextTarget = r.want > r.base ? r.base + 1 : r.base;
-    r.target = nextTarget;
-    const jog = r.dead ? 0.55 : 1;
-    if (r.target > r.base) {
-      const tp = bpos(r.target);
-      let gx = tp.x;
-      let gz = tp.z;
-      let stop = !(r.want > r.target) && r.target !== 1;
-      if (r.target === 1 && r.want === 1 && !r.dead) {
-        // run through first base
-        const a = bpos(0);
-        const dx = tp.x - a.x;
-        const dz = tp.z - a.z;
-        const dl = Math.hypot(dx, dz);
-        gx = tp.x + (dx / dl) * 9;
-        gz = tp.z + (dz / dl) * 9;
-        stop = true;
-      } else if (r.target === 1 && r.want > 1) stop = false;
-      if (r.dead) stop = true;
-      setGoal(p, gx, gz, stop, jog);
-      p.lookAt = null;
-      // touch?
-      const dd = Math.hypot(p.x - tp.x, p.z - tp.z);
-      if (dd < 0.9) touchBase(w, r, r.target);
-    } else if (r.base >= 1 && !(r.want === r.base && !r.dead && !r.overrun && !r.retouch && !r.isBatter && w.phase !== 'inPlay')) {
-      // returning to / staying at the base
+  }
+  setGoal(p, d.x, d.z, true, 0.5);
+}
+
+function tickRunner(w: World, r: RunnerRT): void {
+  const p = r.p;
+  if (r.state !== 'live') {
+    tickLeaving(w, r);
+    return;
+  }
+  p.gait = null;
+  if (r.tagWait && !r.stealing) {
+    // stay on the bag until the catch
+    if (r.base >= 1) {
       const b = bpos(r.base);
-      const dd = Math.hypot(p.x - b.x, p.z - b.z);
-      if (r.overrun) {
-        // run-through: let momentum carry, then walk back
-        if (Math.hypot(p.vx, p.vz) < 1.2) setGoal(p, b.x, b.z, true, 0.45);
-        if (dd < 0.6 && Math.hypot(p.vx, p.vz) < 1.5) r.overrun = false;
-      } else if (dd > 0.25 && !r.dead) setGoal(p, b.x, b.z, true, 1);
-      else if (dd > 0.25) setGoal(p, b.x, b.z, true, jog);
-      if (r.retouch && dd <= 0.9) r.retouchDone = true;
+      if (Math.hypot(p.x - b.x, p.z - b.z) > 0.3) setGoal(p, b.x, b.z, true, 0.9);
     }
-    // slide animation: close to the target base with the ball around
-    if (r.target > r.base && r.target >= 2 && !r.dead) {
-      const tp = bpos(r.target);
-      const dd = Math.hypot(p.x - tp.x, p.z - tp.z);
-      if (dd < 3.4 && Math.hypot(p.vx, p.vz) > 3 && fielding.playNearBase(w, r.target)) {
-        if (p.anim !== 'slide') setAnim(w, p, 'slide', 0.7);
+    return;
+  }
+  if (w.tick < r.reaction) return;
+  r.target = r.want > r.base ? r.base + 1 : r.base;
+  // attempting to advance gives up the protection of a run-through
+  if (r.target > r.base) r.overrun = false;
+  const mul = r.dead && r.trot > 0 ? Math.min(1, r.trot / Math.max(p.vmax, 1)) : r.dead ? 0.55 : 1;
+  if (r.dead) p.gait = 'trot';
+  if (r.target > r.base) {
+    const tp = bpos(r.target);
+    const prev = bpos(r.target - 1);
+    const dIn = unit(tp.x - prev.x, tp.z - prev.z);
+    const continuing = r.want > r.target && r.target <= 3;
+    let gx = tp.x;
+    let gz = tp.z;
+    let stop = true;
+    let m = mul;
+    if (r.target === 1 && r.want === 1 && !r.dead) {
+      // run through first base
+      gx = tp.x + dIn.x * RUN_THROUGH;
+      gz = tp.z + dIn.z * RUN_THROUGH;
+    } else if (continuing) {
+      // round the bag: swing wide, cut in to touch it, and leave toward the next base
+      stop = false;
+      const nx = bpos(r.target + 1);
+      const dOut = unit(nx.x - tp.x, nx.z - tp.z);
+      const dist = Math.hypot(p.x - tp.x, p.z - tp.z);
+      const out = unit(dIn.x - dOut.x, dIn.z - dOut.z);
+      const sharp = 1 - (dIn.x * dOut.x + dIn.z * dOut.z); // 0 straight .. 1 right angle
+      if (dist > ROUND_L * 0.85) {
+        gx = tp.x - dIn.x * ROUND_L + out.x * ROUND_W * sharp;
+        gz = tp.z - dIn.z * ROUND_L + out.z * ROUND_W * sharp;
+      } else {
+        m *= 1 - 0.1 * sharp;
+        if (dist < ROUND_L && Math.hypot(p.vx, p.vz) > 3) p.gait = 'turn';
       }
+    }
+    setGoal(p, gx, gz, stop, m);
+    p.lookAt = null;
+    if (Math.hypot(p.x - tp.x, p.z - tp.z) < 0.9) touchBase(w, r, r.target);
+  } else if (r.base >= 1 && !(r.want === r.base && !r.dead && !r.overrun && !r.retouch && !r.isBatter && w.phase !== 'inPlay')) {
+    // returning to / staying at the base
+    const b = bpos(r.base);
+    const dd = Math.hypot(p.x - b.x, p.z - b.z);
+    if (r.overrun) {
+      // run-through: momentum carries him past the bag, then he jogs back (protected from a tag while he returns)
+      const prev = bpos(r.base - 1);
+      const dIn = unit(b.x - prev.x, b.z - prev.z);
+      const beyond = (p.x - b.x) * dIn.x + (p.z - b.z) * dIn.z > 0.3;
+      const sp = Math.hypot(p.vx, p.vz);
+      if (beyond && sp > 4) setGoal(p, b.x + dIn.x * RUN_THROUGH, b.z + dIn.z * RUN_THROUGH, true, 1);
+      else setGoal(p, b.x, b.z, true, 0.7);
+      if (dd < 0.6 && sp < 2.5) r.overrun = false;
+    } else if (dd > 0.25 && !r.dead) setGoal(p, b.x, b.z, true, 1);
+    else if (dd > 0.25) setGoal(p, b.x, b.z, true, mul);
+    if (r.retouch && dd <= 0.9) r.retouchDone = true;
+    // diving back to the bag with the ball coming
+    if (dd > 0.4 && dd < 3 && !r.overrun && !r.dead && Math.hypot(p.vx, p.vz) > 3 && fielding.playNearBase(w, r.base) && p.anim !== 'slide') setAnim(w, p, 'slide', 0.7);
+  }
+  // slide animation: close to the target base with the ball around
+  if (r.target > r.base && r.target >= 2 && !r.dead) {
+    const tp = bpos(r.target);
+    const dd = Math.hypot(p.x - tp.x, p.z - tp.z);
+    if (dd < 3.4 && Math.hypot(p.vx, p.vz) > 3 && fielding.playNearBase(w, r.target)) {
+      if (p.anim !== 'slide') setAnim(w, p, 'slide', 0.7);
     }
   }
 }
@@ -405,10 +480,16 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
   r.base = b;
   r.touched[b] = true;
   emit(w, { type: 'runnerAdvance', playerId: r.p.info.id, fromBase: from, toBase: b });
-  if (fielding.playNearBase(w, b)) emit(w, { type: 'safe', playerId: r.p.info.id, base: b });
+  emit(w, { type: 'baseTouch', playerId: r.p.info.id, base: b, trot: r.dead, pos: { x: r.p.x, y: 0, z: r.p.z } });
+  if (!r.dead && fielding.playNearBase(w, b)) emit(w, { type: 'safe', playerId: r.p.info.id, base: b });
   if (b === 1 && r.isBatter && r.want === 1) r.overrun = true;
   if (b === 4) {
-    if (r.p.info.id) rules.scoreRun(w, r);
+    if (r.dead && r.trot > 0) {
+      // a home run (or awarded bases): the run scores with a celebration at the plate
+      r.celebrateUntil = w.tick + secToTicks(1.8);
+      setAnim(w, r.p, 'celebrate', 1.8);
+    }
+    rules.scoreRun(w, r);
     return;
   }
   if (r.stealing && b === r.origin + 1) {
@@ -516,6 +597,8 @@ function applyRunnerDecision(w: World, r: RunnerRT, d: RunnerDecision): void {
   }
   let want = clamp(Math.round(Number.isFinite(d.want) ? d.want : r.base), r.base, 4);
   const frc = forced(w, r);
+  // a runner cannot pass the runner ahead of him
+  for (const q of w.runners) if (q !== r && q.state === 'live' && q.base > r.base) want = Math.min(want, Math.max(q.base, q.want) - 1);
   if (frc) want = Math.max(want, r.base + 1);
   if (r.isBatter && r.base === 0) want = Math.max(want, 1);
   if (r.retouch && !r.retouchDone) want = r.base;
@@ -544,7 +627,11 @@ export function aiRunner(w: World, r: RunnerRT, req: RunnerRequest): RunnerDecis
   const frc = req.forced;
   if (frc) want = Math.max(want, r.base + 1);
   if (r.isBatter && r.base === 0) want = Math.max(want, 1);
-  const safety = 0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0);
+  // how much margin he wants: the more the situation rewards the risk, the less; ahead late or with nobody out, the more
+  const diff = req.situation.scoreDiff;
+  const late = w.inning >= 7;
+  const safety =
+    0.16 + 0.3 * (1 - clamp((p.info.ratings.baserunning + 30) / 100, 0, 1)) + (w.outs === 2 ? -0.1 : 0) + (late && diff <= -1 ? -0.04 : 0) + (late && diff >= 3 ? 0.08 : 0);
   const coachExtra = r.base === 2 ? 0.05 : 0; // third-base coach is conservative at the plate
   for (let b = Math.max(r.base + 1, 1); b <= 4; b++) {
     if (b > r.base + 1 && b > want + 0) {
@@ -552,7 +639,8 @@ export function aiRunner(w: World, r: RunnerRT, req: RunnerRequest): RunnerDecis
       if (want < b - 1) break;
     }
     const tR = req.runnerToBase[b];
-    const m = est[b] - tR - r.bias - safety - (b === 4 ? coachExtra : 0);
+    // an out at third with nobody out is the worst way to lose a runner
+    const m = est[b] - tR - r.bias - safety - (b === 4 ? coachExtra : 0) - (b === 3 && w.outs === 0 ? 0.07 : 0);
     if (m > 0) want = Math.max(want, b);
     else break;
   }

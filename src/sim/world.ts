@@ -208,6 +208,15 @@ export interface RunnerRT {
   leadKey: string;
   /** A runner decision has been requested and not yet applied. */
   asking: boolean;
+  /** Dead-ball trot speed (m/s), 0 = not trotting. */
+  trot: number;
+  /** Put out before reaching this base: he still runs through it before walking off. */
+  exitVia: number;
+  exitDone: boolean;
+  /** Tick the runner was put out / scored (leaving the field). */
+  outTick: number;
+  /** A run scored on a home run: he celebrates at the plate until then. */
+  celebrateUntil: number;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -354,6 +363,8 @@ export interface World {
   pitcher: PlayerRT;
   catcher: PlayerRT;
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
+  /** Runners who are out or scored and are walking off the field (still on screen). */
+  exiting: RunnerRT[];
   ball: BallRT;
   play: PlayState | null;
   // pitch in progress
