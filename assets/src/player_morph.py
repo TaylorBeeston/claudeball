@@ -31,10 +31,10 @@ def body_morph(P, kind):
     sh = _sm(1.30, 1.44, z)*(1-_sm(1.58, 1.66, z))*_sm(.08, .18, ax)
     out[:, 0] += sx*dsh*sh
     # arms: radial scale about the arm axis (thicker at biceps/forearm for the muscular build)
-    kar = 1 + (karm-1)*(1 + (.4*_g(t, .30, .16) if kind == "build_muscular" else 0))
+    kar = (1 + (karm-1)*(1 + (.4*_g(t, .30, .16) if kind == "build_muscular" else 0)))*np.ones_like(t)
     add = perp*(kar-1)[:, None]*arm[:, None]; out[:, 0] += sx*add[:, 0]; out[:, 1] += add[:, 1]; out[:, 2] += add[:, 2]
     # legs: radial scale about the leg axis (thighs / calves)
-    lk = 1 + (kleg-1)*(1 + (.5*_g(z, .72, .22) + .3*_g(z, .38, .12) if kind == "build_muscular" else 0))
+    lk = (1 + (kleg-1)*(1 + (.5*_g(z, .72, .22) + .3*_g(z, .38, .12) if kind == "build_muscular" else 0)))*np.ones_like(z)
     out[:, 0] += (x - sx*.09)*(lk-1)*leg; out[:, 1] += (y + .005)*(lk-1)*leg
     # neck
     out[:, 0] += x*(kneck-1)*neck; out[:, 1] += (y+.006)*(kneck-1)*neck

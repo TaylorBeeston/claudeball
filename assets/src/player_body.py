@@ -97,11 +97,25 @@ def face_texture(n=1024, seed=3):
         for c in range(3): img[..., c] = img[..., c]*(1-m) + col[c]*m
     paint(0, -.44, .26, .05, (1.0, .60, .60), .9); paint(0, -.53, .24, .05, (1.0, .55, .58), .9)     # lips
     paint(0, -.478, .28, .012, (.35, .15, .15), .9)                                                   # mouth line
-    paint(.36, .215, .24, .04, (.32, .24, .20), .95); paint(.36, .225, .18, .028, (.25, .19, .15), .8)  # eyebrows
+    paint(.36, .225, .25, .045, (.20, .14, .11), 1.0); paint(.36, .232, .19, .030, (.14, .10, .08), .9); paint(.19, .215, .07, .04, (.20, .14, .11), .8)   # eyebrows (thick, tapering)
+    paint(.41, .118, .16, .013, (.08, .06, .05), .95); paint(.41, .088, .13, .010, (.55, .38, .34), .5)   # upper lash line, lower lid line
+    paint(.55, -.20, .30, .22, (.95, .62, .58), .18)                                                       # cheek blush
     paint(.42, .10, .13, .075, (.78, .62, .58), .55)                                                   # eyelid shadow
     paint(0, -.60, .55, .38, (.86, .80, .78), .35)                                                     # stubble/jaw tone
     paint(.14, -.28, .05, .04, (.55, .38, .36), .8)                                                    # nostrils
     return np.clip(img, 0, 1)
+
+def face_height(n=1024, seed=3):
+    """Height field for the face normal map: pores + wrinkles (forehead lines, crow's feet, nasolabial folds, lip lines) in the head UV space."""
+    uu, vv = np.meshgrid((np.arange(n)+.5)/n, (np.arange(n)+.5)/n); w = vv*2-1; r = np.sqrt(np.clip(1-w*w, 0, 1)); th = (uu-.5)*2*np.pi
+    x = r*np.sin(th); front = (r*np.cos(th)) > -.05
+    h = noise_tex(n, [128, 256, 512], seed)*.6 + noise_tex(n, [16, 32], seed+1)*.15
+    def line(cx, cw, sx, sw, amp): return amp*(g2(x, w, cx, cw, sx, sw) + (g2(x, w, -cx, cw, sx, sw) if cx else 0))*front
+    h = h + line(0, .43, .32, .012, -.35) + line(0, .50, .30, .010, -.28) + line(0, .37, .26, .010, -.22)      # forehead lines
+    h = h + line(.66, .12, .07, .05, -.25) + line(.70, .06, .06, .04, -.2)                                           # crow's feet
+    h = h + line(.26, -.30, .035, .16, -.45) + line(.34, -.34, .03, .12, -.3)                                       # nasolabial folds
+    h = h + line(0, -.45, .22, .008, -.4) + line(0, -.60, .20, .012, -.2) + line(0, .13, .22, .05, .2)             # lip line, chin crease, brow bridge
+    return h
 
 def eyes_meshes():
     out = []
@@ -114,16 +128,23 @@ def eyes_meshes():
         uvl = me.uv_layers.new(name="UVMap")
         for lp in me.loops:
             c = me.vertices[lp.vertex_index].co - Vector((sx*.033, -.083, 1.738)); c = c.normalized()
-            uvl.data[lp.index].uv = (math.atan2(c.x, c.z)/(2*math.pi)+.5, .5 - c.y*(-1)*.5)   # v -> 1 at front pole (-Y => c.y=-1)
+            uvl.data[lp.index].uv = (math.atan2(c.x, c.z)/(2*math.pi)+.5, .5 - .5*c.y)   # v -> 1 at the front pole (-Y => c.y=-1), 0 at the back
         for p in me.polygons: p.use_smooth = True
         o = bpy.data.objects.new("Eye", me); bpy.context.collection.objects.link(o); out.append(o)
     return out
 
-def eye_texture(n=256):
-    v = (np.arange(n)+.5)/n; img = np.ones((n, n, 3), np.float32)*.92; vv = np.tile(v[:, None], (1, n))
-    iris = vv > .80; pupil = vv > .93; img[iris] = (.25, .38, .22); img[pupil] = (.02, .02, .02); img[vv > .985] = (.02, .02, .02)
-    img[(vv > .78) & (vv <= .80)] = (.10, .12, .08)
-    return img
+def eye_texture(n=512):
+    """Sclera / iris / pupil painted around the front pole (v -> 1). Iris radius ~29 deg, pupil ~10 deg (real eye: iris 11.7 mm across a 24 mm globe)."""
+    v = (np.arange(n)+.5)/n; u = (np.arange(n)+.5)/n; vv = np.tile(v[:, None], (1, n)); uu = np.tile(u[None, :], (n, 1))
+    theta = np.degrees(np.arccos(np.clip(2*vv-1, -1, 1)))              # angle from the front pole
+    img = np.ones((n, n, 3), np.float32)*np.array([.93, .92, .90])
+    veins = (np.sin(uu*2*np.pi*23 + theta*.4)*.5+.5)*np.clip((theta-32)/30, 0, 1)*.05; img[..., 1:] -= veins[..., None]*np.array([1, 1])
+    fib = .5 + .5*np.sin(uu*2*np.pi*40); ring = np.clip((theta-23)/6, 0, 1)
+    iris = theta < 29; col = np.array([.30, .42, .24])*(0.75 + .35*fib[..., None]) * (1 - .4*ring[..., None]) + np.array([.07, .05, .02])*(theta[..., None]/29)*.4
+    img = np.where(iris[..., None], col, img)
+    img = np.where(((theta >= 27) & (theta < 31))[..., None], img*.35, img)          # limbal ring
+    img = np.where((theta < 10.5)[..., None], np.array([.01, .01, .012]), img)       # pupil
+    return np.clip(img, 0, 1)
 
 def ears():
     out = []
