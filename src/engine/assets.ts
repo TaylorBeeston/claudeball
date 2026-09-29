@@ -41,9 +41,9 @@ export interface Assets {
 
 const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire'];
 
-export async function loadAssets(renderer: WebGLRenderer, base = '/assets/', onProgress?: (msg: string) => void): Promise<Assets> {
-  const draco = new DRACOLoader().setDecoderPath('/libs/draco/');
-  const ktx2 = new KTX2Loader().setTranscoderPath('/libs/basis/').detectSupport(renderer);
+export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (msg: string) => void): Promise<Assets> {
+  const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
+  const ktx2 = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}libs/basis/`).detectSupport(renderer);
   const loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   const out: Assets = { base, characters: new Map(), mirrored: false, missing: [] };
 

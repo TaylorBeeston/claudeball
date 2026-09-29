@@ -29,7 +29,12 @@ function cbAssets(): Plugin {
     closeBundle() {
       const src = dir();
       if (!fs.existsSync(src)) return;
-      fs.cpSync(src, path.resolve('dist/assets'), { recursive: true, filter: (f) => !f.includes(`${path.sep}src${path.sep}`) && !f.endsWith('.py') });
+      // ship only what the runtime loads: field_layout.json and the optimized/ builds (not the raw exports, Blender sources or unused lod1/)
+      const shipped = (f: string) => {
+        const rel = path.relative(src, f).split(path.sep);
+        return rel[0] === '' || rel[0] === 'field_layout.json' || (rel[0] === 'optimized' && rel[1] !== 'lod1');
+      };
+      fs.cpSync(src, path.resolve('dist/assets'), { recursive: true, filter: shipped });
     },
   };
 }
@@ -61,6 +66,8 @@ function cbHdriManifest(): Plugin {
 }
 
 export default defineConfig({
+  // GitHub Pages serves the site from /<repo>/, so CI builds with CB_BASE=/claudeball/; every runtime URL goes through import.meta.env.BASE_URL
+  base: process.env.CB_BASE ?? '/',
   plugins: [cbAssets(), cbHdriManifest()],
   // host: true listens on every interface (LAN + tailscale); allowedHosts lets it be opened by machine name (e.g. http://frenchfry:5173)
   server: { port: 5173, host: true, allowedHosts: true },
