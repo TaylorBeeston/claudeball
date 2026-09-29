@@ -2,6 +2,7 @@ import { flightStep, newFlags, predictPath, PathSample, BallBody } from './ball'
 import { emit } from './events';
 import { BALL_RADIUS, BASE_POS, fenceAt, isFairXZ } from './field';
 import { clamp, MPH, RPM } from './math';
+import { armMps, catcherTransfer, firstStepSeconds, judgementSigma, throwWindup, transferSeconds } from './attributes';
 import { WALL_STAND, insideFence, setGoal, travelTime } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
 import { PENDING } from './decisions';
@@ -17,7 +18,7 @@ import * as rules from './rules';
 export const TUNE = { fieldSigma: 0.033, throwSigma: 0.0155, pocket: 0.135 };
 
 export const fielders = (w: World): PlayerRT[] => [...w.fieldingTeam.defense.values()].filter((p) => p.onField);
-export const armSpeed = (p: PlayerRT) => 27 + 0.21 * p.info.ratings.arm;
+export const armSpeed = (p: PlayerRT) => armMps(p.info.ratings);
 export const throwTimeEstimate = (D: number, v: number) => D / (0.9 * v) + 0.05;
 const bpos = (b: number) => BASE_POS[b % 4];
 
@@ -140,8 +141,9 @@ export function computeIntercept(w: World, F: PlayerRT): Intercept {
 export function initFielderPlans(w: World, reactSecBase: number): void {
   for (const F of fielders(w)) {
     const rg = F.info.ratings.range;
-    const react = reactSecBase + 0.15 + 0.2 * (1 - rg / 100) + Math.abs(w.rng.normal(0, 0.04));
-    const kJ = clamp(0.5 - 0.004 * (rg - 50), 0.2, 0.85);
+    // first step (range, reads) and how well he judges the ball's flight (range, fielding IQ)
+    const react = reactSecBase + firstStepSeconds(F.info.ratings, Math.abs(w.rng.normal(0, 0.04)));
+    const kJ = judgementSigma(F.info.ratings);
     F.plan = {
       kind: 'idle',
       base: 0,
@@ -445,9 +447,8 @@ function gauss2(w: World, sigma: number): number {
 }
 
 export function transferTicks(F: PlayerRT, onRun: number): number {
-  const g = F.info.ratings.glove;
-  if (F.fieldPos === 'C') return secToTicks(clamp(0.74 - 0.0045 * (F.info.ratings.catching - 50), 0.5, 1.0));
-  return secToTicks(clamp(0.5 - 0.004 * (g - 50) + 0.03 * onRun, 0.3, 0.85));
+  if (F.fieldPos === 'C') return secToTicks(catcherTransfer(F.info.ratings));
+  return secToTicks(transferSeconds(F.info.ratings, onRun));
 }
 
 /** Per-tick check whether any fielder gets a glove on the ball. */
@@ -778,7 +779,7 @@ function holderLogic(w: World, F: PlayerRT): void {
   if (!receiver || receiver === F) return;
   if (d.viaCutoff && play.cutoff && play.cutoff !== F) receiver = play.cutoff;
   F.goal = null;
-  const wind = 0.07 + 0.06 * Math.min(1, Math.hypot(F.vx, F.vz) / 6);
+  const wind = throwWindup(F.info.ratings, Math.min(1, Math.hypot(F.vx, F.vz) / 6));
   F.plan.releaseAt = w.tick + secToTicks(wind);
   F.plan.throwBase = base;
   F.plan.throwTo = receiver;

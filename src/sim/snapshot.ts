@@ -1,3 +1,5 @@
+import { groundHeight } from './field';
+import { teamStats } from './stats';
 import type { World, PlayerRT } from './world';
 import { TICK } from './world';
 import type {
@@ -20,12 +22,13 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
   return { anim: 'idle', t: 0 };
 }
 
-/** Height of the feet above the ground: non-zero only in mid-leap at the wall. */
+/** Height of the feet above the field's datum: the ground at his spot (the mound is 10 in up) plus the height of a wall leap. */
 function feetY(w: World, p: PlayerRT): number {
   const L = p.leap;
-  if (!L) return 0;
+  const ground = groundHeight(p.x, p.z); // on the mound the pitcher stands 10 inches up
+  if (!L) return ground;
   const u = (w.tick - L.t0) / L.dur;
-  return u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0;
+  return ground + (u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0);
 }
 
 function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): PlayerSnapshot {
@@ -46,6 +49,10 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     bats: p.info.bats,
     throws: p.info.throws,
     height: p.info.height,
+    ratings: p.info.ratings,
+    physique: p.info.physique,
+    appearance: p.info.appearance,
+    delivery: p.info.delivery ? { ...p.info.delivery, fromStretch: p === w.pitcher && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) } : undefined,
   };
 }
 
@@ -141,6 +148,7 @@ export function snapshot(w: World): GameStateSnapshot {
     players,
     umpire: { lastCall: w.lastCall, zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top, depthZ: 0.4318 } },
     lastPlay: w.lastPlay,
+    stats: { home: teamStats(w, w.teams.home), away: teamStats(w, w.teams.away) },
     pendingDecision: w.dec.waiting > 0 ? (() => { for (const sl of w.dec.slots.values()) if (sl.state === 'wait') return { id: sl.id, decision: sl.kind, side: sl.side }; return null; })() : null,
     gameOver: w.gameOver,
     winner: w.winner,

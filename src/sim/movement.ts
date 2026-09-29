@@ -1,5 +1,6 @@
 import { emit } from './events';
 import { fenceAt } from './field';
+import { LEGS_PER_SPRINT_SECOND, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
 import { clamp } from './math';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
@@ -57,7 +58,7 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     const dx = g.x - p.x;
     const dz = g.z - p.z;
     const d = Math.hypot(dx, dz);
-    const vmax = p.vmax * g.mul;
+    const vmax = p.vmax * g.mul * legsSpeedFactor(p.legs, p.info.ratings.durability);
     let sp = vmax;
     if (g.stop) sp = Math.min(vmax, Math.sqrt(2 * p.accel * 1.4 * Math.max(0, d - 0.02)));
     if (d < 0.03 && g.stop) sp = 0;
@@ -102,6 +103,9 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     }
   }
   const sp = Math.hypot(p.vx, p.vz);
+  // hard running tires the legs (durability decides how much it costs); walking and standing recover
+  if (sp > 0.85 * p.vmax) p.legs = Math.min(1, p.legs + TICK * LEGS_PER_SPRINT_SECOND);
+  else if (sp < 0.5 * p.vmax) p.legs = Math.max(0, p.legs - TICK * LEGS_RECOVERY_PER_SECOND);
   if (sp > 0.8) {
     const target = Math.atan2(p.vx, p.vz);
     p.facing = turnToward(p.facing, target, 14 * TICK);

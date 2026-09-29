@@ -8,7 +8,8 @@ export type Vec3 = { x: number; y: number; z: number };
 export type TeamSide = 'home' | 'away';
 export type Handed = 'L' | 'R' | 'S';
 export type FieldPosition = 'P' | 'C' | '1B' | '2B' | '3B' | 'SS' | 'LF' | 'CF' | 'RF' | 'DH';
-export type PitchType = 'FF' | 'SI' | 'FC' | 'SL' | 'CU' | 'CH' | 'SW' | 'FS';
+/** FF four-seam, FT two-seam, SI sinker, FC cutter, SL slider, SW sweeper, CU curve, CH changeup, FS splitter. */
+export type PitchType = 'FF' | 'FT' | 'SI' | 'FC' | 'SL' | 'CU' | 'CH' | 'SW' | 'FS';
 
 /** Animation hint for the rendering layer. */
 export type AnimHint =
@@ -32,27 +33,53 @@ export type AnimHint =
 /** What the person is doing on the field right now. */
 export type PlayerRole = 'pitcher' | 'catcher' | 'fielder' | 'batter' | 'runner' | 'umpire';
 
-/** Ratings on a 20-100 scale (50 = league average) unless noted. */
+/**
+ * Ratings on the 20-80 scouting scale (50 = league average, 10 points = one standard deviation, 80 = elite), except `velocity`
+ * (fastball mph). Every rating feeds a mechanic (see README "Player attributes"): none is cosmetic.
+ */
 export interface Ratings {
   // hitting
   contact: number; // bat-to-ball skill: swing timing / bat-path precision
   power: number; // bat speed
   eye: number; // pitch recognition / perception noise
   discipline: number; // zone judgment vs chasing
+  /** Pull tendency: + = contact out in front (pulls the ball), - = late (goes the other way). */
+  pull: number;
+  /** Gap / line-drive plane: high = compact, level bat path with a launch angle near 11 deg and little spread. */
+  gap: number;
+  /** Recognition of breaking / off-speed pitches (slider, curve, sweeper, change, splitter). */
+  breaking: number;
+  /** Repeatability of the swing (pitch to pitch) and how far his form drifts from day to day. */
+  consistency: number;
+  /** Composure in high-leverage spots (small effect through timing / command noise). */
+  clutch: number;
+  /** Stays sharp late in a game and over a season (legs fatigue with hard running). */
+  durability: number;
   // running
   speed: number; // sprint speed
-  baserunning: number; // decisions / jumps
+  acceleration: number; // first steps / burst
+  baserunning: number; // decisions / jumps / reads
   // fielding
   glove: number; // hands: bobble / error resistance
   range: number; // first step / reaction / route
   arm: number; // throw velocity
   accuracy: number; // throw accuracy
-  catching: number; // catcher: receiving / blocking / framing / pop time
+  /** Throw release quickness (transfer and wind-up). */
+  release: number;
+  /** Fielding IQ: reads of the ball (judgement of the flight) and efficiency of his routes. */
+  iq: number;
+  catching: number; // catcher: receiving (glove work on the pitch)
+  framing: number; // catcher: steals strikes on borderline pitches
+  blocking: number; // catcher: keeps balls in the dirt in front of him
+  pop: number; // catcher: exchange and throw to the bag
   // pitching
   velocity: number; // fastball velocity in mph (e.g. 84-100)
   control: number; // command: release / aim error (higher = tighter)
   movement: number; // spin quality for all pitches
   stamina: number; // pitches before wearing down
+  composure: number; // pitcher: command holds up under pressure and after trouble
+  holding: number; // pitcher: quickness from the stretch and how short a leash runners get
+  pickoff: number; // pitcher: pickoff move (quickness and deception)
 }
 
 export interface PitchSpec {
@@ -67,6 +94,10 @@ export interface PitchSpec {
   breakDirDeg: number;
   /** Relative usage weight in the pitcher's mix. */
   usage: number;
+  /** Scouting grade (20-80) of this pitch's movement / spin quality. */
+  grade?: number;
+  /** Scouting grade (20-80) of his command of this pitch. */
+  command?: number;
 }
 
 /** Hidden hitter/pitcher habits that shape mechanics (not ratings). */
@@ -83,6 +114,39 @@ export interface Traits {
   extension: number;
 }
 
+export type Build = 'lean' | 'athletic' | 'stocky' | 'heavy';
+
+export interface Physique {
+  heightM: number;
+  weightKg: number;
+  build: Build;
+}
+
+/** Indices into the renderer's palettes (stable per player). */
+export interface Appearance {
+  /** 0..5 light to dark. */
+  skin: number;
+  /** 0..5: black, dark brown, brown, blond, red, gray. */
+  hairColor: number;
+  /** 0..3: buzz, short, medium, long. */
+  hairStyle: number;
+  /** 0..2: none, stubble, beard. */
+  facialHair: number;
+  /** Free 0..2^31 seed for anything else. */
+  seed: number;
+}
+
+export type DeliveryStyle = 'overhand' | 'three_quarter' | 'sidearm' | 'submarine';
+
+/** A pitcher's mechanics (fixed for the pitcher); whether he is working from the stretch is per pitch (`PlayerSnapshot.delivery.fromStretch`). */
+export interface Delivery {
+  style: DeliveryStyle;
+  /** Arm slot: degrees from vertical (0 = straight over the top, 45 = three-quarter, 90 = sidearm, 110+ = submarine). Sets the release point. */
+  armSlotDeg: number;
+  /** Relative pace of the motion (1 = average; > 1 quicker): windup length and time to the plate. */
+  tempo: number;
+}
+
 export interface PlayerInfo {
   id: string;
   name: string;
@@ -91,7 +155,12 @@ export interface PlayerInfo {
   bats: Handed;
   throws: 'L' | 'R';
   primaryPosition: FieldPosition;
-  height: number; // metres
+  height: number; // metres (== physique.heightM)
+  age: number;
+  physique: Physique;
+  appearance: Appearance;
+  /** Pitchers only. */
+  delivery?: Delivery;
   ratings: Ratings;
   arsenal: PitchSpec[]; // empty for position players
   isPitcher: boolean;
@@ -106,6 +175,8 @@ export interface Team {
   /** Starting lineup in batting order (player ids) with the defensive position each plays. */
   lineup: { playerId: string; position: FieldPosition }[];
   startingPitcherId: string;
+  /** Starting rotation (ids), in turn. */
+  rotation?: string[];
   bullpen: string[];
   bench: string[];
 }
@@ -143,6 +214,54 @@ export interface PitcherLine {
   wp: number;
 }
 
+/** A batting line with the rate stats worked out. */
+export interface BatterStats extends BatterLine {
+  /** Games played. */
+  g: number;
+  avg: number;
+  obp: number;
+  slg: number;
+  ops: number;
+  /** Total bases. */
+  tb: number;
+}
+
+/** A pitching line with innings and rates worked out. */
+export interface PitcherStats extends PitcherLine {
+  g: number;
+  /** Innings pitched as baseball writes it ("6.1" = six and one third). */
+  ip: string;
+  era: number;
+  whip: number;
+}
+
+export interface PlayerStatsEntry {
+  playerId: string;
+  name: string;
+  jersey: number;
+  position: FieldPosition | 'P';
+  /** Currently in the game. */
+  inGame: boolean;
+  /** This game so far. */
+  game: { batting: BatterStats; pitching: PitcherStats | null };
+  /** Cumulative: prior games (`GameConfig.priorStats`, e.g. a simulated season) plus this game. */
+  season: { batting: BatterStats; pitching: PitcherStats | null };
+}
+
+export interface TeamStatsSnapshot {
+  /** Everyone who has batted or been in the lineup, in batting order first, then bench players used. */
+  batters: PlayerStatsEntry[];
+  /** Pitchers used, in order of appearance. */
+  pitchers: PlayerStatsEntry[];
+  /** Team totals this game. */
+  totals: { runs: number; hits: number; errors: number; lob: number };
+}
+
+/** Cumulative stats carried into a game (a season). */
+export interface PriorStats {
+  [playerId: string]: { g: number; bat: BatterLine; pit: PitcherLine; pg: number };
+}
+
 export interface PlayerSnapshot {
   id: string;
   name: string;
@@ -162,6 +281,11 @@ export interface PlayerSnapshot {
   bats: Handed;
   throws: 'L' | 'R';
   height: number;
+  /** (additive) scouting ratings, physique and looks of this player, and a pitcher's delivery (`fromStretch` is live). */
+  ratings?: Ratings;
+  physique?: Physique;
+  appearance?: Appearance;
+  delivery?: Delivery & { fromStretch: boolean };
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -238,6 +362,8 @@ export interface GameStateSnapshot {
     zone: { left: number; right: number; bottom: number; top: number; depthZ: number };
   };
   lastPlay: string;
+  /** (additive) live box-score stats for every player who has appeared, for a HUD. */
+  stats?: { home: TeamStatsSnapshot; away: TeamStatsSnapshot };
   gameOver: boolean;
   winner: TeamSide | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
@@ -326,6 +452,8 @@ export interface GameConfig {
   wind?: { x: number; z: number };
   /** Multiplier on the idle time between pitches / plays (default 1). Use 0 to skip dead time entirely. */
   pace?: number;
+  /** Cumulative stats before this game (see `simulateSeason`); the snapshot's `season` lines add this game to them. */
+  priorStats?: PriorStats;
   /** Team-generation seed base if teams are not supplied (default: derived from seed). */
   teamSeed?: number | string;
   /** Decision providers per side (any subset of decisions; the built-in AI answers the rest). See README "Decision providers". */
