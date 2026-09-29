@@ -1110,7 +1110,7 @@ function meetPoint(w: World, F: PlayerRT): { x: number; y: number; z: number; t:
     const d = Math.hypot(s.x - px, s.z - pz);
     if (d <= reach && s.y <= 2.7) {
       // interpolate to the instant the ball crosses into reach (the prediction samples are 1/60 s apart)
-      if (prev && prev.d > reach) {
+      if (prev && prev.d > reach && prev.y <= 2.7) {
         const f = (prev.d - reach) / Math.max(1e-6, prev.d - d);
         return { x: prev.x + (s.x - prev.x) * f, y: Math.max(0.12, prev.y + (s.y - prev.y) * f), z: prev.z + (s.z - prev.z) * f, t: prev.t + (t - prev.t) * f };
       }
@@ -1135,10 +1135,16 @@ export function updateGloveTargets(w: World): void {
   const cand: PlayerRT[] = [];
   if (ball.mode === 'thrown' && ball.throwTo) cand.push(ball.throwTo);
   else if (w.play?.primary) cand.push(w.play.primary);
+  // anyone the ball is about to reach (a leaper, or a fielder who is not the one the play was built around)
+  for (const F of fielders(w)) if (!cand.includes(F) && (F.leap || Math.hypot(ball.body.x - F.x, ball.body.z - F.z) < 2.5)) cand.push(F);
   for (const F of cand) {
     const m = meetPoint(w, F);
     if (!m) {
-      F.gloveTarget = null;
+      // no meeting point ahead: if the ball is already at him (or he is leaping for it) the glove is simply on the ball
+      const bb = ball.body;
+      const near = Math.hypot(bb.x - F.x, bb.z - F.z) < (F.leap ? 3.2 : 2.2);
+      F.gloveTarget = near ? { x: bb.x, y: Math.max(0.12, bb.y), z: bb.z } : null;
+      F.gloveAt = w.tick;
       continue;
     }
     if (!F.plan.catchZ) F.plan.catchZ = [w.rng.normal(0, 1), w.rng.normal(0, 1)];

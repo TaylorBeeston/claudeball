@@ -217,7 +217,7 @@ function homeRun(w: World, bip: BipInfo): void {
   const dist = Math.hypot(b.x, b.z);
   emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist, heightAboveWall: b.y - fenceAt(w.env.fence, b.x, b.z).height, pos: { x: b.x, y: b.y, z: b.z } });
   emit(w, { type: 'call', call: mkCall(w, 'homeRun') });
-  scheduleCall(w, nearestUmp(w, b.x, b.z), 'homerun', 0.4);
+  scheduleCall(w, b.x < 0 ? 'first' : 'third', 'homerun', 0.4); // the foul-line umpire on that side signals it
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.dead = true;

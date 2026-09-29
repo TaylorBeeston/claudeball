@@ -45,6 +45,36 @@ const POS_ROLE: Record<string, PlayerRole> = {
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
 const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2 };
 
+/** Hints the sim emits that the renderer has no clip for yet, and the clip that stands in (the sim's `README.md` lists them all). */
+const SIM_ALIAS: Record<string, AnimHint> = {
+  toss: 'throw',
+  transfer: 'idle',
+  tag_glove: 'field',
+  tag_hand: 'field',
+  slide_feet: 'slide',
+  slide_head: 'slide',
+  slide_hook_left: 'slide',
+  slide_hook_right: 'slide',
+  dive_back: 'slide',
+  catcher_block: 'field',
+  catch_pitch: 'catch',
+  catch_throw: 'catch',
+  catch_stretch: 'catch',
+  catch_fly: 'catch',
+  catch_backhand: 'catch',
+  field_grounder: 'field',
+  ump_ready: 'idle',
+  ump_strike: 'idle',
+  ump_strike_swinging: 'idle',
+  ump_ball: 'idle',
+  ump_safe: 'idle',
+  ump_out: 'idle',
+  ump_foul: 'idle',
+  ump_fair: 'idle',
+  ump_homerun: 'idle',
+  ump_time: 'idle',
+};
+
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
   ['#e07a1f', '#1a1a1a'], ['#5b2a86', '#e8e8e8'], ['#0a5ea8', '#ffffff'], ['#7a1f2b', '#d8c18a'],
@@ -204,8 +234,8 @@ export class RealSimAdapter implements GameLike {
       const role: PlayerRole = p.role === 'fielder' ? (POS_ROLE[p.position] ?? 'center') : (p.role as PlayerRole);
       const isBat = p.role === 'batter';
       const hand = isBat ? (p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats) : p.throws;
-      // the sim's casual hints have no clip of their own yet: an easy toss plays the throw, the glove-to-hand transfer the ready pose
-      const anim: AnimHint = (p.anim as string) === 'toss' ? 'throw' : (p.anim as string) === 'transfer' ? 'idle' : p.anim;
+      // the sim's finer hints (tags, slide types, catch kinds, umpire gestures, casual returns) have no clips of their own yet: they play the nearest existing one
+      const anim: AnimHint = SIM_ALIAS[p.anim as string] ?? p.anim;
       const nominal = NOMINAL[anim];
       return {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
