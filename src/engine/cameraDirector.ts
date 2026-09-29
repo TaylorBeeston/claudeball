@@ -82,7 +82,7 @@ export class CameraDirector {
   private legIdx = -1;
   private legSince = 0;
   /** home-run sequence state (null when there is none) */
-  private hr: { batterId: string; stage: 'wall' | 'crowd' | 'trot' | 'home' | 'replay'; t: number; contactSimT: number; simT: number; pos: Vector3; dir: Vector3; side: number; still: number } | null = null;
+  private hr: { batterId: string; stage: 'wall' | 'crowd' | 'trot' | 'home' | 'replay'; t: number; contactSimT: number; simT: number; pos: Vector3; dir: Vector3; side: number; still: number; homeSince: number; robbed: boolean } | null = null;
 
   constructor(
     private camera: PerspectiveCamera,
@@ -102,6 +102,7 @@ export class CameraDirector {
   setAuto(auto: boolean) {
     this.auto = auto;
     this.orbit.enabled = !auto;
+    if (!auto) this.sim.hold = false;
     if (!auto) {
       // free orbit starts from a clear vantage point above the first-base side of the infield
       this.orbit.target.set(0, 1, 32);
@@ -120,6 +121,7 @@ export class CameraDirector {
       this.legSince = this.clock;
     }
     this.shot = s;
+    this.sim.hold = s === 'replay'; // the live game waits while a replay plays
     this.shotStart = this.clock;
     this.lastCutFrame = true;
     this.shotSeq++;
@@ -146,7 +148,7 @@ export class CameraDirector {
         this.holdUntil = 0;
         break;
       case 'catch':
-        if (this.inPlay) {
+        if (this.inPlay && !this.hr) {
           const p = live.players.find((q) => q.id === e.playerId);
           if (this.shot === 'base' || (this.shot === 'fielder' && this.clock - this.shotStart < 0.7)) break;
           // catch at a base after a throw => base shot; otherwise fielder shot
@@ -161,6 +163,7 @@ export class CameraDirector {
         }
         break;
       case 'throw': {
+        if (this.hr) break;
         this.thrown = true;
         this.throwClock = this.clock;
         const t = toScene(e.target);
@@ -180,12 +183,26 @@ export class CameraDirector {
         const dir = new Vector3(pos.x, 0, pos.z);
         if (dir.lengthSq() < 1) dir.set(0, 0, 1);
         dir.normalize();
-        this.hr = { batterId: e.batterId, stage: 'wall', t: this.clock, contactSimT: this.playStart, simT: te.simTime, pos, dir, side: dir.x >= 0 ? -1 : 1, still: 0 };
+        this.hr = { batterId: e.batterId, stage: 'wall', t: this.clock, contactSimT: this.playStart, simT: te.simTime, pos, dir, side: dir.x >= 0 ? -1 : 1, still: 0, homeSince: -1, robbed: false };
         this.inPlay = true;
         this.pendingReplay = false;
         this.holdUntil = 0;
         this.ballSm.copy(pos);
         this.cut('hrwall');
+        break;
+      }
+      case 'robbed_hr': {
+        // a fielder took the home run away: him at the wall, the crowd's reaction, then the play again from a second angle
+        const pos = toScene(e.pos ?? live.ball.pos, new Vector3());
+        const dir = new Vector3(pos.x, 0, pos.z);
+        if (dir.lengthSq() < 1) dir.set(0, 0, 1);
+        dir.normalize();
+        this.hr = { batterId: e.batterId, stage: 'wall', t: this.clock, contactSimT: this.playStart, simT: te.simTime, pos, dir, side: dir.x >= 0 ? -1 : 1, still: 0, homeSince: -1, robbed: true };
+        this.inPlay = true;
+        this.pendingReplay = false;
+        this.holdUntil = 0;
+        this.fielderId = e.playerId;
+        if (this.shot !== 'fielder') this.cut('fielder');
         break;
       }
       case 'wall_leap':
@@ -229,8 +246,9 @@ export class CameraDirector {
     const pit = live.players.find((p) => p.role === 'pitcher');
     if (pit?.anim === 'windup' && live.time - this.lastWindup > 2) {
       this.lastWindup = live.time;
+      if (this.hr && this.hr.stage === 'home') this.hrReplayOrEnd(live); // next batter is up: replay now rather than never
       const hrBusy = this.hr && this.hr.stage !== 'home' && this.hr.stage !== 'replay';
-      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide' && !hrBusy) {
+      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide' && !hrBusy && !(this.hr && this.hr.stage === 'replay')) {
         this.inPlay = false;
         this.hr = null;
         this.cut('pitch');
@@ -346,7 +364,7 @@ export class CameraDirector {
     const runner = live.players.find((p) => p.id === h.batterId);
     switch (h.stage) {
       case 'wall':
-        if (st > 2.2) {
+        if (st > (h.robbed ? 2.6 : 2.2)) {
           const cs = this.stadium.crowdShots;
           if (cs.length) {
             // the crowd section nearest to where the ball left the park
@@ -359,11 +377,15 @@ export class CameraDirector {
             this.cutaway = 'crowd';
             this.cutawayUntil = Infinity;
             next('crowd', 'cutaway');
-          } else next('trot', 'trot');
+          } else if (h.robbed) this.hrReplayOrEnd(live);
+          else next('trot', 'trot');
         }
         break;
       case 'crowd':
-        if (st > 2.8) next('trot', 'trot');
+        if (st > 2.8) {
+          if (h.robbed) this.hrReplayOrEnd(live);
+          else next('trot', 'trot');
+        }
         break;
       case 'trot': {
         const nearHome = !!runner && Math.hypot(runner.pos.x, runner.pos.z) < 9 && runner.pos.z < 12 && this.clock - this.shotStart > 3;
@@ -371,24 +393,30 @@ export class CameraDirector {
         break;
       }
       case 'home': {
-        const calm = !runner || Math.hypot(runner.vel.x, runner.vel.z) < 0.6 || runner.anim === 'celebrate';
-        h.still = calm ? h.still + dt : 0;
-        if (h.still > 2.6 || st > 9) {
-          this.pendingReplay = true;
-          if (this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live, true)) {
-            h.stage = 'replay';
-            h.t = this.clock;
-            this.cut('replay');
-          } else {
-            this.hr = null;
-            this.inPlay = false;
-            this.cut('pitch');
-          }
-        }
+        // hold on the plate for the celebration (from when he arrives), then replay the homer
+        const arrived = !runner || runner.anim === 'celebrate' || Math.hypot(runner.pos.x, runner.pos.z) < 1.8;
+        if (arrived && h.homeSince < 0) h.homeSince = this.clock;
+        if ((h.homeSince >= 0 && this.clock - h.homeSince > 2.4) || st > 9) this.hrReplayOrEnd(live);
         break;
       }
       case 'replay':
         break;
+    }
+  }
+
+  /** End of a home-run / robbed-home-run sequence: replay it (the live game waits) or go back to the pitcher. */
+  private hrReplayOrEnd(live: GameState) {
+    const h = this.hr;
+    if (!h) return;
+    this.pendingReplay = true;
+    if (this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live, true)) {
+      h.stage = 'replay';
+      h.t = this.clock;
+      this.cut('replay');
+    } else {
+      this.hr = null;
+      this.inPlay = false;
+      this.cut('pitch');
     }
   }
 
@@ -411,7 +439,7 @@ export class CameraDirector {
     if (hist.length < 30) return false;
     const h = this.hr;
     const t0 = (homeRun && h ? h.contactSimT : this.playStart) - 0.8;
-    const t1 = homeRun && h ? h.simT + 2.6 : Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5);
+    const t1 = homeRun && h ? h.simT + (h.robbed ? 1.6 : 2.6) : Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5);
     let i0 = hist.findIndex((s) => s.time >= t0);
     if (i0 < 0) return false;
     let i1 = hist.length - 1;
