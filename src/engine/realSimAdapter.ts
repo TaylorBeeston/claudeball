@@ -16,7 +16,11 @@ interface RSPlayer {
   appearance?: PlayerSnap['appearance'];
   delivery?: PlayerSnap['delivery'];
   ratings?: Record<string, number>;
-  gloveTarget?: V;
+  gloveTarget?: V | null;
+  gloveEta?: number;
+  catchIn?: number;
+  gloveHand?: 'L' | 'R';
+  pitchType?: string | null;
 }
 interface RSInfo {
   id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R'; height?: number; primaryPosition?: string;
@@ -125,10 +129,17 @@ export class RealSimAdapter implements GameLike {
       case 'catch':
         this.emit({ type: 'catch', playerId: String(e.fielderId), inAir: !!e.fly, pos: (e.pos as V | undefined), height: e.height as number | undefined, side: e.side as string | undefined, kind: e.kind as string | undefined, firm: e.firm as boolean | undefined });
         break;
+      case 'umpireCall':
+        // the umpire's gesture moment (kind, where he stands, at which base / for whom); separate from the older `call` ruling below
+        this.emit({ type: 'umpire_call', kind: String(e.kind), umpireId: e.umpireId as string | undefined, umpire: e.umpire as string | undefined, pos: e.pos as V | undefined, atBase: e.atBase as number | undefined, playerId: e.playerId as string | undefined });
+        break;
       case 'tag':
       case 'tagAttempt':
       case 'tagAvoided':
-        this.emit({ type: 'tag', fielderId: (e.fielderId ?? e.fromId) as string | undefined, runnerId: (e.runnerId ?? e.playerId) as string | undefined, base: e.base as number | undefined, result: e.type === 'tag' ? 'tag' : e.type === 'tagAvoided' ? 'avoided' : 'attempt', pos: e.pos as V | undefined });
+        this.emit({
+          type: 'tag', fielderId: (e.fielderId ?? e.fromId) as string | undefined, runnerId: (e.runnerId ?? e.playerId) as string | undefined, base: (e.base as number | null | undefined) ?? undefined,
+          result: e.type === 'tag' ? 'tag' : e.type === 'tagAvoided' ? 'avoided' : 'attempt', pos: e.pos as V | undefined, hand: e.hand as 'glove' | 'hand' | undefined, slide: e.slide as string | undefined,
+        });
         break;
       case 'fielded':
         this.emit({ type: 'catch', playerId: String(e.fielderId), inAir: false });
@@ -180,8 +191,6 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
         break;
       case 'call': {
-        const call = e.call as { kind: string; umpire?: string; pos?: V } | undefined;
-        if (call) this.emit({ type: 'umpire_call', kind: call.kind, umpireId: call.umpire ?? (e.umpire as string | undefined), pos: call.pos ?? (e.pos as V | undefined) });
         const kind = (e.call as { kind: string }).kind;
         if (kind === 'ball') this.emit({ type: 'ball' });
         else if (kind === 'strikeLooking' || kind === 'strikeSwinging') this.emit({ type: 'strike' });
@@ -243,7 +252,7 @@ export class RealSimAdapter implements GameLike {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
         animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
-        hasBall: p.hasBall, gloveTarget: p.gloveTarget, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;

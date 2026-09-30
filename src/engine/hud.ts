@@ -141,6 +141,8 @@ export class Hud {
   private replayShown = false;
   private box = el('div', 'cb-box');
   private boxOpen = false;
+  private haveUmpCalls = false;
+  private pendingCaps: { text: string; delay: number }[] = [];
   private boxTimer = 0;
   private lastState: GameState | null = null;
 
@@ -272,18 +274,21 @@ export class Hud {
       case 'ball':
       case 'strike':
       case 'foul':
-        this.flashCall(e.type.toUpperCase());
+        // with umpire gestures the caption comes with the gesture (`umpire_call`), a beat after the ruling
+        if (!this.haveUmpCalls) this.flashCall(e.type.toUpperCase());
         break;
       case 'out':
-        this.flashCall('OUT');
+        if (!this.haveUmpCalls) this.flashCall('OUT');
         break;
       case 'safe':
-        this.flashCall('SAFE');
+        if (!this.haveUmpCalls) this.flashCall('SAFE');
         break;
       case 'umpire_call': {
         // the caption appears with the umpire's gesture
+        this.haveUmpCalls = true;
         const cap = CALL_CAPTIONS[e.kind];
-        if (cap) this.flashCall(cap);
+        // the caption lands on the gesture's peak, not on the ruling: the umpire's clip reaches it a moment after the call
+        if (cap) this.pendingCaps.push({ text: cap, delay: CALL_PEAK[e.kind] ?? 0.3 });
         break;
       }
       case 'half_inning':
@@ -389,6 +394,13 @@ export class Hud {
 
   update(s: GameState, dt: number) {
     this.lastState = s;
+    for (let i = this.pendingCaps.length - 1; i >= 0; i--) {
+      const c = this.pendingCaps[i];
+      if ((c.delay -= dt) <= 0) {
+        this.flashCall(c.text);
+        this.pendingCaps.splice(i, 1);
+      }
+    }
     if (this.boxOpen && (this.boxTimer -= dt) < 0) {
       this.boxTimer = 0.5;
       this.renderBox(s);
@@ -425,8 +437,8 @@ export class Hud {
     }
     if (s.umpireCall.seq !== this.lastCallSeq) {
       this.lastCallSeq = s.umpireCall.seq;
-      if (s.umpireCall.kind === 'safe') this.flashCall('SAFE');
-      if (s.umpireCall.kind === 'homerun') this.flashCall('HOME RUN');
+      if (!this.haveUmpCalls && s.umpireCall.kind === 'safe') this.flashCall('SAFE');
+      if (!this.haveUmpCalls && s.umpireCall.kind === 'homerun') this.flashCall('HOME RUN');
     }
     if ((this.cardTimer -= dt) < 0) this.card.classList.remove('show');
     if ((this.hitTimer -= dt) < 0) this.hit.classList.remove('show');
@@ -483,6 +495,12 @@ export class Hud {
 export const CALL_CAPTIONS: Record<string, string> = {
   ball: 'BALL', ball_four: 'BALL FOUR', strike_called: 'STRIKE', strikeLooking: 'STRIKE', strike_swinging: 'STRIKE', strikeSwinging: 'STRIKE', strike: 'STRIKE',
   strikeout: 'STRIKEOUT', foul: 'FOUL', foul_tip: 'FOUL TIP', foulTip: 'FOUL TIP', fair: 'FAIR', safe: 'SAFE', out: 'OUT', homerun: 'HOME RUN', homeRun: 'HOME RUN', time: 'TIME',
+};
+
+/** seconds from the call to the gesture's peak (the event frame of the umpire clips) */
+export const CALL_PEAK: Record<string, number> = {
+  ball: 0.25, ball_four: 0.25, strike_called: 0.333, strikeLooking: 0.333, strike_swinging: 0.375, strikeSwinging: 0.375, strike: 0.333, strikeout: 0.375, foul: 0.292, foul_tip: 0.292, foulTip: 0.292,
+  fair: 0.25, safe: 0.375, out: 0.375, homerun: 0.25, homeRun: 0.25, time: 0.25,
 };
 
 function escapeHtml(s: string) {

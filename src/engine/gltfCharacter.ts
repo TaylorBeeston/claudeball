@@ -30,7 +30,7 @@ import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } f
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
-const LOOPING = new Set(['idle', 'run', 'trot', 'run_turn', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
+const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
@@ -48,7 +48,7 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'walk': return ['walk', 'trot', 'run'];
     case 'transfer': return ['transfer', ...idleFor(role)];
     case 'toss': return ['throw_casual', 'toss', 'throw'];
-    case 'catch_pitch': case 'catch_throw': case 'catch_stretch': case 'catch_fly': case 'catch_backhand': return [hint, 'field_catch'];
+    case 'catch_pitch': case 'catch_throw': case 'catch_stretch': case 'catch_fly': case 'catch_fly_run': case 'catch_line_drive': case 'catch_comebacker': case 'catch_backhand': return [hint, 'field_catch'];
     case 'field_grounder': return ['field_grounder', 'field_catch'];
     case 'tag_glove': case 'tag_hand': return [hint, 'field_catch'];
     case 'slide_feet': case 'slide_head': case 'slide_hook_left': case 'slide_hook_right': return [hint, 'slide'];
@@ -318,7 +318,7 @@ export class GltfPuppet implements PuppetLike {
       }
     });
     this.rig = new Rig(this.model);
-    for (const n of ['Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
+    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
       const b = this.bones[n];
       if (b) this.clipPose.set(b, b.quaternion.clone());
     }
@@ -549,6 +549,43 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  private gait = '';
+  /** stance-foot speed (m/s) of a locomotion clip: the manifest's designed value, else measured from the clip */
+  private footSpeedOf(name: string, clipDefault: number): number {
+    const m = this.manifest?.clips[name]?.footSpeed;
+    if (m) return m;
+    const a = this.actions.get(name);
+    return a ? stanceFootSpeed(this.tpl.scene, a.getClip(), clipDefault) : clipDefault;
+  }
+
+  /**
+   * The locomotion clip for the ground speed: walk / trot / jog / run / sprint, each played at speed / its stance-foot speed so the feet do not
+   * skate; the neighbour gait takes over (cross-fade) when it fits better, with hysteresis so a player at a gait boundary does not flicker.
+   * A turn at speed uses the turning clips. Returns null when the player is not moving on the ground.
+   */
+  private locomotionClip(snap: PlayerSnap): string | null {
+    const sp = Math.hypot(snap.vel.x, snap.vel.z);
+    const hint = snap.anim;
+    const moving = hint === 'run' || hint === 'trot' || hint === 'run_turn' || (hint === 'idle' && sp > 0.3 && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher');
+    if (!moving) {
+      this.gait = '';
+      return null;
+    }
+    if (hint === 'run_turn') {
+      const t = sp > 6 && this.actions.has('run_turn_sprint') ? 'run_turn_sprint' : 'run_turn';
+      if (this.actions.has(t)) return t;
+    }
+    const fallbackFeet: Record<string, number> = { walk: 1.42, trot: 2.2, jog: 3.5, run: 5, run_sprint: 7 };
+    const gaits = Object.keys(fallbackFeet).filter((g) => this.actions.has(g));
+    if (!gaits.length) return null;
+    const err = (g: string) => Math.abs(Math.log(Math.max(0.05, sp) / this.footSpeedOf(g, fallbackFeet[g])));
+    let best = gaits[0];
+    for (const g of gaits) if (err(g) < err(best)) best = g;
+    if (this.gait && gaits.includes(this.gait) && err(this.gait) < err(best) + 0.14) best = this.gait;
+    this.gait = best;
+    return best;
+  }
+
   /** Locomotion hint adjusted to the real speed: creeping players walk, they do not slide in a stance. */
   private moveHint(snap: PlayerSnap): AnimHint {
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
@@ -629,6 +666,106 @@ export class GltfPuppet implements PuppetLike {
     return { name: c.name, time: Math.max(0, time) };
   }
 
+  private reachShift = new Vector3();
+  private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number) {
+    const want = new Vector3();
+    const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
+    if (target && this.gloveW > 0.02 && sh && fore && hand) {
+      this.root.updateMatrixWorld(true);
+      const S = sh.getWorldPosition(new Vector3()).sub(this.reachShift);
+      const E = fore.getWorldPosition(new Vector3()), H = hand.getWorldPosition(new Vector3());
+      const pocket = side === 'Left' ? this.pocket : null;
+      const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(H) : new Vector3();
+      const goal = target.clone().sub(off);
+      const reach = (S.distanceTo(E.clone().sub(this.reachShift)) + E.distanceTo(H)) * 0.97;
+      const dy = goal.y - S.y;
+      const hx = goal.x - S.x, hz = goal.z - S.z;
+      const hd = Math.hypot(hx, hz);
+      const allowed = Math.sqrt(Math.max(0, reach * reach - dy * dy));
+      const excess = hd - allowed;
+      if (excess > 0 && hd > 1e-4) want.set((hx / hd) * Math.min(0.45, excess), 0, (hz / hd) * Math.min(0.45, excess)).multiplyScalar(this.gloveW);
+    }
+    this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
+    if (this.reachShift.lengthSq() > 1e-8) {
+      this.root.position.add(this.reachShift);
+      this.root.updateMatrixWorld(true);
+      this.rig.refresh();
+    }
+  }
+
+  /**
+   * A target beyond the arm's reach: lean the trunk toward it (a stretch), up to about 25 degrees, so the shoulder comes closer; the arm IK then
+   * finishes the reach. The lean fades in with the reach weight.
+   */
+  private reachLean(hand: Bone, pocket: Object3D | null, side: 'Left' | 'Right', goalWorld: Vector3, w: number) {
+    const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], base = this.bones.Spine, s1 = this.bones.Spine1, s2 = this.bones.Spine2;
+    if (!sh || !fore || !base || !s1 || !s2) return;
+    const rig = this.rig;
+    rig.refresh();
+    const hw = hand.getWorldPosition(new Vector3());
+    const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(hw) : new Vector3();
+    const goal = rig.toRig(goalWorld.clone().sub(off), new Vector3());
+    const S = rig.pos(sh, new Vector3()), E = rig.pos(fore, new Vector3()), H = rig.pos(hand, new Vector3());
+    const reach = S.distanceTo(E) + E.distanceTo(H) - 0.03;
+    const excess = S.distanceTo(goal) - reach;
+    if (excess <= 0) return;
+    const B = rig.pos(base, new Vector3());
+    const a = S.clone().sub(B), g = goal.clone().sub(B);
+    const ang = Math.min(0.44, (excess / Math.max(0.3, a.length())) * 1.15) * Math.min(1, w);
+    const axis = new Vector3().crossVectors(a, g);
+    if (axis.lengthSq() < 1e-8) return;
+    axis.normalize();
+    const q = new Quaternion().setFromAxisAngle(axis, ang / 2);
+    rig.rotate(s1, q);
+    rig.rotate(s2, q);
+  }
+
+  private tagLatch: { hint: string; p: number | null } = { hint: '', p: null };
+  /** progress through the tag sweep at which the sim announced the result (tag / avoided), latched, kept a little above the sweep's wind-up */
+  private tagEventP(): number | null {
+    return this.tagLatch.p;
+  }
+  private trackTag(snap: PlayerSnap, env: PuppetEnv) {
+    const tagging = snap.anim === 'tag_glove' || snap.anim === 'tag_hand';
+    if (!tagging) {
+      this.tagLatch = { hint: '', p: null };
+      return;
+    }
+    if (this.tagLatch.hint !== snap.anim) this.tagLatch = { hint: snap.anim, p: null };
+    const out = env.tagOutcome?.(snap.id);
+    if (this.tagLatch.p === null && (out === 'tag' || out === 'avoided')) this.tagLatch.p = Math.min(0.45, Math.max(0.14, snap.animProgress ?? 0.14));
+  }
+
+  /**
+   * Catch and tag clips laid on the sim's timeline so their event frame is the sim's moment: a catch hint starts the clip's catch-frame time
+   * before the ball arrives (`catchIn` counts down to it; afterwards `animT` = 0.5 at the catch), a tag's contact is at `animT` ≈ 0.45.
+   */
+  private eventPlan(snap: PlayerSnap, name: string): { name: string; time: number; place: 'none' } | null {
+    const c = this.manifest?.clips[name];
+    if (!c || !this.actions.has(name)) return null;
+    const p = snap.animProgress;
+    if (p === undefined) return null;
+    if (snap.anim.startsWith('catch_') || snap.anim === 'field_grounder') {
+      const tc = c.events_s?.catch;
+      if (!tc) return null;
+      const t = snap.gloveTarget && snap.catchIn !== undefined && snap.catchIn > 0 ? tc - snap.catchIn : p * 2 * tc;
+      return { name, time: Math.min(c.duration_s - 0.001, Math.max(0, t)), place: 'none' };
+    }
+    if (snap.anim.startsWith('ump_') && snap.anim !== 'ump_ready') {
+      // a gesture plays at natural speed from the call: the sim holds the hint ~1.3 s (0.6 s for a ball), the peak comes at the clip's event time
+      const hintDur = snap.anim === 'ump_ball' ? 0.6 : 1.3;
+      return { name, time: Math.min(c.duration_s - 0.001, Math.max(0, p * hintDur)), place: 'none' };
+    }
+    if (snap.anim === 'tag_glove' || snap.anim === 'tag_hand') {
+      const tc = c.events_s?.contact;
+      if (!tc) return null;
+      const pe = this.tagEventP() ?? 0.45;
+      const t = p < pe ? (p / pe) * tc : tc + ((p - pe) / (1 - pe)) * (c.duration_s - tc);
+      return { name, time: Math.min(c.duration_s - 0.001, Math.max(0, t)), place: 'none' };
+    }
+    return null;
+  }
+
   /**
    * Which catching / fielding / sliding clip a generic hint means, decided once when the hint starts (from where the ball is relative to
    * the fielder), so the mitt meets the ball the way that ball is actually coming.
@@ -671,11 +808,20 @@ export class GltfPuppet implements PuppetLike {
     if (this.look) this.applyGear(gearKindOf(snap.role), snap.role);
     this.animClock += dt;
     const pit0 = snap.role === 'pitcher' ? this.pitcherPlan(snap) : null;
-    const cin = snap.role === 'catcher' && (snap.anim === 'idle' || snap.anim === 'catch_pitch') ? this.catcherCatch(snap, env) : null;
+    // the catcher's catch is inferred from the ball's flight only when the sim reports none (no glove target, no catch hint)
+    const realCatch = !!snap.gloveTarget || snap.anim === 'catch_pitch';
+    if (realCatch) {
+      this.cc = null;
+      this.inferredGlove = null;
+    }
+    const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
-    const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : null);
     const hint = this.moveHint(snap);
-    const name = pit ? pit.name : this.variant && hint === snap.anim ? this.variant : this.resolveClip(hint, snap.role);
+    const loco = pit0 || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap);
+    const baseName = this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
+    this.trackTag(snap, env);
+    const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : this.eventPlan(snap, baseName));
+    const name = pit ? pit.name : baseName;
     this.pitchClipTime = pit ? pit.time : null;
     if (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint)) {
       this.play(name, snap);
@@ -684,7 +830,7 @@ export class GltfPuppet implements PuppetLike {
     this.lastMoveHint = hint;
     const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
-    const locomotion = name === 'run' || name === 'trot' || name === 'run_turn' || name === 'walk';
+    const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (pit && pit.time !== null && this.current) {
       // seek: the delivery clip is placed exactly on the sim's timeline
       const dur = this.current.getClip().duration;
@@ -695,10 +841,10 @@ export class GltfPuppet implements PuppetLike {
       this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
     } else if (locomotion && this.current) {
-      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at)
-      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.4 : 1.6;
-      const foot = stanceFootSpeed(this.tpl.scene, this.current.getClip(), fallback);
-      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 2.4, Math.max(0.4, sp / foot));
+      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at); the gaits above already keep this near 1
+      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.42 : name === 'jog' ? 3.5 : name.endsWith('sprint') ? 7 : 5;
+      const foot = this.footSpeedOf(name, fallback);
+      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
     if (!pit && this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
@@ -733,17 +879,20 @@ export class GltfPuppet implements PuppetLike {
     this.root.updateMatrixWorld(true);
     this.rig.refresh();
 
+    // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
+    this.lookAt(snap, dt, env);
     // arm IK: batter's hands follow the sim's bat
     const wantIK = !!(env.batGrip && snap.role === 'batter');
     // grab the sim's bat almost at once (the swing starts abruptly), let go smoothly
-    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
+    // where even the swivelled elbow cannot get out of the torso (hands the sim placed too close to the body), fade the bat IK toward the clip pose
+    this.ikFade += ((this.elbowClear < -0.005 ? 0.25 : 1) - this.ikFade) * (1 - Math.exp(-dt * (this.elbowClear < -0.005 ? 14 : 5)));
+    this.ikW += ((wantIK ? this.ikFade : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
     if (this.ikW > 0.02 && env.batGrip) {
       // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
       this.solveArm('Left', env.batGrip.bottom, this.ikW);
       this.solveArm('Right', env.batGrip.top, this.ikW);
     }
     this.reachIK(snap, env, dt);
-    this.lookAt(snap, dt, env);
     this.clearElbows(snap);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
@@ -754,11 +903,12 @@ export class GltfPuppet implements PuppetLike {
   }
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
+  private ikFade = 1;
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
   private clipPose = new Map<Bone, Quaternion>();
 
-  private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_backhand', 'field_grounder', 'catch_jump']);
+  private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump']);
   private gloveW = 0;
   private gloveClosed = 0;
 
@@ -779,26 +929,51 @@ export class GltfPuppet implements PuppetLike {
       // reach out through the first half of the catch, then hold the pocket on the ball
       w = p < 0.15 ? p / 0.15 : 1;
     } else if (tagging && env.positions) {
-      let best = 1e9;
-      for (const [id, pos] of env.positions) {
-        if (id === snap.id) continue;
-        const d = Math.hypot(pos.x - snap.pos.x, pos.z - snap.pos.z);
-        if (d < best && d < 2.6) {
-          best = d;
-          target = new Vector3(pos.x, 0.5, pos.z);
+      // the runner the sim named in the tag event, else the nearest other player within reach
+      let rid = env.tagRunner?.(snap.id) ?? null;
+      if (!rid || !env.positions.has(rid)) {
+        rid = null;
+        let best = 1e9;
+        for (const [id, pos] of env.positions) {
+          if (id === snap.id) continue;
+          const d = Math.hypot(pos.x - snap.pos.x, pos.z - snap.pos.z);
+          if (d < best && d < 2.6) {
+            best = d;
+            rid = id;
+          }
         }
       }
+      const rp = rid ? env.positions.get(rid) : null;
+      if (rp) {
+        // through the runner: chest height for a runner on his feet, near the ground for a slider
+        const ra = (rid && env.anims?.get(rid)) || '';
+        target = new Vector3(rp.x, /slide|dive|pop/.test(ra) ? 0.2 : 0.8, rp.z);
+      }
       side = snap.anim === 'tag_hand' ? 'Right' : 'Left';
-      w = Math.sin(Math.PI * Math.min(1, Math.max(0, p))) ;
+      // the sweep peaks at the moment the sim announces the result (contact), then relaxes
+      const pe = this.tagEventP() ?? 0.45;
+      const pp = Math.min(1, Math.max(0, p));
+      w = pp < pe ? Math.sin((Math.PI / 2) * (pp / pe)) : Math.cos((Math.PI / 2) * ((pp - pe) / Math.max(0.05, 1 - pe)));
+      if (target && env.tagOutcome?.(snap.id) === 'avoided') {
+        // the runner slid / dodged out of the way: the sweep goes through the space he was in, a half metre to the side of him
+        const dx = target.x - snap.pos.x, dz = target.z - snap.pos.z;
+        const l = Math.hypot(dx, dz) || 1;
+        target.x += (-dz / l) * 0.55;
+        target.z += (dx / l) * 0.55;
+        target.y = 0.3;
+      }
     }
     this.gloveW += ((target ? w : 0) - this.gloveW) * (1 - Math.exp(-dt * 40));
+    // a target beyond arm's reach: a lunge (the body steps / leans toward it, at most ~0.45 m) before the trunk lean and the arm finish the reach
+    this.reachStep(target, side, dt);
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;
       if (hand) {
         // put the POCKET (not the wrist) on the target: a few passes, since the pocket offset turns with the hand
         const goal = target;
-        for (let it = 0; it < 3; it++) {
+        this.reachLean(hand, pocket, side, goal, this.gloveW);
+        for (let it = 0; it < 4; it++) {
           this.rig.refresh();
           const hw = hand.getWorldPosition(new Vector3());
           const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(hw) : new Vector3();
