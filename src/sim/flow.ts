@@ -312,7 +312,7 @@ export function beginWindup(w: World): void {
   w.phaseUntil = w.tick + secToTicks(dur);
   running.commitSteals(w);
   setAnim(w, w.pitcher, 'windup', dur);
-  emit(w, { type: 'windup', pitcherId: w.pitcher.info.id });
+  emit(w, { type: 'windup', pitcherId: w.pitcher.info.id, pitchType: spec.type });
 }
 
 /** A hitch in the set position longer than this (s) is an illegal motion. */
@@ -588,10 +588,11 @@ function moveMitt(w: World, elapsed: number): void {
   const s = u * u * (3 - 2 * u);
   C.gloveTarget = { x: m.x0 + (m.x - m.x0) * s, y: m.y0 + (m.y - m.y0) * s, z: CATCH_Z };
   C.gloveAt = w.pitchTick + secToTicks(m.tC);
-  if (!m.armed && elapsed >= m.tC - 0.35) {
+  // the pitch-catching clip's catch frame is at 7/24 s: it starts that long before the ball arrives
+  if (!m.armed && elapsed >= m.tC - 7 / 24) {
     m.armed = true;
     C.catchArmed = true;
-    setAnim(w, C, 'catch_pitch', 0.7);
+    setAnim(w, C, 'catch_pitch', (7 / 24) * 2);
   }
 }
 
@@ -612,7 +613,7 @@ function catcherReceive(w: World): void {
     const cy = b.y;
     const cz = b.z;
     giveBall(w, C);
-    if (!C.catchArmed) setAnim(w, C, 'catch_pitch', 0.7);
+    if (!C.catchArmed) setAnim(w, C, 'catch_pitch', (7 / 24) * 2);
     C.catchArmed = false;
     C.gloveTarget = null;
     C.gloveHold = { x: cx, y: cy, z: cz, t0: w.tick };

@@ -646,6 +646,32 @@ function lateralOf(F: PlayerRT, x: number, z: number): number {
   return F.info.throws === 'R' ? l : -l; // for a right-hander the throwing arm is the right one
 }
 
+/** Seconds before the ball arrives at which each catch clip has to start so that its catch frame (24 fps) is the arrival. */
+export const CATCH_LEAD: Record<string, number> = {
+  catch_pitch: 7 / 24,
+  catch_throw: 6 / 24,
+  catch_stretch: 8 / 24,
+  catch_fly: 10 / 24,
+  catch_fly_run: 12 / 24,
+  catch_line_drive: 5 / 24,
+  catch_backhand: 8 / 24,
+  field_grounder: 11 / 24,
+  catch_comebacker: 7 / 24,
+};
+
+/** Which catch clip a catch is, and how far ahead of the arrival it starts. */
+function catchHint(w: World, F: PlayerRT, x: number, z: number, kind: 'throw' | 'pickoff' | 'fly' | 'line' | 'ground', lat: number, stretch: number): { hint: AnimHint; lead: number } {
+  let hint: AnimHint;
+  const speed = Math.hypot(F.vx, F.vz);
+  if (kind === 'throw' || kind === 'pickoff') hint = F.fieldPos === '1B' || Math.hypot(x - F.x, z - F.z) > 1.0 || stretch > 0.6 ? 'catch_stretch' : 'catch_throw';
+  else if (F.fieldPos === 'P') hint = 'catch_comebacker';
+  else if (kind === 'ground') hint = 'field_grounder';
+  else if (kind === 'line') hint = 'catch_line_drive';
+  else if (lat > 0.6) hint = 'catch_backhand';
+  else hint = speed > 3 ? 'catch_fly_run' : 'catch_fly';
+  return { hint, lead: CATCH_LEAD[hint] };
+}
+
 /** How a catch is made, from where the ball meets the glove: height, side, kind and the animation hint that shows it. */
 function catchDetail(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, how: { firm: boolean; stretch: number }) {
   const b = w.ball.body;
@@ -656,11 +682,7 @@ function catchDetail(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, ho
   let side: 'glove' | 'arm' | 'backhand' | 'forehand';
   if (kind === 'ground') side = lat > 0.35 ? 'backhand' : 'forehand';
   else side = lat > 0.6 ? 'backhand' : lat > 0.3 ? 'arm' : 'glove';
-  const reachOut = Math.hypot(b.x - F.x, b.z - F.z);
-  let hint: AnimHint;
-  if (kind === 'ground') hint = 'field_grounder';
-  else if (kind === 'throw' || kind === 'pickoff') hint = F.fieldPos === '1B' || reachOut > 1.0 || how.stretch > 0.6 ? 'catch_stretch' : 'catch_throw';
-  else hint = side === 'backhand' ? 'catch_backhand' : 'catch_fly';
+  const hint = catchHint(w, F, b.x, b.z, kind, lat, how.stretch).hint;
   return { hint, fields: { kind, height, side, firm: how.firm } as const };
 }
 
@@ -690,7 +712,7 @@ export function secure(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, 
   F.goal = null;
   play.touches.push(F);
   // the catch animation was started ~0.3 s ahead so that the catch is at about its half-way point; if it was not, start it now
-  if (!F.catchArmed && !F.leap) setAnim(w, F, detail.hint, 0.6);
+  if (!F.catchArmed && !F.leap) setAnim(w, F, detail.hint, (CATCH_LEAD[detail.hint] ?? 0.3) * 2);
   F.catchArmed = false;
   if (!fromThrow && bip && !bip.firstFielder) {
     bip.firstFielder = F;
@@ -1155,16 +1177,16 @@ export function updateGloveTargets(w: World): void {
     const last = m.t <= 0.07;
     F.gloveTarget = last ? { x: bb.x + z[0] * 0.02, y: Math.max(0.12, bb.y) + z[1] * 0.02, z: bb.z } : { x: m.x + z[0] * 0.03, y: m.y + z[1] * 0.03, z: m.z };
     F.gloveAt = w.tick + Math.round(m.t / TICK);
-    if (!F.catchArmed && m.t <= 0.32 && !F.leap) {
-      F.catchArmed = true;
+    if (!F.catchArmed && !F.leap) {
       const air = m.y > 0.4 && !ball.touchedGround;
       const fromThrow = ball.mode === 'thrown';
-      const d = catchDetail(w, F, air, fromThrow, { firm: true, stretch: 0 });
-      // (side is computed from where the glove will be)
-      const lat = lateralOf(F, m.x, m.z);
-      const hint: AnimHint = air && !fromThrow && lat > 0.6 ? 'catch_backhand' : !air && !fromThrow ? 'field_grounder' : fromThrow ? (F.fieldPos === '1B' || Math.hypot(m.x - F.x, m.z - F.z) > 1.0 ? 'catch_stretch' : 'catch_throw') : 'catch_fly';
-      void d;
-      setAnim(w, F, hint, 0.6);
+      const kind = fromThrow ? (w.play?.kind === 'pickoff' ? 'pickoff' : 'throw') : air ? (w.play?.bip?.line ? 'line' : 'fly') : 'ground';
+      const ch = catchHint(w, F, m.x, m.z, kind, lateralOf(F, m.x, m.z), 0);
+      // the clip starts exactly its catch-frame time before the arrival
+      if (m.t <= ch.lead) {
+        F.catchArmed = true;
+        setAnim(w, F, ch.hint, ch.lead * 2);
+      }
     }
   }
 }

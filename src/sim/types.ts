@@ -55,6 +55,10 @@ export type AnimHint =
   | 'catch_fly'
   | 'catch_backhand'
   | 'field_grounder'
+  /** More specific catch clips: a fly ball caught on the run, a line drive, a ball hit back at the pitcher. */
+  | 'catch_fly_run'
+  | 'catch_line_drive'
+  | 'catch_comebacker'
   /** Umpire signals (umpires only). `ump_ready` is the default stance. */
   | 'ump_ready'
   | 'ump_strike'
@@ -329,6 +333,10 @@ export interface PlayerSnapshot {
    */
   gloveTarget?: Vec3 | null;
   gloveEta?: number;
+  /** Seconds until the catch (== `gloveEta`, 0 when no catch is coming): the catch hint starts exactly its clip's catch-frame time before, so the catch frame lands on the arrival. */
+  catchIn?: number;
+  /** The pitch the pitcher has chosen, from the moment he has (before the windup) until the pitch is released and done — pick the grip from it. */
+  pitchType?: PitchType | null;
   /** The hand the glove is on ('L' for a right-handed thrower). */
   gloveHand?: 'L' | 'R';
 }
@@ -462,7 +470,7 @@ export type GameEvent =
   | (EBase & { type: 'halfInningStart'; inning: number; half: 'top' | 'bottom' })
   | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom' })
   | (EBase & { type: 'batterUp'; batterId: string; pitcherId: string })
-  | (EBase & { type: 'windup'; pitcherId: string })
+  | (EBase & { type: 'windup'; pitcherId: string; pitchType?: PitchType })
   | (EBase & { type: 'pitchReleased'; pitcherId: string; pitchType: PitchType; mph: number; rpm: number; release: Vec3; targetX: number; targetY: number })
   | (EBase & { type: 'pitchCrossed'; x: number; y: number; inZone: boolean; mph: number })
   | (EBase & { type: 'swing'; batterId: string })

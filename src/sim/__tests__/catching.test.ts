@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
+import { CATCH_LEAD } from '../fielding';
+import { groundHeight } from '../field';
 import type { GameEvent, GameStateSnapshot } from '../types';
 
-const CATCH_HINTS = new Set(['catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_backhand', 'field_grounder']);
+const CATCH_HINTS = new Set(['catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_backhand', 'field_grounder', 'catch_fly_run', 'catch_line_drive', 'catch_comebacker']);
 
 /** Play the first innings at broadcast pace, remembering the snapshot from the tick before every catch. */
 function catches(seed: string, innings = 3) {
@@ -62,13 +64,96 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
       n++;
       progress.push(p.animT);
       if (e.kind === 'pitch') expect(p.anim).toBe('catch_pitch');
-      if (e.kind === 'ground') expect(p.anim).toBe('field_grounder');
+      if (e.kind === 'ground') expect(['field_grounder', 'catch_comebacker', 'catch_line_drive', 'catch_backhand']).toContain(p.anim);
       if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_stretch']).toContain(p.anim);
     }
     expect(n / all.length).toBeGreaterThan(0.85);
     const mean = progress.reduce((a, b) => a + b, 0) / progress.length;
     expect(mean).toBeGreaterThan(0.4);
     expect(mean).toBeLessThan(0.65);
+  });
+
+  it('catchIn counts down to the catch: the hint starts CATCH_LEAD before it, so the catch frame lands on arrival', () => {
+    let n = 0;
+    let err = 0;
+    for (const { e, prev } of all) {
+      const p = prev.players.find((q) => q.id === e.fielderId)!;
+      if (!CATCH_HINTS.has(p.anim) || p.catchIn == null) continue;
+      n++;
+      // prev is one tick before the catch, so catchIn is ~0 - and the hint's own duration is 2x its lead (catch at half-way)
+      err += Math.abs(p.catchIn);
+      expect(p.catchIn).toBeLessThan(0.1);
+      expect(CATCH_LEAD[p.anim]).toBeGreaterThan(0.15);
+    }
+    expect(n / all.length).toBeGreaterThan(0.8);
+    expect(err / n).toBeLessThan(0.05);
+  });
+
+  it('catchIn is exposed ahead of time: at the lead, the glove target and a positive catchIn are there', () => {
+    const g = createGame({ seed: 'catchin', pace: 1 });
+    const w = g._world;
+    let seen = 0;
+    let armedAtLead = 0;
+    g.on('windup', (e) => {
+      expect(typeof e.pitchType).toBe('string');
+    });
+    let n = 0;
+    while (!g.over && seen < 15 && n++ < 240 * 900) {
+      g.step(1 / 240);
+      const c = g.getState().players.find((p) => p.role === 'catcher')!;
+      if (c.anim === 'catch_pitch' && c.catchIn != null && c.catchIn > 0.2 && c.catchIn < 0.32) {
+        seen++;
+        if (c.gloveTarget) armedAtLead++;
+      }
+      if (w.tick > 240 * 900) break;
+    }
+    expect(seen).toBeGreaterThan(5);
+    expect(armedAtLead).toBe(seen);
+  });
+
+  it('when a catch hint first shows, catchIn is about that hint\'s lead (the catch frame lands on arrival)', () => {
+    const g = createGame({ seed: 'lead', pace: 1 });
+    const prevAnim = new Map<string, string>();
+    const errs: number[] = [];
+    let n = 0;
+    while (!g.over && errs.length < 60 && n++ < 240 * 1200) {
+      g.step(1 / 240);
+      for (const p of g.getState().players) {
+        const was = prevAnim.get(p.id);
+        prevAnim.set(p.id, p.anim);
+        if (was !== p.anim && CATCH_HINTS.has(p.anim) && p.catchIn != null) errs.push(p.catchIn - CATCH_LEAD[p.anim]);
+      }
+    }
+    expect(errs.length).toBeGreaterThan(30);
+    const sorted = errs.map(Math.abs).sort((a, b) => a - b);
+    expect(sorted[Math.floor(sorted.length * 0.5)]).toBeLessThan(0.03);
+  });
+
+  it('the pitcher\'s grip is known before release (pitchType on the windup event and the pitcher snapshot)', () => {
+    const g = createGame({ seed: 'grip', pace: 1 });
+    const announced: string[] = [];
+    g.on('windup', (e) => announced.push(e.pitchType!));
+    let checked = 0;
+    let n = 0;
+    while (!g.over && checked < 10 && n++ < 240 * 900) {
+      g.step(1 / 240);
+      if (g._world.phase === 'windup') {
+        const p = g.getState().players.find((q) => q.role === 'pitcher')!;
+        expect(p.pitchType).toBe(announced[announced.length - 1]);
+        checked++;
+        while (g._world.phase === 'windup') g.step(1 / 240);
+      }
+    }
+    expect(checked).toBeGreaterThan(3);
+  });
+
+  it('the mound profile is the asset field.py mound_h exactly', () => {
+    expect(groundHeight(0, 20.5)).toBeCloseTo(0.07, 2);
+    expect(groundHeight(0, 60 * 0.3048 + 0.5)).toBeCloseTo(0.254, 3); // level top (10 in)
+    const FT = 0.3048;
+    expect(groundHeight(0, 54 * FT)).toBeCloseTo(0.254 - 6 * 0.0254, 1); // 1 in/ft falls off the front of the level rectangle
+    expect(groundHeight(0, 5)).toBe(0);
+    expect(groundHeight(15, 20)).toBe(0);
   });
 
   it('the mitt moves during the pitch: from where the catcher set up toward where the ball arrives, before the catch', () => {
