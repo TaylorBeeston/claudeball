@@ -85,8 +85,8 @@ export function pressureOf(inning: number, innings: number, outs: number, scoreD
 /** Extra timing / aim noise factor from pressure: clutch players tighten up, rattled ones loosen. */
 export const clutchScale = (clutch: number, pressure: number) => clamp(1 + 0.1 * pressure * ((50 - clutch) / 30), 0.9, 1.15);
 
-/** Seconds earlier (-) the swing starts for a puller / later (+) for an opposite-field hitter. */
-export const pullTimeShift = (pull: number) => -0.00012 * (pull - 50);
+/** Seconds later (+) the swing starts for a puller / earlier (-) for an opposite-field hitter (sign set by the bat path: with the hands out in front of the body a later bat meets the ball turned further round, i.e. pulls it). */
+export const pullTimeShift = (pull: number) => 0.00012 * (pull - 50);
 
 /** Mean attack angle a gap hitter is drawn to (deg) and the spread scale of his bat path. */
 export const GAP_ANGLE_DEG = 11;
