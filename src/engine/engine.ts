@@ -126,6 +126,7 @@ export class Engine {
         this.batted = true;
         this.stadium.crowd.excite(te.event.exitVelo > 40 ? 0.7 : 0.35);
       }
+      if (te.event.type === 'tag' && te.event.fielderId) this.players.noteTag(te.event.fielderId, te.event.result, te.simTime, te.event.runnerId);
       if (te.event.type === 'run') this.stadium.crowd.excite(1);
       if (te.event.type === 'robbed_hr') this.stadium.crowd.excite(0.8); // the groan / gasp
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);

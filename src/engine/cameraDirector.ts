@@ -246,11 +246,11 @@ export class CameraDirector {
         }
         break;
       case 'safe':
-        if (this.inPlay && !this.hr) this.noteClosePlay(e, te.simTime, live);
+        if (!this.hr) this.noteClosePlay(e, te.simTime, live); // also plays with no batted ball (steals, pickoffs)
         break;
       case 'out':
       case 'run':
-        if (e.type === 'out' && this.inPlay && !this.hr) this.noteClosePlay(e, te.simTime, live);
+        if (e.type === 'out' && !this.hr) this.noteClosePlay(e, te.simTime, live);
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
         this.playEnd = te.simTime;
         if (this.inPlay && !this.hr) this.pendingReplay = true;
@@ -472,7 +472,8 @@ export class CameraDirector {
 
   /** A contested out / safe call (`closePlay` or a margin under a tenth of a second): the umpire live, then the slow-motion replay. */
   private noteClosePlay(e: Extract<GameEvent, { type: 'out' | 'safe' }>, simT: number, live: GameState) {
-    const closeCall = e.closePlay === true || (typeof e.margin === 'number' && Math.abs(e.margin) < 0.1);
+    // slow motion only when the sim calls it a close play (|margin| < 0.10 s)
+    const closeCall = e.closePlay === true;
     if (!closeCall) return;
     const base = (e.type === 'safe' ? e.base : e.base) ?? null;
     const b = base && base >= 1 && base <= 3 ? BASES[base - 1] : { x: 0, z: 0 };
@@ -490,7 +491,7 @@ export class CameraDirector {
     const c = this.close;
     if (!c) return false;
     const hist = this.sim.history;
-    const t0 = c.simT - 2.6, t1 = c.simT + 1.1;
+    const t0 = c.simT - 1.3, t1 = c.simT + 0.9; // from the throw / the run into the bag to just after the call
     const i0 = hist.findIndex((s) => s.time >= t0);
     if (i0 < 0) return false;
     let i1 = hist.length - 1;
