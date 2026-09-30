@@ -82,6 +82,11 @@ Not measured on a mid-range GPU.
   one) and the ball settles into the pocket; `tag_glove` / `tag_hand` sweep the glove / hand through the nearest opposing runner. Hints without clips fall back (see `clipCandidates`).
 - **Locomotion**: clip time is scaled by ground speed / the clip's own stance-foot speed (measured from the clip), creeping players use `walk` (or the slowed `trot`), body yaw is limited
   to ~540°/s, elbows are swivelled out of the torso volume (`armClear.ts`) with the hand fixed.
+- **Catch timing** (`eventPlan`, `reachIK`): a catch hint starts the clip's catch-frame time before the arrival, so the clip time is `catchFrame − catchIn` (then `animT × 2 × catchFrame`), which puts the
+  catch frame within one 60 Hz frame of the sim's catch (measured). The pocket is reached to `gloveTarget` by arm IK, a trunk lean (≤ 25°) and, beyond that, a lunge of the body (≤ 0.45 m);
+  the catcher's flight-inferred catch is only a fallback for sims that report no `gloveTarget`. Tag sweeps peak at the moment the sim announces `tag` / `tagAvoided` (a miss goes 0.55 m to the side of the runner).
+- **Gaits** (`locomotionClip`): walk / trot / jog / run / sprint (and the turn clips) are picked by ground speed with hysteresis and played at speed / the manifest's `footSpeed`, so the clip rate stays near 1.
+- **Umpires**: the gesture clip runs at natural speed from the `umpireCall`, its peak frame lands `CALL_PEAK[kind]` seconds later, and the HUD caption is timed to that peak.
 - **Ball trail** is a thin tapering ribbon (about half the old width) with a faint streak.
 
 ## Camera director (auto)

@@ -312,9 +312,11 @@ export class PlayerManager {
   makePuppet: (snap: PlayerSnap) => PuppetLike = (s) => new Puppet(s.id);
   readonly positions = new Map<string, Vector3>();
   /** latest tag per fielder (from the sim's tag events), for a short while */
-  private tags = new Map<string, { result: 'tag' | 'avoided' | 'attempt'; until: number }>();
-  noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number) {
-    this.tags.set(fielderId, { result, until: simTime + 1.6 });
+  private tags = new Map<string, { result: 'tag' | 'avoided' | 'attempt'; until: number; runner: string | null }>();
+  readonly anims = new Map<string, string>();
+  noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number, runnerId?: string) {
+    const prev = this.tags.get(fielderId);
+    this.tags.set(fielderId, { result, until: simTime + 1.6, runner: runnerId ?? prev?.runner ?? null });
   }
 
   constructor(env: Environment) {
@@ -348,6 +350,8 @@ export class PlayerManager {
   update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
     this.penv.makeBall = makeBall;
     this.penv.positions = this.positions;
+    this.penv.anims = this.anims;
+    this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;
     this.penv.tagOutcome = (id) => {
       const t = this.tags.get(id);
       return t && t.until > state.time ? t.result : null;
@@ -375,6 +379,7 @@ export class PlayerManager {
           // skin tone from id hash, applied by the puppet's initial material; look.skin unused for procedural
         }
       }
+      this.anims.set(snap.id, snap.anim);
       p.update(snap, dt, this.penv);
       if (p.ballHeld && !this.ballHeld) {
         const w = p.heldBallWorld?.(this.heldTmp);
