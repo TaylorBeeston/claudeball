@@ -9,7 +9,7 @@ import { BALL_RADIUS, MOUND_DIST, PLATE_DEPTH } from './field';
 import { clamp, DEG } from './math';
 import { setGoal } from './movement';
 import { fatigueOf } from './pitchai';
-import { pitchTouchesZone, strikeZoneFor, throwPitch, zoneContains } from './pitching';
+import { pathAt, pitchTouchesZone, strikeZoneFor, throwPitch, timeAtZ, zoneContains } from './pitching';
 import { giveBall, placeBallInHand, releaseBall, setAnim } from './util';
 import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
@@ -18,6 +18,7 @@ import * as rules from './rules';
 import * as inplay from './inplay';
 import * as manager from './manager';
 import * as running from './running';
+import { scheduleCall } from './umpires';
 import { ensureBallReturn, hurryStragglers, readyToPitch, READY_TIMEOUT, sendHome, sendToDugout } from './handling';
 export { tickLob } from './handling';
 
@@ -110,7 +111,7 @@ export function startHalfInning(w: World): void {
 }
 
 export function fielderSpeed(p: PlayerRT): number {
-  return fielderTopSpeed(p.info.ratings) * (routeEfficiency(p.info.ratings) / 0.955) * 0.975;
+  return fielderTopSpeed(p.info.ratings) * (routeEfficiency(p.info.ratings) / 0.955) * 0.958;
 }
 
 /**
@@ -311,7 +312,7 @@ export function beginWindup(w: World): void {
   w.phaseUntil = w.tick + secToTicks(dur);
   running.commitSteals(w);
   setAnim(w, w.pitcher, 'windup', dur);
-  emit(w, { type: 'windup', pitcherId: w.pitcher.info.id });
+  emit(w, { type: 'windup', pitcherId: w.pitcher.info.id, pitchType: spec.type });
 }
 
 /** A hitch in the set position longer than this (s) is an illegal motion. */
@@ -378,6 +379,7 @@ export function releasePitch(w: World): void {
   w.seq.lastMph = pitch.mph;
   emit(w, { type: 'pitchReleased', pitcherId: P.info.id, pitchType: pitch.type, mph: pitch.mph, rpm: pitch.rpm, release: { ...pitch.release }, targetX: aim.x, targetY: aim.y });
   running.onPitchRelease(w);
+  planMitt(w);
 }
 
 const BODY_HALF_W = 0.10;
@@ -431,6 +433,7 @@ export function tickPitch(w: World): void {
   const ball = w.ball;
   const b = ball.body;
   if (!w.swingDecided) stageSwing(w);
+  moveMitt(w, (w.tick - w.pitchTick) * TICK);
   const elapsed0 = (w.tick - 1 - w.pitchTick) * TICK;
   const plan = w.swingPlan!;
   let n = 1;
@@ -540,22 +543,21 @@ function onContact(w: World, res: import('./batting').ContactResult): void {
     pos: { x: b.x, y: b.y, z: b.z },
   });
   w.ball.mode = 'batted';
+  w.catcher.gloveTarget = null; // he will not be catching this one
+  w.catcher.catchArmed = false;
   inplay.beginBattedBall(w, res);
 }
 
-/** Catcher tries to receive the pitch (or block a ball in the dirt). */
-function catcherReceive(w: World): void {
-  w.catcherHandled = true;
+/** The catcher's plan for this pitch: where his mitt will be at the catch plane (his read of the pitch, limited by how fast his hand can get there). */
+function planMitt(w: World): void {
   const C = w.catcher;
   const cr = C.info.ratings.catching;
   const pitch = w.pitch!;
-  const b = w.ball.body;
   const aim = w.pitchAim!;
-  const flight = (w.tick - w.pitchTick) * TICK;
+  const tC = timeAtZ(pitch.path, CATCH_Z);
+  const at = pathAt(pitch.path, tC);
   const lateBreak = pitch.type === 'CU' || pitch.type === 'SL' || pitch.type === 'SW' || pitch.type === 'FS' ? 1.35 : 1.0;
   const setY = clamp(aim.y, 0.3, 1.5);
-  const timeAvail = Math.max(0.05, flight - 0.14);
-  void timeAvail;
   const react = 0.19 + 0.12 * (1 - cr / 100);
   const avail = Math.max(0, pitch.tPlate + 0.05 - react);
   const hand = 5.2 + 0.035 * cr;
@@ -563,25 +565,65 @@ function catcherReceive(w: World): void {
   const perceive = 0.03 * (1.6 - cr / 100) * lateBreak;
   const errX = w.rng.normal(0, perceive);
   const errY = w.rng.normal(0, perceive);
-  let dx = b.x - aim.x + errX;
-  let dy = b.y - setY + errY;
+  let dx = at.x - aim.x + errX;
+  let dy = at.y - setY + errY;
   const dl = Math.hypot(dx, dy);
   if (dl > maxMove) {
     dx *= maxMove / dl;
     dy *= maxMove / dl;
   }
-  const mx = aim.x + dx;
-  const my = setY + dy;
+  w.mitt = { x0: aim.x, y0: setY, x: aim.x + dx, y: setY + dy, tC, react, armed: false };
+  C.gloveTarget = { x: aim.x, y: setY, z: CATCH_Z };
+  C.gloveAt = w.pitchTick + secToTicks(tC);
+  C.catchArmed = false;
+}
+
+/** While the pitch is in flight the mitt moves from where he set it to where he will take it, and the catch animation starts ~0.35 s before the ball arrives. */
+function moveMitt(w: World, elapsed: number): void {
+  const m = w.mitt;
+  const C = w.catcher;
+  if (!m || w.catcherHandled) return;
+  const span = Math.max(0.05, m.tC - 0.03 - m.react);
+  const u = clamp((elapsed - m.react) / span, 0, 1);
+  const s = u * u * (3 - 2 * u);
+  C.gloveTarget = { x: m.x0 + (m.x - m.x0) * s, y: m.y0 + (m.y - m.y0) * s, z: CATCH_Z };
+  C.gloveAt = w.pitchTick + secToTicks(m.tC);
+  // the pitch-catching clip's catch frame is at 7/24 s: it starts that long before the ball arrives
+  if (!m.armed && elapsed >= m.tC - 7 / 24) {
+    m.armed = true;
+    C.catchArmed = true;
+    setAnim(w, C, 'catch_pitch', (7 / 24) * 2);
+  }
+}
+
+/** Catcher receives the pitch (or blocks a ball in the dirt). */
+function catcherReceive(w: World): void {
+  w.catcherHandled = true;
+  const C = w.catcher;
+  const b = w.ball.body;
+  const aim = w.pitchAim!;
+  const m = w.mitt!;
+  const mx = m.x;
+  const my = m.y;
   const miss = Math.hypot(b.x - mx, b.y - my);
   const inDirt = w.ball.touchedGround || b.y < 0.16;
   if (!inDirt && b.y < 2.2 && miss <= 0.12 + BALL_RADIUS) {
-    // clean catch
+    // clean catch (the ball is where the mitt met it; it then settles into his hand)
+    const cx = b.x;
+    const cy = b.y;
+    const cz = b.z;
     giveBall(w, C);
-    setAnim(w, C, 'catch', 0.4);
-    emit(w, { type: 'catch', fielderId: C.info.id, fly: false, pos: { x: b.x, y: b.y, z: b.z } });
+    if (!C.catchArmed) setAnim(w, C, 'catch_pitch', (7 / 24) * 2);
+    C.catchArmed = false;
+    C.gloveTarget = null;
+    C.gloveHold = { x: cx, y: cy, z: cz, t0: w.tick };
+    emit(w, { type: 'catch', fielderId: C.info.id, fly: false, pos: { x: cx, y: cy, z: cz }, kind: 'pitch', height: cy < 0.6 ? 'low' : cy < 1.5 ? 'chest' : 'high', side: cx < -0.25 ? 'backhand' : 'glove', firm: miss <= 0.07 });
     finishPitchResult(w, true);
     return;
   }
+  // he could not glove it: the mitt is done for this pitch
+  C.catchArmed = false;
+  C.gloveTarget = null;
   // block attempt for balls in the dirt / off target
   const blockHalf = blockHalfWidth(C.info.ratings);
   const shift = clamp((b.x - aim.x) * 0.75, -0.5, 0.5);
@@ -642,6 +684,10 @@ function finishPitchResult(w: World, caught: boolean, how: 'blocked' | 'missed' 
   const keep = w.lastCall;
   void keep;
   emit(w, { type: 'call', call: mkCall(w, ballOrStrike) });
+  // the plate umpire makes his call a moment after the catch
+  if (ballOrStrike === 'ball') scheduleCall(w, 'plate', w.count.balls + 1 >= 4 ? 'ball_four' : 'ball', 0.2);
+  else if (w.count.strikes + 1 >= 3) scheduleCall(w, 'plate', 'strikeout', 0.25, { swinging: ballOrStrike === 'strikeSwinging' });
+  else scheduleCall(w, 'plate', ballOrStrike === 'strikeSwinging' ? 'strike_swinging' : 'strike_called', 0.25);
   // pitcher strike count
   if (ballOrStrike !== 'ball') w.pitcher.pit.strikes++;
   const ballLive = !caught;

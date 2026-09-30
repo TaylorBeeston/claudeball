@@ -47,6 +47,7 @@ function swings(b: PlayerInfo, n: number, seed: string, mods = { form: 0, pressu
   const timing: number[] = [];
   const spray: number[] = [];
   const la: number[] = [];
+  const alpha: number[] = [];
   let contacts = 0;
   for (let i = 0; i < n; i++) {
     const pitch = pitchTo(pitcher, rng, { targetX: 0, targetY: (zone.top + zone.bottom) / 2 });
@@ -54,6 +55,7 @@ function swings(b: PlayerInfo, n: number, seed: string, mods = { form: 0, pressu
     const ctx = { balls: 1, strikes: 1, outs: 0, runnersOn: false, scoringPosition: false, inning: 1, scoreDiff: 0 };
     const plan = buildSwing(b, stance, pitch, obs, { swing: true }, ctx, rng, null, 0, mods);
     timing.push(plan.startTime - (plan.plannedContactTime - 0.155));
+    alpha.push((plan.alpha * 180) / Math.PI);
     const ball: BallBody = { x: pitch.release.x, y: pitch.release.y, z: pitch.release.z, vx: pitch.vel.x, vy: pitch.vel.y, vz: pitch.vel.z, wx: pitch.spin.x, wy: pitch.spin.y, wz: pitch.spin.z, rolling: false };
     const swing = new BatSwing(plan);
     let t = 0;
@@ -74,7 +76,7 @@ function swings(b: PlayerInfo, n: number, seed: string, mods = { form: 0, pressu
       la.push(res.launchDeg);
     }
   }
-  return { timing, spray, la, contacts };
+  return { timing, spray, la, contacts, alpha };
 }
 
 describe('attributes: hitters', () => {
@@ -123,7 +125,11 @@ describe('attributes: hitters', () => {
   it('gap: a gap hitter has a more level, repeatable bat path (launch angles cluster near the line-drive band)', () => {
     const gap = swings(withRatings(baseHitter, { gap: 80 }), 600, 'gap-a');
     const not = swings(withRatings(baseHitter, { gap: 20 }), 600, 'gap-a');
-    expect(sd(gap.la)).toBeLessThan(sd(not.la));
+    // the planned bat path: a gap hitter's attack angle is drawn toward ~11 deg and repeats better
+    expect(sd(gap.alpha)).toBeLessThan(sd(not.alpha));
+    const target = 11;
+    const shortfall = (a: number[]) => Math.abs(mean(a) - target);
+    expect(shortfall(gap.alpha)).toBeLessThanOrEqual(shortfall(not.alpha) + 0.3);
   });
 
   it('breaking-ball eye: a hitter who reads breaking pitches recognises them more often and misjudges them less', () => {

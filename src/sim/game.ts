@@ -8,6 +8,7 @@ import { pendingDecisions, resolveDecision } from './dispatch';
 import type { DecisionKind, DecisionProvider, DecisionRequest, FullDecisionProvider } from './decisions';
 import { snapshot } from './snapshot';
 import { tickBallReturn, tickLeavers } from './handling';
+import { tickUmpires } from './umpires';
 import { TICK } from './world';
 import type { PlayerRT, World } from './world';
 import type {
@@ -126,6 +127,7 @@ export class Game {
     }
     if (w.gameOver && w.phase !== 'final') return;
     tickLeavers(w);
+    tickUmpires(w);
     for (const t of [w.teams.home, w.teams.away]) for (const p of t.players.values()) if (p.onField) stepPlayer(p, w);
   }
 

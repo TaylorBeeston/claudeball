@@ -32,7 +32,44 @@ export type AnimHint =
   /** A fielder moving the ball from glove to throwing hand, standing (after a catch, an out, a pitch). */
   | 'transfer'
   /** An easy, non-urgent toss back in (a short underhand / short-arm flip). Longer casual returns use `throw`. */
-  | 'toss';
+  | 'toss'
+  /** A fielder sweeping a tag with the ball in the glove / bare hand (`animT`: the contact is at ~0.45). */
+  | 'tag_glove'
+  | 'tag_hand'
+  /** Runner slides: feet first, head first, hook to his left / right, diving back to the bag. */
+  | 'slide_feet'
+  | 'slide_head'
+  | 'slide_hook_left'
+  | 'slide_hook_right'
+  | 'dive_back'
+  /** The catcher blocking the plate lane (only when he has the ball). */
+  | 'catcher_block'
+  /**
+   * Catching: the hint starts ~0.3 s before the ball arrives, so the catch instant is at about `animT` 0.5 and the ball is at
+   * `PlayerSnapshot.gloveTarget` then. Pitch to the catcher; a throw (a stretch to a base for the first baseman); a fly / line drive
+   * (`catch_backhand` when it is on the throwing-arm side); a grounder fielded (forehand or backhand by the side).
+   */
+  | 'catch_pitch'
+  | 'catch_throw'
+  | 'catch_stretch'
+  | 'catch_fly'
+  | 'catch_backhand'
+  | 'field_grounder'
+  /** More specific catch clips: a fly ball caught on the run, a line drive, a ball hit back at the pitcher. */
+  | 'catch_fly_run'
+  | 'catch_line_drive'
+  | 'catch_comebacker'
+  /** Umpire signals (umpires only). `ump_ready` is the default stance. */
+  | 'ump_ready'
+  | 'ump_strike'
+  | 'ump_strike_swinging'
+  | 'ump_ball'
+  | 'ump_safe'
+  | 'ump_out'
+  | 'ump_foul'
+  | 'ump_fair'
+  | 'ump_homerun'
+  | 'ump_time';
 
 /** What the person is doing on the field right now. */
 export type PlayerRole = 'pitcher' | 'catcher' | 'fielder' | 'batter' | 'runner' | 'umpire';
@@ -290,6 +327,18 @@ export interface PlayerSnapshot {
   physique?: Physique;
   appearance?: Appearance;
   delivery?: Delivery & { fromStretch: boolean };
+  /**
+   * (additive) where the ball will meet this fielder's glove / mitt, from its trajectory, updated during the flight (null when he is not about
+   * to make a catch); `gloveEta` is the seconds until it does. The `catch_*` / `field_grounder` hints start ~0.3 s before that instant.
+   */
+  gloveTarget?: Vec3 | null;
+  gloveEta?: number;
+  /** Seconds until the catch (== `gloveEta`, 0 when no catch is coming): the catch hint starts exactly its clip's catch-frame time before, so the catch frame lands on the arrival. */
+  catchIn?: number;
+  /** The pitch the pitcher has chosen, from the moment he has (before the windup) until the pitch is released and done — pick the grip from it. */
+  pitchType?: PitchType | null;
+  /** The hand the glove is on ('L' for a right-handed thrower). */
+  gloveHand?: 'L' | 'R';
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -393,23 +442,56 @@ interface EBase {
   time: number;
 }
 
+/** How a catch was made (additive fields on `catch` / `fielded`). */
+export interface CatchDetail {
+  height?: 'low' | 'chest' | 'high';
+  side?: 'glove' | 'arm' | 'backhand' | 'forehand';
+  kind?: 'pitch' | 'throw' | 'fly' | 'line' | 'ground' | 'pickoff';
+  /** Clean in the pocket (false: caught at the edge of the glove). */
+  firm?: boolean;
+}
+
+export type UmpireCallKind =
+  | 'ball'
+  | 'strike_called'
+  | 'strike_swinging'
+  | 'foul'
+  | 'fair'
+  | 'safe'
+  | 'out'
+  | 'homerun'
+  | 'foul_tip'
+  | 'time'
+  | 'ball_four'
+  | 'strikeout';
+
 export type GameEvent =
   | (EBase & { type: 'gameStart' })
   | (EBase & { type: 'halfInningStart'; inning: number; half: 'top' | 'bottom' })
   | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom' })
   | (EBase & { type: 'batterUp'; batterId: string; pitcherId: string })
-  | (EBase & { type: 'windup'; pitcherId: string })
+  | (EBase & { type: 'windup'; pitcherId: string; pitchType?: PitchType })
   | (EBase & { type: 'pitchReleased'; pitcherId: string; pitchType: PitchType; mph: number; rpm: number; release: Vec3; targetX: number; targetY: number })
   | (EBase & { type: 'pitchCrossed'; x: number; y: number; inZone: boolean; mph: number })
   | (EBase & { type: 'swing'; batterId: string })
   | (EBase & { type: 'contact'; batterId: string; exitMph: number; launchDeg: number; sprayDeg: number; spinRpm: number; pos: Vec3 })
   | (EBase & { type: 'call'; call: CallInfo })
-  | (EBase & { type: 'fielded'; fielderId: string; clean: boolean; pos: Vec3 })
-  | (EBase & { type: 'catch'; fielderId: string; fly: boolean; pos: Vec3 })
+  /** A ball fielded on the ground (carries the same catch details as `catch`). */
+  | (EBase & { type: 'fielded'; fielderId: string; clean: boolean; pos: Vec3 } & CatchDetail)
+  /** A ball caught: `pos` is where the ball met the glove (the `gloveTarget`), the rest says how. */
+  | (EBase & { type: 'catch'; fielderId: string; fly: boolean; pos: Vec3 } & CatchDetail)
+  /** The umpire's call, when he makes it and from where he makes it (gesture hints: `ump_*`). Separate from `call`, which is the ruling itself. */
+  | (EBase & { type: 'umpireCall'; umpire: 'plate' | 'first' | 'second' | 'third'; umpireId: string; kind: UmpireCallKind; pos: Vec3; atBase?: number; playerId?: string })
   | (EBase & { type: 'error'; fielderId: string; kind: 'drop' | 'bobble' | 'throw' })
   | (EBase & { type: 'throw'; fromId: string; toId: string | null; toBase: number | null; mph: number })
-  | (EBase & { type: 'out'; playerId: string; outType: OutType; fielders: string[]; base: number | null })
-  | (EBase & { type: 'safe'; playerId: string; base: number })
+  | (EBase & { type: 'out'; playerId: string; outType: OutType; fielders: string[]; base: number | null; /** seconds by which the fielder beat the runner (the runner's projected arrival minus now) */ margin?: number; /** |margin| < 0.10 s */ closePlay?: boolean })
+  | (EBase & { type: 'safe'; playerId: string; base: number; /** negative: seconds the runner beat the tag / force by */ margin?: number; closePlay?: boolean })
+  /** A fielder starts a tag sweep at a runner. */
+  | (EBase & { type: 'tagAttempt'; fielderId: string; runnerId: string; base: number | null; hand: 'glove' | 'hand'; pos: Vec3 })
+  /** The tag connected (the out follows). */
+  | (EBase & { type: 'tag'; fielderId: string; runnerId: string; pos: Vec3 })
+  /** The sweep missed a runner who slid / dodged out of the way (`slide`: the slide type, or 'dodge'). */
+  | (EBase & { type: 'tagAvoided'; fielderId: string; runnerId: string; slide: 'feet' | 'head' | 'hookL' | 'hookR' | 'diveBack' | 'dodge' })
   | (EBase & { type: 'runnerAdvance'; playerId: string; fromBase: number; toBase: number })
   | (EBase & { type: 'runScored'; playerId: string; team: TeamSide; runsHome: number; runsAway: number })
   | (EBase & { type: 'runsNullified'; count: number; runsHome: number; runsAway: number })

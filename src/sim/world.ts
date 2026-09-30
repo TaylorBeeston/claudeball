@@ -71,8 +71,16 @@ export interface PlayerRT {
   gait: 'trot' | 'turn' | null;
   /** Tick of the last `wallContact` event for this player (rate limit). */
   wallTick: number;
+  /** Tick before which he will not start another tag sweep. */
+  tagReady: number;
   /** Where he belongs for the current alignment (fielders) — set by `resetDefense`. */
   home: { x: number; z: number } | null;
+  /** Where the ball will meet his glove (see `PlayerSnapshot.gloveTarget`), the tick that is predicted for, and whether the catch animation has been started. */
+  gloveTarget: { x: number; y: number; z: number } | null;
+  gloveAt: number;
+  catchArmed: boolean;
+  /** After a catch the ball stays at the glove and settles into the hand over the next third of a second. */
+  gloveHold: { x: number; y: number; z: number; t0: number } | null;
   /** Sprint fatigue 0 (fresh) .. 1. */
   legs: number;
   /** Hitter's day-to-day form (standard-normal-ish, AR(1) over his plate appearances). */
@@ -129,6 +137,8 @@ export interface FielderPlan {
   releaseAt: number;
   throwBase: number;
   throwTo: PlayerRT | null;
+  /** The glove's random miss for the catch he is about to make, drawn once (unit normals; scaled by the catch's difficulty at the instant). */
+  catchZ: [number, number] | null;
   /** Throw decision bookkeeping (sequence, situation at the last answer, when to ask again). */
   askSeq: number;
   lastSig: string;
@@ -218,6 +228,12 @@ export interface RunnerRT {
   leadKey: string;
   /** A runner decision has been requested and not yet applied. */
   asking: boolean;
+  /** The slide he is in (null = running), when it began, and the base whose bag he is touching (0 = none). */
+  slideKind: 'feet' | 'head' | 'hookL' | 'hookR' | 'diveBack' | null;
+  slideAt: number;
+  contactBase: number;
+  /** A sidestep away from a tag he has seen coming. */
+  dodged: boolean;
   /** Dead-ball trot speed (m/s), 0 = not trotting. */
   trot: number;
   /** Put out before reaching this base: he still runs through it before walking off. */
@@ -340,6 +356,53 @@ export interface PrePitch {
   steal: { r: RunnerRT; go: boolean } | null;
 }
 
+export type UmpKey = 'plate' | 'first' | 'second' | 'third';
+
+export interface UmpireRT {
+  id: string;
+  name: string;
+  position: 'HP' | '1B-U' | '2B-U' | '3B-U';
+  key: UmpKey;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  /** Where he wants to be, and since when (he reacts a moment after the play changes). */
+  gx: number;
+  gz: number;
+  goalSince: number;
+  facing: number;
+  anim: import('./types').AnimHint;
+  animStart: number;
+  animUntil: number;
+}
+
+/** A fielder at a bag with the ball secure and his glove set down where the runner's foot / hand will arrive. */
+export interface BagTag {
+  F: PlayerRT;
+  r: RunnerRT;
+  base: number;
+  hand: 'glove' | 'hand';
+  /** Where the glove is (re-aimed while the runner is still far, fixed once he is committed to his slide). */
+  glove: { x: number; z: number };
+  frozen: boolean;
+  announced: boolean;
+}
+
+/** A fielder's tag sweep: from the start until the glove / hand arrives where he aimed. */
+export interface TagSweep {
+  F: PlayerRT;
+  r: RunnerRT;
+  start: number;
+  contact: number;
+  hand: 'glove' | 'hand';
+  aim: { x: number; z: number };
+  base: number | null;
+  /** The runner's sidestep, if he made one (tick, direction). */
+  dodgeAt: number;
+  dodgeDir: { x: number; z: number };
+}
+
 /** Casual ball handling: glove-to-hand transfer, a look at the situation, then an easy toss (possibly around the horn) to the pitcher. */
 export interface BallReturn {
   stage: 'transfer' | 'look' | 'flight';
@@ -365,6 +428,8 @@ export interface World {
   /** Plate-appearance start stage (see flow.startPlateAppearance). */
   paStage: number;
   prep: PrePitch;
+  /** The catcher's mitt plan for the pitch in flight. */
+  mitt: { x0: number; y0: number; x: number; y: number; tC: number; react: number; armed: boolean } | null;
   /** Swing decision state for the pitch in flight. */
   swingObs: import('./batting').SwingObservation | null;
   swingDecided: boolean;
@@ -392,6 +457,9 @@ export interface World {
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
   /** Runners who are out or scored and are walking off the field (still on screen). */
   exiting: RunnerRT[];
+  /** Tag sweeps in progress (open-field) and gloves set at a bag. */
+  tags: TagSweep[];
+  bagTags: BagTag[];
   /** Fielders / replaced players jogging to their dugout. */
   leavers: { p: PlayerRT; since: number }[];
   /** A casual ball return in progress (after a dead ball or a pitch). */
@@ -440,7 +508,9 @@ export interface World {
   /** Tick when the current half-inning started (for clocks). */
   halfStartTick: number;
   /** Fielders of the defense placed at positions in the snapshot. */
-  umpires: { id: string; name: string; position: 'HP' | '1B-U' | '2B-U' | '3B-U'; x: number; z: number }[];
+  umpires: UmpireRT[];
+  /** Umpire calls waiting for their moment (after the catch, after the tag / touch). */
+  umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean }[];
   ballInPlayEver: boolean;
   jitter: number;
   passedBallFlag: boolean;

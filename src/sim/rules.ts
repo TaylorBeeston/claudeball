@@ -8,6 +8,7 @@ import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { secToTicks } from './world';
 import * as flow from './flow';
 import * as handling from './handling';
+import * as umpires from './umpires';
 import * as inplay from './inplay';
 import * as running from './running';
 
@@ -176,7 +177,7 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
 // Outs and runs
 // ---------------------------------------------------------------------------------------------
 
-export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean): void {
+export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean, info: { margin?: number } = {}): void {
   if (r.state !== 'live' || w.outs >= 3) return;
   r.state = 'out';
   w.outs++;
@@ -188,7 +189,14 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   if (brBeforeFirst && (outType === 'force' || outType === 'tag')) r.exitVia = 1;
   if (play) play.outsThisPlay.push({ runner: r, force: force || brBeforeFirst, brBeforeFirst, tick: w.tick });
   if (r.isBatter && play) play.batterOut = true;
-  emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base });
+  const margin = info.margin;
+  emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base, ...(margin !== undefined ? { margin, closePlay: Math.abs(margin) < 0.1 } : {}) });
+  // the umpire at that bag (or the nearest one, for a tag in the open) signals it after the play
+  if (outType === 'force' || outType === 'tag' || outType === 'pickoff' || outType === 'caughtStealing' || outType === 'tagUp') {
+    const b = base ?? (r.target > r.base ? r.target : r.base);
+    const key = b >= 1 && b <= 4 ? (b === 4 ? 'plate' : b === 1 ? 'first' : b === 2 ? 'second' : 'third') : umpires.nearestUmp(w, r.p.x, r.p.z);
+    umpires.scheduleCall(w, key, 'out', umpires.baseCallDelay(margin !== undefined && Math.abs(margin) < 0.1), { atBase: b >= 1 ? b : undefined, playerId: r.p.info.id });
+  }
   if (w.outs >= 3) {
     thirdOut(w, force || brBeforeFirst);
   }

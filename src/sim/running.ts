@@ -4,6 +4,8 @@ import type { LeadDecision, PickoffDecision, RunnerDecision, RunnerRequest, Stea
 import { ask, situationOf } from './dispatch';
 import { BASE_POS } from './field';
 import { clamp } from './math';
+import * as tagging from './tagging';
+import { baseCallDelay, scheduleCall } from './umpires';
 import { catcherExchange, deliverySeconds, holdingLeadAdjust, sprintOf } from './attributes';
 import { setGoal, travelTime } from './movement';
 import { setAnim } from './util';
@@ -30,6 +32,10 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     responsible: w.pitcher,
     committedUntil: 0,
     slide: false,
+    slideKind: null,
+    slideAt: 0,
+    contactBase: 0,
+    dodged: false,
     dead: false,
     awarded: false,
     scoredTick: 0,
@@ -96,6 +102,7 @@ export function isOnBase(r: RunnerRT): boolean {
 export function vulnerable(r: RunnerRT): boolean {
   if (r.state !== 'live' || r.dead) return false;
   if (isOnBase(r)) return false;
+  if (r.contactBase && r.contactBase === r.base) return false; // a foot / hand on the bag
   if (r.overrun) return false;
   return true;
 }
@@ -196,6 +203,9 @@ export function snapRunnersToBases(w: World): void {
       r.target = r.base;
       r.want = r.base;
       r.overrun = false;
+      r.slideKind = null;
+      r.contactBase = 0;
+      r.dodged = false;
       r.tagWait = false;
       r.retouch = 0;
       r.stealing = false;
@@ -411,6 +421,10 @@ function tickRunner(w: World, r: RunnerRT): void {
     }
     return;
   }
+  if (r.contactBase) {
+    const cb = bpos(r.contactBase);
+    if (Math.hypot(p.x - cb.x, p.z - cb.z) > 1.7) r.contactBase = 0;
+  }
   if (w.tick < r.reaction) return;
   // a runner can never pass, or share a base with, the runner ahead of him
   if (r.want > r.base && !r.dead) {
@@ -452,9 +466,15 @@ function tickRunner(w: World, r: RunnerRT): void {
         if (dist < ROUND_L && Math.hypot(p.vx, p.vz) > 3) p.gait = 'turn';
       }
     }
+    // a slide: chosen by the state of the play; a hook aims to the side of the bag, away from the glove
+    const aim = tagging.updateSlide(w, r);
+    if (aim) {
+      gx += aim.x;
+      gz += aim.z;
+    }
     setGoal(p, gx, gz, stop, m);
     p.lookAt = null;
-    if (Math.hypot(p.x - tp.x, p.z - tp.z) < 0.9) touchBase(w, r, r.target);
+    if (tagging.touchesBag(r, r.target)) touchBase(w, r, r.target);
   } else if (r.base >= 1 && !(r.want === r.base && !r.dead && !r.overrun && !r.retouch && !r.isBatter && w.phase !== 'inPlay')) {
     // returning to / staying at the base
     const b = bpos(r.base);
@@ -472,15 +492,7 @@ function tickRunner(w: World, r: RunnerRT): void {
     else if (dd > 0.25) setGoal(p, b.x, b.z, true, mul);
     if (r.retouch && dd <= 0.9) r.retouchDone = true;
     // diving back to the bag with the ball coming
-    if (dd > 0.4 && dd < 3 && !r.overrun && !r.dead && Math.hypot(p.vx, p.vz) > 3 && fielding.playNearBase(w, r.base) && p.anim !== 'slide') setAnim(w, p, 'slide', 0.7);
-  }
-  // slide animation: close to the target base with the ball around
-  if (r.target > r.base && r.target >= 2 && !r.dead) {
-    const tp = bpos(r.target);
-    const dd = Math.hypot(p.x - tp.x, p.z - tp.z);
-    if (dd < 3.4 && Math.hypot(p.vx, p.vz) > 3 && fielding.playNearBase(w, r.target)) {
-      if (p.anim !== 'slide') setAnim(w, p, 'slide', 0.7);
-    }
+    tagging.updateSlide(w, r);
   }
 }
 
@@ -489,9 +501,14 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
   const from = r.base;
   r.base = b;
   r.touched[b] = true;
+  r.contactBase = b;
   emit(w, { type: 'runnerAdvance', playerId: r.p.info.id, fromBase: from, toBase: b });
   emit(w, { type: 'baseTouch', playerId: r.p.info.id, base: b, trot: r.dead, pos: { x: r.p.x, y: 0, z: r.p.z } });
-  if (!r.dead && fielding.playNearBase(w, b)) emit(w, { type: 'safe', playerId: r.p.info.id, base: b });
+  if (!r.dead && fielding.playNearBase(w, b)) {
+    const eta = tagging.fielderETA(w, b);
+    emit(w, { type: 'safe', playerId: r.p.info.id, base: b, margin: -eta, closePlay: eta < 0.1 });
+    scheduleCall(w, b === 4 ? 'plate' : b === 1 ? 'first' : b === 2 ? 'second' : 'third', 'safe', baseCallDelay(eta < 0.1), { atBase: b, playerId: r.p.info.id });
+  }
   if (b === 1 && r.isBatter && r.want === 1) r.overrun = true;
   if (b === 4) {
     if (r.dead && r.trot > 0) {

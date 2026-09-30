@@ -12,6 +12,8 @@ import * as fielding from './fielding';
 import * as flow from './flow';
 import * as rules from './rules';
 import * as running from './running';
+import * as tagging from './tagging';
+import { nearestUmp, scheduleCall } from './umpires';
 import { DUGOUT } from './setup';
 import { CallInfo } from './types';
 
@@ -56,6 +58,8 @@ function beginLive(w: World, kind: PlayKind): PlayState {
   w.phase = 'inPlay';
   w.ball.lob = null;
   w.ret = null;
+  w.tags = [];
+  w.bagTags = [];
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.origin = r.base;
@@ -213,6 +217,7 @@ function homeRun(w: World, bip: BipInfo): void {
   const dist = Math.hypot(b.x, b.z);
   emit(w, { type: 'homeRun', batterId: w.batter!.info.id, distance: dist, heightAboveWall: b.y - fenceAt(w.env.fence, b.x, b.z).height, pos: { x: b.x, y: b.y, z: b.z } });
   emit(w, { type: 'call', call: mkCall(w, 'homeRun') });
+  scheduleCall(w, b.x < 0 ? 'first' : 'third', 'homerun', 0.4); // the foul-line umpire on that side signals it
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
     r.dead = true;
@@ -276,6 +281,7 @@ export function tickInPlay(w: World): void {
   else if (ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown') stepLiveBall(w);
 
   fielding.tickWallPlay(w);
+  fielding.updateGloveTargets(w);
   if (!play.dead) {
     // throws leave the hand when the wind-up ends
     for (const F of fielding.fielders(w)) {
@@ -284,6 +290,8 @@ export function tickInPlay(w: World): void {
     fielding.fieldingAttempts(w);
     if (ball.mode === 'thrown') fielding.checkWildThrow(w);
     checkPlays(w);
+    tagging.tickTagging(w);
+    tagging.catcherBlock(w);
     if (bip && !bip.infieldFlyChecked) checkInfieldFly(w, bip);
     if (bip) determineFairFoul(w, bip);
   }
@@ -379,6 +387,8 @@ function determineFairFoul(w: World, bip: BipInfo): void {
   const first = w.ball.touchedGround;
   if (b.z >= BASE_XZ && (b.y < 0.2 || w.ball.body.rolling)) {
     bip.status = isFairXZ(b.x, b.z) ? 'fair' : 'foul';
+    // a ball that lands close to the line: the nearest umpire signals it fair
+    if (bip.status === 'fair' && Math.abs(Math.abs(b.x) - b.z) < 2.5) scheduleCall(w, nearestUmp(w, b.x, b.z), 'fair', 0.2);
     return;
   }
   if (first && !isFairXZ(b.x, b.z) && (b.z < 0 || Math.abs(b.x) > b.z + 4) && w.tick - w.ball.lastBounceTick < 3 + 1e6) {
@@ -420,6 +430,7 @@ function foulBallDead(w: World): void {
   play.deadReason = 'foul';
   w.ball.mode = w.ball.holder ? 'held' : 'dead';
   emit(w, { type: 'call', call: mkCall(w, 'foul') });
+  scheduleCall(w, nearestUmp(w, w.ball.body.x, w.ball.body.z), 'foul', 0.2);
   if (w.count.strikes < 2) w.count.strikes++;
   w.pitcher.pit.strikes++;
   // runners go back to their original bases; batter-runner is removed
@@ -469,27 +480,19 @@ function checkPlays(w: World): void {
     const advancingTarget = r.target > r.base ? r.target : 0;
     if (advancingTarget && running.forced(w, r)) {
       const bp = bpos(advancingTarget);
-      if (Math.hypot(F.x - bp.x, F.z - bp.z) <= 0.95 && !r.touched[advancingTarget]) {
-        rules.recordOut(w, r, 'force', [...w.play!.touches.slice(-2), F].filter((x, i, a) => a.indexOf(x) === i), advancingTarget, true);
+      // a foot on the bag with the ball secure, before the runner has touched it (a throw that pulls him off the bag is no force)
+      if (tagging.footOnBase(F, advancingTarget) && !r.touched[advancingTarget]) {
+        rules.recordOut(w, r, 'force', [...w.play!.touches.slice(-2), F].filter((x, i, a) => a.indexOf(x) === i), advancingTarget, true, { margin: Math.max(0, running.runnerETA(r, advancingTarget)) });
         continue;
       }
     }
     // doubled off: failed to retouch after a catch
     if (r.retouch && !r.retouchDone) {
       const bp = bpos(r.retouch);
-      if (Math.hypot(F.x - bp.x, F.z - bp.z) <= 0.95) {
-        rules.recordOut(w, r, 'tagUp', [F], r.retouch, true);
+      if (tagging.footOnBase(F, r.retouch)) {
+        rules.recordOut(w, r, 'tagUp', [F], r.retouch, true, { margin: 0.2 });
         continue;
       }
-    }
-    // tag
-    if (running.vulnerable(r) && Math.hypot(F.x - r.p.x, F.z - r.p.z) <= 0.95) {
-      if (w.play!.kind === 'steal') {
-        // caught stealing
-      }
-      const type = w.play!.kind === 'steal' && r.stealing ? 'caughtStealing' : w.play!.kind === 'pickoff' ? 'pickoff' : 'tag';
-      if (type === 'caughtStealing') r.p.bat.cs++;
-      rules.recordOut(w, r, type, [F], null, false);
     }
   }
   void catchOut;
