@@ -27,7 +27,7 @@ function episodes(seed: string, innings = 4) {
         st.delete(F.info.id);
         continue;
       }
-      if (!s || Math.hypot(goal.x - s.gx, goal.z - s.gz) > 2.5) {
+      if (!s || Math.hypot(goal.x - s.gx, goal.z - s.gz) > 1.0) {
         if (s?.reached) over.push(s.maxOver);
         s = { gx: goal.x, gz: goal.z, reached: false, maxOver: 0 };
         st.set(F.info.id, s);

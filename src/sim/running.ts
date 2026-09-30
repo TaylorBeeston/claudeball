@@ -268,7 +268,8 @@ export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTim
   const armV = 27 + 0.21 * catcher.info.ratings.arm;
   const D = Math.hypot(bp.x - catcher.x, bp.z - catcher.z);
   const exch = catcherExchange(catcher.info.ratings);
-  const ballTime = windupSecs + 0.44 + exch + D / (armV * 0.9) + 0.2;
+  // (+ 0.3: the covering man catches it, sets the glove and makes the sweep)
+  const ballTime = windupSecs + 0.44 + exch + D / (armV * 0.9) + 0.3;
   return { ballTime, runnerTime };
 }
 

@@ -1,6 +1,6 @@
 import { flightStep, stepBall } from './ball';
 import { blockHalfWidth, consistencyScale, framingPull, nextForm, pressureOf, deliverySeconds, fielderTopSpeed, routeEfficiency, sprintOf } from './attributes';
-import { BatSwing, batBallCollision, buildSwing, decisionTime, perceivePitch, stanceFor } from './batting';
+import { BatSwing, batBallCollision, buildSwing, decisionTime, perceivePitch, stanceFor, SHOULDER_X } from './batting';
 import { ask, situationOf } from './dispatch';
 import { PENDING } from './decisions';
 import type { AlignmentDecision } from './decisions';
@@ -22,7 +22,7 @@ import { scheduleCall } from './umpires';
 import { ensureBallReturn, hurryStragglers, readyToPitch, READY_TIMEOUT, sendHome, sendToDugout } from './handling';
 export { tickLob } from './handling';
 
-export const BATTER_X = 0.72;
+export const BATTER_X = SHOULDER_X; // batting.ts: the batter's body centre, metres off the plate centre
 export const CATCH_Z = -0.8;
 const WALKUP = 2.4;
 const BETWEEN = 3.6;

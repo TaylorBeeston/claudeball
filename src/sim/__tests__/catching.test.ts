@@ -29,15 +29,19 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
   it('every catch has a glove target from the trajectory: the ball meets the glove there', () => {
     expect(all.length).toBeGreaterThan(40);
     let withTarget = 0;
+    const dists: number[] = [];
     for (const { e, prev } of all) {
       const p = prev.players.find((q) => q.id === e.fielderId)!;
       expect(p.gloveHand === 'L' || p.gloveHand === 'R').toBe(true);
       if (!p.gloveTarget) continue;
       withTarget++;
       const d = Math.hypot(p.gloveTarget.x - e.pos.x, p.gloveTarget.y - e.pos.y, p.gloveTarget.z - e.pos.z);
-      expect(d).toBeLessThan(0.3);
+      expect(d).toBeLessThan(0.15);
+      dists.push(d);
     }
-    expect(withTarget / all.length).toBeGreaterThan(0.9);
+    expect(withTarget / all.length).toBeGreaterThan(0.98);
+    dists.sort((a, b) => a - b);
+    expect(dists[Math.floor(dists.length / 2)]).toBeLessThan(0.05); // it converges on the ball's own arrival point
   });
 
   it('catch events say how the catch was made (kind, height, side, firm) and cover pitches, throws, fly balls and grounders', () => {
@@ -71,6 +75,47 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
     const mean = progress.reduce((a, b) => a + b, 0) / progress.length;
     expect(mean).toBeGreaterThan(0.4);
     expect(mean).toBeLessThan(0.65);
+  });
+
+  it('every catch (pitch, throw to a base, pickoff, casual return, fly, grounder) has a catch hint, a glove target and catchIn one tick before it', () => {
+    let hinted = 0;
+    let targeted = 0;
+    const kinds = new Set<string>();
+    for (const { e, prev } of all) {
+      const p = prev.players.find((q) => q.id === e.fielderId)!;
+      if (CATCH_HINTS.has(p.anim) || p.anim === 'catch_jump') hinted++;
+      if (p.gloveTarget && p.catchIn != null) targeted++;
+      kinds.add(e.kind!);
+      if (e.kind === 'fly') expect(['catch_fly', 'catch_fly_run', 'catch_backhand', 'catch_jump']).toContain(p.anim);
+      if (e.kind === 'ground') expect(['field_grounder', 'catch_comebacker', 'catch_backhand', 'catch_jump']).toContain(p.anim);
+      if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_stretch']).toContain(p.anim);
+    }
+    expect(hinted / all.length).toBeGreaterThan(0.98);
+    expect(targeted / all.length).toBeGreaterThan(0.98);
+  });
+
+  it('the casual return to the pitcher is a catch too: glove target, clip and a catch event at the glove', () => {
+    const g = createGame({ seed: 'lobcatch', pace: 1 });
+    const w = g._world;
+    const returns: string[] = [];
+    g.on('ballReturn', (e) => returns.push(e.toId));
+    let checked = 0;
+    let last: GameStateSnapshot | null = null;
+    g.on('catch', (e) => {
+      if (!last || e.kind !== 'throw' || !returns.includes(e.fielderId)) return;
+      const p = last.players.find((q) => q.id === e.fielderId)!;
+      expect(p.gloveTarget).toBeTruthy();
+      expect(p.anim).toBe('catch_throw');
+      expect(Math.hypot(p.gloveTarget!.x - e.pos.x, p.gloveTarget!.y - e.pos.y, p.gloveTarget!.z - e.pos.z)).toBeLessThan(0.2);
+      checked++;
+    });
+    let n = 0;
+    while (!g.over && checked < 8 && n++ < 240 * 1500) {
+      g.step(1 / 240);
+      last = g.getState();
+    }
+    expect(w.inning).toBeGreaterThan(0);
+    expect(checked).toBeGreaterThanOrEqual(5);
   });
 
   it('catchIn counts down to the catch: the hint starts CATCH_LEAD before it, so the catch frame lands on arrival', () => {
@@ -147,13 +192,14 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
     expect(checked).toBeGreaterThan(3);
   });
 
-  it('the mound profile is the asset field.py mound_h exactly', () => {
-    expect(groundHeight(0, 20.5)).toBeCloseTo(0.07, 2);
-    expect(groundHeight(0, 60 * 0.3048 + 0.5)).toBeCloseTo(0.254, 3); // level top (10 in)
-    const FT = 0.3048;
-    expect(groundHeight(0, 54 * FT)).toBeCloseTo(0.254 - 6 * 0.0254, 1); // 1 in/ft falls off the front of the level rectangle
+  it('the mound profile is the asset field.py mound_h: min(1 in/ft cone, 18 ft circle skirt)', () => {
+    // sample values from assets/README.md "Mound"
+    const samples: [number, number, number][] = [[0, 17.98, 0.229], [0, 16.5, 0.105], [0, 19.5, 0.225], [0, 20.5, 0.125], [2.5, 19, 0.007], [0, 18.5, 0.254], [0, 19.15, 0.254]];
+    for (const [x, z, h] of samples) expect(Math.abs(groundHeight(x, z) - h)).toBeLessThan(0.002);
+    expect(groundHeight(0, 19.153 + 0.01)).toBeLessThan(0.254); // the level top ends at 60 ft + 34 in = 19.152 m
     expect(groundHeight(0, 5)).toBe(0);
-    expect(groundHeight(15, 20)).toBe(0);
+    expect(groundHeight(3, 19)).toBe(0); // outside the 18 ft circle laterally (x = 9 ft = 2.74 m)
+    expect(groundHeight(0, 60 * 0.3048 + 9 * 0.3048 + 1)).toBe(0); // and behind it
   });
 
   it('the mitt moves during the pitch: from where the catcher set up toward where the ball arrives, before the catch', () => {

@@ -123,13 +123,14 @@ export function snapshot(w: World): GameStateSnapshot {
     const pose = w.swing.pose();
     bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress };
   } else if (w.batter && (w.phase === 'prePitch' || w.phase === 'windup' || w.phase === 'pitch')) {
-    // ready stance: bat cocked over the back shoulder
+    // ready stance: the batting_stance clip's bat (knob 0.20 m toward the plate and 0.17 m behind the body centre, bat up and back)
     const bx = w.batter.x;
+    const kn = { x: bx - side * 0.2, y: 1.36, z: w.batter.z - 0.17 };
     bat = {
       active: false,
       batterId: w.batter.info.id,
-      knob: { x: bx + side * 0.05, y: 1.3, z: w.batter.z - 0.1 },
-      tip: { x: bx + side * 0.1, y: 1.95, z: w.batter.z - 0.45 },
+      knob: kn,
+      tip: { x: kn.x + side * 0.121 * 0.84, y: kn.y + 0.946 * 0.84, z: kn.z - 0.302 * 0.84 },
       swingT: -1,
     };
   } else {

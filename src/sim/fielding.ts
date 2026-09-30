@@ -557,7 +557,7 @@ function attempt(w: World, F: PlayerRT, stretch: number): void {
   const sp = Math.hypot(b.vx, b.vy, b.vz);
   const rel = Math.hypot(b.vx - F.vx, b.vy, b.vz - F.vz);
   const fs = Math.hypot(F.vx, F.vz);
-  const air = b.y > 0.4 && !b.rolling;
+  const air = isAirBall(ball.mode, ball.touchedGround, b.rolling, b.y);
   const g = F.info.ratings.glove;
   const isCatcher = F.fieldPos === 'C';
   const skill = isCatcher ? (g + F.info.ratings.catching) / 2 : g;
@@ -664,7 +664,7 @@ function catchHint(w: World, F: PlayerRT, x: number, z: number, kind: 'throw' | 
   let hint: AnimHint;
   const speed = Math.hypot(F.vx, F.vz);
   if (kind === 'throw' || kind === 'pickoff') hint = F.fieldPos === '1B' || Math.hypot(x - F.x, z - F.z) > 1.0 || stretch > 0.6 ? 'catch_stretch' : 'catch_throw';
-  else if (F.fieldPos === 'P') hint = 'catch_comebacker';
+  else if (F.fieldPos === 'P' && (kind === 'ground' || kind === 'line')) hint = 'catch_comebacker';
   else if (kind === 'ground') hint = 'field_grounder';
   else if (kind === 'line') hint = 'catch_line_drive';
   else if (lat > 0.6) hint = 'catch_backhand';
@@ -1143,47 +1143,123 @@ function meetPoint(w: World, F: PlayerRT): { x: number; y: number; z: number; t:
   return null;
 }
 
-/** Each tick a ball is in flight: publish the glove target of the fielder about to catch it, and start his catch animation ~0.3 s ahead. */
+/**
+ * One rule for "a catch in the air" (a fly ball or line drive: an out) against a grounder, used by the catch itself and by the hint that is armed ahead of it:
+ * off the bat and not yet down, or a deflected ball still above knee height.
+ */
+export function isAirBall(mode: string, touchedGround: boolean, rolling: boolean, y: number): boolean {
+  return !touchedGround && !rolling && (mode === 'batted' || y > 0.5);
+}
+
+const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'catch_stretch' ? 'throw' : 'air');
+
+/** Whether his catch clip is running (armed, not expired, still the catch hint): a stale flag from an earlier play does not count. */
+export function catchClipOn(w: World, F: PlayerRT): boolean {
+  return F.catchArmed && w.tick < F.animUntil && CATCH_LEAD[F.anim] !== undefined;
+}
+
+/** How a ball reaches a fielder: a throw / pickoff, a line drive, a fly ball (it is still in the air when he takes it) or a grounder. */
+function catchKindAt(w: World, tArr: number, ty = 1): 'throw' | 'pickoff' | 'fly' | 'line' | 'ground' {
+  const ball = w.ball;
+  if (ball.mode === 'thrown') return w.play?.kind === 'pickoff' ? 'pickoff' : 'throw';
+  // the same rule the catch itself uses (`isAirBall`), applied to the ball as it will be at the arrival
+  if (!isAirBall(ball.mode, ball.touchedGround, ball.body.rolling, ty)) return 'ground';
+  if (tArr <= 4 * TICK) return w.play?.bip?.line ? 'line' : 'fly'; // (at the last ticks the present state is the answer)
+  const tNow = (w.tick - ball.pathStart) * TICK;
+  let pvy = ball.body.vy;
+  for (const s of ball.path) {
+    if (s.t - tNow > tArr + 0.03) break;
+    if (s.t - tNow > 0.02 && (s.rolling || (pvy < 0 && s.vy > 0))) return 'ground'; // it bounces before he gets there
+    pvy = s.vy;
+  }
+  return w.play?.bip?.line ? 'line' : 'fly';
+}
+
+/**
+ * Each tick a ball is in flight: publish the glove target of every fielder it is about to reach and start his catch animation
+ * `CATCH_LEAD` ahead. The target is re-planned every tick from the latest trajectory; in the last few ticks it is the ball's own next position(s),
+ * so at the catch it equals the `catch` event's `pos`.
+ */
 export function updateGloveTargets(w: World): void {
   const ball = w.ball;
+  if (ball.holder || !(ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown')) {
+    for (const F of fielders(w)) {
+      if (F.gloveTarget && F !== w.catcher) {
+        F.gloveTarget = null;
+        F.catchArmed = false;
+      }
+    }
+    return;
+  }
+  ensurePath(w);
+  const bb = ball.body;
+  const vh = Math.hypot(bb.vx, bb.vz);
+  const cand = new Set<PlayerRT>();
+  if (ball.mode === 'thrown' && ball.throwTo) cand.add(ball.throwTo);
+  else if (w.play?.primary) cand.add(w.play.primary);
+  // anyone the ball is about to reach: a leaper, or a fielder who is not the one the play was built around
+  const radius = 4 + 0.5 * vh;
+  for (const F of fielders(w)) if (F.leap || Math.hypot(bb.x - F.x, bb.z - F.z) < radius) cand.add(F);
   for (const F of fielders(w)) {
-    if (F.gloveTarget && F !== w.catcher && (ball.holder || w.tick > F.gloveAt + 30)) {
+    if (!cand.has(F) && F.gloveTarget && F !== w.catcher) {
       F.gloveTarget = null;
       F.catchArmed = false;
     }
   }
-  if (ball.holder || !(ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown')) return;
-  ensurePath(w);
-  const cand: PlayerRT[] = [];
-  if (ball.mode === 'thrown' && ball.throwTo) cand.push(ball.throwTo);
-  else if (w.play?.primary) cand.push(w.play.primary);
-  // anyone the ball is about to reach (a leaper, or a fielder who is not the one the play was built around)
-  for (const F of fielders(w)) if (!cand.includes(F) && (F.leap || Math.hypot(ball.body.x - F.x, ball.body.z - F.z) < 2.5)) cand.push(F);
   for (const F of cand) {
+    if (F === w.catcher && w.phase !== 'inPlay') continue;
+    const dh = Math.hypot(bb.x - F.x, bb.z - F.z);
+    const sp = Math.hypot(F.vx, F.vz);
+    const reachH = (bb.y < 0.5 ? 0.92 : 1.15) + (sp > 5 ? 0.22 : 0);
     const m = meetPoint(w, F);
-    if (!m) {
-      // no meeting point ahead: if the ball is already at him (or he is leaping for it) the glove is simply on the ball
-      const bb = ball.body;
-      const near = Math.hypot(bb.x - F.x, bb.z - F.z) < (F.leap ? 3.2 : 2.2);
-      F.gloveTarget = near ? { x: bb.x, y: Math.max(0.12, bb.y), z: bb.z } : null;
-      F.gloveAt = w.tick;
+    // ticks until the attempt: the ball closes on him by about vh per second (a fielder moving toward it adds his own speed)
+    const closing = Math.max(1.5, vh + sp * 0.5) * TICK;
+    const gap = dh - reachH;
+    let tArr: number;
+    let tx: number, ty: number, tz: number;
+    if (gap <= closing * 4 && dh < 12) {
+      // imminent: the glove is where the ball will be at the attempt
+      const n = Math.max(1, Math.min(4, Math.ceil(gap / closing)));
+      tArr = n * TICK;
+      tx = bb.x + bb.vx * tArr;
+      ty = Math.max(0.12, bb.y + bb.vy * tArr - 0.5 * 9.81 * tArr * tArr);
+      tz = bb.z + bb.vz * tArr;
+    } else if (m) {
+      tArr = m.t;
+      tx = m.x;
+      ty = m.y;
+      tz = m.z;
+    } else if (ball.mode === 'thrown' && ball.throwTo === F && vh > 1) {
+      // nothing predicted (a throw that will bounce or sail): he reaches for it where it comes to him
+      tArr = Math.max(TICK, gap / Math.max(3, vh));
+      tx = bb.x + bb.vx * tArr;
+      ty = Math.max(0.12, bb.y + bb.vy * tArr - 0.5 * 9.81 * tArr * tArr);
+      tz = bb.z + bb.vz * tArr;
+    } else {
+      if (F.gloveTarget && F !== w.catcher) {
+        F.gloveTarget = null;
+        F.catchArmed = false;
+      }
       continue;
     }
     if (!F.plan.catchZ) F.plan.catchZ = [w.rng.normal(0, 1), w.rng.normal(0, 1)];
     const z = F.plan.catchZ;
-    // the glove is a little off the ball's line by the miss he is going to make (small: it is scaled up at the instant by the difficulty)
-    // in the last few hundredths of a second the glove simply tracks the ball itself
-    const bb = ball.body;
-    const last = m.t <= 0.07;
-    F.gloveTarget = last ? { x: bb.x + z[0] * 0.02, y: Math.max(0.12, bb.y) + z[1] * 0.02, z: bb.z } : { x: m.x + z[0] * 0.03, y: m.y + z[1] * 0.03, z: m.z };
-    F.gloveAt = w.tick + Math.round(m.t / TICK);
+    // the glove is a little off the ball's line by the miss he is going to make (small, and none in the last ticks so the target IS the catch position)
+    const off = tArr <= 4 * TICK ? 0 : Math.min(0.03, tArr * 0.06);
+    F.gloveTarget = { x: tx + z[0] * off, y: Math.max(0.12, ty + z[1] * off), z: tz };
+    F.gloveAt = w.tick + Math.round(tArr / TICK);
+    // a clip that ran out before the ball arrived (he was late) or that started too early (the ball slowed) is started again at the right lead
+    if (F.catchArmed && (!catchClipOn(w, F) || tArr > (CATCH_LEAD[F.anim] ?? 0.3) + 0.2)) F.catchArmed = false;
+    if (F.catchArmed && !F.leap && tArr <= 4 * TICK) {
+      // about to catch it: if the ball turned out to be the other kind (it did not bounce, or it did), the clip is switched to the one that matches the event
+      const now = catchKindAt(w, tArr, ty);
+      if (catchFamily(F.anim) !== (now === 'ground' ? 'ground' : now === 'throw' || now === 'pickoff' ? 'throw' : 'air')) F.catchArmed = false;
+    }
     if (!F.catchArmed && !F.leap) {
-      const air = m.y > 0.4 && !ball.touchedGround;
-      const fromThrow = ball.mode === 'thrown';
-      const kind = fromThrow ? (w.play?.kind === 'pickoff' ? 'pickoff' : 'throw') : air ? (w.play?.bip?.line ? 'line' : 'fly') : 'ground';
-      const ch = catchHint(w, F, m.x, m.z, kind, lateralOf(F, m.x, m.z), 0);
-      // the clip starts exactly its catch-frame time before the arrival
-      if (m.t <= ch.lead) {
+      const kind = catchKindAt(w, tArr, ty);
+      const ch = catchHint(w, F, tx, tz, kind, lateralOf(F, tx, tz), gap > 0 ? Math.min(1, dh / reachH) * 0.5 : 0);
+      // the clip starts exactly its catch-frame time before the arrival (a throw that is quicker than that starts it at once)
+      if (tArr <= ch.lead) {
         F.catchArmed = true;
         setAnim(w, F, ch.hint, ch.lead * 2);
       }
