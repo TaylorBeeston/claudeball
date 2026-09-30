@@ -92,4 +92,25 @@ describe('umpires: positions, timed calls and gestures', () => {
     expect(hr!.time - home.time).toBeGreaterThan(0.3);
     expect(hr!.time - home.time).toBeLessThan(0.6);
   });
+
+  it('a strikeout is signalled with `ump_out_strikeout` (a strike swinging that is not the third stays `ump_strike_swinging`)', () => {
+    const g = createGame({ seed: 'ump-k', pace: 0 });
+    const w = g._world;
+    const seen = { k: 0, sw: 0 };
+    g.on('umpireCall', (e) => {
+      const u = w.umpires.find((q) => q.id === e.umpireId)!;
+      if (e.kind === 'strikeout') {
+        expect(u.anim).toBe('ump_out_strikeout');
+        seen.k++;
+      }
+      if (e.kind === 'strike_swinging') {
+        expect(u.anim).toBe('ump_strike_swinging');
+        seen.sw++;
+      }
+    });
+    let n = 0;
+    while (!g.over && seen.k < 6 && n++ < 240 * 3000) g.step(1 / 60);
+    expect(seen.k).toBeGreaterThanOrEqual(6);
+    expect(seen.sw).toBeGreaterThan(0);
+  });
 });

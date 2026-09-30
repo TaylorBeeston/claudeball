@@ -168,11 +168,14 @@ function recording(flipRunnerAnswerAt = -1) {
   const make = (g: () => ReturnType<typeof createGame>): DecisionProvider => ({
     runner: (req) => {
       let d = g().ai.runner(req);
-      if (n === flipRunnerAnswerAt) {
-        d = { want: d.want > req.base ? req.base : Math.min(4, req.base + 1), tagUp: false, recheckSec: d.recheckSec };
+      // (only decisions made with the ball in play count: a flip while everyone waits between pitches changes nothing)
+      const live = req.ball.mode === 'batted' || req.ball.mode === 'thrown' || req.ball.mode === 'loose';
+      if (live && n === flipRunnerAnswerAt) {
+        // (the wrong answer stands until the play changes: the AI's 0.05 s recheck would undo it before it showed)
+        d = { want: d.want > req.base ? req.base : Math.min(4, req.base + 1), tagUp: false };
         flippedAtTick = Math.round(req.time * 240);
       }
-      n++;
+      if (live) n++;
       answers.push(d);
       return d;
     },

@@ -387,6 +387,8 @@ export interface BagTag {
   glove: { x: number; z: number };
   frozen: boolean;
   announced: boolean;
+  /** Tick before which the glove cannot make contact (the clip's swing). */
+  earliest: number;
 }
 
 /** A fielder's tag sweep: from the start until the glove / hand arrives where he aimed. */
