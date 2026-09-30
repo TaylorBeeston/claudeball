@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
-import { ARM_REACH, HAND_FRONT, HAND_REAR, TORSO_HALF, bodyCentre, loadPose, shouldersAt, torsoState } from '../batting';
+import { ARM_REACH, HAND_FRONT, HAND_REAR, SHOULDER_Z, TORSO_HALF, bodyCentre, loadPose, shouldersAt, torsoState } from '../batting';
 import type { World } from '../world';
 
 /** Every tick of the first swings (not bunts): the world at that moment. */
@@ -100,5 +100,24 @@ describe('bat vs batter body', () => {
     });
     expect(contacts).toBeGreaterThan(20);
     expect(free / contacts).toBeGreaterThan(0.55);
+  });
+
+  it('at contact the lead wrist is in the region the assets\' swing analysis found feasible (height >= 1.05 m, >= 0.30 m toward the pitcher) for pitches at or above 0.75 m', () => {
+    const rows: { by: number; fy: number; lat: number }[] = [];
+    let prev = 0;
+    swingTicks('body-5', 140, (w) => {
+      const sw = w.swing!;
+      if (prev < sw.plan.tauC && sw.tau >= sw.plan.tauC) {
+        const p = sw.pose();
+        rows.push({ by: w.ball.body.y, fy: p.knob.y + HAND_FRONT * p.dir.y, lat: p.knob.z + HAND_FRONT * p.dir.z - SHOULDER_Z });
+      }
+      prev = sw.tau;
+    });
+    const hi = rows.filter((r) => r.by >= 0.75);
+    expect(hi.length).toBeGreaterThan(15);
+    const med = [...hi].map((r) => r.fy).sort((a, b) => a - b)[Math.floor(hi.length / 2)];
+    expect(med).toBeGreaterThanOrEqual(1.04);
+    expect(hi.filter((r) => r.lat >= 0.3).length / hi.length).toBeGreaterThan(0.9);
+    // (lower pitches: he has to get the hands down to them; the engine's hand IK should ease off there)
   });
 });

@@ -202,10 +202,15 @@ export function tickTagging(w: World): void {
     const keep: typeof w.bagTags = [];
     for (const g of w.bagTags) {
       const r = g.r;
-      const done = !fielding || g.F !== fielding || r.state !== 'live' || r.dead || r.contactBase === g.base || (r.base >= g.base && r.touched[g.base]);
+      const done = !fielding || g.F !== fielding || (r.state !== 'live' && r.state !== 'scored') || r.dead || r.contactBase === g.base || (r.base >= g.base && r.touched[g.base]);
       if (done) {
-        // the runner got to the bag: if he had to get around a glove to do it, say so
-        if (g.announced && g.F === fielding && r.state === 'live' && (r.contactBase === g.base || r.touched[g.base])) {
+        // the runner got to the bag: if he had to get around a glove to do it, say so, at the clip's contact frame
+        const got = r.state !== 'out' && (r.contactBase === g.base || r.touched[g.base]);
+        if (g.announced && g.F === fielding && got) {
+          if (w.tick < g.contactTick) {
+            keep.push(g);
+            continue;
+          }
           const how = r.slideKind ?? (r.dodged ? ('dodge' as const) : null);
           if (how) emit(w, { type: 'tagAvoided', fielderId: g.F.info.id, runnerId: r.p.info.id, slide: how });
         }
@@ -216,7 +221,7 @@ export function tickTagging(w: World): void {
       if (!g.frozen) {
         g.glove = bagGlove(g.F, r, g.base, { x: 0, z: 0 });
         // he starts the clip so that its contact frame is when the runner reaches the glove (the catcher's block clip is longer)
-        const lead = g.F === w.catcher ? BLOCK_CONTACT_S : TAG_CONTACT_S;
+        const lead = g.F === w.catcher ? BLOCK_CONTACT_S - 0.1 : TAG_CONTACT_S; // (a runner who slides at the plate is slower than his approach speed)
         const spd = Math.max(1.5, Math.hypot(r.p.vx, r.p.vz));
         const tc = (dRun - GLOVE_SET - 0.5) / spd;
         if (dRun < 2.4 || tc <= lead) {
@@ -238,6 +243,7 @@ export function tickTagging(w: World): void {
           g.announced = true;
           // the hint starts with the sweep; contact is not before the clip's contact frame (a tag made straight off a late catch still has its swing)
           g.earliest = w.tick + secToTicks(TAG_MIN_S);
+          g.contactTick = w.tick + secToTicks(g.F === w.catcher ? BLOCK_CONTACT_S : TAG_CONTACT_S);
           if (g.F === w.catcher) setAnim(w, g.F, 'catcher_block', BLOCK_CLIP_S);
           else setAnim(w, g.F, g.hand === 'glove' ? 'tag_glove' : 'tag_hand', TAG_CLIP_S);
           emit(w, { type: 'tagAttempt', fielderId: g.F.info.id, runnerId: r.p.info.id, base: g.base, hand: g.hand, pos: { x: g.glove.x, y: r.slideKind ? 0.3 : 0.7, z: g.glove.z } });
@@ -286,11 +292,12 @@ export function tickTagging(w: World): void {
     if (r.state !== 'live' || r.dead || !running.vulnerable(r)) continue;
     const b = r.target > r.base ? r.target : r.base >= 1 ? r.base : 0;
     const bp = b >= 1 ? bpos(b) : null;
-    const atBag = !!bp && Math.hypot(H.x - bp.x, H.z - bp.z) <= 1.1 && Math.hypot(r.p.x - bp.x, r.p.z - bp.z) < 6;
+    // (the catcher's block clip is long, 26/24 s to its tag contact: he starts it when the runner is still ~1.1 s away)
+    const atBag = !!bp && Math.hypot(H.x - bp.x, H.z - bp.z) <= 1.1 && Math.hypot(r.p.x - bp.x, r.p.z - bp.z) < (H === w.catcher ? 13 : 6);
     if (atBag) {
       if (secure && !w.bagTags.some((g) => g.F === H && g.r === r)) {
         const hand: 'glove' | 'hand' = H.plan.kind === 'tag' && w.tick >= H.plan.holdUntil + 24 ? 'hand' : 'glove';
-        w.bagTags.push({ F: H, r, base: b, hand, glove: bagGlove(H, r, b, { x: 0, z: 0 }), frozen: false, announced: false, earliest: 0 });
+        w.bagTags.push({ F: H, r, base: b, hand, glove: bagGlove(H, r, b, { x: 0, z: 0 }), frozen: false, announced: false, earliest: 0, contactTick: 0 });
       }
       continue;
     }
