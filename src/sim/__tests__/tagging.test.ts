@@ -243,7 +243,7 @@ describe('force plays: a foot on the bag with the ball', () => {
     F.x = first.x - dir.x * 0.0 + (dir.z) * standoff;
     F.z = first.z - dir.z * 0.0 - (dir.x) * standoff;
     F.vx = F.vz = 0;
-    w.play = newPlay(w, 'battedBall');
+    w.play = newPlay(w, 'steal');
     w.phase = 'inPlay';
     giveBall(w, F);
     F.plan.lastAttempt = w.tick - 40;
@@ -284,5 +284,97 @@ describe('the body a tag has to find', () => {
     const head = runnerBody(r);
     expect(Math.hypot(head.tx - head.cx, head.tz - head.cz)).toBeGreaterThan(1.1);
     expect(feet.radius).toBeLessThan(up.radius);
+  });
+
+  it('the tag clip is timed to the contact: `tagAttempt` starts the hint and `tag` / `tagAvoided` come 8/24 s later (the clip\'s contact frame)', () => {
+    const deltas: number[] = [];
+    for (let k = 0; k < 60; k++) {
+      const l = lab(`clip-${k}`);
+      const w = l.w;
+      const r = addRunner(w, 1);
+      r.want = 2;
+      r.target = 2;
+      r.stealing = true;
+      r.reaction = 0;
+      const mid = { x: -9.7, z: 29.1 };
+      r.p.x = mid.x;
+      r.p.z = mid.z;
+      r.p.vx = 3;
+      r.p.vz = 3;
+      const F = fielders(w).find((p) => p.fieldPos === '1B')!;
+      F.x = mid.x + 1.6;
+      F.z = mid.z + 1.6;
+      F.vx = F.vz = 0;
+      F.facing = Math.atan2(-1, -1);
+      w.play = newPlay(w, 'steal');
+      w.phase = 'inPlay';
+      w.rng = new Rng(`c${k}`);
+      giveBall(w, F);
+      F.plan.lastAttempt = w.tick - 40;
+      F.plan.holdUntil = w.tick;
+      let t0 = -1;
+      l.g.on('tagAttempt', () => {
+        t0 = w.tick;
+        expect(['tag_glove', 'tag_hand']).toContain(F.anim);
+        expect(w.tick - F.animStart).toBe(0);
+      });
+      l.g.on('tag', () => t0 >= 0 && deltas.push((w.tick - t0) / 240));
+      l.g.on('tagAvoided', () => t0 >= 0 && deltas.push((w.tick - t0) / 240));
+      for (let i = 0; i < 240 && r.state === 'live'; i++) l.g.step(1 / 240);
+    }
+    expect(deltas.length).toBeGreaterThan(30);
+    for (const d of deltas) expect(Math.abs(d - 8 / 24)).toBeLessThan(0.02);
+  });
+
+  it('a play at the plate: the catcher\'s `catcher_block` clip starts ~26/24 s before the tag contact, so `tag` lands on the clip\'s tag frame', () => {
+    const deltas: number[] = [];
+    let attempts = 0;
+    for (let k = 0; k < 40; k++) {
+      const l = lab(`plate-${k}`);
+      const w = l.w;
+      const r = addRunner(w, 3);
+      r.stealing = true;
+      r.want = 4;
+      r.target = 4;
+      r.origin = 3;
+      r.reaction = 0;
+      const from = { x: 6.4, z: 9.0 };
+      const dir = unit(-from.x, -from.z);
+      r.p.x = from.x;
+      r.p.z = from.z;
+      r.p.vx = dir.x * 7.5;
+      r.p.vz = dir.z * 7.5;
+      r.p.vmax = 7.5;
+      const C = w.catcher;
+      C.x = 0;
+      C.z = -1.0;
+      C.vx = C.vz = 0;
+      C.goal = null;
+      w.play = newPlay(w, 'steal');
+      w.phase = 'inPlay';
+      w.rng = new Rng(`plate-${k}`);
+      giveBall(w, C);
+      C.plan.lastAttempt = w.tick - 60;
+      C.plan.holdUntil = w.tick;
+      let t0 = -1;
+      l.g.on('tagAttempt', (e) => {
+        if (e.fielderId !== C.info.id) return;
+        t0 = w.tick;
+        attempts++;
+        expect(C.anim).toBe('catcher_block');
+        expect(w.tick - C.animStart).toBe(0);
+      });
+      const done = (e: { fielderId: string }) => e.fielderId === C.info.id && t0 >= 0 && deltas.push((w.tick - t0) / 240);
+      r.slideKind = k % 2 ? 'feet' : 'head';
+      r.slideAt = w.tick;
+      l.g.on('tag', done);
+      l.g.on('tagAvoided', done);
+      const n0 = deltas.length;
+      for (let i = 0; i < 240 * 4 && deltas.length === n0; i++) l.g.step(1 / 240);
+    }
+    expect(attempts).toBeGreaterThan(30);
+    expect(deltas.length).toBeGreaterThan(15);
+    deltas.sort((a, b) => a - b);
+    expect(Math.abs(deltas[Math.floor(deltas.length / 2)] - 26 / 24)).toBeLessThan(0.08);
   });
 });

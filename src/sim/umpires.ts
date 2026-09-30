@@ -20,7 +20,7 @@ export const HINT_OF: Record<UmpireCallKind, AnimHint> = {
   ball_four: 'ump_ball',
   strike_called: 'ump_strike',
   strike_swinging: 'ump_strike_swinging',
-  strikeout: 'ump_strike',
+  strikeout: 'ump_out_strikeout',
   foul: 'ump_foul',
   foul_tip: 'ump_foul',
   fair: 'ump_fair',
@@ -135,10 +135,10 @@ export function tickUmpires(w: World): void {
         continue;
       }
       const u = umpFor(w, c.ump);
-      emit(w, { type: 'umpireCall', umpire: c.ump, umpireId: u.id, kind: c.kind, pos: { x: u.x, y: 0, z: u.z }, ...(c.atBase !== undefined ? { atBase: c.atBase } : {}), ...(c.playerId ? { playerId: c.playerId } : {}) });
-      u.anim = c.kind === 'strikeout' && c.swinging ? 'ump_strike_swinging' : HINT_OF[c.kind];
+      u.anim = HINT_OF[c.kind];
       u.animStart = w.tick;
       u.animUntil = w.tick + secToTicks(c.kind === 'ball' || c.kind === 'ball_four' ? 0.6 : 1.3);
+      emit(w, { type: 'umpireCall', umpire: c.ump, umpireId: u.id, kind: c.kind, pos: { x: u.x, y: 0, z: u.z }, ...(c.atBase !== undefined ? { atBase: c.atBase } : {}), ...(c.playerId ? { playerId: c.playerId } : {}) });
     }
     w.umpQueue = rest;
   }
