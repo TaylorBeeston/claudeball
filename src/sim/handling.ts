@@ -5,6 +5,7 @@
  */
 import { SHOULDER_X } from './batting';
 import { emit } from './events';
+import { CATCH_LEAD, catchClipOn } from './fielding';
 import { MOUND_DIST, groundHeight } from './field';
 import { clamp } from './math';
 import { setGoal } from './movement';
@@ -136,26 +137,52 @@ export function tickBallReturn(w: World): void {
   sendHome(w, to, false);
 }
 
-/** Casual return of the ball: purely kinematic arc from his hand to the receiver's, at the chosen speed. */
+/** Where a casual toss ends: in the receiver's glove, a little toward the passer and to his glove side, at chest height. */
+function lobGlove(from: PlayerRT, to: PlayerRT): { x: number; y: number; z: number } {
+  const dx = from.x - to.x;
+  const dz = from.z - to.z;
+  const d = Math.hypot(dx, dz) || 1;
+  const ux = dx / d;
+  const uz = dz / d;
+  // his glove hand is opposite his throwing hand: with the passer in front of him (direction u), his right is (uz, -ux)
+  const gs = to.info.throws === 'R' ? -1 : 1;
+  return { x: to.x + ux * 0.4 + uz * gs * 0.22, y: groundHeight(to.x, to.z) + 1.15, z: to.z + uz * 0.4 - ux * gs * 0.22 };
+}
+
+/** Casual return of the ball: purely kinematic arc from his hand to the receiver's glove, at the chosen speed. The receiver's catch is shown like any other. */
 export function tickLob(w: World): void {
   const l = w.ball.lob!;
   const t = (w.tick - l.start) / l.dur;
   const b = w.ball.body;
   const to = l.to;
+  const g = lobGlove(l.from, to);
+  const remaining = Math.max(0, (l.start + l.dur - w.tick) * TICK);
+  // the glove target, and the catch clip started its catch-frame time before the arrival
+  to.gloveTarget = g;
+  to.gloveAt = l.start + l.dur;
+  if (!catchClipOn(w, to) && (remaining <= CATCH_LEAD.catch_throw || l.dur * TICK <= CATCH_LEAD.catch_throw)) {
+    to.catchArmed = true;
+    setAnim(w, to, 'catch_throw', CATCH_LEAD.catch_throw * 2);
+  }
   if (t >= 1) {
+    b.x = g.x;
+    b.y = g.y;
+    b.z = g.z;
+    emit(w, { type: 'catch', fielderId: to.info.id, fly: false, pos: { x: g.x, y: g.y, z: g.z }, kind: 'throw', height: 'chest', side: 'glove', firm: true });
+    to.gloveTarget = null;
+    to.catchArmed = false;
     giveBall(w, to);
+    to.gloveHold = { x: g.x, y: g.y, z: g.z, t0: w.tick };
     onBallArrived(w, to);
     return;
   }
   const ax = l.from.x, az = l.from.z;
-  const bx = to.x, bz = to.z;
   const y0 = groundHeight(ax, az) + 1.15;
-  const y1 = groundHeight(bx, bz) + 1.15;
-  b.x = ax + (bx - ax) * t;
-  b.z = az + (bz - az) * t;
-  b.y = y0 + (y1 - y0) * t + (l.arc ?? 1.2) * Math.sin(Math.PI * t);
-  b.vx = ((bx - ax) / l.dur) * 240;
-  b.vz = ((bz - az) / l.dur) * 240;
+  b.x = ax + (g.x - ax) * t;
+  b.z = az + (g.z - az) * t;
+  b.y = y0 + (g.y - y0) * t + (l.arc ?? 1.2) * Math.sin(Math.PI * t);
+  b.vx = ((g.x - ax) / l.dur) * 240;
+  b.vz = ((g.z - az) / l.dur) * 240;
   b.vy = 0;
 }
 
