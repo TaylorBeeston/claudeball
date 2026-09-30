@@ -81,6 +81,23 @@ export function umpireText(kind: string, balls: number, strikes: number): string
   }
 }
 
+/** What the umpire says for the sim's `umpireCall` kinds (fair ball and home run are signalled, not shouted). */
+export function umpireCallText(kind: string): string | null {
+  switch (kind) {
+    case 'ball': return 'Ball!';
+    case 'ball_four': return 'Ball four!';
+    case 'strike_called':
+    case 'strike_swinging': return 'Strike!';
+    case 'strikeout': return 'Strike three!';
+    case 'foul': return 'Foul ball!';
+    case 'foul_tip': return 'Foul tip!';
+    case 'safe': return 'Safe!';
+    case 'out': return 'Out!';
+    case 'time': return 'Time!';
+    default: return null;
+  }
+}
+
 const ORD = ['zeroth', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
 export const ordinal = (n: number) => ORD[n] ?? `${n}th`;
 
@@ -111,7 +128,24 @@ const cue = {
 /** Speech priorities: higher wins the queue and may interrupt a lower line that is already being spoken. */
 export const PRI = { color: 1, pbp: 3, pa: 4, ump: 5, big: 6 } as const;
 
+export interface MapperOptions {
+  /**
+   * The sim's detailed events are available (`umpireCall`, `catch`/`fielded` with kind/firm, `tag`, `closePlay`): umpire voices come from
+   * `umpireCall` (not from `call`, `out` or `safe`), pops from `catch` events (not from `pitchCrossed` or the throw's flight time).
+   * Also switched on by the first `umpireCall` seen.
+   */
+  detailed?: boolean;
+}
+
 export class CueMapper {
+  detailed: boolean;
+  private lastTagT = -9;
+  private close: { t: number } | null = null;
+
+  constructor(opts: MapperOptions = {}) {
+    this.detailed = !!opts.detailed;
+  }
+
   private lastPitcherId = '';
   private lastExit = 0;
   private lastLaunch = 0;
@@ -188,7 +222,7 @@ export class CueMapper {
         const mph = num(ev.mph, this.lastPitchMph);
         const bucket = mph < 82 ? 0 : mph < 92 ? 1 : 2;
         const m = c.catcher ?? { x: 0, y: 0.8, z: -1.1 };
-        out.push(cue.sfx('mitt_pop', 1, { pos: m, bucket, gain: 0.62 + 0.14 * bucket, delay: 0.03 }));
+        if (!this.detailed) out.push(cue.sfx('mitt_pop', 1, { pos: m, bucket, gain: 0.62 + 0.14 * bucket, delay: 0.03 }));
         if (mph >= 99 && this.plays % 2 === 0) out.push(cue.speak('color', `${Math.round(mph)} miles an hour.`, PRI.color, 3, 0.6, 1));
         if (c.strikes >= 2) out.push(cue.excite(0.12, 2, 1));
         break;
@@ -217,21 +251,30 @@ export class CueMapper {
         const kind = str(cl.kind);
         this.lastCall = { kind, t: num(ev.time) };
         const text = umpireText(kind, num(cl.balls, c.balls), num(cl.strikes, c.strikes));
-        if (text) out.push(cue.speak('ump', text, PRI.ump, 1.5, 0.05, 2));
+        if (text && !this.detailed) out.push(cue.speak('ump', text, PRI.ump, 1.5, 0.05, 2));
         if (kind === 'foul' || kind === 'foulTip') out.push(cue.crowd('ooh', 1, 0.35, 0.15));
         if ((kind === 'strikeLooking' || kind === 'strikeSwinging') && num(cl.strikes) >= 2) out.push(cue.excite(0.3, 2, 1));
         break;
       }
-      case 'fielded': {
-        const p = vec(ev.pos) ?? c.pos(ev.fielderId);
-        out.push(cue.sfx('glove_pop', 1, { pos: p, bucket: 0, gain: 0.65 }));
-        if (ev.clean === false) out.push(cue.crowd('ooh', 1, 0.4, 0.1));
-        break;
-      }
+      case 'fielded':
       case 'catch': {
         const p = vec(ev.pos) ?? c.pos(ev.fielderId);
-        out.push(cue.sfx('glove_pop', 1, { pos: p, bucket: ev.fly ? 1 : 0, gain: ev.fly ? 0.7 : 0.5 }));
-        if (ev.fly) out.push(cue.crowd('applause_small', 1, 0.6 * this.favour(c, !hb), 0.2));
+        const fly = t === 'catch' && !!ev.fly;
+        const kind = str(ev.kind);
+        const firm = ev.firm !== false; // an edge-of-the-glove catch (firm: false) is duller and softer
+        const arm = ev.side === 'arm';
+        if (kind === 'pitch') {
+          // the catcher's mitt: pop scaled by the pitch speed, sharper when it is clean in the pocket
+          const mph = this.lastPitchMph;
+          const b0 = mph < 82 ? 0 : mph < 92 ? 1 : 2;
+          const bucket = Math.max(0, b0 - (firm ? 0 : 1));
+          out.push(cue.sfx('mitt_pop', 1, { pos: p ?? c.catcher, bucket, gain: (0.62 + 0.14 * b0) * (firm ? 1 : 0.75) * (ev.side === 'backhand' ? 0.9 : 1), rate: firm ? 1.05 : 0.92 }));
+        } else {
+          const strong = kind === 'throw' || kind === 'pickoff' || fly || kind === 'line';
+          out.push(cue.sfx('glove_pop', 1, { pos: p, bucket: strong && firm && !arm ? 1 : 0, gain: (strong ? 0.75 : 0.62) * (firm ? 1 : 0.7) * (arm ? 0.75 : 1), rate: firm ? (ev.height === 'high' ? 1.06 : 1.03) : 0.9 }));
+        }
+        if (t === 'fielded' && ev.clean === false) out.push(cue.crowd('ooh', 1, 0.4, 0.1));
+        if (fly) out.push(cue.crowd('applause_small', 1, 0.6 * this.favour(c, !hb), 0.2));
         break;
       }
       case 'error': {
@@ -248,35 +291,65 @@ export class CueMapper {
         const mph = num(ev.mph, 60);
         const casual = t === 'ballReturn';
         out.push(cue.sfx('throw_whip', casual ? 0 : 1, { pos: from, gain: casual ? 0.25 : 0.4 + 0.3 * clamp((mph - 50) / 45, 0, 1), delay: 0.02 }));
-        if (from && to) {
+        if (from && to && !(this.detailed && !casual)) {
           const d = Math.hypot(to.x - from.x, to.z - from.z);
           const flight = clamp(d / Math.max(12, mph * MPH * 0.92), 0.08, 2.5);
           out.push(cue.sfx('glove_pop', casual ? 0 : 1, { pos: to, bucket: casual ? 0 : 1, gain: casual ? 0.4 : 0.75, delay: flight }));
         }
         break;
       }
-      case 'tag':
-      case 'tagAttempt': {
-        out.push(cue.sfx('tag_slap', 2, { pos: vec(ev.pos) ?? c.pos(ev.fielderId ?? ev.playerId), gain: 0.7 }));
+      case 'tag': {
+        this.lastTagT = num(ev.time);
+        out.push(cue.sfx('tag_slap', 2, { pos: vec(ev.pos) ?? c.pos(ev.fielderId), gain: 0.85 }));
+        break;
+      }
+      case 'tagAttempt':
+        break; // the sweep itself is quiet; the slap (tag) or the miss (tagAvoided) is what you hear
+      case 'tagAvoided': {
+        // the glove swishes through air: the runner slid or dodged out of the way
+        out.push(cue.sfx('tag_miss', 2, { pos: c.pos(ev.fielderId) ?? c.pos(ev.runnerId), gain: 0.7 }), cue.crowd('ooh', 2, 0.8, 0.12), cue.excite(0.3, 2.5, 2, 0.1));
+        break;
+      }
+      case 'umpireCall': {
+        this.detailed = true;
+        const kind = str(ev.kind);
+        const text = umpireCallText(kind);
+        const at = vec(ev.pos);
+        if (text) out.push({ ...cue.speak('ump', text, PRI.ump, 1.5, 0.05, 2), pos: at } as Cue);
+        // the close play resolves: relief for one side, groans for the other
+        if ((kind === 'safe' || kind === 'out') && this.close && num(ev.time) - this.close.t < 4 && num(ev.time) >= this.close.t) {
+          const homeWins = kind === 'out' ? !hb : hb; // out: the fielding side wins the play; safe: the batting side
+          out.push(cue.crowd(homeWins ? 'roar_med' : 'groan', 2, homeWins ? 0.85 : 0.8, 0.15), cue.excite(homeWins ? 0.5 : 0.25, 4, 2, 0.15));
+          this.close = null;
+        }
         break;
       }
       case 'out': {
         const ot = str(ev.outType);
         const base = typeof ev.base === 'number' ? ev.base : null;
         const bp = base ? BASE_POS[base] : undefined;
-        if (ot === 'tag' || ot === 'caughtStealing' || ot === 'pickoff') out.push(cue.sfx('tag_slap', 2, { pos: bp ?? c.pos(ev.playerId), gain: 0.7, delay: 0.05 }));
+        const tagged = num(ev.time) - this.lastTagT < 1.5; // a `tag` event already made the slap
+        if ((ot === 'tag' || ot === 'caughtStealing' || ot === 'pickoff') && !tagged) out.push(cue.sfx('tag_slap', 2, { pos: bp ?? c.pos(ev.playerId), gain: 0.7, delay: 0.05 }));
         const routine = ot === 'fly' || ot === 'line' || ot === 'pop' || ot === 'foulFly' || ot === 'infieldFly';
-        if (ot !== 'strikeout' && !routine && base) out.push(cue.speak('ump', 'Out!', PRI.ump, 1.5, 0.15, 2));
+        if (ot !== 'strikeout' && !routine && base && !this.detailed) out.push(cue.speak('ump', 'Out!', PRI.ump, 1.5, 0.15, 2));
         const fieldingHome = !hb;
-        if (ot === 'strikeout') out.push(cue.crowd(fieldingHome ? 'cheer_short' : 'ooh', 2, fieldingHome ? 1 : 0.5, 0.2), cue.excite(0.4, 3, 1, 0.2));
+        if (ev.closePlay === true) {
+          // tension until the umpire rules (see umpireCall)
+          this.close = { t: num(ev.time) };
+          out.push(cue.crowd('ooh', 2, 0.75, 0.05), cue.excite(0.4, 3, 2));
+        } else if (ot === 'strikeout') out.push(cue.crowd(fieldingHome ? 'cheer_short' : 'ooh', 2, fieldingHome ? 1 : 0.5, 0.2), cue.excite(0.4, 3, 1, 0.2));
         else out.push(cue.crowd(fieldingHome ? 'applause_small' : 'groan', 1, fieldingHome ? 0.7 : 0.35, 0.25));
         if (c.outs >= 2) out.push({ kind: 'organ', id: 'sting', imp: 1, delay: 1.2, gain: 0.6 });
         break;
       }
       case 'safe': {
         const p = vec(ev.pos) ?? (typeof ev.base === 'number' ? BASE_POS[ev.base as number] : undefined) ?? c.pos(ev.playerId);
-        out.push(cue.speak('ump', 'Safe!', PRI.ump, 1.5, 0.12, 2), cue.sfx('slide_scuff', 1, { pos: p, gain: 0.5 }));
-        out.push(cue.crowd(hb ? 'cheer_short' : 'ooh', 1, hb ? 0.7 : 0.4, 0.2));
+        if (!this.detailed) out.push(cue.speak('ump', 'Safe!', PRI.ump, 1.5, 0.12, 2));
+        out.push(cue.sfx('slide_scuff', 1, { pos: p, gain: 0.5 }));
+        if (ev.closePlay === true) {
+          this.close = { t: num(ev.time) };
+          out.push(cue.crowd('ooh', 2, 0.75, 0.05), cue.excite(0.4, 3, 2));
+        } else out.push(cue.crowd(hb ? 'cheer_short' : 'ooh', 1, hb ? 0.7 : 0.4, 0.2));
         break;
       }
       case 'steal':

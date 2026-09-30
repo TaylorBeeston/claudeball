@@ -31,6 +31,7 @@ export type SfxId =
   | 'seat_thump'
   | 'throw_whip'
   | 'tag_slap'
+  | 'tag_miss' // the glove swishes through air (tagAvoided)
   | 'slide_scuff'
   | 'footstep'
   | 'base_thud'
@@ -69,7 +70,8 @@ export type Cue =
   /** raises the crowd's excitement (0..1) for `hold` seconds; it decays back to the situation's baseline */
   | { kind: 'excite'; amount: number; hold: number; delay?: number; imp: Importance }
   | { kind: 'organ'; id: OrganId; gain?: number; delay?: number; imp: Importance }
-  | { kind: 'speak'; role: SpeakRole; text: string; pri: number; ttl: number; delay?: number; imp: Importance };
+  /** `pos`: where the speaker stands (the umpire), used by the synthesised fallback shout */
+  | { kind: 'speak'; role: SpeakRole; text: string; pri: number; ttl: number; delay?: number; imp: Importance; pos?: Vec3 };
 
 /** What the mapper needs to know about the game at the moment of an event (built from the live snapshot). */
 export interface MapCtx {
