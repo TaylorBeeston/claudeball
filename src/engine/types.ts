@@ -41,6 +41,9 @@ export type AnimHint =
   | 'catch_throw'
   | 'catch_stretch'
   | 'catch_fly'
+  | 'catch_fly_run'
+  | 'catch_line_drive'
+  | 'catch_comebacker'
   | 'catch_backhand'
   | 'field_grounder'
   // tags and slides
@@ -109,6 +112,8 @@ export interface PlayerSnap {
   ratings?: Record<string, number>;
   /** where the ball will meet this fielder's glove (world, sim axes), while a catch is coming */
   gloveTarget?: Vec3;
+  /** seconds until the catch (the hint starts the clip's catch-frame time before it, so the catch frame lands on the arrival) */
+  catchIn?: number;
   /** umpires: HP, 1B-U, 2B-U, 3B-U */
   position?: string;
   /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */
@@ -206,9 +211,9 @@ export type GameEvent =
   | { type: 'out'; playerId?: string; text?: string; closePlay?: boolean; margin?: number; base?: number | null }
   | { type: 'safe'; playerId?: string; base?: number; closePlay?: boolean; margin?: number }
   /** a fielder's tag: attempted, made or avoided by a slide / dodge */
-  | { type: 'tag'; fielderId?: string; runnerId?: string; base?: number; result: 'attempt' | 'tag' | 'avoided'; pos?: Vec3 }
+  | { type: 'tag'; fielderId?: string; runnerId?: string; base?: number; result: 'attempt' | 'tag' | 'avoided'; pos?: Vec3; hand?: 'glove' | 'hand'; slide?: string }
   /** an umpire's call (`kind` as the sim reports it: ball, strike_called, strike_swinging, foul, fair, safe, out, homerun, foul_tip, time, ball_four, strikeout) */
-  | { type: 'umpire_call'; kind: string; umpireId?: string; pos?: Vec3 }
+  | { type: 'umpire_call'; kind: string; umpireId?: string; umpire?: string; pos?: Vec3; atBase?: number; playerId?: string }
   | { type: 'run'; playerId?: string; text?: string }
   /** the ball cleared the fence; `pos` is where it crossed it */
   | { type: 'homerun'; batterId: string; distance: number; pos?: Vec3 }

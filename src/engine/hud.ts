@@ -141,6 +141,7 @@ export class Hud {
   private replayShown = false;
   private box = el('div', 'cb-box');
   private boxOpen = false;
+  private haveUmpCalls = false;
   private boxTimer = 0;
   private lastState: GameState | null = null;
 
@@ -272,16 +273,18 @@ export class Hud {
       case 'ball':
       case 'strike':
       case 'foul':
-        this.flashCall(e.type.toUpperCase());
+        // with umpire gestures the caption comes with the gesture (`umpire_call`), a beat after the ruling
+        if (!this.haveUmpCalls) this.flashCall(e.type.toUpperCase());
         break;
       case 'out':
-        this.flashCall('OUT');
+        if (!this.haveUmpCalls) this.flashCall('OUT');
         break;
       case 'safe':
-        this.flashCall('SAFE');
+        if (!this.haveUmpCalls) this.flashCall('SAFE');
         break;
       case 'umpire_call': {
         // the caption appears with the umpire's gesture
+        this.haveUmpCalls = true;
         const cap = CALL_CAPTIONS[e.kind];
         if (cap) this.flashCall(cap);
         break;
@@ -425,8 +428,8 @@ export class Hud {
     }
     if (s.umpireCall.seq !== this.lastCallSeq) {
       this.lastCallSeq = s.umpireCall.seq;
-      if (s.umpireCall.kind === 'safe') this.flashCall('SAFE');
-      if (s.umpireCall.kind === 'homerun') this.flashCall('HOME RUN');
+      if (!this.haveUmpCalls && s.umpireCall.kind === 'safe') this.flashCall('SAFE');
+      if (!this.haveUmpCalls && s.umpireCall.kind === 'homerun') this.flashCall('HOME RUN');
     }
     if ((this.cardTimer -= dt) < 0) this.card.classList.remove('show');
     if ((this.hitTimer -= dt) < 0) this.hit.classList.remove('show');
