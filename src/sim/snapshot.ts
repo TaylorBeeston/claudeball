@@ -52,6 +52,11 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     ratings: p.info.ratings,
     physique: p.info.physique,
     appearance: p.info.appearance,
+    gloveTarget: p.gloveTarget ? { ...p.gloveTarget } : null,
+    gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
+    catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
+    pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
+    gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     delivery: p.info.delivery ? { ...p.info.delivery, fromStretch: p === w.pitcher && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) } : undefined,
   };
 }
@@ -84,6 +89,7 @@ export function snapshot(w: World): GameStateSnapshot {
     players.push(snapPlayer(w, w.batter, 'batter'));
   }
   for (const u of w.umpires) {
+    const gesturing = w.tick < u.animUntil;
     players.push({
       id: u.id,
       name: u.name,
@@ -92,10 +98,10 @@ export function snapshot(w: World): GameStateSnapshot {
       position: u.position,
       jersey: 0,
       pos: { x: u.x, y: 0, z: u.z },
-      vel: { x: 0, y: 0, z: 0 },
-      facing: Math.atan2(-u.x, u.position === 'HP' ? 20 : 30 - u.z),
-      anim: 'idle',
-      animT: 0,
+      vel: { x: u.vx, y: 0, z: u.vz },
+      facing: u.facing,
+      anim: gesturing ? u.anim : 'ump_ready',
+      animT: gesturing ? Math.min(1, (w.tick - u.animStart) / Math.max(1, u.animUntil - u.animStart)) : 0,
       hasBall: false,
       bats: 'R',
       throws: 'R',

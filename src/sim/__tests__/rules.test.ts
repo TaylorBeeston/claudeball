@@ -6,16 +6,16 @@ describe('rules', () => {
   it('a slow grounder to the shortstop is a force/ground out at first, not a hit', () => {
     let outs = 0;
     let hits = 0;
-    for (let s = 0; s < 6; s++) {
+    for (let s = 0; s < 24; s++) {
       const l = lab('gb-' + s);
-      hitBall(l.w, 62, -12, 12 + s * 2); // routine grounder toward SS
+      hitBall(l.w, 62, -12, 12 + (s % 6) * 2); // routine grounder toward SS
       runPlay(l);
       const pa = ofType(l.events, 'plateAppearanceEnd').at(-1)!;
       if (pa.result === 'groundout') outs++;
       if (['single', 'double'].includes(pa.result)) hits++;
     }
-    expect(outs).toBeGreaterThanOrEqual(4);
-    expect(hits).toBeLessThanOrEqual(1);
+    expect(outs).toBeGreaterThanOrEqual(18);
+    expect(hits).toBeLessThanOrEqual(4);
   });
 
   it('force out: with the bases loaded a fielder stepping on the bag beats the runner (batter forced at 1B, force chain)', () => {

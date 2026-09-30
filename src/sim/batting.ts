@@ -16,6 +16,8 @@ export const BAT_LEN = 0.84;
 export const SHOULDER_X = 0.72;
 export const SHOULDER_Y = 1.36;
 export const SHOULDER_Z = 0.13;
+export const TORSO_CLEAR = 0.3; // knob -> torso axis (horizontal): the hands stay this far off the chest line so the elbows are not pushed into the torso
+export const CONTACT_HOLD = 0.012; // s either side of contact within which the path is left exactly as planned (contact physics unchanged)
 export const ARM_REACH = 0.68; // shoulder axis -> knob (the arm reaches ~0.6 to the grip, plus a little lean)
 const BAT_MASS = 0.88;
 const BAT_I_CM = 0.05;
@@ -74,7 +76,7 @@ export const pivotFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? BODY_X 
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 26.1 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 26.3 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Time (s after release) at which the batter must commit: swing or take. */
@@ -254,7 +256,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
   const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0151 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
+  const sigmaT = 0.0145 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   // a puller gets the bat out front (contact earlier), an opposite-field hitter lets it travel
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late + pullTimeShift(R.pull));
@@ -367,6 +369,27 @@ export class BatSwing {
       kx = sh.x + (kx - sh.x) * f;
       ky = sh.y + (ky - sh.y) * f;
       kz = sh.z + (kz - sh.z) * f;
+    }
+    // Keep the hands off the chest line: push the knob out horizontally to TORSO_CLEAR from the torso axis, then re-limit the reach.
+    // Faded out within CONTACT_HOLD of contact, so the path through the hitting zone is untouched.
+    const hold = clamp(Math.abs(this.tau - p.tauC) / CONTACT_HOLD, 0, 1);
+    if (hold > 0) {
+      const ax = kx - sh.x, az = kz - sh.z;
+      const dh = Math.hypot(ax, az);
+      if (dh < TORSO_CLEAR) {
+        const want = dh + (TORSO_CLEAR - dh) * hold;
+        const ux = dh > 1e-6 ? ax / dh : p.sgn > 0 ? -1 : 1;
+        const uz = dh > 1e-6 ? az / dh : 0;
+        kx = sh.x + ux * want;
+        kz = sh.z + uz * want;
+        const dS2 = Math.hypot(kx - sh.x, ky - sh.y, kz - sh.z);
+        if (dS2 > ARM_REACH) {
+          const f = ARM_REACH / dS2;
+          kx = sh.x + (kx - sh.x) * f;
+          ky = sh.y + (ky - sh.y) * f;
+          kz = sh.z + (kz - sh.z) * f;
+        }
+      }
     }
     return {
       knob: { x: kx, y: ky, z: kz },

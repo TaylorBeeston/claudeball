@@ -70,7 +70,8 @@ describe('full game', () => {
     expect(s.players.filter((p) => p.role !== 'umpire').length).toBeGreaterThanOrEqual(10);
     for (const p of s.players) {
       expect(Number.isFinite(p.pos.x + p.pos.z + p.facing)).toBe(true);
-      expect(['idle', 'windup', 'pitch', 'swing', 'run', 'field', 'throw', 'catch', 'slide', 'celebrate', 'catch_jump', 'trot', 'run_turn']).toContain(p.anim);
+      expect(typeof p.anim).toBe('string');
+      expect(p.anim === 'idle' || /^(windup|pitch|swing|run|field|throw|catch|slide|celebrate|trot|transfer|toss|tag_|dive_back|catcher_block|ump_)/.test(p.anim)).toBe(true);
     }
     expect(s.pitcher?.info.name).toBeTruthy();
     expect(s.batter?.info.name).toBeTruthy();

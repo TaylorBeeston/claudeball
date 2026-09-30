@@ -133,34 +133,30 @@ export function fenceNormalAt(fence: FenceConfig, x: number, z: number): { x: nu
 
 /** The rubber is 10 inches above home plate level. */
 export const MOUND_HEIGHT = 10 * 0.0254; // 0.254 m
-/** Front edge of the rubber (60 ft 6 in) and where the slope toward home starts (6 in in front of it). */
-const SLOPE_START_Z = MOUND_DIST - 0.5 * 0.3048; // 18.288 m
-/** Level top: 5 ft wide, from the slope's start to 1 m behind the rubber's front edge. */
-const TOP_HALF_WIDTH = 2.5 * 0.3048; // 0.762 m
-const TOP_BACK_Z = MOUND_DIST + 0.8;
-/** MLB spec: 1 inch of fall per foot for 6 feet toward home plate, then the skirt eases out to the grass (mound diameter 18 ft). */
-const SLOPE_LEN = 6 * 0.3048;
-const SLOPE_DROP = 6 * 0.0254;
-const SKIRT_LEN = 1.25;
-
-/** Fall-off of the mound with distance d (m) from the edge of its level top. */
-function moundProfile(d: number): number {
-  if (d <= 0) return MOUND_HEIGHT;
-  if (d <= SLOPE_LEN) return MOUND_HEIGHT - (d / SLOPE_LEN) * SLOPE_DROP;
-  const e = d - SLOPE_LEN;
-  if (e >= SKIRT_LEN) return 0;
-  const u = e / SKIRT_LEN;
-  return (MOUND_HEIGHT - SLOPE_DROP) * (1 - u * u * (3 - 2 * u));
-}
+// The profile is the one the stadium model is built with (assets/src/field.py `mound_h`): an 18 ft diameter circle centred 59 ft from the plate apex; a level
+// area 5 ft wide and 34 in long whose front edge is 6 in in front of the rubber's front edge (rubber front edge 60 ft 6 in from the apex); from that
+// rectangle the surface falls 1 in per foot in every direction, eased to the field over the last 1.5 ft of the circle.
+const FT_M = 0.3048;
+const IN_M = 0.0254;
+const MOUND_CX = 0;
+const MOUND_CZ = 59 * FT_M;
+const MOUND_R = 9 * FT_M;
+const LEVEL_X = 2.5 * FT_M;
+const LEVEL_Z0 = 60.0 * FT_M;
+const LEVEL_Z1 = 60.0 * FT_M + 34 * IN_M;
 
 /**
- * Height of the ground (m) at a field position. Flat everywhere except the pitcher's mound: a level top 10 in above home plate
- * around the rubber (60 ft 6 in from the plate), sloping 1 in per ft toward home for 6 ft (MLB spec), with an easing skirt to
- * the grass. Players standing on it, the ball's bounce and the pitcher's release height are all measured from here.
+ * Height of the ground (m) at a field position. Flat everywhere except the pitcher's mound (MLB spec, and the stadium model): a level top 10 in
+ * above home plate around the rubber, falling 1 in per foot away from it on every side (toward the plate, the sides and behind) to the field level at the
+ * edge of the 18 ft circle. Players standing on it, the ball's bounce and the pitcher's release height are all measured from here.
  */
 export function groundHeight(x: number, z: number): number {
-  if (z < SLOPE_START_Z - 4.5 || z > TOP_BACK_Z + 4.5 || x < -4.5 || x > 4.5) return 0;
-  const dx = Math.max(0, Math.abs(x) - TOP_HALF_WIDTH);
-  const dz = z < SLOPE_START_Z ? SLOPE_START_Z - z : z > TOP_BACK_Z ? z - TOP_BACK_Z : 0;
-  return moundProfile(Math.hypot(dx, dz));
+  if (z < 13 || z > 24 || x < -5.5 || x > 5.5) return 0;
+  const dx = Math.max(Math.abs(x) - LEVEL_X, 0);
+  const dz = Math.max(LEVEL_Z0 - z, z - LEVEL_Z1, 0);
+  const d = Math.hypot(dx, dz);
+  const r = Math.hypot(x - MOUND_CX, z - MOUND_CZ);
+  let e = Math.min(1, Math.max(0, (MOUND_R - r) / (1.5 * FT_M)));
+  e = e * e * (3 - 2 * e);
+  return Math.max(0, MOUND_HEIGHT - d * (IN_M / FT_M)) * e;
 }
