@@ -170,10 +170,14 @@ export const footOnBase = (F: PlayerRT, b: number) => {
   return Math.hypot(F.x - bp.x, F.z - bp.z) <= FOOT_ON_BASE;
 };
 
-function sweepSeconds(F: PlayerRT, hand: 'glove' | 'hand'): number {
-  const r = F.info.ratings;
-  return clamp((hand === 'glove' ? 0.27 : 0.21) - 0.0015 * (r.glove - 50) - 0.001 * (r.iq - 50), 0.16, 0.34);
-}
+/** The tag clips (`tag_glove` / `tag_hand`, 0.583 s) make contact at frame 8 (24 fps): a sweep starts exactly this long before its contact test. */
+export const TAG_CONTACT_S = 8 / 24;
+/** `catcher_block` (1.5 s): the tag contact is at frame 26. */
+export const BLOCK_CONTACT_S = 26 / 24;
+const TAG_CLIP_S = 14 / 24;
+/** A tag made straight off a late catch (the glove is already down at the bag) still takes this long from the start of the sweep. */
+const TAG_MIN_S = 0.15;
+const BLOCK_CLIP_S = 36 / 24;
 
 /** How far up the runner's line from the bag the glove is set (m): the tag is made just as the foot / hand comes in. */
 const GLOVE_SET = 0.6;
@@ -211,7 +215,11 @@ export function tickTagging(w: World): void {
       // he tracks the runner until he is committed (about 2.4 m out), then holds the glove there
       if (!g.frozen) {
         g.glove = bagGlove(g.F, r, g.base, { x: 0, z: 0 });
-        if (dRun < 2.4) {
+        // he starts the clip so that its contact frame is when the runner reaches the glove (the catcher's block clip is longer)
+        const lead = g.F === w.catcher ? BLOCK_CONTACT_S : TAG_CONTACT_S;
+        const spd = Math.max(1.5, Math.hypot(r.p.vx, r.p.vz));
+        const tc = (dRun - GLOVE_SET - 0.5) / spd;
+        if (dRun < 2.4 || tc <= lead) {
           g.frozen = true;
           const rr = g.F.info.ratings;
           const sigma = 0.08 * clamp(1.5 - rr.glove / 100, 0.7, 1.3) * clamp(1.2 - rr.iq / 250, 0.85, 1.1);
@@ -228,15 +236,18 @@ export function tickTagging(w: World): void {
             g.glove.z += lf.z * 0.20 * lateral;
           }
           g.announced = true;
+          // the hint starts with the sweep; contact is not before the clip's contact frame (a tag made straight off a late catch still has its swing)
+          g.earliest = w.tick + secToTicks(TAG_MIN_S);
+          if (g.F === w.catcher) setAnim(w, g.F, 'catcher_block', BLOCK_CLIP_S);
+          else setAnim(w, g.F, g.hand === 'glove' ? 'tag_glove' : 'tag_hand', TAG_CLIP_S);
           emit(w, { type: 'tagAttempt', fielderId: g.F.info.id, runnerId: r.p.info.id, base: g.base, hand: g.hand, pos: { x: g.glove.x, y: r.slideKind ? 0.3 : 0.7, z: g.glove.z } });
-          setAnim(w, g.F, g.hand === 'glove' ? 'tag_glove' : 'tag_hand', 0.7);
         }
       }
       if (g.frozen) {
         const body = runnerBody(r);
         const hitR = (g.hand === 'glove' ? 0.22 : 0.14) + body.radius;
         const d = distToSegment(g.glove.x, g.glove.z, body.cx, body.cz, body.tx, body.tz);
-        if (d <= hitR && g.F.tagReady <= w.tick) {
+        if (d <= hitR && g.F.tagReady <= w.tick && w.tick >= g.earliest) {
           tagLands(w, g.F, r, g.glove, g.base);
           continue;
         }
@@ -252,8 +263,8 @@ export function tickTagging(w: World): void {
       if (s.dodgeAt && w.tick >= s.dodgeAt && !s.r.dodged && s.r.state === 'live' && !s.r.slideKind) {
         // the runner has seen it coming and steps away from the glove
         s.r.dodged = true;
-        s.r.p.vx += s.dodgeDir.x * 2.2;
-        s.r.p.vz += s.dodgeDir.z * 2.2;
+        s.r.p.vx += s.dodgeDir.x * 1.7;
+        s.r.p.vz += s.dodgeDir.z * 1.7;
       }
       if (w.tick < s.contact) {
         still.push(s);
@@ -279,7 +290,7 @@ export function tickTagging(w: World): void {
     if (atBag) {
       if (secure && !w.bagTags.some((g) => g.F === H && g.r === r)) {
         const hand: 'glove' | 'hand' = H.plan.kind === 'tag' && w.tick >= H.plan.holdUntil + 24 ? 'hand' : 'glove';
-        w.bagTags.push({ F: H, r, base: b, hand, glove: bagGlove(H, r, b, { x: 0, z: 0 }), frozen: false, announced: false });
+        w.bagTags.push({ F: H, r, base: b, hand, glove: bagGlove(H, r, b, { x: 0, z: 0 }), frozen: false, announced: false, earliest: 0 });
       }
       continue;
     }
@@ -287,7 +298,7 @@ export function tickTagging(w: World): void {
     if (w.tick < H.tagReady || w.tags.some((s) => s.F === H) || !secure) continue;
     const body = runnerBody(r);
     const d = distToSegment(hp.x, hp.z, body.cx, body.cz, body.tx, body.tz) - body.radius;
-    if (d <= 1.8 && (!sweep || d < sweep.d)) sweep = { r, d };
+    if (d <= 2.2 && (!sweep || d < sweep.d)) sweep = { r, d };
   }
   if (sweep) startSweep(w, H, sweep.r);
 }
@@ -310,7 +321,7 @@ function tagLands(w: World, F: PlayerRT, r: RunnerRT, at: { x: number; z: number
 function startSweep(w: World, F: PlayerRT, r: RunnerRT): void {
   // the glove is his working hand; he uses the bare hand only once the ball has been moved into it and he is chasing a runner down
   const hand: 'glove' | 'hand' = F.plan.kind === 'tag' && w.tick >= F.plan.holdUntil + 24 ? 'hand' : 'glove';
-  const T = sweepSeconds(F, hand);
+  const T = TAG_CONTACT_S;
   const ticks = secToTicks(T);
   const body = runnerBody(r);
   const p = r.p;
@@ -343,7 +354,7 @@ function startSweep(w: World, F: PlayerRT, r: RunnerRT): void {
   };
   w.tags.push(sweep);
   F.tagReady = w.tick + ticks + secToTicks(0.35);
-  setAnim(w, F, hand === 'glove' ? 'tag_glove' : 'tag_hand', T / 0.45);
+  setAnim(w, F, hand === 'glove' ? 'tag_glove' : 'tag_hand', TAG_CLIP_S);
   F.lookAt = null;
   emit(w, { type: 'tagAttempt', fielderId: F.info.id, runnerId: r.p.info.id, base: sweep.base, hand, pos: { x: aim.x, y: r.slideKind ? 0.3 : 0.9, z: aim.z } });
 }
@@ -409,7 +420,6 @@ export function catcherBlock(w: World): void {
   // stands a step up the line from the plate, facing the runner
   setGoal(C, dir.x * 0.75, dir.z * 0.75, true, 1);
   C.lookAt = { x: r.p.x, z: r.p.z };
-  if (C.anim !== 'catcher_block' || w.tick >= C.animUntil) setAnim(w, C, 'catcher_block', 0.9);
 }
 
 export { TICK };

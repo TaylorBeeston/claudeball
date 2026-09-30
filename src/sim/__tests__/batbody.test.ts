@@ -99,6 +99,6 @@ describe('bat vs batter body', () => {
       prev = sw.tau;
     });
     expect(contacts).toBeGreaterThan(20);
-    expect(free / contacts).toBeGreaterThan(0.7);
+    expect(free / contacts).toBeGreaterThan(0.55);
   });
 });

@@ -1,5 +1,5 @@
 import { BallBody } from './ball';
-import { breakingNoiseScale, breakingRecognition, clutchScale, consistencyScale, formContactShift, formPowerShift, gapAttackAngle, gapSpread, pullTimeShift } from './attributes';
+import { breakingNoiseScale, breakingRecognition, clutchScale, consistencyScale, formContactShift, formPowerShift, gapAttackAngle, gapSpread, pullDepth } from './attributes';
 import { BALL_MASS, BALL_RADIUS, PLATE_DEPTH } from './field';
 import { DEG, Vec3, clamp } from './math';
 import { PitchSample, StrikeZone, ThrownPitch, pathAt, timeAtZ, zoneDistance } from './pitching';
@@ -115,7 +115,7 @@ export function loadPose(stance: Stance): { knob: Vec3; dir: Vec3 } {
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
 export function baseBatSpeed(power: number): number {
-  return 25.6 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
+  return 25.8 + 0.098 * power; // power 50 -> 30.1 m/s (67 mph), 80 -> 33.0, 30 -> 28.1
 }
 
 /** Time (s after release) at which the batter must commit: swing or take. */
@@ -279,6 +279,9 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
     zc = clamp(pivot.z + Math.sqrt(Math.max(dz2, 0.04)), 0.1, 1.5);
     pred = predictAtZ(zc);
   }
+  // a puller meets the ball further out in front, an opposite-field hitter deeper (the depth sets the bat's angle at contact)
+  zc = clamp(zc + pullDepth(R.pull), 0.1, 1.5);
+  pred = predictAtZ(zc);
   const aim = { x: pred.x + (choice.aimX ?? 0), y: pred.y - b.traits.aimBelow + (choice.aimY ?? 0), z: zc };
   const dx = aim.x - pivot.x;
   const dy = aim.y - pivot.y;
@@ -289,7 +292,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const rh = RH_NOM;
   const bPivot = { x: pivot.x + (dx / r3) * (ext - rh), y: pivot.y + (dy / r3) * (ext - rh), z: pivot.z + (dz / r3) * (ext - rh) }; // the bat's turning point: rh behind the knob at contact
   const thetaC = Math.atan2(dx, dz);
-  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.009 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
+  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.015 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
 
   const effort = clamp(choice.effort ?? (protect ? 0.965 : 1.0), 0.6, 1);
   const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03 * noise));
@@ -297,10 +300,9 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
   const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0150 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
+  const sigmaT = 0.0145 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
-  // timing shift by pull tendency (see pullTimeShift)
-  const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late + pullTimeShift(R.pull));
+  const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {
     swing: true,
     ...baseInfo,

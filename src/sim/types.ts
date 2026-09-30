@@ -63,6 +63,7 @@ export type AnimHint =
   | 'ump_ready'
   | 'ump_strike'
   | 'ump_strike_swinging'
+  | 'ump_out_strikeout'
   | 'ump_ball'
   | 'ump_safe'
   | 'ump_out'
