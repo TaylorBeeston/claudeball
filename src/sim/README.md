@@ -120,7 +120,7 @@ Listeners are called *during* `step`; do not call `step` from inside a listener.
 dead-ball running, walking off), `field` (fielding a ground ball / blocking), `catch`, `catch_jump` (leaping / climbing at the wall,
 `animT` = progress through the leap; `pos.y` is the height of the feet while airborne), `throw`, `slide`
 (runner approaching or diving back to a base with a play coming), `celebrate` (a home-run scorer at the plate; winners after the
-last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `tag_glove` / `tag_hand` (a tag sweep, contact at `animT` ≈ 0.45), `slide_feet` / `slide_head` / `slide_hook_left` / `slide_hook_right` / `dive_back`, `catcher_block`, `catch_pitch` / `catch_throw` / `catch_stretch` / `catch_fly` / `catch_backhand` / `field_grounder` (timed so the catch is at `animT` ≈ 0.5), `ump_*` (umpires), `toss` (an
+last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `tag_glove` / `tag_hand` (a tag sweep, contact at `animT` ≈ 0.45), `slide_feet` / `slide_head` / `slide_hook_left` / `slide_hook_right` / `dive_back`, `catcher_block`, `catch_pitch` / `catch_throw` / `catch_stretch` / `catch_fly` / `catch_fly_run` (a fly ball taken on the run) / `catch_line_drive` / `catch_backhand` / `field_grounder` / `catch_comebacker` (the pitcher) (timed so the catch is at `animT` ≈ 0.5, and to start `CATCH_LEAD[hint]` before the catch), `ump_*` (umpires), `toss` (an
 easy short return toss; longer casual returns use `throw`; the engine adapter plays `toss` as `throw` and `transfer` as the ready pose until clips exist). `animT` runs 0..1 over the animation's duration.
 
 ### Events (`game.on(type, cb)`)
@@ -198,9 +198,10 @@ facialHair, seed}` (palette indices for the renderer), handedness (switch hitter
 
 ## The mound
 
-`groundHeight(x, z)` (field.ts): flat 0 everywhere except the pitcher's mound — a level top 10 in (0.254 m) above home plate at the
-rubber (60 ft 6 in), 5 ft wide, sloping 1 in per foot for 6 ft toward home from a point 6 in in front of the rubber (MLB spec), then an
-easing skirt to the grass. It is used for **every player's `pos.y`** in the snapshot (the pitcher stands 0.254 m up; a wall leap adds to it),
+`groundHeight(x, z)` (field.ts) is the same function as `mound_h` in `assets/src/field.py` (the rendered mound mesh): an 18 ft circle centred 59 ft from the
+apex, a level rectangle 5 ft wide from 60 ft to 60 ft 34 in (0.254 m, 10 in above home plate), falling 1 in per foot in every direction from that rectangle, eased
+over the last 1.5 ft of the circle down to the grass (0 everywhere else). The glb is a faceted 40x96 grid, so it differs from the analytic function by a few cm between
+vertices (at most ~2.5 cm on the slopes). It is used for **every player's `pos.y`** in the snapshot (the pitcher stands 0.254 m up; a wall leap adds to it),
 for the ball (it bounces and rolls on the mound), for the ball in a fielder's hand, and for the release point (measured above the mound).
 The engine should place a player at `pos.y` (or call `groundHeight` itself for a position it computes).
 
@@ -372,9 +373,14 @@ distance test. What did exist: force / tag-up logic, forcing chains, fielders ch
 
 **Catching.** For every catch the snapshot carries `PlayerSnapshot.gloveTarget` (world position where the ball will meet the glove / mitt: pitches — the catcher's
 mitt plan from his read of the pitch, moving from where he set up toward the ball and limited by how fast his hand can move; throws and batted balls — the
-first point of the predicted flight inside the fielder's reach, and in the last hundredths of a second the ball itself), `gloveEta` (s) and `gloveHand`. The hint starts ~0.3 s before the
-catch (0.35 s for a pitch) so the catch instant is at `animT` ≈ 0.5: `catch_pitch`, `catch_throw`, `catch_stretch` (first baseman / a reach), `catch_fly`,
-`catch_backhand` (a fly ball on the throwing-arm side), `field_grounder` (forehand or backhand by the side). The glove's random miss is drawn when he commits to the
+first point of the predicted flight inside the fielder's reach, and in the last hundredths of a second the ball itself), `gloveEta` (s) and `gloveHand`. `catchIn` (s, also on every player) counts down to the catch while a
+glove target is set. The catch hint starts `CATCH_LEAD[hint]` before the catch, chosen from the engine's 24 fps clips so the clip's catch frame is the arrival:
+`catch_pitch` 7/24 s, `catch_throw` 6/24, `catch_stretch` 8/24, `catch_fly` 10/24, `catch_fly_run` 12/24, `catch_line_drive` 5/24, `catch_backhand` 8/24,
+`field_grounder` 11/24, `catch_comebacker` 7/24 (so `catchIn` equals that lead on the first frame the hint shows, and `animT` ≈ 0.5 at the catch: the hint's duration is twice the lead).
+Which hint: `catch_pitch` for the catcher; `catch_stretch` / `catch_throw` for throws (the covering first baseman stretches); the pitcher's ground ball is `catch_comebacker`;
+a hard grounder / liner picks `field_grounder` / `catch_line_drive`; a fly ball on the throwing-arm side `catch_backhand`; else `catch_fly`, or `catch_fly_run` when he is
+running faster than ~3 m/s. The pitcher's `PlayerSnapshot.pitchType` (and the `windup` event's `pitchType`) is known from the start of the windup, before release, for grip choice.
+The glove's random miss is drawn when he commits to the
 catch (so the renderer can show it coming). `catch` / `fielded` events carry `pos` (where the ball met the glove), `kind` (`pitch|throw|fly|line|ground|pickoff`),
 `height` (`low|chest|high`), `side` (`glove|arm|backhand|forehand`) and `firm`. After a catch the ball stays at the glove and settles into the hand over a third of
 a second.
@@ -392,6 +398,10 @@ for ~1.3 s (0.6 s for a ball): `ball` / `ball_four` → `ump_ball` (no big gestu
 → `ump_homerun` (the foul-line umpire on that side, 0.4 s after the ball clears), `time` → `ump_time` (substitutions); the default is `ump_ready`. Timing: a strike / ball 0.25 / 0.2 s
 after the catch, a base call 0.25 s after the tag / touch (0.55 s when it was close). `umpireCall` is separate from the existing `call` event (the ruling itself, whose shape did not change).
 Not modelled: umpires do not avoid fielders who chase balls into foul territory (players do not collide in the sim).
+
+**The batter's hands.** The knob is held within arm's reach of the shoulders (`ARM_REACH`) and at least `TORSO_CLEAR` (0.30 m) off the torso axis horizontally, so the engine's
+hand IK does not push the elbows into the chest. That clearance fades out within 12 ms (`CONTACT_HOLD`) of contact, where the planned bat pose (and therefore the contact physics)
+is left untouched; on a jammed pitch the knob can still be as close as ~0.16-0.26 m to the torso axis at the instant of contact (median 0.26 m).
 
 ## Pacing
 
