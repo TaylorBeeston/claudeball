@@ -20,8 +20,8 @@ Processing: trimmed, mono, 32 kHz, fade in/out, peak limited, encoded with `ffmp
 | organ melodies (charge figure, fanfare, ditties, stretch tune) | the "charge" figure is a traditional public-domain bugle call; the rest are original to this project | PD / MIT |
 | announcer, umpire and commentary voices | the visitor's own browser `SpeechSynthesis` voices (nothing bundled or recorded) | n/a |
 
-Other candidates that were checked and are **not** used: Commons "Applause i/ii.ogg" and "Clapping hurray.ogg" (public domain but
-short/thin), "High school cafeteria.ogg" and the shopping-mall ambiences (public domain, but an indoor room tone, not a stadium);
-no CC0/PD stadium roar, organ or baseball effect recordings turned up on Commons (searches: cheering crowd, crowd noise, stadium
-crowd roar, sports crowd, applause, baseball crowd). OpenGameArt and Kenney.nl were not searched.
+Other candidates that were checked and are **not** used:
+- Wikimedia Commons (searches: cheering crowd, crowd noise, stadium crowd roar, sports crowd, applause, baseball crowd): "Applause i/ii.ogg" and "Clapping hurray.ogg" (public domain but short/thin), "High school cafeteria.ogg" and the shopping-mall ambiences (public domain, indoor room tone, not a stadium). No stadium roar, organ or baseball effect turned up.
+- OpenGameArt, CC0 filter (searches: crowd, cheer, audience, applause, stadium, sports, baseball, organ, in sound-effect and music categories): "Crowd Shouting/Speaking Ambience" (CC0, but a few siblings' voices layered to sound like a protest, not a stadium), "Applause in a large hall or church" (CC0 but very reverberant, redundant with the applause already used), "Fireworks With Applause Happy People" (page lists both CC0 and CC-BY: licence unclear, skipped). The organ hits are game music tracks, not a baseball organ. No stadium roar, baseball organ or bat/glove effects.
+- Kenney.nl audio packs (Impact, Interface, Digital, RPG, Music Jingles ... all CC0): nothing crowd-, stadium- or baseball-specific; not downloaded.
 If more recordings are added, list each here (author, URL, licence; CC0 / public domain only) and add them to `manifest.json`.
