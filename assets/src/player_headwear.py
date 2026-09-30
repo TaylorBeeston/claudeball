@@ -65,9 +65,14 @@ def brim_from_edge(bm, inner_bm_verts, length, droop, side_curl, width_taper=0.5
         if abs(ang) <= arc: pts.append((ang, v.co.copy()))
     pts.sort(key=lambda a: a[0])
     if len(pts) < 4: return
-    for _ in range(6):                                                                  # the cut edge is a little irregular: smooth its height so the bill is not rippled
-        zs = [p[1].z for p in pts]
-        for i in range(1, len(pts)-1): pts[i][1].z = (zs[i-1] + 2*zs[i] + zs[i+1])/4
+    # the cut edge is irregular (uneven vertex spacing, small height/radius jitter): fit smooth r(angle) and z(angle) curves and resample them at even angles, so the bill's ribs are even
+    ang = np.array([p[0] for p in pts]); rr = np.array([math.hypot((p[1]-HC).x, (p[1]-HC).y) for p in pts]); zz = np.array([p[1].z for p in pts])
+    m = 33; grid_a = np.linspace(ang[0], ang[-1], m)
+    def smooth(y):
+        k = np.exp(-(np.linspace(-2.5, 2.5, 15))**2/2); k /= k.sum(); pad = np.concatenate([np.full(7, y[0]), y, np.full(7, y[-1])]); return np.convolve(pad, k, mode='valid')
+    for _ in range(3): rr = smooth(rr); zz = smooth(zz)
+    r_s = np.interp(grid_a, ang, rr); z_s = np.interp(grid_a, ang, zz)
+    pts = [(float(a_), Vector((HC.x + r_*math.sin(math.radians(a_)), HC.y - r_*math.cos(math.radians(a_)), z_))) for a_, r_, z_ in zip(grid_a, r_s, z_s)]
     grid = []
     for t in np.linspace(0, 1, rows):
         row = []
