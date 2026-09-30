@@ -108,9 +108,9 @@ export const fielderTopSpeed = (r: Ratings) => sprintOf(0.85 * r.speed + 0.15 * 
 /** Efficiency of his routes: fraction of top speed that turns into progress toward the ball. */
 export const routeEfficiency = (r: Ratings) => clamp(0.955 + 0.0009 * (r.iq - 50), 0.92, 0.985);
 /** Judgement error (m per second of remaining flight) of the ball's path: range and IQ shrink it. */
-export const judgementSigma = (r: Ratings) => clamp(0.5 - 0.0035 * (r.range - 50) - 0.0035 * (r.iq - 50), 0.2, 0.85);
+export const judgementSigma = (r: Ratings) => clamp(0.38 - 0.0035 * (r.range - 50) - 0.0035 * (r.iq - 50), 0.2, 0.85);
 /** Time to first move (s) after contact: first step. */
-export const firstStepSeconds = (r: Ratings, jitter: number) => 0.15 + 0.2 * (1 - r.range / 100) - 0.0006 * (r.iq - 50) + jitter;
+export const firstStepSeconds = (r: Ratings, jitter: number) => 0.10 + 0.2 * (1 - r.range / 100) - 0.0006 * (r.iq - 50) + jitter;
 /** Wind-up (s) before a throw leaves the hand and the glove-to-hand transfer (s). */
 export const throwWindup = (r: Ratings, onRun: number) => (0.07 + 0.06 * onRun) * clamp(1.35 - 0.007 * r.release, 0.7, 1.3);
 export const transferSeconds = (r: Ratings, onRun: number) => clamp(0.5 - 0.0025 * (r.glove - 50) - 0.0025 * (r.release - 50) + 0.03 * onRun, 0.3, 0.85);
