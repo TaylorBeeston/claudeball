@@ -389,6 +389,8 @@ export interface BagTag {
   announced: boolean;
   /** Tick before which the glove cannot make contact (the clip's swing). */
   earliest: number;
+  /** Tick of the clip's contact frame: a runner who got round the glove is announced (`tagAvoided`) then. */
+  contactTick: number;
 }
 
 /** A fielder's tag sweep: from the start until the glove / hand arrives where he aimed. */

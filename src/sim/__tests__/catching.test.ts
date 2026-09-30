@@ -86,7 +86,8 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
       if (CATCH_HINTS.has(p.anim) || p.anim === 'catch_jump') hinted++;
       if (p.gloveTarget && p.catchIn != null) targeted++;
       kinds.add(e.kind!);
-      if (e.kind === 'fly') expect(['catch_fly', 'catch_fly_run', 'catch_backhand', 'catch_jump', ...(e.pos.y < 0.6 ? ['field_grounder', 'catch_comebacker'] : [])]).toContain(p.anim);
+      if (e.kind === 'fly') expect(['catch_fly', 'catch_fly_run', 'catch_backhand', 'catch_jump']).toContain(p.anim);
+      if (e.kind === 'ground') expect(['field_grounder', 'catch_comebacker', 'catch_backhand', 'catch_jump']).toContain(p.anim);
       if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_stretch']).toContain(p.anim);
     }
     expect(hinted / all.length).toBeGreaterThan(0.98);

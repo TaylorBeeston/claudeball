@@ -557,7 +557,7 @@ function attempt(w: World, F: PlayerRT, stretch: number): void {
   const sp = Math.hypot(b.vx, b.vy, b.vz);
   const rel = Math.hypot(b.vx - F.vx, b.vy, b.vz - F.vz);
   const fs = Math.hypot(F.vx, F.vz);
-  const air = !b.rolling && !ball.touchedGround;
+  const air = isAirBall(ball.mode, ball.touchedGround, b.rolling, b.y);
   const g = F.info.ratings.glove;
   const isCatcher = F.fieldPos === 'C';
   const skill = isCatcher ? (g + F.info.ratings.catching) / 2 : g;
@@ -1143,6 +1143,16 @@ function meetPoint(w: World, F: PlayerRT): { x: number; y: number; z: number; t:
   return null;
 }
 
+/**
+ * One rule for "a catch in the air" (a fly ball or line drive: an out) against a grounder, used by the catch itself and by the hint that is armed ahead of it:
+ * off the bat and not yet down, or a deflected ball still above knee height.
+ */
+export function isAirBall(mode: string, touchedGround: boolean, rolling: boolean, y: number): boolean {
+  return !touchedGround && !rolling && (mode === 'batted' || y > 0.5);
+}
+
+const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'catch_stretch' ? 'throw' : 'air');
+
 /** Whether his catch clip is running (armed, not expired, still the catch hint): a stale flag from an earlier play does not count. */
 export function catchClipOn(w: World, F: PlayerRT): boolean {
   return F.catchArmed && w.tick < F.animUntil && CATCH_LEAD[F.anim] !== undefined;
@@ -1152,13 +1162,14 @@ export function catchClipOn(w: World, F: PlayerRT): boolean {
 function catchKindAt(w: World, tArr: number, ty = 1): 'throw' | 'pickoff' | 'fly' | 'line' | 'ground' {
   const ball = w.ball;
   if (ball.mode === 'thrown') return w.play?.kind === 'pickoff' ? 'pickoff' : 'throw';
-  if (ball.touchedGround || ball.body.rolling || ty < 0.15 || (ball.mode === 'loose' && ty < 0.5)) return 'ground';
+  // the same rule the catch itself uses (`isAirBall`), applied to the ball as it will be at the arrival
+  if (!isAirBall(ball.mode, ball.touchedGround, ball.body.rolling, ty)) return 'ground';
+  if (tArr <= 4 * TICK) return w.play?.bip?.line ? 'line' : 'fly'; // (at the last ticks the present state is the answer)
   const tNow = (w.tick - ball.pathStart) * TICK;
-  const bb0 = ball.body;
-  let pvy = bb0.vy;
+  let pvy = ball.body.vy;
   for (const s of ball.path) {
     if (s.t - tNow > tArr + 0.03) break;
-    if (s.t - tNow > 0.02 && (s.y < 0.08 || s.rolling || (pvy < 0 && s.vy > 0))) return 'ground'; // it bounces before he gets there
+    if (s.t - tNow > 0.02 && (s.rolling || (pvy < 0 && s.vy > 0))) return 'ground'; // it bounces before he gets there
     pvy = s.vy;
   }
   return w.play?.bip?.line ? 'line' : 'fly';
@@ -1239,6 +1250,11 @@ export function updateGloveTargets(w: World): void {
     F.gloveAt = w.tick + Math.round(tArr / TICK);
     // a clip that ran out before the ball arrived (he was late) or that started too early (the ball slowed) is started again at the right lead
     if (F.catchArmed && (!catchClipOn(w, F) || tArr > (CATCH_LEAD[F.anim] ?? 0.3) + 0.2)) F.catchArmed = false;
+    if (F.catchArmed && !F.leap && tArr <= 4 * TICK) {
+      // about to catch it: if the ball turned out to be the other kind (it did not bounce, or it did), the clip is switched to the one that matches the event
+      const now = catchKindAt(w, tArr, ty);
+      if (catchFamily(F.anim) !== (now === 'ground' ? 'ground' : now === 'throw' || now === 'pickoff' ? 'throw' : 'air')) F.catchArmed = false;
+    }
     if (!F.catchArmed && !F.leap) {
       const kind = catchKindAt(w, tArr, ty);
       const ch = catchHint(w, F, tx, tz, kind, lateralOf(F, tx, tz), gap > 0 ? Math.min(1, dh / reachH) * 0.5 : 0);
