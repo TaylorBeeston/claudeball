@@ -59,7 +59,7 @@ SIDE = lambda s: s
 LOCO = dict(cc_min=.03, cc_cap=.10, dz_max=-.14, abd_max=.13, w_base=.15, w_prev=.9)
 READY = dict(cc_min=.03, cc_cap=.14, dz_max=-.08, abd_max=.14, w_base=.15, w_prev=.9)
 BAT = dict(cc_min=.03, w_base=.35, w_prev=1.2, bonus=0.0)
-OPT_CLIPS = {"run": (LOCO, True), "run_turn": (dict(LOCO, abd_max=.16, dz_max=-.12), True), "trot": (LOCO, True), "walk": (LOCO, True),
+OPT_CLIPS = {"run": (LOCO, True), "jog": (LOCO, True), "run_sprint": (dict(LOCO, dz_max=-.10), True), "run_turn_sprint": (dict(LOCO, abd_max=.16, dz_max=-.10), True), "run_turn": (dict(LOCO, abd_max=.16, dz_max=-.12), True), "trot": (LOCO, True), "walk": (LOCO, True),
              "field_ready": (READY, True), "field_ready_infield": (READY, True), "field_ready_outfield": (READY, True), "field_ready_hands_knees": (dict(READY, abd_max=.18, cc_cap=.2), True),
              "idle": (READY, True), "ump_ready": (READY, True), "ump_set_base": (READY, True), "catcher_crouch": (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True), "batting_stance": (BAT, True), "swing": (BAT, False)}
 CATCHCFG = dict(cc_min=.03, w_base=.15, w_prev=.9)

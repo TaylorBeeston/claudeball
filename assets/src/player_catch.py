@@ -78,7 +78,7 @@ def _catch_fly_run():
     run = dict(CLIPS["run"][1]); keys = []
     def w(f): return 0.0 if f < 3 else (f-3)/6 if f < 9 else 1.0 if f <= 15 else max(0.0, 1 - (f-15)/7)
     for f in range(25):
-        sp = dict(run[f]); wf = w(f); lr = sp['lhand_rel']; reach = (.05, -.52, .10)
+        sp = dict(run[f % CLIPS['run'][0]]); wf = w(f); lr = sp['lhand_rel']; reach = (.05, -.52, .10)
         sp['lhand_rel'] = tuple(lr[i]*(1-wf) + reach[i]*wf for i in range(3)); sp['lhand_face'] = (0, -.6, .8); sp['head_pitch'] = -.5*sp.get('lean', 20) - 10*wf
         keys.append((f, sp))
     return keys

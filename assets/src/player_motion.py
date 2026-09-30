@@ -63,8 +63,51 @@ READY_OUTFIELD = dict(hips=(0, -.02, -.15), lean=28, lfoot=(.28, 0, .085), rfoot
 READY_KNEES = dict(hips=(0, .04, -.24), lean=66, lfoot=(.26, 0, .085), rfoot=(-.26, 0, .085), lfoot_o=(10, 0), rfoot_o=(-10, 0), lknee=(.3, -1, 0), rknee=(-.3, -1, 0),
                    lhand=(.22, -.24, .58), rhand=(-.22, -.24, .58), lpole=(.6, .3, -.4), rpole=(-.6, .3, -.4), head_pitch=-40)
 
-CLIPS["run"] = (24, run_v2()); FRAME0["run"] = 0
-CLIPS["run_turn"] = (24, run_turn_v2()); FRAME0["run_turn"] = 0
+# ---------------------------------------------------------------- speed-designed running gaits (in place; the engine moves the root and scales playback by speed / footSpeed)
+# footSpeed = speed at which the stance foot slides back relative to the hips = (a + b) / (duty * T) with a = stance foot ahead of the hips at touchdown, b = behind at toe-off.
+GAITS = {   # v (m/s), frames, a, b, hip height during stance (m above the ankle), swing foot lift, hip rise in flight, lean, arm forward/back hand targets (shoulder relative), arm-swing amplitude rot
+    "jog":        dict(v=3.5, n=18, a=.38, b=.42, vc=.78, hl=.08, lift=.32, rise=.045, lean=14, fwd=(-.03, -.27, -.10), back=(.10, .20, -.40), rot=(6, 8)),
+    "run":        dict(v=5.0, n=16, a=.42, b=.46, vc=.78, hl=.10, lift=.40, rise=.055, lean=22, fwd=(-.03, -.30, -.06), back=(.10, .22, -.42), rot=(7, 9)),
+    "run_sprint": dict(v=7.0, n=13, a=.36, b=.40, vc=.80, hl=.12, lift=.50, rise=.07, lean=30, fwd=(-.02, -.34, -.02), back=(.12, .26, -.44), rot=(9, 11)),
+}
+def _sm3(e): return e*e*(3 - 2*e)
+def gait(v, n, a, b, vc, hl, lift, rise, lean, fwd, back, rot, bank=0, dx=0.0, yaw0=0, hyaw0=0, head_yaw=0, foot_o=((0, 0), (0, 0)), amp=(1.0, 1.0), hand_dx=0.0):
+    """One running cycle (left foot contact at frame 0, `n` frames): the stance foot slides back at exactly `v` m/s relative to the hips, the hips stay at a height that keeps the
+    leg reachable (lowest in stance, rising in the flight phase), the swing foot heel-kicks and reaches forward, arms swing ~90 deg opposite to the legs."""
+    T = n/24.0; duty = (a + b)/(v*T); out = []
+    def stance_foot(p):                                                # (y, z) of the stance ankle at phase p < duty: the heel rises over the last part of the stance
+        s = p/duty; return (-a + (a + b)*s, .085 + hl*_sm3(min(1.0, max(0.0, (s - .5)/.5))))
+    def stance_v(s):                                                   # hip height above the ankle plane: capped by leg reach (Lmax) so the knee never over-extends
+        y, z = stance_foot(s*duty); return min(vc - .02*math.sin(math.pi*s), math.sqrt(max(.0, .845**2 - y*y)) + (z - .085))
+    def foot(p):
+        p %= 1.0
+        if p < duty: return stance_foot(p)
+        q = (p - duty)/(1 - duty); e = _sm3(q); z0 = .085 + hl
+        return (b - (a + b)*e, z0 + (.085 - z0)*e + lift*math.sin(math.pi*q)**1.15)
+    def hip_v(p):                                                      # hip joint height above the ankle plane, period 1/2 (only one foot is ever in stance)
+        p = p % .5
+        if p < duty: return stance_v(p/duty)
+        q = (p - duty)/(.5 - duty); v0 = stance_v(1.0); v1 = stance_v(0.0)
+        return v0 + (v1 - v0)*_sm3(q) + rise*math.sin(math.pi*q)
+    for f in range(n + 1):
+        p = (f % n)/n; ly, lz = foot(p); ry, rz = foot(p + .5); bob = hip_v(p) - .855
+        sl = (1 - _cyc(p))/2; sr = (1 + _cyc(p))/2
+        lh = tuple((back[i]*(1-sl) + fwd[i]*sl) for i in range(3)); rh = tuple((back[i]*(1-sr) + fwd[i]*sr) for i in range(3))
+        lh = (lh[0]*amp[0] + .02, lh[1]*amp[0], lh[2]*amp[0] + (1-amp[0])*(-.1)); rh = (rh[0]*amp[1] + .02, rh[1]*amp[1], rh[2]*amp[1] + (1-amp[1])*(-.1))
+        spec = dict(hips=(0, 0, bob), lean=lean, yaw=yaw0 + rot[0]*_cyc(p), hyaw=hyaw0 - rot[1]*_cyc(p), head_yaw=head_yaw, head_pitch=-.5*lean,
+                    lfoot=(.10+dx, ly, lz), rfoot=(-.10+dx, ry, rz), lhand_rel=(lh[0]+hand_dx, lh[1], lh[2]), rhand_rel=(-rh[0] - abs(hand_dx)*.6, rh[1], rh[2]),
+                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1])
+        if bank: spec['side'] = bank
+        out.append((f, spec))
+    return out
+TURN = dict(bank=18, dx=-.15, yaw0=8, hyaw0=12, head_yaw=34, foot_o=((10, 0), (16, 0)), amp=(.8, 1.0), hand_dx=.03)
+def _turn(g, **kw):
+    P = dict(GAITS[g]); P.update(TURN); P.update(kw); P['lean'] = P['lean'] + 4; return gait(**P)
+CLIPS["jog"] = (GAITS["jog"]["n"], gait(**GAITS["jog"])); FRAME0["jog"] = 0
+CLIPS["run"] = (GAITS["run"]["n"], gait(**GAITS["run"])); FRAME0["run"] = 0
+CLIPS["run_sprint"] = (GAITS["run_sprint"]["n"], gait(**GAITS["run_sprint"])); FRAME0["run_sprint"] = 0
+CLIPS["run_turn"] = (GAITS["run"]["n"], _turn("run")); FRAME0["run_turn"] = 0
+CLIPS["run_turn_sprint"] = (GAITS["run_sprint"]["n"], _turn("run_sprint", bank=22)); FRAME0["run_turn_sprint"] = 0
 CLIPS["throw"] = (30, throw_v2())
 CLIPS["field_ready"] = (40, _ready(dict(hips=(0, -.06, -.34), lean=42, lfoot=(.32, 0, .085), rfoot=(-.32, 0, .085), lfoot_o=(12, 0), rfoot_o=(-12, 0), lknee=(.3, -1, 0), rknee=(-.3, -1, 0),
                         lhand_rel=(.08, -.30, -.52), rhand_rel=(-.10, -.28, -.52), lpole=(.6, .6, -.2), rpole=(-.6, .6, -.2), head_pitch=-30)))
