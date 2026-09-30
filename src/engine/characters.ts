@@ -347,6 +347,10 @@ export interface PuppetEnv {
   mound?: Vector3 | null;
   /** what happened to this fielder's latest tag: made, or avoided by the runner (null: none in flight) */
   tagOutcome?: (fielderId: string) => 'tag' | 'avoided' | 'attempt' | null;
+  /** the runner a fielder's latest tag is aimed at */
+  tagRunner?: (fielderId: string) => string | null;
+  /** every player's animation hint by id */
+  anims?: Map<string, string>;
   /** every player's scene position by id (for tags: where the runner is) */
   positions?: Map<string, Vector3>;
   /** makes a ball for a hand / glove (a clone of the ball model) */
