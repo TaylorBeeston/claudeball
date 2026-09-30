@@ -41,12 +41,18 @@ sim raw event bus ─┐                       ┌─ sfx   → spatialize(camer
 
 ## Where the events come from
 
-`RealSimAdapter` (engine) keeps the sim's own game object as `g`; `rawBusOf()` uses `g.on('*')` (duck-typed) because the engine's
-reduced `GameEvent` stream drops what audio needs (strike looking vs swinging, `outType`, `error`, `wallContact`, `robbedHomeRun`,
-`pitchCrossed`, `batterUp`, ...). With no raw bus (the `?mock` game) `engineToRaw()` converts engine events into the sim shape. Never both.
+`RealSimAdapter` (engine) exposes the sim's own game as the public getter `game`; `rawBusOf()` uses `game.on('*')` (falling back to the old private `g` on older engines) because the engine's
+reduced `GameEvent` stream drops what audio needs. With no raw bus (the `?mock` game) `engineToRaw()` converts engine events into the sim shape. Never both.
 Unknown events and missing fields are ignored (the mapper is wrapped in try/catch and tested with junk input).
 
-Sim events used: `gameStart, batterUp, pitchReleased, pitchCrossed, swing, contact, call, fielded, catch, error, throw, ballReturn, tag/tagAttempt (when the sim emits them), out, safe, steal, walk, hitByPitch, wildPitch/passedBall, wallContact, wallLeap, robbedHomeRun, homeRun, baseTouch, runScored, plateAppearanceEnd, playEnd, pitchingChange, halfInningEnd, gameEnd`.
+**Detailed mode** (`CueMapper({ detailed: true })`, on whenever the raw bus exists, and switched on by the first `umpireCall`) avoids double triggers:
+- umpire voices come from `umpireCall` (timed with the umpire's gesture, 0.2-0.6 s after the play; strikes/balls/fouls/safe/out/time, at the umpire's position for the fallback shout); `call`, `out` and `safe` no longer speak, they only drive crowd reactions;
+- pops come from `catch`/`fielded` (`kind` pitch/throw/fly/line/ground/pickoff, `height`, `side`, `firm`): the catcher's mitt pop is scaled by pitch speed and is sharper (higher, louder) when `firm`, duller when caught at the edge of the glove; throws pop at the receiver when caught, not after a guessed flight time; `pitchCrossed` adds no pop. Casual `ballReturn` legs have no catch event, so their soft pop is still scheduled;
+- `tag` = glove slap (the `out` that follows adds none), `tagAttempt` is silent, `tagAvoided` = a swish through air + crowd "ooh";
+- `closePlay` on `out`/`safe` = crowd tension ("ooh" + excitement) until the umpire rules, then relief/groans for the side that won the call;
+- the play-by-play line waits 1.3 s so the umpire's call comes first.
+
+Sim events used: `gameStart, batterUp, pitchReleased, pitchCrossed, swing, contact, call, umpireCall, fielded, catch, error, throw, ballReturn, tag, tagAttempt, tagAvoided, out, safe, steal, walk, hitByPitch, wildPitch/passedBall, wallContact, wallLeap, robbedHomeRun, homeRun, baseTouch, runScored, plateAppearanceEnd, playEnd, pitchingChange, halfInningEnd, gameEnd`.
 No sim event exists for these, so `index.ts` derives them from the snapshot each tick: ball bounces (grass vs infield dirt vs warning-track dirt), slides (`anim` becomes `slide`), cleats (only for runners near the camera, only at 1x).
 
 ## Sound design notes
@@ -80,4 +86,4 @@ and the mixer against a fake `AudioContext` (voice cap, stealing, node disconnec
 
 ## What audio would like from the sim/engine
 
-Nothing blocking. Nice to have: a public accessor for the raw sim game on `RealSimAdapter` (today `g` is read structurally), `tag`/`tagAttempt`/`tagAvoided` events (used if present), an event for a batted ball landing, and the fence-contact `speed` for foul balls into the stands.
+Nothing blocking. Nice to have: an event for a batted ball landing, the fence-contact `speed` for foul balls into the stands, and catch events for the casual `ballReturn` legs.
