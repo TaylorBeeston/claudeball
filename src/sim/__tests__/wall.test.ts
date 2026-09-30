@@ -75,9 +75,11 @@ describe('outfield wall', () => {
   it('emits wallContact for the ball meeting the wall and animates the leap (catch_jump, feet off the ground)', () => {
     let sawJump = false;
     let sawBallContact = false;
-    for (let mph = 100; mph <= 106 && !sawJump; mph++) {
-      const l = lab(`jump-${mph}`);
-      hitBall(l.w, mph, 27, 0, 1800);
+    for (let k = 0; k < 21 && !sawJump; k++) {
+      const mph = 100 + (k % 7);
+      const la = [27, 24, 30][Math.floor(k / 7)];
+      const l = lab(`jump-${mph}-${la}`);
+      hitBall(l.w, mph, la, 0, 1800);
       for (let i = 0; i < 240 * 20 && l.w.phase === 'inPlay'; i++) {
         l.g.step(1 / 240);
         const s = l.g.getState();
@@ -86,7 +88,7 @@ describe('outfield wall', () => {
       sawBallContact ||= ofType(l.events, 'wallContact').some((e) => e.who === 'ball');
     }
     expect(sawJump).toBe(true);
-    for (const [mph, la, sp] of [[98, 9, -37], [100, 12, 30], [102, 15, 0], [99, 11, 20], [96, 10, 25], [104, 9, -30], [101, 12, -15], [97, 14, 10], [103, 11, 35], [99, 8, -25]] as number[][]) {
+    for (const [mph, la, sp] of [[98, 9, -37], [100, 12, 30], [102, 15, 0], [99, 11, 20], [96, 10, 25], [104, 9, -30], [101, 12, -15], [97, 14, 10], [103, 11, 35], [99, 8, -25], [110, 14, -34], [108, 16, 34]] as number[][]) {
       if (sawBallContact) break;
       const l = lab(`carom-${mph}-${sp}`);
       hitBall(l.w, mph, la, sp, 800);

@@ -27,9 +27,13 @@ export const SLIDE_HINT: Record<SlideKind, AnimHint> = { feet: 'slide_feet', hea
 /** How far past his centre the leading foot / hand reaches (m). */
 export const limbLength = (k: SlideKind | null) => (k === 'feet' ? 1.0 : k === 'head' ? 1.25 : k === 'diveBack' ? 1.2 : k ? 0.95 : 0);
 /** Reach of a fielder's glove / bare hand from his body, and the lunge he can add (m). */
-export const GLOVE_REACH = 0.95;
-export const HAND_REACH = 0.85;
-export const LUNGE = 0.35;
+export const GLOVE_REACH = 0.72;
+export const HAND_REACH = 0.65;
+/** What a body can reach from where he stands (the rendered fielder's lunge is ~1.05 m at most): the arm plus a lunge that his range sets. */
+export const MAX_TAG_REACH = 1.05;
+export const tagReach = (F: PlayerRT, hand: 'glove' | 'hand') => Math.min(MAX_TAG_REACH, (hand === 'glove' ? GLOVE_REACH : HAND_REACH) + 0.16 + 0.2 * (F.info.ratings.range / 100));
+/** How far he can step toward the runner while the sweep is made (m). */
+const TAG_STEP = 0.55;
 /** A foot has to be this close to the middle of the bag (m). */
 export const FOOT_ON_BASE = 0.65;
 
@@ -240,6 +244,20 @@ export function tickTagging(w: World): void {
             g.glove.x += lf.x * 0.20 * lateral;
             g.glove.z += lf.z * 0.20 * lateral;
           }
+          // he steps toward the glove point while the sweep is made, and the glove cannot be set beyond what he can reach from there
+          const gdx = g.glove.x - g.F.x, gdz = g.glove.z - g.F.z;
+          const gd = Math.hypot(gdx, gdz);
+          const reach = tagReach(g.F, g.hand);
+          const stepLen = clamp(gd - reach * 0.75, 0, TAG_STEP * 0.7);
+          const ux = gd > 1e-6 ? gdx / gd : 0, uz = gd > 1e-6 ? gdz / gd : 0;
+          const nT = Math.max(1, secToTicks(TAG_CONTACT_S));
+          g.step = { x: (ux * stepLen) / nT, z: (uz * stepLen) / nT };
+          const fx = g.F.x + ux * stepLen, fz = g.F.z + uz * stepLen;
+          const rest = Math.hypot(g.glove.x - fx, g.glove.z - fz);
+          if (rest > reach) {
+            g.glove.x = fx + ((g.glove.x - fx) / rest) * reach;
+            g.glove.z = fz + ((g.glove.z - fz) / rest) * reach;
+          }
           g.announced = true;
           // the hint starts with the sweep; contact is not before the clip's contact frame (a tag made straight off a late catch still has its swing)
           g.earliest = w.tick + secToTicks(TAG_MIN_S);
@@ -250,6 +268,10 @@ export function tickTagging(w: World): void {
         }
       }
       if (g.frozen) {
+        if (w.tick < g.contactTick && g.step) {
+          g.F.x += g.step.x;
+          g.F.z += g.step.z;
+        }
         const body = runnerBody(r);
         const hitR = (g.hand === 'glove' ? 0.22 : 0.14) + body.radius;
         const d = distToSegment(g.glove.x, g.glove.z, body.cx, body.cz, body.tx, body.tz);
@@ -273,6 +295,9 @@ export function tickTagging(w: World): void {
         s.r.p.vz += s.dodgeDir.z * 1.7;
       }
       if (w.tick < s.contact) {
+        // he steps / lunges toward the glove point while the sweep is made
+        s.F.x += s.step.x;
+        s.F.z += s.step.z;
         still.push(s);
         continue;
       }
@@ -293,7 +318,7 @@ export function tickTagging(w: World): void {
     const b = r.target > r.base ? r.target : r.base >= 1 ? r.base : 0;
     const bp = b >= 1 ? bpos(b) : null;
     // (the catcher's block clip is long, 26/24 s to its tag contact: he starts it when the runner is still ~1.1 s away)
-    const atBag = !!bp && Math.hypot(H.x - bp.x, H.z - bp.z) <= 1.1 && Math.hypot(r.p.x - bp.x, r.p.z - bp.z) < (H === w.catcher ? 13 : 6);
+    const atBag = !!bp && Math.hypot(H.x - bp.x, H.z - bp.z) <= (H === w.catcher && b === 4 ? 1.7 : 1.1) && Math.hypot(r.p.x - bp.x, r.p.z - bp.z) < (H === w.catcher ? 13 : 6);
     if (atBag) {
       if (secure && !w.bagTags.some((g) => g.F === H && g.r === r)) {
         const hand: 'glove' | 'hand' = H.plan.kind === 'tag' && w.tick >= H.plan.holdUntil + 24 ? 'hand' : 'glove';
@@ -318,6 +343,10 @@ function tagLands(w: World, F: PlayerRT, r: RunnerRT, at: { x: number; z: number
     fielding.dropBall(w, F, at);
     return;
   }
+  // (whatever was aimed at, the announced contact is inside what his body can reach)
+  const rch = tagReach(F, F.plan.kind === 'tag' && w.tick >= F.plan.holdUntil + 24 ? 'hand' : 'glove');
+  const ad = Math.hypot(at.x - F.x, at.z - F.z);
+  if (ad > rch) at = { x: F.x + ((at.x - F.x) / ad) * rch, z: F.z + ((at.z - F.z) / ad) * rch };
   emit(w, { type: 'tag', fielderId: F.info.id, runnerId: r.p.info.id, pos: { x: at.x, y: r.slideKind ? 0.3 : 0.9, z: at.z } });
   const type = w.play!.kind === 'steal' && r.stealing ? 'caughtStealing' : w.play!.kind === 'pickoff' ? 'pickoff' : 'tag';
   if (type === 'caughtStealing') r.p.bat.cs++;
@@ -358,7 +387,14 @@ function startSweep(w: World, F: PlayerRT, r: RunnerRT): void {
     base: r.target > r.base ? r.target : r.base >= 1 ? r.base : null,
     dodgeAt: !r.slideKind && !nearBag && T > react + 0.05 ? w.tick + secToTicks(react) : 0,
     dodgeDir: dodgeDir(F, p, dir),
+    step: { x: 0, z: 0 },
   };
+  {
+    const dAim = Math.hypot(aim.x - F.x, aim.z - F.z);
+    const stepLen = clamp(dAim - tagReach(F, hand) * 0.75, 0, TAG_STEP);
+    sweep.step = { x: (dir.x * stepLen) / ticks, z: (dir.z * stepLen) / ticks };
+    F.facing = Math.atan2(dir.x, dir.z);
+  }
   w.tags.push(sweep);
   F.tagReady = w.tick + ticks + secToTicks(0.35);
   setAnim(w, F, hand === 'glove' ? 'tag_glove' : 'tag_hand', TAG_CLIP_S);
@@ -381,7 +417,7 @@ function resolve(w: World, s: NonNullable<World['tags']>[number]): void {
   if (b >= 1 && (r.contactBase === b || running.isOnBase(r))) return;
   const body = runnerBody(r);
   const hp = handPoint(F);
-  const reach = (s.hand === 'glove' ? GLOVE_REACH : HAND_REACH) + LUNGE;
+  const reach = tagReach(F, s.hand);
   let gx = s.aim.x;
   let gz = s.aim.z;
   const dx = gx - F.x;
