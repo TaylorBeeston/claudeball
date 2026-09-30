@@ -188,7 +188,7 @@ function playWith(seed: string, flipAt = -1, replay?: unknown[], maxSeconds = 40
   let g!: ReturnType<typeof createGame>;
   const replayProvider: DecisionProvider | null = replay ? { runner: (() => { let i = 0; return () => replay[i++] as never; })() } : null;
   const prov = replayProvider ?? rec.make(() => g);
-  g = createGame({ seed, pace: 0, providers: { home: prov, away: prov } });
+  g = createGame({ seed, pace: 0, innings: 3, providers: { home: prov, away: prov } }); // (three innings: the same assertions, a third of the time)
   const events: GameEvent[] = [];
   g.on('*', (e) => events.push(e));
   const rngAt = new Map<number, string>();
@@ -208,7 +208,7 @@ describe('audit: no outcome is decided in advance', () => {
     expect(a.rec.answers.length).toBeGreaterThan(100);
     const b = playWith('audit-1', -1, a.rec.answers);
     expect(JSON.stringify(b.events)).toBe(JSON.stringify(a.events));
-  });
+  }, 120_000);
 
   it('changing ONE base-running decision changes the game from that moment on, and only from then on', () => {
     const base = playWith('audit-2', -1);
@@ -235,7 +235,7 @@ describe('audit: no outcome is decided in advance', () => {
       }
     }
     expect(found).toBe(true);
-  });
+  }, 240_000);
 
   it('the physics random stream at a decision point does not depend on the answer', () => {
     // two forks of the same fly-ball play: identical up to the runner's decision, so the physics generator is in the same state

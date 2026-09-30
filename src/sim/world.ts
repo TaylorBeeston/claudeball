@@ -391,6 +391,8 @@ export interface BagTag {
   earliest: number;
   /** Tick of the clip's contact frame: a runner who got round the glove is announced (`tagAvoided`) then. */
   contactTick: number;
+  /** The fielder's per-tick step toward the glove point while the sweep is made. */
+  step?: { x: number; z: number };
 }
 
 /** A fielder's tag sweep: from the start until the glove / hand arrives where he aimed. */
@@ -405,6 +407,8 @@ export interface TagSweep {
   /** The runner's sidestep, if he made one (tick, direction). */
   dodgeAt: number;
   dodgeDir: { x: number; z: number };
+  /** How far the fielder moves toward the glove point each tick while the sweep is made. */
+  step: { x: number; z: number };
 }
 
 /** Casual ball handling: glove-to-hand transfer, a look at the situation, then an easy toss (possibly around the horn) to the pitcher. */
