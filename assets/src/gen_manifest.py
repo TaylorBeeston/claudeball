@@ -6,7 +6,7 @@ here = os.path.dirname(os.path.abspath(__file__)); ns = {}
 for f in ("player_clips.py", "player_pitch.py", "player_motion.py", "player_catch.py", "player_ump.py"): exec(open(os.path.join(here, f)).read(), ns)
 CLIPS, FRAME0, EV, CEV, UEV = ns["CLIPS"], ns["FRAME0"], ns["PITCH_EVENTS"], ns["CATCH_EVENTS"], ns["UMP_EVENTS"]
 FPS = 24
-LOOPS = {"idle", "run", "walk", "field_ready", "celebrate", "catcher_crouch", "batting_stance", "trot", "run_turn", "pitcher_set", "pitcher_rock", "field_ready_infield", "field_ready_outfield",
+LOOPS = {"idle", "run", "walk", "jog", "run_sprint", "run_turn_sprint", "field_ready", "celebrate", "catcher_crouch", "batting_stance", "trot", "run_turn", "pitcher_set", "pitcher_rock", "field_ready_infield", "field_ready_outfield",
          "field_ready_hands_knees", "ump_ready", "ump_set_base"}
 OLD_EVENTS = {"pitch": {"release": 20}, "swing": {"contact": 21}, "throw": {"release": 12}, "catch_jump": {"take_off": 8, "apex": 14, "touch_down": 20}, "windup": {}, "field_catch": {}, "slide": {}}
 clips = {}
@@ -24,11 +24,19 @@ for nm, (length, keys) in CLIPS.items():
         c = CEV[nm]["catch"]; hold = min(length, (CEV[nm].get("give", CEV[nm].get("funnel", c + 4)) + 1))
         e["glove_closed_keys"] = [[max(0, c - 3), 0.0], [c, 1.0], [hold, 1.0], [min(length, hold + 5), 0.0]]     # (frame, morph weight) for the `glove_closed` morph of the glove and its laces
     clips[nm] = e
+LOCO = ("walk", "trot", "jog", "run", "run_sprint", "run_turn", "run_turn_sprint")
+def foot_speed(nm):
+    """Speed (m/s) at which the stance foot slides back relative to the hips = the ground speed the clip is designed for: median backward step of the left ankle per frame while it moves back."""
+    ks = CLIPS[nm][1]; ys = [sp["lfoot"][1] for f, sp in ks]; d = [(ys[i+1] - ys[i])*FPS for i in range(len(ys)-1)]; pos = sorted(x for x in d if x > .05)
+    return pos[len(pos)//2]
+for nm in LOCO:
+    clips[nm]["footSpeed"] = round(foot_speed(nm), 2); clips[nm]["cycle_s"] = clips[nm]["duration_s"]; clips[nm]["distance_per_cycle_m"] = round(clips[nm]["footSpeed"]*clips[nm]["duration_s"], 2)
+    clips[nm]["playbackRate_rule"] = "rate = groundSpeed / footSpeed (the stance foot then stays planted)"
 def lin(c): return c/12.92 if c <= .04045 else ((c+.055)/1.055)**2.4
 def hexlin(h): h = h.lstrip("#"); return [round(lin(int(h[i:i+2], 16)/255), 4) for i in (0, 2, 4)] + [1]
 SKIN = ["#f4d2b8", "#e8bb98", "#d8a276", "#c48858", "#a96c44", "#8c5836", "#6f4229", "#573220", "#f0c8ad", "#dcaa84"]
 HAIR = {"black": "#0b0908", "dark_brown": "#2a1a10", "brown": "#4a2f1c", "chestnut": "#6b3f22", "auburn": "#7a3a1e", "blond": "#b58b4a", "light_blond": "#d6b877", "gray": "#8a8784", "white": "#d8d5d0", "red": "#8f3a1a"}
-man = {"version": 4, "fps": FPS, "clips": clips,
+man = {"version": 5, "fps": FPS, "clips": clips,
        "files": {"player_base": "everything (all optional nodes, all four gloves, both hands per side)", "player_home / player_away": "fielder, infield glove", "player_home_of / player_away_of": "outfielder, larger outfield glove",
                  "player_home_1b / player_away_1b": "first baseman, long 1B mitt", "player_catcher": "catcher, big round mitt + gear", "player_batter": "batter (helmet, batting gloves, fist hands)",
                  "player_umpire": "plate umpire (navy, mask, chest protector, shin guards)", "player_umpire_base": "base umpire (navy uniform and cap only)",
@@ -37,16 +45,20 @@ man = {"version": 4, "fps": FPS, "clips": clips,
                          "glove": ["glove_open", "glove_closed"],
                          "note": "influence 0..1; body keys on every skinned body/clothing mesh, head_narrow/head_wide on head-attached meshes, glove_open/glove_closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap"},
        "grips": {"Bat_Grip": "RightHand, origin = knob, +Y = barrel", "Ball_Grip": "RightHand, 4-seam (ball symmetry axis toward the thumb side); show the claw hand", "Ball_Grip_2Seam": "RightHand, ball turned 90 deg",
-                 "Glove_Pocket": "LeftHand, origin = pocket centre (where the ball sits, 5-8 mm clearance from the leather), glTF +Y = pocket opening normal, +X along the fingers; Glove_Pocket_Outfield / _FirstBase / _Catcher in player_base"},
+                 "Elbow_Pole_L / Elbow_Pole_R": "Spine1, origin = where each elbow sits in the batting stance (swivel target for hand IK)", "Glove_Pocket": "LeftHand, origin = pocket centre (where the ball sits, 5-8 mm clearance from the leather), glTF +Y = pocket opening normal, +X along the fingers; Glove_Pocket_Outfield / _FirstBase / _Catcher in player_base"},
        "node_groups": {"jersey": ["Jersey (default, elbow sleeves)", "Jersey_ShortSleeve", "Jersey_Sleeveless"], "pants": ["Pants (default, knee)", "Pants_Long"],
                        "hair": ["Gear_Hair (default short)", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long"], "facial_hair": ["Gear_Beard_Stubble", "Gear_Beard_Full", "Gear_Mustache", "Gear_Goatee"],
                        "headwear": ["Gear_Cap", "Gear_Helmet"], "accessory": ["Gear_EyeBlack", "Gear_BattingGlove_L/R", "Gear_Wristband_L/R", "Gear_ArmSleeve_L/R", "Gear_Glove(+_Outfield/_FirstBase/_Catcher) and *_Laces"],
-                       "trim": ["Gear_Piping", "Gear_Buttons"], "belt": ["Gear_Belt", "Gear_BeltBuckle"], "shoe": ["Cleats", "Gear_Soles", "Gear_Laces"], "hand": ["Hand_R (firm grip, bat)", "Hand_R_Ball (claw, ball)", "Hand_L (fist)", "Hand_L_Open (inside the glove)"],
+                       "trim": ["Gear_Piping", "Gear_Buttons"], "belt": ["Gear_Belt", "Gear_BeltBuckle"], "shoe": ["Cleats", "Gear_Soles", "Gear_Laces"], "guide": ["Elbow_Pole_L", "Elbow_Pole_R"], "hand": ["Hand_R (firm grip, bat)", "Hand_R_Ball (claw, ball)", "Hand_L (fist)", "Hand_L_Open (inside the glove)"],
                        "note": "every node carries glTF extras {cb_group, cb_default}; cb_default = 1 means visible in that file's pre-configured look. Optional variants exist only in player_base.glb"},
        "skin_tones_baseColorFactor_linear": {h: hexlin(h) for h in SKIN}, "hair_colors_baseColorFactor_linear": {k: hexlin(v) for k, v in HAIR.items()},
        "materials_recolor": ["skin", "face", "hair", "stubble", "uniform_jersey", "uniform_undershirt", "uniform_pants", "uniform_socks", "piping", "cap", "helmet", "glove", "glove_laces", "batting_glove", "wristband", "arm_sleeve", "belt", "buckle",
                              "cleats", "laces", "sole", "eyeblack", "button", "catcher_gear"]}
 os.makedirs(os.path.join(ROOT, "players"), exist_ok=True)
+EG = os.path.join(ROOT, "players", "elbow_guides.json")
+if os.path.exists(EG): man["elbow_guides"] = {"file": "players/elbow_guides.json", "node": "Elbow_Pole_L / Elbow_Pole_R (children of Spine1: elbow position in the batting stance)", "clips": ["batting_stance", "swing"]}
+if os.path.exists(os.path.join(ROOT, "players", "swing_bat_path.json")): man["swing_bat_path"] = {"file": "players/swing_bat_path.json", "note": "Bat_Grip of `swing` per frame in sim world coordinates (right-handed batter)"}
+man["locomotion_footSpeed_mps"] = {nm: clips[nm]["footSpeed"] for nm in LOCO}
 json.dump(man, open(os.path.join(ROOT, "players", "player_manifest.json"), "w"), indent=1)
 def row(nm, cols):
     c = clips[nm]; e = c.get("events_frame", {}); s = c.get("events_s", {})
