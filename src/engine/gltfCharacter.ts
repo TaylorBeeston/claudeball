@@ -30,7 +30,7 @@ import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } f
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
-const LOOPING = new Set(['idle', 'run', 'trot', 'run_turn', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
+const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
@@ -549,6 +549,43 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  private gait = '';
+  /** stance-foot speed (m/s) of a locomotion clip: the manifest's designed value, else measured from the clip */
+  private footSpeedOf(name: string, clipDefault: number): number {
+    const m = this.manifest?.clips[name]?.footSpeed;
+    if (m) return m;
+    const a = this.actions.get(name);
+    return a ? stanceFootSpeed(this.tpl.scene, a.getClip(), clipDefault) : clipDefault;
+  }
+
+  /**
+   * The locomotion clip for the ground speed: walk / trot / jog / run / sprint, each played at speed / its stance-foot speed so the feet do not
+   * skate; the neighbour gait takes over (cross-fade) when it fits better, with hysteresis so a player at a gait boundary does not flicker.
+   * A turn at speed uses the turning clips. Returns null when the player is not moving on the ground.
+   */
+  private locomotionClip(snap: PlayerSnap): string | null {
+    const sp = Math.hypot(snap.vel.x, snap.vel.z);
+    const hint = snap.anim;
+    const moving = hint === 'run' || hint === 'trot' || hint === 'run_turn' || (hint === 'idle' && sp > 0.3 && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher');
+    if (!moving) {
+      this.gait = '';
+      return null;
+    }
+    if (hint === 'run_turn') {
+      const t = sp > 6 && this.actions.has('run_turn_sprint') ? 'run_turn_sprint' : 'run_turn';
+      if (this.actions.has(t)) return t;
+    }
+    const fallbackFeet: Record<string, number> = { walk: 1.42, trot: 2.2, jog: 3.5, run: 5, run_sprint: 7 };
+    const gaits = Object.keys(fallbackFeet).filter((g) => this.actions.has(g));
+    if (!gaits.length) return null;
+    const err = (g: string) => Math.abs(Math.log(Math.max(0.05, sp) / this.footSpeedOf(g, fallbackFeet[g])));
+    let best = gaits[0];
+    for (const g of gaits) if (err(g) < err(best)) best = g;
+    if (this.gait && gaits.includes(this.gait) && err(this.gait) < err(best) + 0.14) best = this.gait;
+    this.gait = best;
+    return best;
+  }
+
   /** Locomotion hint adjusted to the real speed: creeping players walk, they do not slide in a stance. */
   private moveHint(snap: PlayerSnap): AnimHint {
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
@@ -732,7 +769,8 @@ export class GltfPuppet implements PuppetLike {
     const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
     const hint = this.moveHint(snap);
-    const baseName = this.variant && hint === snap.anim ? this.variant : this.resolveClip(hint, snap.role);
+    const loco = pit0 || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap);
+    const baseName = this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
     const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : this.eventPlan(snap, baseName));
     const name = pit ? pit.name : baseName;
     this.pitchClipTime = pit ? pit.time : null;
@@ -743,7 +781,7 @@ export class GltfPuppet implements PuppetLike {
     this.lastMoveHint = hint;
     const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
-    const locomotion = name === 'run' || name === 'trot' || name === 'run_turn' || name === 'walk';
+    const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (pit && pit.time !== null && this.current) {
       // seek: the delivery clip is placed exactly on the sim's timeline
       const dur = this.current.getClip().duration;
@@ -754,10 +792,10 @@ export class GltfPuppet implements PuppetLike {
       this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
     } else if (locomotion && this.current) {
-      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at)
-      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.4 : 1.6;
-      const foot = stanceFootSpeed(this.tpl.scene, this.current.getClip(), fallback);
-      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 2.4, Math.max(0.4, sp / foot));
+      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at); the gaits above already keep this near 1
+      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.42 : name === 'jog' ? 3.5 : name.endsWith('sprint') ? 7 : 5;
+      const foot = this.footSpeedOf(name, fallback);
+      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
     if (!pit && this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
@@ -797,7 +835,9 @@ export class GltfPuppet implements PuppetLike {
     // arm IK: batter's hands follow the sim's bat
     const wantIK = !!(env.batGrip && snap.role === 'batter');
     // grab the sim's bat almost at once (the swing starts abruptly), let go smoothly
-    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
+    // where even the swivelled elbow cannot get out of the torso (hands the sim placed too close to the body), fade the bat IK toward the clip pose
+    this.ikFade += ((this.elbowClear < -0.005 ? 0.25 : 1) - this.ikFade) * (1 - Math.exp(-dt * (this.elbowClear < -0.005 ? 14 : 5)));
+    this.ikW += ((wantIK ? this.ikFade : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
     if (this.ikW > 0.02 && env.batGrip) {
       // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
       this.solveArm('Left', env.batGrip.bottom, this.ikW);
@@ -814,6 +854,7 @@ export class GltfPuppet implements PuppetLike {
   }
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
+  private ikFade = 1;
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
   private clipPose = new Map<Bone, Quaternion>();
