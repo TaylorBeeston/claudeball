@@ -450,7 +450,9 @@ export class CueMapper {
         }
         if (!desc) break;
         const score = scored ? ` ${teamSay(c.teams.away)} ${sc.away}, ${teamSay(c.teams.home)} ${sc.home}.` : '';
-        out.push(cue.speak('pbp', desc + score, scored ? PRI.pbp + 1 : PRI.pbp - 1, scored ? 8 : 5, 0.4, 1));
+        // with umpire events the ruling ('Strike three!', 'Out!') comes 0.2-0.6 s after the play: let the umpire go first
+        const lag = this.detailed ? 1.3 : 0.4;
+        out.push(cue.speak('pbp', desc + score, scored ? PRI.pbp + 1 : PRI.pbp - 1, (scored ? 8 : 5) + lag, lag, 1));
         if (/strikes out/.test(desc)) {
           const p = c.pitcherLine?.(this.lastPitcherId);
           if (p && p.so > 0) out.push(cue.speak('color', `That's strikeout number ${p.so} on the night.`, PRI.color, 6, 2.5, 1));
