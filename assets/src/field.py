@@ -84,12 +84,17 @@ objs.append(mb.build(M_DIRT))
 # 18 ft diameter circle centred 59 ft from the plate apex; 10 in above the plate; level area 5 ft wide x 34 in long whose front edge is 6 in in front of the
 # rubber's front edge (rubber front edge 60 ft 6 in from the apex, rubber 24 x 6 in, i.e. spanning z = 60.5..61 ft); from the level area the surface falls
 # 1 in per foot in every direction (measured from the level rectangle), eased to the field over the last 1.5 ft of the circle.
-mb = MB("Mound"); H = 10*IN; RO = 9*FT; NR, NS = 40, 96
+mb = MB("Mound"); H = 10*IN; RO = 9*FT; NR, NS = 72, 128
 LV_X, LV_Z0, LV_Z1 = 2.5*FT, 60.0*FT, 60.0*FT + 34*IN
+def _sm(e): e = min(1.0, max(0.0, e)); return e*e*(3 - 2*e)
 def mound_h(x, z):
+    """Mound height above the field (m) at (x, z): min( plane cone, circle skirt ).
+    cone  = H - (1 in / ft) * d,  d = distance (m) from the level rectangle |x| <= 2.5 ft, 60 ft <= z <= 60 ft + 34 in (MLB: 1 in per ft fall);
+    skirt = H * smoothstep((9 ft - r) / 1.5 ft),  r = distance from the mound centre (0, 59 ft): the mound ends exactly on its 18 ft diameter circle;
+    result clamped to >= 0."""
     dx = max(abs(x) - LV_X, 0.0); dz = max(LV_Z0 - z, z - LV_Z1, 0.0); d = math.hypot(dx, dz)
-    r = math.hypot(x - C_MOUND[0], z - C_MOUND[1]); e = min(1.0, max(0.0, (RO - r)/(1.5*FT))); e = e*e*(3-2*e)
-    return max(0.0, H - d*(1*IN/FT))*e
+    r = math.hypot(x - C_MOUND[0], z - C_MOUND[1])
+    return max(0.0, min(H - d*(1*IN/FT), H*_sm((RO - r)/(1.5*FT))))
 rings = []
 for i in range(NR+1):
     r = RO*i/NR
@@ -179,6 +184,7 @@ FX = lambda p: [-p[0], p[1]]
 layout = {"units": "meters", "axes": "Y up, +Z center field, +X THIRD base (first base at -X), origin home plate apex",
           "bases": {"home": [0, 0], "first": FX(b1), "second": FX(b2), "third": FX(b3)},
           "mound_center": FX(C_MOUND), "rubber_front_z": 60.5*FT, "rubber_size": [24*IN, 6*IN], "mound_height": H, "mound_top_y": H, "mound_radius": 9*FT, "mound_level_area": {"x_half": 2.5*FT, "z_from": 60.0*FT, "z_to": 60.0*FT+34*IN}, "mound_slope_per_m": 1*IN/FT,
+          "mound_profile": "h(x,z)=max(0,min(H-(1in/ft)*d, H*smoothstep((R-r)/(1.5ft)))); H=10in=0.254m, R=9ft, r=hypot(x-cx,z-cz) from mound_center (z=59ft), d=distance to the level rectangle |x|<=2.5ft, z in [60ft,60ft+34in]; front slope is exactly 1in/ft to the circle edge",
           "foul_poles": {"left": FX(POLE_L), "right": FX(POLE_R)}, "warning_track_width": 15*FT,
           "fence": [[round(-x, 3), round(z, 3)] for x, z in fence_pts(91)],
           "ground_outline": [[round(-x, 3), round(z, 3)] for x, z in outline], "backstop_z": BACKSTOP_Z}
