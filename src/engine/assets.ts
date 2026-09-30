@@ -33,7 +33,7 @@ export interface CharacterTemplate {
 
 /** The part of `players/player_manifest.json` the engine uses: per-clip event times and the glove-closing keys of the catch clips. */
 export interface PlayerManifest {
-  clips: Record<string, { frames: number; duration_s: number; loop?: boolean; events_s?: Record<string, number>; glove_closed_keys?: [number, number][] }>;
+  clips: Record<string, { frames: number; duration_s: number; loop?: boolean; footSpeed?: number; events_s?: Record<string, number>; glove_closed_keys?: [number, number][] }>;
 }
 
 /** Default node sets of the role-specific files, applied on top of the full base file: fielders / pitchers, batters / runners, catchers. */

@@ -56,10 +56,11 @@ interface RawBus {
   getState?(): Record<string, any>;
 }
 
-/** The engine's real-sim adapter keeps the sim's own game as `g`; use its full event bus when present. */
+/** The engine's real-sim adapter exposes the sim's own game as `game` (its full event bus); older engines kept it private as `g`. */
 export function rawBusOf(game: unknown): RawBus | null {
-  const g = (game as { g?: RawBus } | null)?.g;
-  return g && typeof g.on === 'function' ? g : null;
+  const a = game as { game?: RawBus; g?: RawBus } | null;
+  const g = [a?.game, a?.g].find((x): x is RawBus => !!x && typeof x.on === 'function');
+  return g ?? null;
 }
 
 export interface AudioOptions {
@@ -92,7 +93,7 @@ export class AudioController {
   readonly speech: SpeechQueue;
   readonly excitement = new Excitement();
   private ui: AudioUi | null = null;
-  private mapper = new CueMapper();
+  private mapper: CueMapper;
   private pending: { ev: RawEvent; at: number }[] = [];
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -126,6 +127,7 @@ export class AudioController {
     this.speech = new SpeechQueue(browserSpeech());
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
+    this.mapper = new CueMapper({ detailed: !!this.raw });
     if (this.raw) this.raw.on('*', (e) => this.push(e));
     else host.sim.on((te) => {
       const r = engineToRaw(te.event);
@@ -312,7 +314,7 @@ export class AudioController {
         if (!this.speech.enabled[c.role]) return false;
         if (!this.speech.available()) {
           // no voices in this browser: the umpire still gets a shout so the call is audible
-          if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2 });
+          if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2, pos: c.pos ? { x: c.pos.x, y: 1.7, z: c.pos.z } : undefined });
           return false;
         }
         this.speech.enqueue({ role: c.role, text: c.text, pri: c.pri, ttl: c.ttl });

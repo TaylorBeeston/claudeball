@@ -173,6 +173,15 @@ function tagSlap(_b: number, _a: number, r: Rand): Rendered {
   return finish(mono(SR, o), 0.85);
 }
 
+function tagMiss(_b: number, _a: number, r: Rand): Rendered {
+  const dur = 0.2;
+  const x = sweepNoise(SR, dur, r, (t) => 2800 - 1800 * (t / dur), (t) => Math.pow(Math.sin(Math.PI * clamp(t / dur, 0, 1)), 1.3), 1.2, 6500);
+  const o = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) o[i] = x[i];
+  addNoise(o, SR, r, { t0: 0.02, tau: 0.02, amp: 0.25, bp: 900, q: 0.7 }); // leather / cloth brush
+  return finish(mono(SR, o), 0.6, 15);
+}
+
 function slideScuff(_b: number, _a: number, r: Rand): Rendered {
   const dur = 0.55;
   const x = sweepNoise(SR, dur, r, (t) => 2600 - 1500 * (t / dur), (t) => Math.min(1, t / 0.03) * Math.exp(-t / 0.2), 0.7, 6000);
@@ -419,6 +428,7 @@ export const SFX_DEFS: Record<SfxId, SoundDef> = {
   seat_thump: { buckets: 1, alts: 2, make: seatThump },
   throw_whip: { buckets: 1, alts: 3, make: throwWhip },
   tag_slap: { buckets: 1, alts: 2, make: tagSlap },
+  tag_miss: { buckets: 1, alts: 2, make: tagMiss },
   slide_scuff: { buckets: 1, alts: 2, make: slideScuff },
   footstep: { buckets: 1, alts: 3, make: footstep },
   base_thud: { buckets: 1, alts: 2, make: baseThud },
