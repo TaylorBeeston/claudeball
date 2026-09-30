@@ -3,7 +3,7 @@ import { BASE_POS } from '../field';
 import { fielders } from '../fielding';
 import { newPlay } from '../inplay';
 import { Rng } from '../rng';
-import { footOnBase, runnerBody } from '../tagging';
+import { MAX_TAG_REACH, footOnBase, runnerBody, tagReach } from '../tagging';
 import type { GameEvent } from '../types';
 import { giveBall } from '../util';
 import type { PlayerRT, RunnerRT, World } from '../world';
@@ -286,8 +286,9 @@ describe('the body a tag has to find', () => {
     expect(feet.radius).toBeLessThan(up.radius);
   });
 
-  it('the tag clip is timed to the contact: `tagAttempt` starts the hint and `tag` / `tagAvoided` come 8/24 s later (the clip\'s contact frame)', () => {
+  it('the tag clip is timed to the contact: `tagAttempt` starts the hint and `tag` / `tagAvoided` come 8/24 s later (the clip\'s contact frame); the contact is inside what a body can reach', () => {
     const deltas: number[] = [];
+    const reaches: number[] = [];
     for (let k = 0; k < 60; k++) {
       const l = lab(`clip-${k}`);
       const w = l.w;
@@ -318,12 +319,18 @@ describe('the body a tag has to find', () => {
         expect(['tag_glove', 'tag_hand']).toContain(F.anim);
         expect(w.tick - F.animStart).toBe(0);
       });
-      l.g.on('tag', () => t0 >= 0 && deltas.push((w.tick - t0) / 240));
+      l.g.on('tag', (e) => {
+        if (t0 >= 0) deltas.push((w.tick - t0) / 240);
+        reaches.push(Math.hypot(e.pos.x - F.x, e.pos.z - F.z));
+        expect(Math.hypot(e.pos.x - F.x, e.pos.z - F.z)).toBeLessThanOrEqual(Math.min(MAX_TAG_REACH, tagReach(F, 'glove') + 1e-6) + 0.02);
+      });
       l.g.on('tagAvoided', () => t0 >= 0 && deltas.push((w.tick - t0) / 240));
       for (let i = 0; i < 240 && r.state === 'live'; i++) l.g.step(1 / 240);
     }
     expect(deltas.length).toBeGreaterThan(30);
     for (const d of deltas) expect(Math.abs(d - 8 / 24)).toBeLessThan(0.02);
+    expect(reaches.length).toBeGreaterThan(10);
+    expect(Math.max(...reaches)).toBeLessThanOrEqual(MAX_TAG_REACH + 0.02);
   });
 
   it('a play at the plate: the catcher\'s `catcher_block` clip starts ~26/24 s before the tag contact, so `tag` lands on the clip\'s tag frame', () => {
@@ -364,6 +371,7 @@ describe('the body a tag has to find', () => {
         expect(C.anim).toBe('catcher_block');
         expect(w.tick - C.animStart).toBe(0);
       });
+      l.g.on('tag', (e) => expect(Math.hypot(e.pos.x - C.x, e.pos.z - C.z)).toBeLessThanOrEqual(MAX_TAG_REACH + 0.02));
       const done = (e: { fielderId: string }) => e.fielderId === C.info.id && t0 >= 0 && deltas.push((w.tick - t0) / 240);
       r.slideKind = k % 2 ? 'feet' : 'head';
       r.slideAt = w.tick;
