@@ -37,6 +37,7 @@
   "z_to": 19.151600000000002
  },
  "mound_slope_per_m": 0.08333333333333333,
+ "mound_profile": "h(x,z)=max(0,min(H-(1in/ft)*d, H*smoothstep((R-r)/(1.5ft)))); H=10in=0.254m, R=9ft, r=hypot(x-cx,z-cz) from mound_center (z=59ft), d=distance to the level rectangle |x|<=2.5ft, z in [60ft,60ft+34in]; front slope is exactly 1in/ft to the circle edge",
  "foul_poles": {
   "left": [
    71.1236284788677,
