@@ -472,7 +472,8 @@ export class CameraDirector {
 
   /** A contested out / safe call (`closePlay` or a margin under a tenth of a second): the umpire live, then the slow-motion replay. */
   private noteClosePlay(e: Extract<GameEvent, { type: 'out' | 'safe' }>, simT: number, live: GameState) {
-    const closeCall = e.closePlay === true || (typeof e.margin === 'number' && Math.abs(e.margin) < 0.1);
+    // slow motion only when the sim calls it a close play (|margin| < 0.10 s)
+    const closeCall = e.closePlay === true;
     if (!closeCall) return;
     const base = (e.type === 'safe' ? e.base : e.base) ?? null;
     const b = base && base >= 1 && base <= 3 ? BASES[base - 1] : { x: 0, z: 0 };

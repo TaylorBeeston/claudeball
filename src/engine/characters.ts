@@ -345,6 +345,8 @@ export interface PuppetEnv {
   ballVel?: Vector3;
   /** where the pitcher's eyes/hands are (scene): what hitters, catchers and umpires look at while no ball is visible */
   mound?: Vector3 | null;
+  /** what happened to this fielder's latest tag: made, or avoided by the runner (null: none in flight) */
+  tagOutcome?: (fielderId: string) => 'tag' | 'avoided' | 'attempt' | null;
   /** every player's scene position by id (for tags: where the runner is) */
   positions?: Map<string, Vector3>;
   /** makes a ball for a hand / glove (a clone of the ball model) */

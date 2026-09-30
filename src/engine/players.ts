@@ -311,6 +311,11 @@ export class PlayerManager {
   /** override factory to swap in glTF characters */
   makePuppet: (snap: PlayerSnap) => PuppetLike = (s) => new Puppet(s.id);
   readonly positions = new Map<string, Vector3>();
+  /** latest tag per fielder (from the sim's tag events), for a short while */
+  private tags = new Map<string, { result: 'tag' | 'avoided' | 'attempt'; until: number }>();
+  noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number) {
+    this.tags.set(fielderId, { result, until: simTime + 1.6 });
+  }
 
   constructor(env: Environment) {
     this.group.name = 'players';
@@ -343,6 +348,10 @@ export class PlayerManager {
   update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
     this.penv.makeBall = makeBall;
     this.penv.positions = this.positions;
+    this.penv.tagOutcome = (id) => {
+      const t = this.tags.get(id);
+      return t && t.until > state.time ? t.result : null;
+    };
     this.ballHeld = false;
     this.penv.ball = state.ball.visible ? ball : null;
     this.penv.batGrip = bat.visible ? bat.grip : null;
