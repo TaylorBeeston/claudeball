@@ -147,13 +147,14 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
     expect(checked).toBeGreaterThan(3);
   });
 
-  it('the mound profile is the asset field.py mound_h exactly', () => {
-    expect(groundHeight(0, 20.5)).toBeCloseTo(0.07, 2);
-    expect(groundHeight(0, 60 * 0.3048 + 0.5)).toBeCloseTo(0.254, 3); // level top (10 in)
-    const FT = 0.3048;
-    expect(groundHeight(0, 54 * FT)).toBeCloseTo(0.254 - 6 * 0.0254, 1); // 1 in/ft falls off the front of the level rectangle
+  it('the mound profile is the asset field.py mound_h: min(1 in/ft cone, 18 ft circle skirt)', () => {
+    // sample values from assets/README.md "Mound"
+    const samples: [number, number, number][] = [[0, 17.98, 0.229], [0, 16.5, 0.105], [0, 19.5, 0.225], [0, 20.5, 0.125], [2.5, 19, 0.007], [0, 18.5, 0.254], [0, 19.15, 0.254]];
+    for (const [x, z, h] of samples) expect(Math.abs(groundHeight(x, z) - h)).toBeLessThan(0.002);
+    expect(groundHeight(0, 19.153 + 0.01)).toBeLessThan(0.254); // the level top ends at 60 ft + 34 in = 19.152 m
     expect(groundHeight(0, 5)).toBe(0);
-    expect(groundHeight(15, 20)).toBe(0);
+    expect(groundHeight(3, 19)).toBe(0); // outside the 18 ft circle laterally (x = 9 ft = 2.74 m)
+    expect(groundHeight(0, 60 * 0.3048 + 9 * 0.3048 + 1)).toBe(0); // and behind it
   });
 
   it('the mitt moves during the pitch: from where the catcher set up toward where the ball arrives, before the catch', () => {

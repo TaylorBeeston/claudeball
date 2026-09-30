@@ -135,7 +135,8 @@ export function fenceNormalAt(fence: FenceConfig, x: number, z: number): { x: nu
 export const MOUND_HEIGHT = 10 * 0.0254; // 0.254 m
 // The profile is the one the stadium model is built with (assets/src/field.py `mound_h`): an 18 ft diameter circle centred 59 ft from the plate apex; a level
 // area 5 ft wide and 34 in long whose front edge is 6 in in front of the rubber's front edge (rubber front edge 60 ft 6 in from the apex); from that
-// rectangle the surface falls 1 in per foot in every direction, eased to the field over the last 1.5 ft of the circle.
+// rectangle the surface falls 1 in per foot in every direction; the height is min(that cone, a smoothstep skirt over the last 1.5 ft of the
+// 18 ft circle), so the mound ends on its circle (h = max(0, min(H - 1in/ft * d, H * smoothstep((9 ft - r) / 1.5 ft)))).
 const FT_M = 0.3048;
 const IN_M = 0.0254;
 const MOUND_CX = 0;
@@ -158,5 +159,5 @@ export function groundHeight(x: number, z: number): number {
   const r = Math.hypot(x - MOUND_CX, z - MOUND_CZ);
   let e = Math.min(1, Math.max(0, (MOUND_R - r) / (1.5 * FT_M)));
   e = e * e * (3 - 2 * e);
-  return Math.max(0, MOUND_HEIGHT - d * (IN_M / FT_M)) * e;
+  return Math.max(0, Math.min(MOUND_HEIGHT - d * (IN_M / FT_M), MOUND_HEIGHT * e));
 }
