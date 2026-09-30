@@ -667,6 +667,8 @@ export class GltfPuppet implements PuppetLike {
   }
 
   private reachShift = new Vector3();
+  /** longest lunge (m): a tag is a dive at a runner, a catch a step */
+  private lungeMax = 0.8;
   private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number) {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
@@ -683,7 +685,9 @@ export class GltfPuppet implements PuppetLike {
       const hd = Math.hypot(hx, hz);
       const allowed = Math.sqrt(Math.max(0, reach * reach - dy * dy));
       const excess = hd - allowed;
-      if (excess > 0 && hd > 1e-4) want.set((hx / hd) * Math.min(0.45, excess), 0, (hz / hd) * Math.min(0.45, excess)).multiplyScalar(this.gloveW);
+      // above reach: a hop (the feet leave the ground a little); beyond it sideways: a lunge of up to ~0.8 m
+      const lift = dy > reach ? Math.min(0.45, dy - reach) : 0;
+      if ((excess > 0 && hd > 1e-4) || lift > 0) want.set(hd > 1e-4 && excess > 0 ? (hx / hd) * Math.min(this.lungeMax, excess) : 0, lift, hd > 1e-4 && excess > 0 ? (hz / hd) * Math.min(this.lungeMax, excess) : 0).multiplyScalar(this.gloveW);
     }
     this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
     if (this.reachShift.lengthSq() > 1e-8) {
@@ -720,11 +724,28 @@ export class GltfPuppet implements PuppetLike {
     rig.rotate(s2, q);
   }
 
-  private tagLatch: { hint: string; p: number | null } = { hint: '', p: null };
-  /** progress through the tag sweep at which the sim announced the result (tag / avoided), latched, kept a little above the sweep's wind-up */
-  private tagEventP(): number | null {
-    return this.tagLatch.p;
+  private lowPitch = false;
+  private swingSeen = false;
+  /** Latches, when a swing starts, whether the pitch is going to cross the plate below ~0.75 m (predicted from the ball's flight). */
+  private trackPitchHeight(snap: PlayerSnap, env: PuppetEnv) {
+    const swinging = snap.role === 'batter' && snap.anim === 'swing';
+    if (!swinging) {
+      this.swingSeen = false;
+      if (snap.role !== 'batter' || snap.anim === 'idle') this.lowPitch = false;
+      return;
+    }
+    if (this.swingSeen) return;
+    this.swingSeen = true;
+    const b = env.ball, v = env.ballVel;
+    if (b && v && v.z < -8 && b.z > 0) {
+      const t = b.z / -v.z;
+      const y = b.y + v.y * t - 4.905 * t * t;
+      this.lowPitch = y < 0.75;
+    } else this.lowPitch = false;
   }
+
+  private tagLatch: { hint: string; p: number | null } = { hint: '', p: null };
+  /** progress through the tag hint at which the sim announced the result (contact), latched; the clip's contact frame is laid on it */
   private trackTag(snap: PlayerSnap, env: PuppetEnv) {
     const tagging = snap.anim === 'tag_glove' || snap.anim === 'tag_hand';
     if (!tagging) {
@@ -733,7 +754,7 @@ export class GltfPuppet implements PuppetLike {
     }
     if (this.tagLatch.hint !== snap.anim) this.tagLatch = { hint: snap.anim, p: null };
     const out = env.tagOutcome?.(snap.id);
-    if (this.tagLatch.p === null && (out === 'tag' || out === 'avoided')) this.tagLatch.p = Math.min(0.45, Math.max(0.14, snap.animProgress ?? 0.14));
+    if (this.tagLatch.p === null && (out === 'tag' || out === 'avoided')) this.tagLatch.p = Math.min(0.8, Math.max(0.25, snap.animProgress ?? 0.56));
   }
 
   /**
@@ -759,7 +780,7 @@ export class GltfPuppet implements PuppetLike {
     if (snap.anim === 'tag_glove' || snap.anim === 'tag_hand') {
       const tc = c.events_s?.contact;
       if (!tc) return null;
-      const pe = this.tagEventP() ?? 0.45;
+      const pe = this.tagLatch.p ?? 0.56; // the sim fires `tag` / `tagAvoided` at the clip's contact frame: about animT 0.45-0.6 of the tag hint
       const t = p < pe ? (p / pe) * tc : tc + ((p - pe) / (1 - pe)) * (c.duration_s - tc);
       return { name, time: Math.min(c.duration_s - 0.001, Math.max(0, t)), place: 'none' };
     }
@@ -774,6 +795,12 @@ export class GltfPuppet implements PuppetLike {
     const has = (n: string) => this.actions.has(n);
     const h = snap.anim;
     if (snap.role === 'umpire') return null;
+    // the sim names the kind of catch; the height of the glove target picks the low / high version of the clip
+    const gy = snap.gloveTarget?.y;
+    if (gy !== undefined) {
+      if (h === 'catch_throw') return gy < 0.6 && has('catch_throw_low') ? 'catch_throw_low' : gy > 1.75 && has('catch_throw_high') ? 'catch_throw_high' : null;
+      if (h === 'catch_pitch') return gy < 0.55 && has('catch_pitch_low') ? 'catch_pitch_low' : gy > 1.05 && has('catch_pitch_high') ? 'catch_pitch_high' : null;
+    }
     if (h === 'slide') {
       const r = (hashString(snap.id) + this.slideCount++ * 2654435761) >>> 0;
       const u = (r % 1000) / 1000;
@@ -885,7 +912,10 @@ export class GltfPuppet implements PuppetLike {
     const wantIK = !!(env.batGrip && snap.role === 'batter');
     // grab the sim's bat almost at once (the swing starts abruptly), let go smoothly
     // where even the swivelled elbow cannot get out of the torso (hands the sim placed too close to the body), fade the bat IK toward the clip pose
-    this.ikFade += ((this.elbowClear < -0.005 ? 0.25 : 1) - this.ikFade) * (1 - Math.exp(-dt * (this.elbowClear < -0.005 ? 14 : 5)));
+    this.trackPitchHeight(snap, env);
+    // a low pitch: the hitter's hands come down and the clip's own pose is the better guide than hands pinned to the sim's bat
+    const ikWant = Math.min(this.elbowClear < -0.005 ? 0.25 : 1, this.lowPitch ? 0.3 : 1);
+    this.ikFade += (ikWant - this.ikFade) * (1 - Math.exp(-dt * (ikWant < 1 ? 14 : 5)));
     this.ikW += ((wantIK ? this.ikFade : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
     if (this.ikW > 0.02 && env.batGrip) {
       // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
@@ -910,6 +940,7 @@ export class GltfPuppet implements PuppetLike {
 
   private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump']);
   private gloveW = 0;
+  private lastGlove: { x: number; y: number; z: number } | null = null;
   private gloveClosed = 0;
 
   /**
@@ -917,7 +948,13 @@ export class GltfPuppet implements PuppetLike {
    * at the ball at the catch instant, and closes on it; a tag sweeps the glove (or bare hand) through the nearest opposing runner.
    */
   private reachIK(snap: PlayerSnap, env: PuppetEnv, dt: number) {
-    const gt = snap.gloveTarget ?? (this.inferredGlove ? { x: this.inferredGlove.x, y: this.inferredGlove.y, z: this.inferredGlove.z } : undefined);
+    let gt = snap.gloveTarget ?? (this.inferredGlove ? { x: this.inferredGlove.x, y: this.inferredGlove.y, z: this.inferredGlove.z } : undefined);
+    // the sim drops the glove target at the catch itself: the glove stays where the ball is for the rest of the catch (the give), then relaxes
+    const inCatchHint = GltfPuppet.CATCH_HINTS.has(snap.anim);
+    if (gt) this.lastGlove = { x: gt.x, y: gt.y, z: gt.z };
+    else if (!inCatchHint) this.lastGlove = null;
+    const held = !gt && inCatchHint && !!this.lastGlove && (snap.animProgress ?? 0.5) < 1;
+    if (held) gt = this.lastGlove!;
     const catching = (GltfPuppet.CATCH_HINTS.has(snap.anim) || this.inferredGlove !== null) && !!gt;
     const tagging = snap.anim === 'tag_glove' || snap.anim === 'tag_hand';
     const p = snap.animProgress ?? 0.5;
@@ -927,7 +964,7 @@ export class GltfPuppet implements PuppetLike {
     if (catching) {
       target = new Vector3(gt!.x, gt!.y, gt!.z);
       // reach out through the first half of the catch, then hold the pocket on the ball
-      w = p < 0.15 ? p / 0.15 : 1;
+      w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : p < 0.15 ? p / 0.15 : 1;
     } else if (tagging && env.positions) {
       // the runner the sim named in the tag event, else the nearest other player within reach
       let rid = env.tagRunner?.(snap.id) ?? null;
@@ -951,7 +988,7 @@ export class GltfPuppet implements PuppetLike {
       }
       side = snap.anim === 'tag_hand' ? 'Right' : 'Left';
       // the sweep peaks at the moment the sim announces the result (contact), then relaxes
-      const pe = this.tagEventP() ?? 0.45;
+      const pe = this.tagLatch.p ?? 0.56;
       const pp = Math.min(1, Math.max(0, p));
       w = pp < pe ? Math.sin((Math.PI / 2) * (pp / pe)) : Math.cos((Math.PI / 2) * ((pp - pe) / Math.max(0.05, 1 - pe)));
       if (target && env.tagOutcome?.(snap.id) === 'avoided') {
@@ -965,6 +1002,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.gloveW += ((target ? w : 0) - this.gloveW) * (1 - Math.exp(-dt * 40));
     // a target beyond arm's reach: a lunge (the body steps / leans toward it, at most ~0.45 m) before the trunk lean and the arm finish the reach
+    this.lungeMax = tagging ? 1.05 : 0.8;
     this.reachStep(target, side, dt);
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
