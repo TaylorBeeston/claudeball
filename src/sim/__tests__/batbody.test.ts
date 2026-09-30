@@ -1,62 +1,104 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
-import { ARM_REACH, CONTACT_HOLD, TORSO_CLEAR, shoulderFor } from '../batting';
+import { ARM_REACH, HAND_FRONT, HAND_REAR, TORSO_HALF, bodyCentre, loadPose, shouldersAt, torsoState } from '../batting';
+import type { World } from '../world';
+
+/** Every tick of the first swings (not bunts): the world at that moment. */
+function swingTicks(seed: string, swings: number, fn: (w: World) => void) {
+  const g = createGame({ seed, pace: 0 });
+  const w = g._world;
+  let seen = 0;
+  let was = false;
+  for (let i = 0; i < 400_000 && seen < swings; i++) {
+    g.step(1 / 240);
+    const sw = w.swing;
+    if (!sw || !w.swingStarted || sw.plan.bunt || sw.done || w.phase !== 'pitch') {
+      was = false;
+      continue;
+    }
+    if (!was) seen++;
+    was = true;
+    fn(w);
+  }
+  return seen;
+}
+
+const d3 = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
 describe('bat vs batter body', () => {
-  it('keeps the knob within arm reach of the batter\'s shoulders through every swing', () => {
-    const g = createGame({ seed: 'body-1', pace: 0 });
-    let swingsSeen = 0;
-    let frames = 0;
+  it('each hand stays within reach of its OWN shoulder through every swing (start, contact, follow-through)', () => {
     let worst = 0;
-    let wasActive = false;
-    for (let i = 0; i < 40_000 && swingsSeen < 40; i++) {
-      g.step(1 / 120);
-      const s = g.getState();
-      // (a bunt presents the bat square to the pitch instead of swinging it, so the swing's reach limit does not apply)
-      if (!s.bat.active || g._world.swingPlan?.bunt) {
-        wasActive = false;
-        continue;
-      }
-      if (!wasActive) swingsSeen++;
-      wasActive = true;
-      const sh = shoulderFor(g._world.batStance);
-      const k = s.bat.knob;
-      worst = Math.max(worst, Math.hypot(k.x - sh.x, k.y - sh.y, k.z - sh.z));
+    let frames = 0;
+    const seen = swingTicks('body-1', 40, (w) => {
+      const sw = w.swing!;
+      const pose = sw.pose();
+      const { yaw, lean } = torsoState(sw.tau, sw.plan.tauC);
+      const { front, rear } = shouldersAt(w.batStance, yaw, lean);
+      const hf = { x: pose.knob.x + HAND_FRONT * pose.dir.x, y: pose.knob.y + HAND_FRONT * pose.dir.y, z: pose.knob.z + HAND_FRONT * pose.dir.z };
+      const hr = { x: pose.knob.x + HAND_REAR * pose.dir.x, y: pose.knob.y + HAND_REAR * pose.dir.y, z: pose.knob.z + HAND_REAR * pose.dir.z };
+      worst = Math.max(worst, d3(hf, front), d3(hr, rear));
       frames++;
-    }
-    expect(swingsSeen).toBeGreaterThanOrEqual(20);
-    expect(frames).toBeGreaterThan(100);
+    });
+    expect(seen).toBeGreaterThanOrEqual(20);
+    expect(frames).toBeGreaterThan(300);
     expect(worst).toBeLessThanOrEqual(ARM_REACH + 1e-6);
   });
 
-  it('keeps the hands off the chest line except right at contact (where the planned geometry is left alone)', () => {
-    const g = createGame({ seed: 'body-2', pace: 0 });
-    const w = g._world;
-    let swings = 0;
-    let wasActive = false;
-    let off = 0;
-    let near = 0;
-    let worstOff = Infinity;
-    for (let i = 0; i < 60_000 && swings < 40; i++) {
-      g.step(1 / 240);
-      const sw = w.swing;
-      if (!sw || !w.swingStarted || sw.plan.bunt || sw.done) {
-        wasActive = false;
-        continue;
-      }
-      if (!wasActive) swings++;
-      wasActive = true;
-      const sh = shoulderFor(w.batStance);
+  it('starts from the clip\'s load pose (no jump to 0.58 m beside the batter)', () => {
+    let n = 0;
+    let worst = 0;
+    swingTicks('body-2', 30, (w) => {
+      const sw = w.swing!;
+      if (sw.tau > 0.02) return;
+      const l = loadPose(w.batStance);
       const k = sw.pose().knob;
-      const d = Math.hypot(k.x - sh.x, k.z - sh.z);
-      if (Math.abs(sw.tau - sw.plan.tauC) > CONTACT_HOLD * 1.5) {
-        off++;
-        worstOff = Math.min(worstOff, d);
-      } else near++;
-    }
-    expect(off).toBeGreaterThan(200);
-    expect(near).toBeGreaterThan(20);
-    // (a small allowance: the reach limit can win over the clearance where the two meet)
-    expect(worstOff).toBeGreaterThan(TORSO_CLEAR * 0.6);
+      worst = Math.max(worst, d3(k, l.knob));
+      n++;
+    });
+    expect(n).toBeGreaterThan(10);
+    expect(worst).toBeLessThan(0.12);
+  });
+
+  it('keeps both hands outside the torso (plus elbow room) except when the body itself blocks the reach', () => {
+    let frames = 0;
+    let inside = 0;
+    swingTicks('body-3', 40, (w) => {
+      const sw = w.swing!;
+      const pose = sw.pose();
+      const { yaw, lean } = torsoState(sw.tau, sw.plan.tauC);
+      const c = bodyCentre(w.batStance, lean);
+      const sg = w.batStance === 'R' ? 1 : -1;
+      for (const off of [HAND_FRONT, HAND_REAR]) {
+        const hx = pose.knob.x + off * pose.dir.x - c.x;
+        const hz = pose.knob.z + off * pose.dir.z - c.z;
+        const a = hx * Math.sin(yaw) * sg + hz * Math.cos(yaw);
+        const b = -hx * Math.cos(yaw) * sg + hz * Math.sin(yaw);
+        if (Math.hypot(a / TORSO_HALF.lateral, b / TORSO_HALF.depth) < 0.9) inside++;
+        frames++;
+      }
+    });
+    expect(frames).toBeGreaterThan(600);
+    expect(inside / frames).toBeLessThan(0.01);
+  });
+
+  it('at contact the hands are where the plan put them (the reach clamp is inactive for pitches he can reach)', () => {
+    let contacts = 0;
+    let free = 0;
+    let prev = 0;
+    swingTicks('body-4', 60, (w) => {
+      const sw = w.swing!;
+      if (prev < sw.plan.tauC && sw.tau >= sw.plan.tauC) {
+        const pose = sw.pose();
+        const p = sw.plan;
+        const th = sw.theta;
+        const ep = sw.eps;
+        const un = { x: p.pivot.x + p.rh * Math.cos(ep) * Math.sin(th), y: p.pivot.y + p.rh * Math.sin(ep), z: p.pivot.z + p.rh * Math.cos(ep) * Math.cos(th) };
+        contacts++;
+        if (d3(un, pose.knob) < 0.02) free++;
+      }
+      prev = sw.tau;
+    });
+    expect(contacts).toBeGreaterThan(20);
+    expect(free / contacts).toBeGreaterThan(0.7);
   });
 });
