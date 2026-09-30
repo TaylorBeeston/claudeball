@@ -68,7 +68,7 @@ def build_glove(kind, side="Left"):
     md = o.modifiers.new("R", 'REMESH'); md.mode = 'VOXEL'; md.voxel_size = .0032; md.use_smooth_shade = True
     bpy.ops.object.modifier_apply(modifier="R")
     # wrist bore: the forearm slides in here (circle r .046 about the wrist axis); the walls that remain are >= 1 cm thick
-    cy = bmesh.new(); bmesh.ops.create_cone(cy, cap_ends=True, segments=40, radius1=.052, radius2=.052, depth=.09)
+    cy = bmesh.new(); bmesh.ops.create_cone(cy, cap_ends=True, segments=40, radius1=.059, radius2=.052, depth=.09)
     for v in cy.verts: v.co = Vector((v.co.x + .004, v.co.y, v.co.z - .025))
     cm = bpy.data.meshes.new("bore_tmp"); cy.to_mesh(cm); cy.free(); co = bpy.data.objects.new("bore_tmp", cm); bpy.context.collection.objects.link(co)
     bb = o.modifiers.new("Bore", 'BOOLEAN'); bb.operation = 'DIFFERENCE'; bb.object = co; bb.solver = 'EXACT'
