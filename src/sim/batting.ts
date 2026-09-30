@@ -203,7 +203,7 @@ export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch,
 export function aiSwingDecision(b: PlayerInfo, ctx: BattingContext, dPerceived: number): { swing: boolean; protect: boolean } {
   const R = b.ratings;
   const disc = (R.discipline - 50) / 50;
-  let thr = 0.03 - 0.05 * disc;
+  let thr = 0.035 - 0.05 * disc;
   if (ctx.strikes === 2) thr += 0.06;
   else if (ctx.balls === 3) thr -= ctx.strikes === 0 ? 0.2 : 0.09;
   else if (ctx.strikes === 0) thr -= ctx.balls === 0 ? 0.05 : 0.035;
@@ -292,7 +292,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const rh = RH_NOM;
   const bPivot = { x: pivot.x + (dx / r3) * (ext - rh), y: pivot.y + (dy / r3) * (ext - rh), z: pivot.z + (dz / r3) * (ext - rh) }; // the bat's turning point: rh behind the knob at contact
   const thetaC = Math.atan2(dx, dz);
-  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.015 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
+  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.012 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
 
   const effort = clamp(choice.effort ?? (protect ? 0.965 : 1.0), 0.6, 1);
   const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03 * noise));
@@ -300,7 +300,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
   const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0145 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1) * noise;
+  const sigmaT = 0.0125 * (1.5 - R.contact / 100) * (protect ? 1.0 : 1) * noise;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {

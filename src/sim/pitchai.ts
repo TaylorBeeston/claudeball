@@ -103,10 +103,10 @@ export function callPitch(w: World): PitchCall {
   } else if (intent === 'edge') {
     const horiz = rng.next() < 0.6;
     if (horiz) {
-      u = (rng.next() < 0.74 ? away : -away) * rng.range(0.95, 1.4);
+      u = (rng.next() < 0.74 ? away : -away) * rng.range(1.0, 1.45);
       v = clamp(rng.normal(0, 0.45), -0.85, 0.85);
     } else {
-      v = (rng.next() < 0.6 ? -1 : 1) * rng.range(0.9, 1.4);
+      v = (rng.next() < 0.6 ? -1 : 1) * rng.range(0.95, 1.45);
       u = clamp(rng.normal(0, 0.5), -0.9, 0.9);
     }
   } else {

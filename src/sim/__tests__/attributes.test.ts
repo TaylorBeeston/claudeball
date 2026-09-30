@@ -328,8 +328,8 @@ describe('attributes: fielding', () => {
         releaseBall(w);
         F.hasBall = false;
         const b = w.ball.body;
-        b.x = F.x + 0.55;
-        b.z = F.z + 0.4;
+        b.x = F.x + 0.85;
+        b.z = F.z + 0.65;
         b.y = 0.0366;
         b.vx = -9;
         b.vy = 0;

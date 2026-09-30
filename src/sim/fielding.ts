@@ -17,6 +17,8 @@ import * as rules from './rules';
 
 /** Tunables (glove noise and throw noise scales). */
 export const TUNE = { fieldSigma: 0.032, throwSigma: 0.0150, pocket: 0.135 };
+/** Horizontal reach of a glove for a ball below knee height (m): a step and a lunge (a dive for the ones further out). */
+export const LOW_REACH = 1.2;
 
 export const fielders = (w: World): PlayerRT[] => [...w.fieldingTeam.defense.values()].filter((p) => p.onField);
 export const armSpeed = (p: PlayerRT) => armMps(p.info.ratings);
@@ -464,6 +466,8 @@ export function fieldingAttempts(w: World): void {
     if (w.tick - F.plan.lastAttempt < 48) continue;
     if (F.plan.releaseAt > 0) continue;
     if (ball.mode === 'thrown' && ball.thrower === F && w.tick - (w.play?.lastThrowTick ?? 0) < 60) continue;
+    // a throw takes a moment to get there, even to a man standing beside the thrower (the catch clip has to start before the arrival)
+    if (ball.mode === 'thrown' && w.tick - (w.play?.lastThrowTick ?? -999) < 30) continue;
     const dh = Math.hypot(b.x - F.x, b.z - F.z);
     const sp = Math.hypot(F.vx, F.vz);
     const low = b.y < 0.5;
@@ -472,7 +476,7 @@ export function fieldingAttempts(w: World): void {
       if (leapAttempt(w, F)) return;
       continue;
     }
-    const reachH = (low ? 0.92 : 1.15) + (sp > 5 ? 0.22 : 0);
+    const reachH = (low ? LOW_REACH : 1.15) + (sp > 5 ? 0.22 : 0);
     const reachV = 2.45 + (sp > 3 ? 0.3 : 0.05);
     if (dh > reachH || b.y > reachV) continue;
     if (F.plan.kind === 'idle' && ball.mode === 'batted' && ball.touchedGround === false && b.y > 2.6) continue;
@@ -650,6 +654,8 @@ function lateralOf(F: PlayerRT, x: number, z: number): number {
 export const CATCH_LEAD: Record<string, number> = {
   catch_pitch: 7 / 24,
   catch_throw: 6 / 24,
+  catch_throw_low: 7 / 24,
+  catch_throw_high: 6 / 24,
   catch_stretch: 8 / 24,
   catch_fly: 10 / 24,
   catch_fly_run: 12 / 24,
@@ -660,10 +666,14 @@ export const CATCH_LEAD: Record<string, number> = {
 };
 
 /** Which catch clip a catch is, and how far ahead of the arrival it starts. */
-function catchHint(w: World, F: PlayerRT, x: number, z: number, kind: 'throw' | 'pickoff' | 'fly' | 'line' | 'ground', lat: number, stretch: number): { hint: AnimHint; lead: number } {
+function catchHint(w: World, F: PlayerRT, x: number, z: number, kind: 'throw' | 'pickoff' | 'fly' | 'line' | 'ground', lat: number, stretch: number, y = 1.1): { hint: AnimHint; lead: number } {
   let hint: AnimHint;
   const speed = Math.hypot(F.vx, F.vz);
-  if (kind === 'throw' || kind === 'pickoff') hint = F.fieldPos === '1B' || Math.hypot(x - F.x, z - F.z) > 1.0 || stretch > 0.6 ? 'catch_stretch' : 'catch_throw';
+  if (kind === 'throw' || kind === 'pickoff') {
+    // a throw that arrives at the ground is scooped (catch_throw_low), one over the head is a reach up (catch_throw_high), the usual one is chest high
+    if (F.fieldPos === '1B' || Math.hypot(x - F.x, z - F.z) > 1.0 || stretch > 0.6) hint = 'catch_stretch';
+    else hint = y < 0.6 ? 'catch_throw_low' : y > 1.75 ? 'catch_throw_high' : 'catch_throw';
+  }
   else if (F.fieldPos === 'P' && (kind === 'ground' || kind === 'line')) hint = 'catch_comebacker';
   else if (kind === 'ground') hint = 'field_grounder';
   else if (kind === 'line') hint = 'catch_line_drive';
@@ -682,7 +692,7 @@ function catchDetail(w: World, F: PlayerRT, air: boolean, fromThrow: boolean, ho
   let side: 'glove' | 'arm' | 'backhand' | 'forehand';
   if (kind === 'ground') side = lat > 0.35 ? 'backhand' : 'forehand';
   else side = lat > 0.6 ? 'backhand' : lat > 0.3 ? 'arm' : 'glove';
-  const hint = catchHint(w, F, b.x, b.z, kind, lat, how.stretch).hint;
+  const hint = catchHint(w, F, b.x, b.z, kind, lat, how.stretch, b.y).hint;
   return { hint, fields: { kind, height, side, firm: how.firm } as const };
 }
 
@@ -838,6 +848,11 @@ function holderLogic(w: World, F: PlayerRT): void {
   if (d.action === 'tag') {
     const r = w.runners.find((q) => q.state === 'live' && !q.dead && q.p.info.id === d.runnerId);
     if (!r) return;
+    // the catcher with the ball and a runner coming home blocks the plate (`catcherBlock`): he does not run out to meet him
+    if (F === w.catcher && r.target === 4 && Math.hypot(r.p.x, r.p.z) > 2) {
+      F.plan.kind = 'hold';
+      return;
+    }
     F.plan.tagTarget = r;
     setGoal(F, r.p.x, r.p.z, false, 1);
     F.plan.kind = 'tag';
@@ -1127,8 +1142,8 @@ function meetPoint(w: World, F: PlayerRT): { x: number; y: number; z: number; t:
     const k = Math.min(1, t / T);
     const px = F.x + (F.plan.tx - F.x) * k;
     const pz = F.z + (F.plan.tz - F.z) * k;
-    // the same reach test the attempt uses (a low ball is within 0.92 m, a higher one 1.15 m, more at a run)
-    const reach = (s.y < 0.5 ? 0.92 : 1.15) + (Math.hypot(F.vx, F.vz) > 5 ? 0.22 : 0);
+    // the same reach test the attempt uses (a low ball is within LOW_REACH, a higher one 1.15 m, more at a run)
+    const reach = (s.y < 0.5 ? LOW_REACH : 1.15) + (Math.hypot(F.vx, F.vz) > 5 ? 0.22 : 0);
     const d = Math.hypot(s.x - px, s.z - pz);
     if (d <= reach && s.y <= 2.7) {
       // interpolate to the instant the ball crosses into reach (the prediction samples are 1/60 s apart)
@@ -1151,7 +1166,7 @@ export function isAirBall(mode: string, touchedGround: boolean, rolling: boolean
   return !touchedGround && !rolling && (mode === 'batted' || y > 0.5);
 }
 
-const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'catch_stretch' ? 'throw' : 'air');
+const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'catch_throw_low' || hint === 'catch_throw_high' || hint === 'catch_stretch' ? 'throw' : 'air');
 
 /** Whether his catch clip is running (armed, not expired, still the catch hint): a stale flag from an earlier play does not count. */
 export function catchClipOn(w: World, F: PlayerRT): boolean {
@@ -1210,7 +1225,7 @@ export function updateGloveTargets(w: World): void {
     if (F === w.catcher && w.phase !== 'inPlay') continue;
     const dh = Math.hypot(bb.x - F.x, bb.z - F.z);
     const sp = Math.hypot(F.vx, F.vz);
-    const reachH = (bb.y < 0.5 ? 0.92 : 1.15) + (sp > 5 ? 0.22 : 0);
+    const reachH = (bb.y < 0.5 ? LOW_REACH : 1.15) + (sp > 5 ? 0.22 : 0);
     const m = meetPoint(w, F);
     // ticks until the attempt: the ball closes on him by about vh per second (a fielder moving toward it adds his own speed)
     const closing = Math.max(1.5, vh + sp * 0.5) * TICK;
@@ -1229,7 +1244,7 @@ export function updateGloveTargets(w: World): void {
       tx = m.x;
       ty = m.y;
       tz = m.z;
-    } else if (ball.mode === 'thrown' && ball.throwTo === F && vh > 1) {
+    } else if ((ball.mode === 'thrown' && ball.throwTo === F && vh > 1) || (((F.x - bb.x) * bb.vx + (F.z - bb.z) * bb.vz) / Math.max(dh, 0.1) > 3 && gap / Math.max(3, ((F.x - bb.x) * bb.vx + (F.z - bb.z) * bb.vz) / Math.max(dh, 0.1)) <= 0.4)) {
       // nothing predicted (a throw that will bounce or sail): he reaches for it where it comes to him
       tArr = Math.max(TICK, gap / Math.max(3, vh));
       tx = bb.x + bb.vx * tArr;
@@ -1257,7 +1272,7 @@ export function updateGloveTargets(w: World): void {
     }
     if (!F.catchArmed && !F.leap) {
       const kind = catchKindAt(w, tArr, ty);
-      const ch = catchHint(w, F, tx, tz, kind, lateralOf(F, tx, tz), gap > 0 ? Math.min(1, dh / reachH) * 0.5 : 0);
+      const ch = catchHint(w, F, tx, tz, kind, lateralOf(F, tx, tz), gap > 0 ? Math.min(1, dh / reachH) * 0.5 : 0, ty);
       // the clip starts exactly its catch-frame time before the arrival (a throw that is quicker than that starts it at once)
       if (tArr <= ch.lead) {
         F.catchArmed = true;
