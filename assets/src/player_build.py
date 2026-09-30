@@ -1,5 +1,5 @@
 for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_headwear", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
-import os
+import os, json
 reset_scene()
 arm = build_armature()
 run_optimiser()                                                     # per-frame elbow poles (clearance from the torso at every build, elbows close to the ribs)
@@ -153,7 +153,25 @@ xl, yl, zl = hand_frame("Left"); wrL = JOINTS["LeftHand"][1]
 POCKET = {}                                                                                        # origin = pocket centre (where the ball sits), local +Z(blender)=+Y(glTF) = pocket opening normal (hand-local +x), X hint = along the fingers
 for kind_, K_ in KINDS.items(): POCKET[kind_] = grip_empty(K_["pocket_node"], "LeftHand", frame_matrix(GLOVE_POCKET[kind_], xl, zl))
 E_pocket = POCKET["infield"]
-GRIPS = (E_bat, E_ball, E_ball2) + tuple(POCKET.values())
+# elbow guides: Elbow_Pole_L/R = where each elbow sits in the batting stance (children of Spine1, so they move with the chest). The engine's hand IK can swivel the elbow toward them;
+# per-frame elbow positions of `batting_stance` / `swing` (Spine1 bone-local axes) are written to players/elbow_guides.json (merged into the manifest).
+def _elbow_guides():
+    rest = lambda nm: arm.matrix_world @ arm.data.bones[PFX+nm].matrix_local
+    Mr = rest("Spine1"); M0, _ = solve(dict(CLIPS["batting_stance"][1][0][1])); S0i = M0["Spine1"].inverted(); E = {}
+    for side, tag in (("Left", "L"), ("Right", "R")):
+        loc = S0i @ M0[side+"ForeArm"].translation; E[tag] = grip_empty("Elbow_Pole_"+tag, "Spine1", Matrix.Translation(Mr @ loc))
+        E[tag].empty_display_type = 'SPHERE'
+    guides = {}
+    for nm in ("batting_stance", "swing"):
+        rows = []
+        for f, sp in CLIPS[nm][1]:
+            M, _ = solve(dict(sp)); Si = M["Spine1"].inverted()
+            rows.append([f] + [round(v, 4) for side in ("Left", "Right") for v in (Si @ M[side+"ForeArm"].translation)] + [round(v, 4) for side in ("Left", "Right") for v in (Si @ M[side+"Hand"].translation)])
+        guides[nm] = rows
+    json.dump({"frame": "local axes of the Spine1 bone; per row: frame, elbow_L xyz, elbow_R xyz, wrist_L xyz, wrist_R xyz", "clips": guides}, open(ROOT+"/players/elbow_guides.json", "w"))
+    return E
+E_ELBOW = _elbow_guides()
+GRIPS = (E_bat, E_ball, E_ball2) + tuple(POCKET.values()) + tuple(E_ELBOW.values())
 
 def preview_clip(name, frames, path_prefix, cams=((2.6, -2.6, 1.3), (0, -3.6, 1.3), (-3.6, 0, 1.3)), tgt=(0, -.2, 1.0), hide=(), props=True, res=(420, 480)):
     exec(open(CB_SRC + "/render_check.py").read(), globals())
@@ -179,7 +197,7 @@ def setc(name, col):
     mix = [n for n in MATS[name].node_tree.nodes if n.type == 'MIX']
     if mix: mix[0].inputs[7].default_value = col
     else: b.inputs["Base Color"].default_value = col
-CORE = ["Body_Skin", "Head", "Eyes", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_Hair", "Gear_Piping", "Gear_Buttons", "Gear_Soles", "Gear_Laces", "Bat_Grip", "Ball_Grip", "Ball_Grip_2Seam"]
+CORE = ["Body_Skin", "Head", "Eyes", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_Hair", "Gear_Piping", "Gear_Buttons", "Gear_Soles", "Gear_Laces", "Bat_Grip", "Ball_Grip", "Ball_Grip_2Seam", "Elbow_Pole_L", "Elbow_Pole_R"]
 NUM = ["Gear_Number_Tens", "Gear_Number_Ones"]
 OPT = ["Jersey_ShortSleeve", "Jersey_Sleeveless", "Pants_Long", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long", "Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee",
        "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R"]                               # optional variants: only in player_base.glb
@@ -203,7 +221,7 @@ VARIANTS = {
 }
 os.makedirs(ROOT+"/players", exist_ok=True); info = {}
 arm.animation_data.action = ACTS["idle"]
-allnodes = {**allobjs, **gear, "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, **{K_["pocket_node"]: POCKET[k_] for k_, K_ in KINDS.items()}}
+allnodes = {**allobjs, **gear, "Elbow_Pole_L": E_ELBOW["L"], "Elbow_Pole_R": E_ELBOW["R"], "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, **{K_["pocket_node"]: POCKET[k_] for k_, K_ in KINDS.items()}}
 GLOVE_NODES = {k_: (gear[K_["node"]], gear[K_["node"] + "_Laces"], POCKET[k_]) for k_, K_ in KINDS.items()}
 GROUPS["accessory"] = tuple(n for n in GROUPS["accessory"] if n != "Gear_Glove") + tuple(K_["node"] for K_ in KINDS.values()) + tuple(K_["node"] + "_Laces" for K_ in KINDS.values())
 GROUPS["hand"] = ("Hand_L", "Hand_L_Open", "Hand_R", "Hand_R_Ball")
