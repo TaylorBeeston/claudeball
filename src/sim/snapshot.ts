@@ -101,6 +101,29 @@ export function snapshot(w: World): GameStateSnapshot {
       players.push(snapPlayer(w, p, p.dug === 'deck' || p.dug === 'toDeck' ? 'ondeck' : 'bench'));
     }
   }
+  // base coaches, ball kids, the bat boy
+  for (const s of w.staff) {
+    if (!s.active) continue;
+    const sp = Math.hypot(s.vx, s.vz);
+    const doing = w.tick < s.animUntil;
+    players.push({
+      id: s.id,
+      name: s.name,
+      team: s.team,
+      role: s.role,
+      position: s.role === 'coach1b' ? 'C1B' : s.role === 'coach3b' ? 'C3B' : s.role === 'ballkid' ? 'BK' : 'BB',
+      jersey: s.jersey,
+      pos: { x: s.x, y: dugoutFloorY(s.x, s.z) < 0 ? dugoutFloorY(s.x, s.z) : 0, z: s.z },
+      vel: { x: s.vx, y: 0, z: s.vz },
+      facing: s.facing,
+      anim: doing ? s.anim : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
+      animT: doing ? Math.min(1, (w.tick - s.animStart) / Math.max(1, s.animUntil - s.animStart)) : 0,
+      hasBall: false,
+      bats: 'R',
+      throws: 'R',
+      height: s.role === 'ballkid' ? 1.55 : 1.78,
+    });
+  }
   for (const u of w.umpires) {
     const gesturing = w.tick < u.animUntil;
     players.push({
@@ -134,7 +157,7 @@ export function snapshot(w: World): GameStateSnapshot {
   let bat: BatSnapshot;
   if (w.swing && w.swingStarted && w.batter && (w.phase === 'pitch' || w.phase === 'inPlay' || w.phase === 'playOver')) {
     const pose = w.swing.pose();
-    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress };
+    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress, dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null };
   } else if (w.batter && (w.phase === 'prePitch' || w.phase === 'windup' || w.phase === 'pitch')) {
     // ready stance: the batting_stance clip's bat (knob 0.20 m toward the plate and 0.17 m behind the body centre, bat up and back)
     const bx = w.batter.x;
@@ -145,6 +168,7 @@ export function snapshot(w: World): GameStateSnapshot {
       knob: kn,
       tip: { x: kn.x + side * 0.121 * 0.84, y: kn.y + 0.946 * 0.84, z: kn.z - 0.302 * 0.84 },
       swingT: -1,
+      dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null,
     };
   } else {
     bat = { active: false, batterId: null, knob: { x: 0, y: 0, z: 0 }, tip: { x: 0, y: 0, z: 0 }, swingT: -1 };
@@ -173,6 +197,7 @@ export function snapshot(w: World): GameStateSnapshot {
     players,
     umpire: { lastCall: w.lastCall, zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top, depthZ: 0.4318 } },
     lastPlay: w.lastPlay,
+    deadBall: w.deadBall ? { pos: { x: w.deadBall.body.x, y: w.deadBall.body.y, z: w.deadBall.body.z }, state: w.deadBall.state } : null,
     stats: { home: teamStats(w, w.teams.home), away: teamStats(w, w.teams.away) },
     pendingDecision: w.dec.waiting > 0 ? (() => { for (const sl of w.dec.slots.values()) if (sl.state === 'wait') return { id: sl.id, decision: sl.kind, side: sl.side }; return null; })() : null,
     gameOver: w.gameOver,

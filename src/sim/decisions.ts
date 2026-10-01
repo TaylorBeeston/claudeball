@@ -31,7 +31,8 @@ export type DecisionKind =
   | 'pinchHit'
   | 'pinchRun'
   | 'intentionalWalk'
-  | 'wallPlay';
+  | 'wallPlay'
+  | 'coach';
 
 interface Base<K extends DecisionKind> {
   /** Unique per game; pass it to `game.resolveDecision` for a deferred answer. */
@@ -231,6 +232,36 @@ export interface RunnerRequest extends Base<'runner'> {
   /** Other live runners: base they are on / heading to. */
   others: { playerId: string; base: number; heading: number; want: number }[];
 }
+/**
+ * A base coach's call for a runner who is looking at him (batting side): the third-base coach sends a runner home or holds him at third, the first-base coach
+ * waves a batter-runner on to second or holds him, either calls a slide. The runner mostly obeys (smart runners trust their own read a little more).
+ * Asked when the play changes around a runner heading for / standing at the coach's base.
+ */
+export interface CoachRequest extends Base<'coach'> {
+  situation: Situation;
+  /** Which coach, and who he is calling. */
+  coach: '1b' | '3b';
+  coachId: string;
+  runner: PlayerInfo;
+  /** Last base legally touched, the base he is heading to, the base he wants (his own read). */
+  base: number;
+  heading: number;
+  want: number;
+  pos: Vec3;
+  speed: number;
+  forced: boolean;
+  ball: RunnerBall;
+  /** Seconds until the defense could have the ball at bases 1..4 (index 1..4) and until the runner is there. */
+  ballToBase: number[];
+  runnerToBase: number[];
+  /** A throw is on its way to the base he is heading to. */
+  throwComing: boolean;
+}
+export interface CoachDecision {
+  /** `go`: send him home (windmill); `stop`: hold him where he is going / at the base; `advance`: wave him on to the next base; `slide`; `none`: say nothing. */
+  call: 'go' | 'stop' | 'advance' | 'slide' | 'none';
+}
+
 export interface RunnerDecision {
   /** Highest base he wants to reach (4 = score). <= his base means hold / return to it. */
   want: number;
@@ -376,6 +407,7 @@ export interface DecisionMap {
   pinchRun: [PinchRunRequest, PinchRunDecision];
   intentionalWalk: [IntentionalWalkRequest, IntentionalWalkDecision];
   wallPlay: [WallPlayRequest, WallPlayDecision];
+  coach: [CoachRequest, CoachDecision];
 }
 export type RequestOf<K extends DecisionKind> = DecisionMap[K][0];
 export type DecisionOf<K extends DecisionKind> = DecisionMap[K][1];

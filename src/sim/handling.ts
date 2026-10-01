@@ -6,6 +6,7 @@
 import { SHOULDER_X } from './batting';
 import { emit } from './events';
 import { toBench } from './dugout';
+import { spawnDeadBall } from './staff';
 import { CATCH_LEAD, catchClipOn } from './fielding';
 import { MOUND_DIST, groundHeight } from './field';
 import { clamp } from './math';
@@ -47,7 +48,8 @@ export function ensureBallReturn(w: World, afterPitch: boolean): void {
   if (w.ret) return;
   if (w.ball.lob) return;
   if (!h) {
-    // a ball nobody has (over the fence, foul, dead in the dirt): a fresh one comes from the ball boy
+    // a ball nobody has (over the fence, foul, dead in the dirt): a ball kid fetches a foul one that stopped in foul ground; a fresh one comes from the umpire
+    spawnDeadBall(w);
     giveBall(w, P);
     w.hornKind = null;
     return;

@@ -402,6 +402,8 @@ export interface BatSnapshot {
   tip: Vec3;
   /** Progress through the swing 0..1, -1 when not swinging. */
   swingT: number;
+  /** (additive) a bat lying on the ground by the plate (the hitter ran with the ball in play) until the bat boy picks it up. */
+  dropped?: Vec3 | null;
 }
 
 export type CallKind =

@@ -220,6 +220,11 @@ export interface RunnerRT {
   overrun: boolean;
   /** Per-play judgement bias (seconds) on ball-arrival estimates. */
   bias: number;
+  /** The base coach's own judgement bias for this play, whether the runner takes his call (null = not yet drawn), the call last signalled, and the answer waiting to be applied. */
+  coachBias: number;
+  coachObey: boolean | null;
+  coachCall: 'go' | 'stop' | 'advance' | 'slide' | 'none' | null;
+  coachFresh: import('./decisions').CoachDecision | null;
   /** Tag-up: waiting for the catch before advancing. */
   tagWait: boolean;
   /** Tick of the catch that started the tag-up (0 = none). */
@@ -561,7 +566,7 @@ export interface World {
   /** Base coaches (both teams), ball kids and the bat boy. */
   staff: StaffRT[];
   /** A foul ball that is out of play: where it is, whether a ball kid has it, and who is after it. */
-  deadBall: { x: number; y: number; z: number; vx: number; vz: number; state: 'rolling' | 'resting' | 'carried' | 'tossed'; kid: string | null; since: number; tossTo?: { x: number; z: number } } | null;
+  deadBall: { body: import('./ball').BallBody; flags: import('./ball').BallStepFlags; state: 'rolling' | 'resting' | 'carried' | 'tossed'; kid: string | null; since: number; tossTo?: { x: number; z: number } } | null;
   /** A bat on the ground by the plate waiting for the bat boy. */
   batDown: { x: number; z: number; by: string } | null;
   /** A random stream for the things that are only for show (warm-up swing timing, ball kids' choices): the physics and decision streams never see it. */
