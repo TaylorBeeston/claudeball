@@ -43,7 +43,7 @@ const CSS = /* css */ `
 .cb-pt .spd{font-size:max(15px,calc(var(--u)*4.4));line-height:1}.cb-pt .spd small{font-size:max(9px,calc(var(--u)*1.6));opacity:.7;margin-left:.2em}
 .cb-pt .typ{font-size:max(8px,calc(var(--u)*1.35));letter-spacing:.06em;color:#ffcf4a;text-align:right;line-height:1.2;max-width:50%}
 .cb-pt canvas{display:block;width:100%;margin-top:calc(var(--u)*.8)}
-.cb-card{display:flex;width:min(calc(var(--u)*50),100%);transform:translateX(calc(-100% - var(--ml)));transition:transform .5s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 calc(var(--u)*.6) calc(var(--u)*1.4) rgba(0,0,0,.6));pointer-events:none;border-radius:calc(var(--u)*1);overflow:hidden}
+.cb-card{display:flex;width:max-content;min-width:min(calc(var(--u)*38),100%);max-width:100%;transform:translateX(calc(-100% - var(--ml)));transition:transform .5s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 calc(var(--u)*.6) calc(var(--u)*1.4) rgba(0,0,0,.6));pointer-events:none;border-radius:calc(var(--u)*1);overflow:hidden}
 .cb-card.show{transform:none}
 .cb-card .num{background:var(--c,#333);width:calc(var(--u)*7.6);flex:none;display:flex;align-items:center;justify-content:center;font-size:max(18px,calc(var(--u)*3.8));font-weight:800}
 .cb-card .txt{background:linear-gradient(180deg,rgba(18,22,30,.96),rgba(8,10,16,.96));padding:calc(var(--u)*1.1) calc(var(--u)*2.2) calc(var(--u)*1.2) calc(var(--u)*1.8);flex:1;min-width:0}
@@ -105,7 +105,7 @@ const CSS = /* css */ `
   .cb-hit{top:calc(var(--mt) + var(--bug-h) + var(--u)*1.6);transform:translate(-50%,calc(var(--u)*-3))}
   .cb-hit.show{transform:translate(-50%,0)}
   .cb-hit div{padding:calc(var(--u)*.8) calc(var(--u)*1.6)}
-  .cb-card{width:calc(100% - var(--mr) - calc(var(--u)*9))}
+  .cb-card{min-width:min(calc(var(--u)*44),100%)}
   .cb-card .cb-bars,.cb-card .cb-ars,.cb-card .sub{display:none}
   .cb-card.open .cb-bars,.cb-card.open .cb-ars,.cb-card.open .sub{display:grid}
   .cb-card.open .sub{display:flex}.cb-card.open .cb-ars{display:block}
@@ -117,7 +117,6 @@ const CSS = /* css */ `
 /* phone landscape and other short screens */
 @media (max-height:520px){
   .cb-card .cb-bars,.cb-card .cb-ars{display:none}
-  .cb-card{width:min(calc(var(--u)*46),46%)}
   .cb-card.open .cb-bars{display:grid}.cb-card.open .cb-ars{display:block}
   .cb-ctl.open .cb-drawer{max-height:calc(100dvh - var(--mt) - var(--mb) - 52px);overflow-y:auto;justify-content:flex-end}
   .cb-ctl.open .cb-drawer>*{min-height:40px}
