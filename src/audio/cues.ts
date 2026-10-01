@@ -204,7 +204,7 @@ export class CueMapper {
           this.lastPitcherId = pid;
         }
         if (b) {
-          out.push({ kind: 'sfx', id: 'pa_chime', imp: 1, delay: 0, gain: 0.5 });
+          out.push({ kind: 'sfx', id: 'pa_click', imp: 1, delay: 0, gain: 0.22 }); // a tiny PA mic click, not melodic
           out.push(cue.speak('pa', `Now batting, number ${b.number ?? ''}, ${trimName(b.name)}.`.replace('number , ', ''), PRI.pa, 15, 0.1, 1));
           const line = c.batterLine?.(ev.batterId);
           if (line && line.ab >= 2 && this.plays % 3 === 1) out.push(cue.speak('color', `${trimName(b.name)} is ${line.h} for ${line.ab} today.`, PRI.color, 6, 4, 1));

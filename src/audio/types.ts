@@ -39,7 +39,6 @@ export type SfxId =
   | 'firework'
   | 'replay_whoosh'
   | 'pa_click'
-  | 'pa_chime'
   | 'ump_yell'; // fallback shout when there is no speech synthesis
 
 /** One-shot crowd reactions (stereo, played on the crowd bus, not positional). */
