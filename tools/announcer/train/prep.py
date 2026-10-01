@@ -62,16 +62,20 @@ def normalise(x: np.ndarray, sr: int, target_db=-23.0, peak_db=-1.0) -> np.ndarr
     return (x * g).astype(np.float32)
 
 
-def load_whisper(name: str):
+def load_whisper(name: str, device: str = "auto"):
+    """faster-whisper on the GPU when the CUDA libraries line up, else int8 on the CPU. The load succeeds even when cuBLAS/cuDNN are missing,
+    so a one-second warm-up transcription decides."""
     from faster_whisper import WhisperModel
 
-    for dev, ct in (("cuda", "float16"), ("cpu", "int8")):
+    attempts = [("cuda", "float16"), ("cpu", "int8")] if device == "auto" else [(device, "float16" if device == "cuda" else "int8")]
+    for dev, ct in attempts:
         try:
             m = WhisperModel(name, device=dev, compute_type=ct)
+            list(m.transcribe(np.zeros(16000, dtype=np.float32), language="en")[0])
             log(f"whisper {name} on {dev}/{ct}")
             return m
-        except Exception as e:  # cuDNN/CUDA mismatches are common: fall back to CPU
-            log(f"whisper on {dev} failed ({str(e).splitlines()[0][:80]}); trying next")
+        except Exception as e:  # missing libcublas / cuDNN version mismatch are common
+            log(f"whisper on {dev} failed ({str(e).splitlines()[0][:90]}); trying next")
     raise SystemExit("could not load faster-whisper")
 
 
@@ -83,6 +87,7 @@ def main():
     ap.add_argument("--pilot", action="store_true", help="only the PILOT lines (priority 1)")
     ap.add_argument("--speakers", type=int, choices=(1, 3), default=3)
     ap.add_argument("--whisper", default="small.en", help="faster-whisper model, or 'none' to skip the check")
+    ap.add_argument("--whisper-device", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--wer", type=float, default=0.34, help="flag lines whose word error rate against the script is above this")
     ap.add_argument("--keep-flagged", action="store_true")
     ap.add_argument("--keep-failed", action="store_true", help="include takes whose QC said 'retake suggested'")
@@ -111,7 +116,7 @@ def main():
     if not todo:
         sys.exit("nothing to prepare: record some lines first (npm run announcer:record)")
 
-    whisper = None if a.whisper == "none" else load_whisper(a.whisper)
+    whisper = None if a.whisper == "none" else load_whisper(a.whisper, a.whisper_device)
     report, rows, secs = [], [], {0: 0.0, 1: 0.0, 2: 0.0}
     used: list[dict] = []
     for i, (l, wav) in enumerate(todo, 1):
@@ -132,9 +137,12 @@ def main():
             segs, _ = whisper.transcribe(x, language="en", beam_size=1, condition_on_previous_text=False)
             hyp = " ".join(s.text.strip() for s in segs)
             err = wer(comparable(l["normalized"]), comparable(hyp))
-            lenient = l["kind"] in ("name", "team")  # whisper spells unusual names its own way
+            lenient = l["kind"] in ("name", "team") or len(comparable(l["normalized"])) <= 3  # whisper spells names its own way and garbles 1-3 word calls
             if err > a.wer and not lenient:
                 status = "misread"
+            elif err > a.wer:
+                status = "ok"  # kept, but visible in the report
+                hyp += "  [unverified: short or name line]"
         report.append((l["id"], status, hyp, err, l["normalized"]))
         if status != "ok":
             continue

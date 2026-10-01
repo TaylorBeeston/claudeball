@@ -12,6 +12,7 @@ import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
 import { HD_MODES, pickMode } from './hdInfo';
+import { CustomVoiceController, loadVoiceSettings } from './voice/controller';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
 import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
@@ -98,6 +99,8 @@ export class AudioController {
   /** HD voices state (the neural code is loaded lazily, only after the user opts in) */
   hd: { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; engine: { stats: unknown; busyMs(): number; rtf: number; dispose(): void } | null } = { state: 'off', pct: 0, message: '', engine: null };
   readonly excitement = new Excitement();
+  /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/) */
+  readonly voice: CustomVoiceController;
   private ui: AudioUi | null = null;
   private mapper: CueMapper;
   private pending: { ev: RawEvent; at: number }[] = [];
@@ -146,7 +149,28 @@ export class AudioController {
       const r = engineToRaw(te.event);
       if (r) this.push(r);
     });
+    this.voice = new CustomVoiceController({
+      mixer: this.mixer,
+      sw: this.sw,
+      browser: browserSpeech,
+      getExcitement: () => this.excitement.level,
+      beforeEnable: () => {
+        void this.enable(); // the click is a user gesture: make sure audio is running too
+        if (this.hd.state !== 'off') this.disableHd();
+      },
+      onChange: (s) => {
+        if (s.state !== 'loading') this.speech.clear();
+        this.ui?.voicePanel?.set(s);
+      },
+    });
     this.ui = new AudioUi(root, this.settings, {
+      voice: {
+        initialUrl: loadVoiceSettings().url,
+        url: (u) => void this.voice.enableFromUrl(u),
+        files: (f) => void this.voice.enableFromFiles(f),
+        off: () => this.voice.disable(),
+        forget: () => void this.voice.forget(),
+      },
       toggleMute: () => this.toggleMute(),
       changed: () => this.settingsChanged(),
       gesture: () => void this.unlock(),
@@ -173,6 +197,7 @@ export class AudioController {
     this.offs.push(() => window.removeEventListener('keydown', key));
     this.interval = setInterval(() => this.tick(), 1000 / 30);
     if (this.settings.hd) void this.autoHd();
+    else void this.voice.resume();
   }
 
   // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
@@ -193,6 +218,7 @@ export class AudioController {
 
   async enableHd(): Promise<void> {
     if (this.hd.state === 'loading' || this.hd.state === 'ready') return;
+    if (this.voice.state !== 'off') this.voice.disable();
     const mode = pickMode();
     this.hd = { state: 'loading', pct: 0, message: '', engine: null };
     this.ui?.setHd({ state: 'loading', pct: 0 });
@@ -634,6 +660,7 @@ export class AudioController {
   }
 
   dispose() {
+    this.voice.disable(false);
     if (this.interval) clearInterval(this.interval);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
@@ -658,7 +685,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: a.voice.state, voiceStats: a.voice.engine?.stats }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

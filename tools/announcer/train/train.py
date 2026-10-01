@@ -75,18 +75,21 @@ def main():
     log(f"{nutt} utterances, {speakers} speaker(s), base {base}, {epochs} epochs in rounds of {rnd}, batch {a.batch_size} (~{max(1, nutt * 9 // 10 // a.batch_size)} steps/epoch)")
     decay = 0.05 ** (1 / epochs)
 
+    mos_ok = subprocess.run([sys.executable, "-c", "import torchaudio"], capture_output=True).returncode == 0
+    if not mos_ok:
+        log("torchaudio is not importable: skipping the UTMOS quality score (val_mel is still tracked)")
     done = 0
     t0 = time.time()
     while done < epochs:
         target = min(epochs, done + rnd)
         cmd = [
-            sys.executable, "-m", "piper.train", "fit",
+            sys.executable, str(Path(__file__).parent / "fit_main.py"), "fit",
             "--data.voice_name", "claudeball-announcer",
             "--data.csv_path", str(meta), "--data.audio_dir", str(a.work_dir / "wavs"),
             "--data.espeak_voice", "en-us", "--data.cache_dir", str(run / "cache"), "--data.config_path", str(run / "config.json"),
             "--data.batch_size", str(a.batch_size), "--data.dataset_type", "phoneme_ids", "--data.num_workers", str(a.workers),
             "--data.vowel_clusters", VOWEL_CLUSTERS,
-            "--model.sample_rate", "22050", "--model.num_speakers", str(nspk), "--model.mos_metric", "none",
+            "--model.sample_rate", "22050", "--model.num_speakers", str(nspk),
             "--model.lr_decay", f"{decay}", "--model.lr_decay_d", f"{decay}",
             "--trainer.max_epochs", str(target), "--trainer.default_root_dir", str(run), "--trainer.devices", "1",
             "--trainer.check_val_every_n_epoch", str(max(1, min(rnd, 5))), "--trainer.log_every_n_steps", "10",
@@ -97,7 +100,9 @@ def main():
         else:
             cmd += ["--model.warmstart_ckpt", str(ckpt0)]
         log(f"\n=== epochs {done + 1}-{target} of {epochs} ===")
-        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        env = {**os.environ, "PYTHONUNBUFFERED": "1", "CB_DROP_MOS": "0" if mos_ok else "1"}
+        if not mos_ok and "--model.mos_metric" not in cmd:
+            cmd += ["--model.mos_metric", "none"]
         r = subprocess.run(cmd, cwd=str(PIPER_DIR), env=env)
         if r.returncode != 0:
             sys.exit(f"training failed (exit {r.returncode}); see the log above. Checkpoints so far are in {run}")
