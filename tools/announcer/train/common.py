@@ -113,3 +113,23 @@ def wer(ref: list[str], hyp: list[str]) -> float:
 def ensure_venv():
     if sys.prefix == sys.base_prefix:
         sys.exit("Run this inside the training venv:  source ~/claudeball-voice/venv/bin/activate   (or use npm run announcer:<stage>)")
+
+
+def load_whisper(name: str, device: str = "auto"):
+    """faster-whisper on the GPU when the CUDA libraries line up, else int8 on the CPU. The load succeeds even when cuBLAS/cuDNN are missing,
+    so a one-second warm-up transcription decides."""
+    import numpy as np
+    from faster_whisper import WhisperModel
+
+    attempts = [("cuda", "float16"), ("cpu", "int8")] if device == "auto" else [(device, "float16" if device == "cuda" else "int8")]
+    for dev, ct in attempts:
+        try:
+            m = WhisperModel(name, device=dev, compute_type=ct)
+            list(m.transcribe(np.zeros(16000, dtype=np.float32), language="en")[0])
+            log(f"whisper {name} on {dev}/{ct}")
+            return m
+        except Exception as e:  # missing libcublas / cuDNN version mismatch are common
+            log(f"whisper on {dev} failed ({str(e).splitlines()[0][:90]}); trying next")
+    raise SystemExit("could not load faster-whisper")
+
+

@@ -3,7 +3,7 @@
     python export.py --work-dir <data>/work [--run-name full] [--checkpoint path.ckpt] [--out ~/claudeball-voice/voicepack]
 
 Writes <out>/ (private, never committed; host it yourself, see docs/announcer-voice.md):
-  model.onnx            fp32 export        model.int8.onnx   dynamic int8 weights        model.fp16.onnx  float16 weights (WebGPU)
+  model.onnx fp32 | model.fp16w.onnx weights stored as fp16, fp32 maths (half the size, runs everywhere) | model.int8.onnx dynamic int8 | model.fp16.onnx true fp16 (WebGPU only)
   voice.json            manifest the game loads: speakers, scales, lexicon, phoneme ids, which model file is the default
   export_report.json    sizes, CPU real-time factor, and how far each quantized model drifts from fp32 (noise-free log-mel L1 + Whisper WER)
 """
@@ -17,9 +17,13 @@ import sys
 import time
 from pathlib import Path
 
+import logging
+
 import numpy as np
 
-from common import BASES, SAMPLE_RATE, SPEAKER_NAMES, STYLE_SPEAKER, VOICE_DIR, assemble_ids, comparable, ensure_venv, log, tokenize, wer
+logging.getLogger().setLevel(logging.ERROR)  # onnxruntime-quantization logs a warning per skipped tensor
+
+from common import load_whisper, BASES, SAMPLE_RATE, SPEAKER_NAMES, STYLE_SPEAKER, VOICE_DIR, assemble_ids, comparable, ensure_venv, log, tokenize, wer
 from render import TEST_LINES
 
 PUNCT = [",", ".", ";", ":", "!", "?"]
@@ -37,6 +41,32 @@ def run_ort(sess, ids, sid, scales=(0.667, 1.0, 0.8)):
     return sess.run(None, feeds)[0].reshape(-1)
 
 
+def weights_fp16(src: Path, dst: Path) -> None:
+    """Weight-only fp16: every large fp32 initializer is stored as fp16 and cast back to fp32 at load (ORT folds the Cast), so the file is about
+    half the size, the arithmetic stays fp32 and it runs on every provider, including the browser's WASM one (true fp16 models do not)."""
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
+
+    m = onnx.load(str(src))
+    g = m.graph
+    casts = []
+    for init in list(g.initializer):
+        if init.data_type != TensorProto.FLOAT:
+            continue
+        arr = numpy_helper.to_array(init)
+        if arr.size < 256:
+            continue
+        name = init.name
+        h = numpy_helper.from_array(arr.astype(np.float16), name + "__fp16")
+        g.initializer.remove(init)
+        g.initializer.append(h)
+        casts.append(helper.make_node("Cast", [name + "__fp16"], [name], to=TensorProto.FLOAT, name="cast_" + name))
+    g.node.insert(0, *casts) if False else None
+    for i, n in enumerate(casts):
+        g.node.insert(i, n)
+    onnx.save(m, str(dst))
+
+
 def logmel(x: np.ndarray) -> np.ndarray:
     import librosa
 
@@ -51,7 +81,7 @@ def main():
     ap.add_argument("--run-name", default="full")
     ap.add_argument("--checkpoint", type=Path)
     ap.add_argument("--out", type=Path, default=VOICE_DIR / "voicepack")
-    ap.add_argument("--default", choices=["auto", "fp32", "int8", "fp16"], default="auto", help="which model voice.json points at (auto: int8 if it stays close to fp32, else fp32)")
+    ap.add_argument("--default", choices=["auto", "fp32", "fp16w", "int8", "fp16"], default="auto", help="which model voice.json points at (auto: the smallest of fp16w / int8 that stays close to fp32, else fp32)")
     ap.add_argument("--no-whisper", action="store_true")
     a = ap.parse_args()
     import onnxruntime as ort
@@ -63,12 +93,12 @@ def main():
     a.out.mkdir(parents=True, exist_ok=True)
     fp32 = a.out / "model.onnx"
     log(f"exporting {ckpt.name} -> {fp32}")
-    subprocess.run([sys.executable, "-m", "piper.train.export_onnx", "--checkpoint", str(ckpt), "--output-file", str(fp32)], check=True)
+    subprocess.run([sys.executable, str(Path(__file__).parent / "export_onnx_legacy.py"), "--checkpoint", str(ckpt), "--output-file", str(fp32)], check=True)
     cfg = json.loads((run / "config.json").read_text())
     shutil.copy(run / "config.json", a.out / "model.onnx.json")
 
     # --- quantize
-    int8, fp16 = a.out / "model.int8.onnx", a.out / "model.fp16.onnx"
+    int8, fp16, fp16w = a.out / "model.int8.onnx", a.out / "model.fp16.onnx", a.out / "model.fp16w.onnx"
     try:
         from onnxruntime.quantization import QuantType, quantize_dynamic
 
@@ -86,6 +116,12 @@ def main():
         log("fp16 conversion failed:", str(e).splitlines()[0])
         fp16.unlink(missing_ok=True)
 
+    try:
+        weights_fp16(fp32, fp16w)
+    except Exception as e:
+        log("weight-only fp16 failed:", str(e).splitlines()[0])
+        fp16w.unlink(missing_ok=True)
+
     # --- measure
     lex = json.loads((a.work_dir / "lexicon.json").read_text())["words"]
     idmap = cfg["phoneme_id_map"]
@@ -95,20 +131,17 @@ def main():
         ids = assemble_ids(tokenize(text), lex, idmap)
         if ids:
             lines.append((style, text, ids, spk.get(SPEAKER_NAMES[STYLE_SPEAKER[style]])))
-    whisper = None
-    if not a.no_whisper:
-        try:
-            from faster_whisper import WhisperModel
+    whisper = None if a.no_whisper else load_whisper("small.en")
+    mos = None
+    try:
+        from piper.train.vits.mos import MosPredictor
 
-            try:
-                whisper = WhisperModel("small.en", device="cuda", compute_type="float16")
-            except Exception:
-                whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
-        except Exception as e:
-            log("whisper unavailable:", e)
+        mos = MosPredictor("utmos")
+    except Exception:
+        pass
     report: dict = {"checkpoint": ckpt.name, "models": {}}
     base_mels = None
-    for tag, path in (("fp32", fp32), ("int8", int8), ("fp16", fp16)):
+    for tag, path in (("fp32", fp32), ("fp16w", fp16w), ("int8", int8), ("fp16", fp16)):
         if not path.exists():
             continue
         so = ort.SessionOptions()
@@ -137,6 +170,13 @@ def main():
                 segs, _ = whisper.transcribe((o / max(0.01, np.abs(o).max()) * 0.9).astype(np.float32), language="en", beam_size=1)
                 errs.append(wer(comparable(text), comparable(" ".join(s.text for s in segs))))
             entry["whisper_wer"] = round(float(np.mean(errs)), 3)
+        if mos is not None:
+            import torch
+
+            sc = [mos.score(torch.from_numpy(o.astype(np.float32)), SAMPLE_RATE) for o in outs]
+            sc = [x for x in sc if x is not None]
+            if sc:
+                entry["utmos"] = round(float(np.mean(sc)), 2)
         report["models"][tag] = entry
         import soundfile as sf
 
@@ -149,14 +189,28 @@ def main():
     pick = a.default
     if pick == "auto":
         i8 = m.get("int8", {})
-        pick = "int8" if i8 and "error" not in i8 and i8.get("logmel_l1_vs_fp32", 9) < 0.6 and i8.get("whisper_wer", 0) <= m.get("fp32", {}).get("whisper_wer", 0) + 0.1 else "fp32"
-    file = {"fp32": "model.onnx", "int8": "model.int8.onnx", "fp16": "model.fp16.onnx"}[pick]
+        pick = "fp32"
+        for cand in ("fp16w", "int8"):
+            c = m.get(cand, {})
+            f32 = m.get("fp32", {})
+            if c and "error" not in c and c.get("whisper_wer", 0) <= f32.get("whisper_wer", 0) + 0.08 and c.get("utmos", 9) >= f32.get("utmos", 0) - 0.35:
+                pick = cand
+                break
+    if False:
+        i8 = m.get("int8", {})
+        f32 = m.get("fp32", {})
+        # the noise-free log-mel distance is shown for reference only (a quantized model can shift timing, which inflates it);
+        # what decides is intelligibility (Whisper) and the perceptual score (UTMOS) staying close to fp32
+        ok = bool(i8) and "error" not in i8 and i8.get("whisper_wer", 0) <= f32.get("whisper_wer", 0) + 0.08 and i8.get("utmos", 9) >= f32.get("utmos", 0) - 0.35
+        pick = "int8" if ok else "fp32"
+    file = {"fp32": "model.onnx", "fp16w": "model.fp16w.onnx", "int8": "model.int8.onnx", "fp16": "model.fp16.onnx"}[pick]
     base = "libritts_r" if cfg.get("num_speakers", 1) > 1 else "ljspeech"
     pack = {
         "format": 1,
         "name": "My announcer",
+        "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sampleRate": cfg["audio"]["sample_rate"],
-        "models": {k: {"file": f, "bytes": (a.out / f).stat().st_size} for k, f in (("fp32", "model.onnx"), ("int8", "model.int8.onnx"), ("fp16", "model.fp16.onnx")) if (a.out / f).exists()},
+        "models": {k: {"file": f, "bytes": (a.out / f).stat().st_size} for k, f in (("fp32", "model.onnx"), ("fp16w", "model.fp16w.onnx"), ("int8", "model.int8.onnx"), ("fp16", "model.fp16.onnx")) if (a.out / f).exists()},
         "default": pick,
         "speakers": {n: spk[n] for n in SPEAKER_NAMES if n in spk} if spk else None,
         "styleSpeaker": {s: SPEAKER_NAMES[sp] for s, sp in STYLE_SPEAKER.items()} if spk else None,

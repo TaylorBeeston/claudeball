@@ -4,7 +4,7 @@
  */
 import type { PhonemeIdMap } from './phonemize';
 
-export type ModelKind = 'fp32' | 'int8' | 'fp16';
+export type ModelKind = 'fp32' | 'fp16w' | 'int8' | 'fp16';
 export type StyleName = 'calm' | 'building' | 'excited' | 'peak' | 'deadpan' | 'crisp' | 'deflated';
 export type Role = 'pa' | 'ump' | 'pbp' | 'color';
 
