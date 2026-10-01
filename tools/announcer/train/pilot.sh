@@ -8,4 +8,5 @@ RUN="bash $HERE/run.sh"
 $RUN prep --pilot
 $RUN train --pilot --run-name pilot
 $RUN export --run-name pilot
-cd "$HERE/../../.." && npx tsx tools/announcer/train/web_test.ts
+DATA_DIR="${CB_DATA_DIR:-${CB_VOICE_DIR:-$HOME/claudeball-voice}}"
+cd "$HERE/../../.." && npx tsx tools/announcer/train/web_test.ts "${CB_VOICEPACK:-$DATA_DIR/voicepack}"
