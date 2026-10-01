@@ -26,6 +26,7 @@ import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
+import { makeOnDeckBat } from './ondeckProp';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
@@ -33,6 +34,10 @@ import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, 
 
 const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
+/** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
+export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'ballkid', 'coach1b', 'coach3b', 'coach', 'ondeck']);
+export const LOD1_DISTANCE = 42;
+
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
 /** Preferred clip per hint, then fallbacks for clips that a given GLB may not contain (older exports). */
@@ -60,6 +65,18 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'throw': return ['throw'];
     case 'slide': return ['slide'];
     case 'celebrate': return ['celebrate', 'idle'];
+    // the side cast: each falls back to the nearest existing clip until its own clip is in the files
+    case 'bench_sit': return ['bench_sit', 'idle'];
+    case 'ondeck_ready': return ['ondeck_ready', 'idle'];
+    case 'ondeck_swing': return ['ondeck_swing', 'swing'];
+    case 'coach_ready': case 'coach_signs': return [hint, 'coach_ready', 'idle'];
+    case 'coach_stop': return ['coach_stop', 'ump_time', 'idle'];
+    case 'coach_go': case 'coach_advance': return [hint, 'celebrate', 'idle'];
+    case 'coach_slide': return ['coach_slide', 'ump_safe', 'idle'];
+    case 'ballkid_sit': return ['ballkid_sit', 'bench_sit', 'idle'];
+    case 'ballkid_run': return ['ballkid_run', 'jog'];
+    case 'ballkid_pickup': return ['ballkid_pickup', 'field_grounder', 'idle'];
+    case 'ballkid_toss': return ['ballkid_toss', 'throw_casual', 'throw'];
     default: return idleFor(role);
   }
 }
@@ -83,7 +100,7 @@ export function stanceYaw(hand: 'L' | 'R' | undefined): number {
 
 export function templateNameFor(snap: PlayerSnap): string {
   switch (snap.role) {
-    case 'batter': case 'runner': case 'coach': return 'player_batter';
+    case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': return 'player_batter';
     case 'catcher': return 'player_catcher';
     case 'umpire': return 'player_umpire';
     default: return snap.team === 1 ? 'player_home' : 'player_away';
@@ -219,7 +236,7 @@ export function stanceFootSpeed(scene: Object3D, clip: AnimationClip, fallback: 
 }
 
 type GearKind = 'field' | 'batter' | 'catcher';
-const gearKindOf = (role: PlayerRole): GearKind => (role === 'batter' || role === 'runner' || role === 'coach' ? 'batter' : role === 'catcher' ? 'catcher' : 'field');
+const gearKindOf = (role: PlayerRole): GearKind => (role === 'batter' || role === 'runner' || role === 'coach' || role === 'coach1b' || role === 'coach3b' || role === 'ondeck' ? 'batter' : role === 'catcher' ? 'catcher' : 'field');
 const HAIR_NODES = ['Gear_Hair', 'Gear_Hair_Buzz', 'Gear_Hair_Curly', 'Gear_Hair_Long'];
 const FACIAL_NODES = ['Gear_Beard_Stubble', 'Gear_Beard_Full', 'Gear_Goatee', 'Gear_Mustache'];
 const JERSEY_NODES = ['Jersey', 'Jersey_ShortSleeve', 'Jersey_Sleeveless'];
@@ -234,7 +251,7 @@ const GLOVES: Record<GloveKind, { glove: string; laces: string; pocket: string }
 };
 export function gloveKindFor(role: PlayerRole): GloveKind | null {
   switch (role) {
-    case 'batter': case 'runner': case 'coach': case 'umpire': return null;
+    case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': case 'bench': case 'ballkid': case 'umpire': return null;
     case 'catcher': return 'catcher';
     case 'first': return 'first';
     case 'left': case 'center': case 'right': return 'outfield';
@@ -907,7 +924,20 @@ export class GltfPuppet implements PuppetLike {
     // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
     // was applied again on top, every frame. Put every bone we modify back to its clip pose before the mixer runs.
     for (const [bone, q] of this.clipPose) bone.quaternion.copy(q);
-    this.mixer.update(dt);
+    // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
+    const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
+    this.lod1 = lod1;
+    if (lod1) {
+      this.lodAcc += dt;
+      this.lodFlip = !this.lodFlip;
+      if (this.lodFlip) {
+        this.mixer.update(this.lodAcc);
+        this.lodAcc = 0;
+      }
+    } else {
+      this.mixer.update(dt + this.lodAcc);
+      this.lodAcc = 0;
+    }
     for (const [bone, q] of this.clipPose) q.copy(bone.quaternion);
 
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
@@ -928,6 +958,11 @@ export class GltfPuppet implements PuppetLike {
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
     this.root.updateMatrixWorld(true);
+    this.updateProp(snap);
+    if (lod1) {
+      this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
+      return;
+    }
     this.rig.refresh();
 
     // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
@@ -951,10 +986,29 @@ export class GltfPuppet implements PuppetLike {
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
       // a fielder who holds the ball has it in the glove pocket; while he throws it stays in his hand until the sim releases it
-      place = snap.anim === 'throw' || snap.anim === 'toss' ? 'hand' : 'glove';
+      place = snap.anim === 'throw' || snap.anim === 'toss' || snap.role === 'ballkid' ? 'hand' : 'glove';
     }
     this.updateHeldBall(snap, env, place, dt);
   }
+  /** distant extra: animates at half rate without look-at / IK (level of detail 1) */
+  lod1 = false;
+  private lodAcc = 0;
+  private lodFlip = false;
+  private prop: Object3D | null = null;
+
+  /** the on-deck batter's bat with a donut: the model's own `Bat_Donut` when it has one, else a plain bat and ring in his hand */
+  private updateProp(snap: PlayerSnap) {
+    const want = snap.role === 'ondeck';
+    const donut = this.nodes.get('Bat_Donut');
+    if (donut) donut.visible = want;
+    if (!want && !this.prop) return;
+    if (want && !this.prop && this.batGrip) {
+      this.prop = makeOnDeckBat(!!donut);
+      this.batGrip.add(this.prop);
+    }
+    if (this.prop) this.prop.visible = want;
+  }
+
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
   private ikFade = 1;

@@ -353,6 +353,8 @@ export interface PuppetEnv {
   anims?: Map<string, string>;
   /** every player's scene position by id (for tags: where the runner is) */
   positions?: Map<string, Vector3>;
+  /** the camera's position (scene): far extras drop to a cheaper animation */
+  cameraPos?: { x: number; y: number; z: number };
   /** whoever holds the ball (a fielder mid-transfer / look / toss): where a receiver should turn and hold his glove */
   carrier?: { id: string; role: string; anim: string; pos: Vector3 } | null;
   /** makes a ball for a hand / glove (a clone of the ball model) */

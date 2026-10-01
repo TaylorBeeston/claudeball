@@ -3,7 +3,7 @@
  * to the engine's own `GameLike` contract (`types.ts`). Structural types only, so the engine
  * compiles whether or not `src/sim` exists.
  */
-import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, TeamInfo, TeamStatsView, Vec3 } from './types';
+import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, SideInfo, SidePerson, TeamInfo, TeamStatsView, Vec3 } from './types';
 import { windupSeconds } from './pitchTiming';
 import { BASES } from './dims';
 
@@ -46,6 +46,27 @@ export interface RealGame {
   step(dt: number): void;
   getState(): RSState;
   on(type: '*', cb: (e: RSEvent) => void): () => void;
+  /** the sim's internals (lineups, bench); optional, only read for the side cast */
+  _world?: unknown;
+}
+
+interface RSPerson { id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R'; physique?: PlayerSnap['physique']; appearance?: PlayerSnap['appearance'] }
+interface RSTeamRT { side: 'home' | 'away'; lineup: { player: { info: RSPerson } }[]; batIdx: number; bench: { info: RSPerson }[] }
+interface RSWorld { battingTeam: RSTeamRT; teams: { home: RSTeamRT; away: RSTeamRT } }
+
+const sidePerson = (i: RSPerson): SidePerson => ({ id: i.id, name: i.name, number: i.jersey, hand: i.bats === 'S' ? 'R' : i.bats, physique: i.physique, appearance: i.appearance });
+
+/** Who is on deck and who sits on the benches, from the sim's world (the batter after the one at bat; nobody up: the one about to step in). */
+export function sideInfoOf(w: RSWorld | undefined, batterUp: boolean): SideInfo | undefined {
+  try {
+    if (!w?.battingTeam?.lineup?.length) return undefined;
+    const t = w.battingTeam;
+    const idx = (t.batIdx + (batterUp ? 1 : 0)) % t.lineup.length;
+    const bench = (team: RSTeamRT) => team.bench.slice(0, 4).map((p) => sidePerson(p.info));
+    return { battingSide: t.side === 'away' ? 0 : 1, onDeck: sidePerson(t.lineup[idx].player.info), bench: [bench(w.teams.away), bench(w.teams.home)] };
+  } catch {
+    return undefined;
+  }
 }
 
 export function looksLikeRealSim(state: unknown): boolean {
@@ -284,6 +305,7 @@ export class RealSimAdapter implements GameLike {
       over: s.gameOver,
       stats: s.stats ? { away: s.stats.away, home: s.stats.home } : undefined,
       pitchCount: p?.pitchCount,
+      side: sideInfoOf(this.g._world as RSWorld | undefined, !!b),
     };
     if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;

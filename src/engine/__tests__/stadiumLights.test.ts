@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { aimPoint, CAST_SHARE, LIGHT_BUDGETS, shadowOrder, spotWeights } from '../stadiumLights';
+import { aimPoint, CAST_SHARE, LIGHT_BUDGETS, shadowOrder, spotWeights, unitsToShadowLimit } from '../stadiumLights';
 
 const towers = [[91, 49, 71], [-91, 49, 70], [104, 49, 0], [-105, 49, -1], [26, 49, 138], [-26, 49, 138]].map(([x, y, z]) => new Vector3(x, y, z));
 
@@ -24,6 +24,11 @@ describe('stadium lights', () => {
     const o = shadowOrder(towers);
     expect([...o].sort()).toEqual([0, 1, 2, 3, 4, 5]);
     expect([2, 3]).toContain(o[0]);
+  });
+  it('limits shadow spots on GPUs with few texture units', () => {
+    expect(unitsToShadowLimit(32)).toBe(4);
+    expect(unitsToShadowLimit(16)).toBe(2);
+    expect(unitsToShadowLimit(8)).toBe(0);
   });
   it('budgets shrink with quality and never ask for more shadows than spots', () => {
     for (const b of Object.values(LIGHT_BUDGETS)) expect(b.shadows).toBeLessThanOrEqual(b.spots);

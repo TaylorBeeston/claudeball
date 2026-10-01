@@ -21,6 +21,7 @@ import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
+import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
@@ -52,6 +53,9 @@ export class Engine {
   /** pins the number of shadow-casting tower spots (tests / screenshots on a loaded machine); undefined = adaptive */
   lightShadowCap?: number;
   readonly lights: StadiumLights;
+  /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
+  readonly side = new SideCast();
+  private tossBall: Object3D | null = null;
   readonly adaptive = new AdaptiveScale();
   readonly sim: SimDriver;
   readonly players: PlayerManager;
@@ -148,6 +152,11 @@ export class Engine {
       if (te.event.type === 'robbed_hr') this.stadium.crowd.excite(0.8); // the groan / gasp
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);
     });
+    this.sim.on((te) => {
+      this.side.note(te.event);
+      if (te.event.type === 'ball_tossed_to_fan') this.stadium.crowd.excite(0.55); // the stands go for it
+      if (te.event.type === 'ball_kid_retrieve') this.stadium.crowd.excite(0.12);
+    });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
     this.sim.onPitchCross((x, y, inZone) => this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b'));
 
@@ -180,6 +189,15 @@ export class Engine {
         const inward = new Vector3(0, 0, 14).sub(c).setY(0).normalize();
         this.director.dugoutShots.push({ pos: c.clone().addScaledVector(inward, 17).setY(3.2), target: c.clone().setY(-0.2) });
       }
+      // the dugouts' real boxes: where the bench players sit
+      const boxOf = (name: string): Box | null => {
+        const o = a.field!.getObjectByName(name);
+        if (!o) return null;
+        const b = new Box3().setFromObject(o);
+        return { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+      };
+      const benchBox = boxOf('Dugout_3B_Bench') ?? boxOf('Dugout_1B_Bench');
+      this.side.setLayout(makeLayout([boxOf('Dugout_1B'), boxOf('Dugout_3B')], benchBox ? benchBox.max.y : undefined));
       // ground under the stands / beyond the field mesh
       const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
       under.position.y = -0.06;
@@ -295,6 +313,7 @@ export class Engine {
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
     this.lights.setQuality(name);
+    this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
     this.resize();
   }
 
@@ -302,6 +321,21 @@ export class Engine {
     // the settings store (UI) remembers the choice; the tower lights follow at once, the sky / HDRI when its texture is ready
     this.lights.setTimeOfDay(t);
     return this.env.setTimeOfDay(t);
+  }
+
+  /** the ball a kid tosses to a fan, drawn on its arc */
+  private updateTossBall() {
+    const t = this.side.toss;
+    if (!t.visible) {
+      if (this.tossBall) this.tossBall.visible = false;
+      return;
+    }
+    if (!this.tossBall) {
+      this.tossBall = this.ball.makeHandBall();
+      this.scene.add(this.tossBall);
+    }
+    this.tossBall.visible = true;
+    this.tossBall.position.set(t.pos.x, t.pos.y, t.pos.z);
   }
 
   resize() {
@@ -359,7 +393,12 @@ export class Engine {
       grip.getWorldQuaternion(this.gripFrom.quat);
       this.bat.update(rs, this.gripFrom, blend);
     } else this.bat.update(rs);
-    this.players.update(rs, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall());
+    // the side cast moves with the live game (not the replay) and is added to whichever state is drawn
+    this.side.setClips((n) => !!this.assets?.manifest?.clips?.[n]);
+    const extras = this.side.update(state, animDt, (e) => this.sim.emit(e));
+    const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
+    this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
+    this.updateTossBall();
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
     const held = this.players.ballHeld;
     if (this.ball.heldByPlayer && !held && rs.ball.visible) {

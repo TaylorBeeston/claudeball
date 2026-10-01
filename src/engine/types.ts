@@ -67,7 +67,21 @@ export type AnimHint =
   | 'ump_fair'
   | 'ump_homerun'
   | 'ump_time'
-  | 'ump_ready';
+  | 'ump_ready'
+  // side cast
+  | 'bench_sit'
+  | 'ondeck_ready'
+  | 'ondeck_swing'
+  | 'coach_ready'
+  | 'coach_stop'
+  | 'coach_go'
+  | 'coach_advance'
+  | 'coach_slide'
+  | 'coach_signs'
+  | 'ballkid_sit'
+  | 'ballkid_run'
+  | 'ballkid_pickup'
+  | 'ballkid_toss';
 
 export type PlayerRole =
   | 'pitcher'
@@ -82,7 +96,13 @@ export type PlayerRole =
   | 'batter'
   | 'runner'
   | 'umpire'
-  | 'coach';
+  | 'coach'
+  /** the side cast: bench players, the on-deck batter, base coaches, ball kids (from the sim when it sends them, else made up by the engine's `SideCast`) */
+  | 'bench'
+  | 'ondeck'
+  | 'coach1b'
+  | 'coach3b'
+  | 'ballkid';
 
 export interface PlayerSnap {
   id: string;
@@ -203,6 +223,26 @@ export interface GameState {
   stats?: { away: TeamStatsView; home: TeamStatsView };
   /** pitcher fatigue 0..1 and pitch count, when known */
   pitchCount?: number;
+  /** who is on deck and on the benches (for the side cast), when the sim knows */
+  side?: SideInfo;
+}
+
+export interface SidePerson {
+  id: string;
+  name: string;
+  number: number;
+  hand: 'L' | 'R';
+  physique?: PlayerSnap['physique'];
+  appearance?: PlayerSnap['appearance'];
+}
+
+export interface SideInfo {
+  /** 0 = away is batting, 1 = home */
+  battingSide: 0 | 1;
+  /** the batter on deck now (while nobody is up: the one about to step in) */
+  onDeck: SidePerson | null;
+  /** bench players per team ([away, home]) */
+  bench: [SidePerson[], SidePerson[]];
 }
 
 export type GameEvent =
@@ -227,6 +267,12 @@ export type GameEvent =
   | { type: 'wall_contact'; who: 'ball' | 'fielder'; playerId?: string; pos: Vec3; speed: number }
   /** an outfielder left the ground at the wall */
   | { type: 'wall_leap'; playerId: string; pos?: Vec3 }
+  /** a base coach's signal to a runner (stop / go / advance / slide) or to the batter (signs) */
+  | { type: 'coach_signal'; coachId: string; signal: 'stop' | 'go' | 'advance' | 'slide' | 'signs'; runnerId?: string; base?: number; pos?: Vec3 }
+  /** a ball kid picked up a ball (a foul ball) */
+  | { type: 'ball_kid_retrieve'; kidId: string; pos: Vec3 }
+  /** a ball kid tossed a ball to a fan in the stands; `pos` is where the fan sits */
+  | { type: 'ball_tossed_to_fan'; kidId: string; pos: Vec3; from?: Vec3 }
   | { type: 'ball' | 'strike' | 'foul' }
   | { type: 'play'; text: string }
   | { type: 'half_inning'; inning: number; half: 'top' | 'bottom' }
