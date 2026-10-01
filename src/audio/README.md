@@ -9,6 +9,8 @@ touches sim or engine state.
 main.ts:  attachAudio(engine, root, { off: params.has('noaudio') })     // the whole integration
 ```
 
+`attachAudio(engine, root, { ui: false })` skips this layer's own button / panel / prompt: the app (`src/ui`) drives `AudioController` (`settings`, `settingsChanged()`, `unlock()`, `isLocked`) from its menus and attaches it inside the *Start Game* click. Settings also include `organ` (stadium organ on/off) and `chatter` (`low` drops colour commentary and routine play-by-play; `normal` and `high` currently play everything the mapper produces).
+
 Controls: **M** mutes/unmutes (while audio is still locked, M / 🔊 / the prompt unlock it *and* unmute), the 🔊 button (top right, under the engine's control row) mutes, the ⚙ button opens volumes
 (master / effects / crowd & organ / voices) and the **PA announcer & umpire** and **Commentary** toggles (default on). Settings persist
 in `localStorage` (`claudeball.audio.v1`, every access in try/catch). Browsers only allow audio after a click or key press, so a
