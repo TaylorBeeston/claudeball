@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "hdri": "node scripts/fetch-hdri.mjs",
     "test": "vitest run",
-    "sim": "tsx scripts/simulate.ts"
+    "sim": "tsx scripts/simulate.ts",
+    "announcer:script": "tsx tools/announcer/script/generate.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
