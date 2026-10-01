@@ -68,7 +68,7 @@ export interface PlayerRT {
   /** Wall leap in progress. */
   leap: Leap | null;
   /** Gait presentation for the renderer: jogging (`trot`) or a hard turn at a bag (`turn`). */
-  gait: 'trot' | 'turn' | null;
+  gait: 'trot' | 'turn' | 'walk' | null;
   /** Tick of the last `wallContact` event for this player (rate limit). */
   wallTick: number;
   /** Tick before which he will not start another tag sweep. */
@@ -87,6 +87,15 @@ export interface PlayerRT {
   form: number;
   /** Pitcher's rattled state 0..1 (runs, walks and hits against him this outing). */
   rattle: number;
+  /** Where he is when he is not in the play: seated on the bench, walking to / from it, on deck, in the bullpen (null = on the field or hidden). */
+  dug: 'bench' | 'toBench' | 'toDeck' | 'deck' | 'bullpen' | null;
+  /** His bench seat (index) and the way points he still has to walk through (the dugout door, the steps, the aisle ...), and the goal he takes up after them. */
+  seat: number;
+  route: { x: number; z: number }[];
+  routeMul: number;
+  after: Goal | null;
+  /** Tick of his next warm-up swing while on deck. */
+  nextSwing: number;
 }
 
 export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';
@@ -211,6 +220,11 @@ export interface RunnerRT {
   overrun: boolean;
   /** Per-play judgement bias (seconds) on ball-arrival estimates. */
   bias: number;
+  /** The base coach's own judgement bias for this play, whether the runner takes his call (null = not yet drawn), the call last signalled, and the answer waiting to be applied. */
+  coachBias: number;
+  coachObey: boolean | null;
+  coachCall: 'go' | 'stop' | 'advance' | 'slide' | 'none' | null;
+  coachFresh: import('./decisions').CoachDecision | null;
   /** Tag-up: waiting for the catch before advancing. */
   tagWait: boolean;
   /** Tick of the catch that started the tag-up (0 = none). */
@@ -357,6 +371,36 @@ export interface PrePitch {
 }
 
 export type UmpKey = 'plate' | 'first' | 'second' | 'third';
+
+/** A person around the field who is not a player: a base coach, a ball kid, the bat boy. */
+export interface StaffRT {
+  id: string;
+  name: string;
+  role: 'coach1b' | 'coach3b' | 'ballkid' | 'batboy';
+  team: import('./types').TeamSide;
+  jersey: number;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  facing: number;
+  /** Where he is heading (null = standing), his speed cap, and what he is doing. */
+  goal: { x: number; z: number } | null;
+  speed: number;
+  anim: import('./types').AnimHint;
+  animStart: number;
+  animUntil: number;
+  /** Visible on the field (a coach of the team in the field stays in the dugout, out of the snapshot). */
+  active: boolean;
+  /** Ball kid / bat boy task state machine, coach signal state. */
+  task: string;
+  taskUntil: number;
+  /** Coach: the runner and call currently signalled. */
+  call: { runnerId: string; kind: import('./types').CoachSignalKind } | null;
+  /** Ball kid: the home chair; bat boy: his spot. */
+  homeX: number;
+  homeZ: number;
+}
 
 export interface UmpireRT {
   id: string;
@@ -519,6 +563,14 @@ export interface World {
   umpires: UmpireRT[];
   /** Umpire calls waiting for their moment (after the catch, after the tag / touch). */
   umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean }[];
+  /** Base coaches (both teams), ball kids and the bat boy. */
+  staff: StaffRT[];
+  /** A foul ball that is out of play: where it is, whether a ball kid has it, and who is after it. */
+  deadBall: { body: import('./ball').BallBody; flags: import('./ball').BallStepFlags; state: 'rolling' | 'resting' | 'carried' | 'tossed'; kid: string | null; since: number; tossTo?: { x: number; z: number } } | null;
+  /** A bat on the ground by the plate waiting for the bat boy. */
+  batDown: { x: number; z: number; by: string } | null;
+  /** A random stream for the things that are only for show (warm-up swing timing, ball kids' choices): the physics and decision streams never see it. */
+  propRng: Rng;
   ballInPlayEver: boolean;
   jitter: number;
   passedBallFlag: boolean;

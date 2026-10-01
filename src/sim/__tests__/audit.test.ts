@@ -14,6 +14,8 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   'manager.ts': { count: 4, why: 'AI mixed strategy for intentional walk / bunt (aiRng)' },
   'running.ts': { count: 1, why: 'AI pickoff mixed strategy (aiRng)' },
   'handling.ts': { count: 2, why: 'AI casual behaviour: whether the infield tosses the ball around after an out with nobody on (aiRng)' },
+  'dugout.ts': { count: 2, why: 'show only: when the on-deck hitter takes his next warm-up swing (propRng, a stream nothing in the physics or decisions reads)' },
+  'staff.ts': { count: 3, why: 'AI: whether a runner takes his base coach\'s call (aiRng, once per runner and play); show only: whether the ball kid tosses a ball to a fan, whether the coach gives signs (propRng)' },
   'batting.ts': { count: 1, why: 'perception: does the batter recognise the pitch type (noise in what he sees, not what happens)' },
   'pitching.ts': { count: 1, why: 'release lapse: a heavy tail on the pitcher\'s command noise; the pitch\'s flight and result still come from physics' },
   'flow.ts': { count: 2, why: 'direction / speed the ball squirts off the catcher\'s block (physical scatter)' },
