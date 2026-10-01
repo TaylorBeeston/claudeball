@@ -69,6 +69,8 @@ export default defineConfig({
   // GitHub Pages serves the site from /<repo>/, so CI builds with CB_BASE=/claudeball/; every runtime URL goes through import.meta.env.BASE_URL
   base: process.env.CB_BASE ?? '/',
   plugins: [cbAssets(), cbHdriManifest()],
+  // the optional HD-voice worker imports its library from a CDN at run time (see src/audio/neuralWorker.ts), so it needs ES-module output
+  worker: { format: 'es' },
   // host: true listens on every interface (LAN + tailscale); allowedHosts lets it be opened by machine name (e.g. http://frenchfry:5173)
   server: { port: 5173, host: true, allowedHosts: true },
   preview: { port: 4173, host: true, allowedHosts: true, strictPort: true },
