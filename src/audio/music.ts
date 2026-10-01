@@ -188,9 +188,9 @@ export const PIECES: Record<OrganId, Piece> = {
   walk_up: { id: 'walk_up', pri: 2, bpm: 108, beatsPerBar: 4, lead: [[C5, 0.5], [0, 0.5], [C5, 0.5], [E5, 0.5], [G5, 1], [E5, 0.5], [C5, 0.5], [F5, 0.5], [0, 0.5], [F5, 0.5], [A5, 0.5], [G5, 1], [E5, 0.5], [D5, 0.5]], sections: [{ chords: ['C', 'F'], comp: 'march' }], level: 0.9 },
   dirge: { id: 'dirge', pri: 2, bpm: 80, beatsPerBar: 4, lead: [[G4, 1], [F4, 1], [63, 1], [D4, 1], [C4, 3]], sections: [{ chords: ['Cm', 'Cm'], comp: 'pad' }], level: 0.9 },
   // soft beds: chord pads with arpeggios, looped
-  bed: { id: 'bed', pri: 0, bpm: 84, beatsPerBar: 4, lead: [], arp: true, loop: true, sections: [{ chords: ['C', 'Am', 'F', 'G', 'C', 'Am', 'Dm', 'G7'], comp: 'pad' }], level: 0.55 },
+  bed: { id: 'bed', pri: 0, bpm: 84, beatsPerBar: 4, lead: [], arp: true, loop: true, sections: [{ chords: ['C', 'Am', 'F', 'G', 'C', 'Am', 'Dm', 'G7'], comp: 'pad' }], level: 1.0 },
   bed2: { id: 'bed2', pri: 0, bpm: 78, beatsPerBar: 4, lead: [], arp: true, loop: true, sections: [{ chords: ['G', 'Em', 'C', 'D', 'G', 'Em', 'Am', 'D7'], comp: 'pad' }], level: 0.55 },
-  bed3: { id: 'bed3', pri: 0, bpm: 90, beatsPerBar: 4, lead: [], arp: true, loop: true, sections: [{ chords: ['F', 'C', 'Dm', 'C', 'F', 'C', 'G', 'C'], comp: 'pad' }], level: 0.55 },
+  bed3: { id: 'bed3', pri: 0, bpm: 90, beatsPerBar: 4, lead: [], arp: true, loop: true, sections: [{ chords: ['F', 'C', 'Dm', 'C', 'F', 'C', 'G', 'C'], comp: 'pad' }], level: 1.0 },
 };
 
 export const DITTIES: OrganId[] = ['ditty', 'ditty2', 'ditty3'];
