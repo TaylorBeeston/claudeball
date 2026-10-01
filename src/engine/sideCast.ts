@@ -43,22 +43,22 @@ const yawTo = (from: Vec3, to: Vec3) => Math.atan2(to.x - from.x, to.z - from.z)
 const dist2 = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.z - b.z);
 
 /**
- * Where everything stands, from the sim's coordinates (+X third base, +Z center field, home plate at the origin). `dugouts` are the real
- * dugout bounding boxes ([away, home]) when the stadium has them; `benchY` is where a seated player's feet are (bench top) or the floor.
+ * Where everything stands, from the sim's coordinates (+X third base, +Z center field, home plate at the origin). `benches` are the real
+ * dugout bench boxes ([away, home]) when the field has them: players sit along the bench's long side with the root on the dugout floor
+ * (`bench_sit` puts the hips at seat height itself).
  */
-export function makeLayout(dugouts?: [Box | null, Box | null], benchY = DEFAULT_FLOOR): Layout {
+export function makeLayout(benches?: [Box | null, Box | null], floorY = DEFAULT_FLOOR): Layout {
   const bench: [Seat[], Seat[]] = [[], []];
   for (const team of [0, 1] as const) {
     const sign = team === 1 ? 1 : -1;
-    const box = dugouts?.[team];
-    const cx = box ? (box.min.x + box.max.x) / 2 : sign * 31;
-    const cz = box ? (box.min.z + box.max.z) / 2 : 10;
-    const half = box ? Math.max(2.5, (box.max.z - box.min.z) / 2 - 1.4) : 6;
+    const box = benches?.[team];
+    const cx = box ? (box.min.x + box.max.x) / 2 : sign * 25.8;
+    const cz = box ? (box.min.z + box.max.z) / 2 : 7;
+    const len = box ? box.max.z - box.min.z : 12;
+    const half = Math.max(1.2, len / 2 - 0.9);
     for (let i = 0; i < 4; i++) {
       const z = cz - half + ((i + 0.5) * (2 * half)) / 4;
-      // sit a little back from the field edge (toward the dugout's back wall), turned to the field
-      const x = cx + sign * 0.9;
-      bench[team].push({ pos: { x, y: benchY, z }, facing: Math.atan2(-sign, 0.35) });
+      bench[team].push({ pos: { x: cx, y: floorY, z }, facing: Math.atan2(-sign, 0.3) });
     }
   }
   const f = BASES[0], t = BASES[2];
@@ -74,7 +74,7 @@ export function makeLayout(dugouts?: [Box | null, Box | null], benchY = DEFAULT_
     stepIn: [{ x: -3.2, y: 0, z: -4 }, { x: 3.2, y: 0, z: -4 }],
     coach,
     kids: [kidAt(-1), kidAt(1)],
-    floorY: DEFAULT_FLOOR,
+    floorY,
   };
 }
 
@@ -90,15 +90,20 @@ export function hash01(s: string, n = 0): number {
 
 /** nominal lengths (s) of the one-shot hints, so the clip can be laid on their progress */
 export const SIDE_DUR: Partial<Record<AnimHint, number>> = {
-  ondeck_swing: 1.0,
-  coach_stop: 1.3,
+  ondeck_swing: 1.333,
+  coach_stop: 1.0,
   coach_go: 1.5,
-  coach_advance: 1.5,
-  coach_slide: 1.3,
-  coach_signs: 1.8,
-  ballkid_pickup: 1.1,
-  ballkid_toss: 0.9,
+  coach_advance: 1.333,
+  coach_slide: 1.0,
+  coach_signs: 3.0,
+  ballkid_pickup: 1.5,
+  ballkid_toss: 1.0,
+  bench_stand_up: 1.167,
+  bench_cheer: 1.5,
 };
+/** where in those clips the ball changes hands (s): the kid's hand closes on the ball / the ball leaves his hand */
+export const KID_PICKUP_AT = 0.5417;
+export const KID_RELEASE_AT = 0.4167;
 
 /** A signal a coach gives a runner, decided from where the runner, the ball and the throw are. Pure, so it can be tested. */
 export function coachDecision(opts: {
@@ -147,6 +152,10 @@ interface Agent {
   count: number;
   /** a ball kid's fetch target */
   spot?: Vec3;
+  /** a coach's runner (where he was last seen) */
+  target?: Vec3;
+  /** play the one-shot clip backwards (sitting back down) */
+  reverse?: boolean;
 }
 
 const WALK = 1.7, JOG = 3.6;
@@ -187,6 +196,8 @@ export class SideCast {
   private lastSigns = 0;
   private nobodyUpSince = 0;
   private onDeckSpawned = false;
+  private battingSide: 0 | 1 = 0;
+  private cheer: { team: 0 | 1; at: number } | null = null;
   private signaled = new Map<string, number>();
   /** categories the sim supplies itself, seen in `players[]` */
   private simRoles = new Set<PlayerRole>();
@@ -212,7 +223,7 @@ export class SideCast {
     else if (e.type === 'pitch') {
       this.foulPending = false;
       this.ballWasLive = false;
-    }
+    } else if (e.type === 'run' || e.type === 'homerun') this.cheer = { team: this.battingSide, at: this.time + 0.4 };
   }
 
   agent(id: string) {
@@ -225,6 +236,7 @@ export class SideCast {
     dt = Math.min(Math.max(dt, 0), 0.1);
     this.time += dt;
     this.simRoles.clear();
+    this.battingSide = (state.side?.battingSide ?? (state.half === 'top' ? 0 : 1)) as 0 | 1;
     const simIds = new Set<string>();
     for (const p of state.players) {
       simIds.add(p.id);
@@ -307,7 +319,7 @@ export class SideCast {
       vel: { ...a.vel },
       anim: a.anim,
       animTime: dur ? el : undefined,
-      animProgress: dur ? Math.min(1, el / dur) : undefined,
+      animProgress: dur ? (a.reverse ? Math.max(0, 1 - el / dur) : Math.min(1, el / dur)) : undefined,
       animDur: dur,
       hasBall: a.hasBall,
       physique: a.person.physique,
@@ -318,19 +330,59 @@ export class SideCast {
   // ---- bench ------------------------------------------------------------------------------------
 
   private updateBench(state: GameState, dt: number) {
-    const sit = this.hasClip('bench_sit');
     const bench = state.side?.bench;
     for (const team of [0, 1] as const) {
       const seats = this.layout.bench[team];
       const people = bench?.[team] ?? [];
-      // the dugouts are a bit livelier for the team that is batting; the fielding team's reserves sit still
       for (let i = 0; i < seats.length; i++) {
         const person = people[i] ?? personFor('bench', team, i);
         const seat = seats[i];
-        const a = this.ensure(person, 'bench', team, { x: seat.pos.x, y: sit ? seat.pos.y : this.layout.floorY, z: seat.pos.z }, seat.facing, 'bench_sit');
-        a.pos.y = sit ? seat.pos.y : this.layout.floorY;
+        const a = this.ensure(person, 'bench', team, seat.pos, seat.facing, 'bench_sit');
+        a.pos.x = seat.pos.x;
+        a.pos.y = seat.pos.y;
+        a.pos.z = seat.pos.z;
         a.facing = seat.facing;
-        this.hint(a, 'bench_sit');
+        a.vel.x = a.vel.z = 0;
+        const el = this.time - a.stAt;
+        switch (a.st) {
+          case 'rise':
+            if (el > (SIDE_DUR.bench_stand_up ?? 1.167)) {
+              a.st = 'cheer';
+              a.stAt = this.time;
+              a.reverse = false;
+              this.hint(a, 'bench_cheer');
+            }
+            break;
+          case 'cheer':
+            if (el > (SIDE_DUR.bench_cheer ?? 1.5)) {
+              // sit back down: the stand-up clip played backwards
+              a.st = 'down';
+              a.stAt = this.time;
+              a.reverse = true;
+              a.anim = 'bench_stand_up';
+              a.hintAt = this.time;
+            }
+            break;
+          case 'down':
+            if (el > (SIDE_DUR.bench_stand_up ?? 1.167)) {
+              a.st = 'sit';
+              a.reverse = false;
+              this.hint(a, 'bench_sit');
+            }
+            break;
+          default: {
+            a.st = 'sit';
+            this.hint(a, 'bench_sit');
+            const c = this.cheer;
+            // the batting team's reserves get to their feet for a run (a few of them, a moment apart)
+            if (c && c.team === team && this.time >= c.at + hash01(a.id, 3) * 0.5 && this.time < c.at + 2 && hash01(a.id, 4) < 0.65 && this.hasClip('bench_stand_up')) {
+              a.st = 'rise';
+              a.stAt = this.time;
+              a.reverse = false;
+              this.hint(a, 'bench_stand_up');
+            }
+          }
+        }
       }
     }
     void dt;
@@ -427,7 +479,11 @@ export class SideCast {
       a.pos.y = 0;
       // the one-shot gestures run their length, then he is ready again
       const dur = SIDE_DUR[a.anim];
-      if (dur && this.time - a.hintAt > dur) this.hint(a, 'coach_ready');
+      if (dur && this.time - a.hintAt > dur) {
+        // a windmill goes on until the runner is past; the other gestures end in the ready stance
+        const goOn = (a.anim === 'coach_go' || a.anim === 'coach_go_loop') && a.target && dist2(a.target, d.bag) > 2.5 && this.time - a.hintAt < 6;
+        this.hint(a, goOn ? 'coach_go_loop' : 'coach_ready');
+      }
       const bagV = { x: d.bag.x, y: 0, z: d.bag.z };
       // a runner coming to this base
       let target: PlayerSnap | null = null;
@@ -441,6 +497,7 @@ export class SideCast {
           target = r;
         }
       }
+      a.target = target ? { ...target.pos } : undefined;
       if (target && td < 11) {
         const key = `${d.role}:${target.id}`;
         const stamp = this.signaled.get(key) ?? -99;
@@ -534,11 +591,11 @@ export class SideCast {
         }
         case 'pickup': {
           k.vel.x = k.vel.z = 0;
-          if (this.time - k.stAt > (SIDE_DUR.ballkid_pickup ?? 1.1) * 0.55 && !k.hasBall) {
+          if (this.time - k.stAt > KID_PICKUP_AT && !k.hasBall) {
             k.hasBall = true;
             this.events.push({ type: 'ball_kid_retrieve', kidId: k.id, pos: spot ? { ...spot } : { ...k.pos } });
           }
-          if (this.time - k.stAt > (SIDE_DUR.ballkid_pickup ?? 1.1)) {
+          if (this.time - k.stAt > (SIDE_DUR.ballkid_pickup ?? 1.5)) {
             k.st = 'return';
             k.goal = { ...seat };
             k.goalFacing = yawTo(seat, { x: 0, y: 0, z: 20 });
@@ -561,9 +618,9 @@ export class SideCast {
         }
         case 'toss': {
           k.vel.x = k.vel.z = 0;
-          const dur = SIDE_DUR.ballkid_toss ?? 0.9;
+          const dur = SIDE_DUR.ballkid_toss ?? 1.0;
           // the ball leaves the hand about 60 % into the throwing motion
-          if (k.hasBall && this.time - k.stAt > dur * 0.6) {
+          if (k.hasBall && this.time - k.stAt > KID_RELEASE_AT) {
             k.hasBall = false;
             const from = { x: k.pos.x, y: 1.5, z: k.pos.z };
             const to = fanSeat(k.pos);

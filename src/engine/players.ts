@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   SRGBColorSpace,
   Vector3,
+  TorusGeometry,
 } from 'three';
 import { DIM, quatToScene, toScene } from './dims';
 import type { Environment } from './environment';
@@ -115,6 +116,7 @@ export class BallView {
   useModel(model: Object3D, env: Environment) {
     this.model = model;
     this.mesh.visible = false;
+    this.model = model;
     const m = model.clone(true);
     m.traverse((o) => {
       const mm = o as Mesh;
@@ -255,6 +257,33 @@ export class BatView {
     this.obj.add(m);
   }
 
+  private donut: Object3D | null = null;
+  private model: Object3D | null = null;
+
+  /** the weighted donut (`bat_donut.glb`): in the bat's frame, so it is added to a bat's group with an identity transform */
+  useDonut(d: Object3D | null) {
+    this.donut = d;
+  }
+
+  /** A practice bat with its donut for the on-deck batter's hand (knob at the origin, barrel along +Y): the bat model (or the procedural bat) and the donut. */
+  makeHandBat(): Object3D {
+    const g = new Group();
+    g.name = 'OnDeck_Bat';
+    const src = this.model ?? null;
+    const m = src ? src.clone(true) : new Mesh(this.mesh.geometry, this.mesh.material);
+    m.traverse((o) => {
+      if ((o as Mesh).isMesh) (o as Mesh).castShadow = true;
+    });
+    g.add(m);
+    if (this.donut) g.add(this.donut.clone(true));
+    else {
+      const ring = new Mesh(new TorusGeometry(0.056, 0.02, 8, 18).rotateX(Math.PI / 2), new MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
+      ring.position.y = 0.5;
+      g.add(ring);
+    }
+    return g;
+  }
+
   /** Attach to a hand grip (bat held in stance) or release back to the scene. */
   hold(grip: Object3D | null, scene: Object3D) {
     const target = grip ?? scene;
@@ -308,6 +337,8 @@ export class PlayerManager {
   private puppets = new Map<string, PuppetLike>();
   private used = new Set<string>();
   private penv: PuppetEnv = { ball: null, batGrip: null, time: 0, ballSpeed: 0, mound: new Vector3(0, 1.5, DIM.moundDist) };
+  /** makes the on-deck batter's bat with donut (set by the engine) */
+  makeBat?: () => Object3D;
   /** override factory to swap in glTF characters */
   makePuppet: (snap: PlayerSnap) => PuppetLike = (s) => new Puppet(s.id);
   readonly positions = new Map<string, Vector3>();
@@ -350,6 +381,7 @@ export class PlayerManager {
   update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D, cameraPos?: Vector3) {
     this.penv.makeBall = makeBall;
     this.penv.cameraPos = cameraPos;
+    this.penv.makeBat = this.makeBat;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;

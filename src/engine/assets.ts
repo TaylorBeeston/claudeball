@@ -23,6 +23,8 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 export interface CharacterTemplate {
+  /** file name without extension (`player_base`, `player_coach`, …) */
+  name?: string;
   scene: Group;
   clips: Map<string, AnimationClip>;
   /** names of the nodes this file shows by default (glTF extras `cb_default`), i.e. its pre-configured look */
@@ -49,6 +51,8 @@ export interface Assets {
   stadium?: Group;
   ball?: Object3D;
   bat?: Object3D;
+  /** the weighted donut (`bat_donut.glb`, in the bat's frame, 0.50 m from the knob), when the file exists */
+  donut?: Object3D;
   characters: Map<string, CharacterTemplate>;
   gear: GearSets;
   manifest?: PlayerManifest;
@@ -70,7 +74,7 @@ const LABELS: [RegExp, string][] = [
   [/^(optimized\/)?(ball|bat)/, 'Loading ball and bat…'],
 ];
 
-const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base'];
+const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base', 'player_coach', 'player_ballkid'];
 
 export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (p: LoadProgress) => void): Promise<Assets> {
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
@@ -110,7 +114,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     }
     onProgress?.({ frac: w ? l / w : 0, label });
   };
-  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', ...CHARACTERS.map((c) => `players/${c}.glb`)];
+  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', ...CHARACTERS.map((c) => `players/${c}.glb`)];
   for (const f of known) progress.set(f, { loaded: 0, weight: fileWeight(`optimized/${f}`) });
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
@@ -141,11 +145,12 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     return null;
   };
 
-  const [field, stadium, ball, bat, ...chars] = await Promise.all([
+  const [field, stadium, ball, bat, donut, ...chars] = await Promise.all([
     load('field.glb'),
     load('stadium.glb'),
     load('ball.glb'),
     load('bat.glb'),
+    load('bat_donut.glb'),
     ...CHARACTERS.map((c) => load(`players/${c}.glb`, 'Bat_Grip')),
   ]);
 
@@ -163,6 +168,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
   if (stadium) out.stadium = wrap(prepWorld(stadium.scene, renderer));
   if (ball) out.ball = ball.scene;
   if (bat) out.bat = bat.scene;
+  if (donut) out.donut = donut.scene;
   chars.forEach((c, i) => {
     if (!c) return;
     const clips = new Map<string, AnimationClip>();
@@ -171,7 +177,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     c.scene.traverse((o) => {
       if (o.userData?.cb_default === 1 || o.userData?.cb_default === true) defaults.add(o.name);
     });
-    out.characters.set(CHARACTERS[i], { scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
+    out.characters.set(CHARACTERS[i], { name: CHARACTERS[i], scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
   });
   try {
     const r = await fetch(base + 'players/player_manifest.json', { cache: 'no-cache' });

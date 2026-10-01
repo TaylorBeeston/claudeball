@@ -357,6 +357,8 @@ export interface PuppetEnv {
   cameraPos?: { x: number; y: number; z: number };
   /** whoever holds the ball (a fielder mid-transfer / look / toss): where a receiver should turn and hold his glove */
   carrier?: { id: string; role: string; anim: string; pos: Vector3 } | null;
+  /** makes a practice bat with a donut for the on-deck batter's hand */
+  makeBat?: () => Object3D;
   /** makes a ball for a hand / glove (a clone of the ball model) */
   makeBall?: () => Object3D;
 }
