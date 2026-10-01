@@ -64,7 +64,7 @@ const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
   ['#e07a1f', '#1a1a1a'], ['#5b2a86', '#e8e8e8'], ['#0a5ea8', '#ffffff'], ['#7a1f2b', '#d8c18a'],
 ];
-function teamInfo(t: { name: string; abbrev: string }, side: number): TeamInfo {
+export function teamInfo(t: { name: string; abbrev: string }, side: number): TeamInfo {
   let h = side * 7;
   for (const c of t.abbrev) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const [color, trim] = PALETTE[h % PALETTE.length];

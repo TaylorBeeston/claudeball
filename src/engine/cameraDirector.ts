@@ -905,6 +905,24 @@ export class CameraDirector {
     }
   }
 
+  /** A new game: forget the last one's plays and start from the pitcher's camera. */
+  reset() {
+    this.events = [];
+    this.hr = null;
+    this.replay = null;
+    this.close = null;
+    this.inPlay = false;
+    this.pendingReplay = false;
+    this.holdUntil = 0;
+    this.thrown = false;
+    this.fielderId = null;
+    this.umpireUntil = 0;
+    this.cutawayUntil = 0;
+    this.actionQuiet = 0;
+    this.lastEventText = '';
+    this.cut('pitch');
+  }
+
   lastText() {
     return this.lastEventText;
   }

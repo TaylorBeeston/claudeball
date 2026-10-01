@@ -14,14 +14,15 @@ import { Environment, type TimeOfDay } from './environment';
 import { buildField } from './field';
 import { buildStadium, type Stadium } from './stadium';
 import { PostFX } from './postfx';
-import { AdaptiveScale, QUALITY, QUALITY_ORDER, type QualityName } from './quality';
-import { SimDriver } from './simAdapter';
+import { AdaptiveScale, QUALITY, QUALITY_ORDER, pixelRatioFor, type QualityName } from './quality';
+import { SimDriver, type SimConfig } from './simAdapter';
 import { BallView, BatView, PlayerManager } from './players';
 import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
-import { loadAssets, type Assets } from './assets';
+import { loadAssets, type Assets, type LoadProgress } from './assets';
+import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
@@ -32,6 +33,8 @@ export interface EngineOptions {
   quality?: QualityName;
   timeOfDay?: TimeOfDay;
   hud?: boolean;
+  /** innings / chosen teams for the sim (the menu's game setup) */
+  simConfig?: SimConfig;
 }
 
 /** Farthest knob-to-shoulder distance (m) the batter's arms can plausibly cover: arm length plus IK slack. */
@@ -76,6 +79,13 @@ export class Engine {
   private prevFar: Vector3 | null = null;
   private fieldGroup: Object3D;
   assets: Assets | null = null;
+  /** menu mode: the sim stays frozen, the camera drifts around the park and the hot keys are off */
+  attract = false;
+  /** false while a menu / pause screen has the keyboard */
+  keysEnabled = true;
+  private attractT = 0;
+  /** touch-first device (phones, tablets): the pixel-ratio policy trades the preset's DPR cap for a pixel budget */
+  coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
   constructor(root: HTMLElement, opts: EngineOptions = {}) {
     this.el = root;
@@ -100,7 +110,7 @@ export class Engine {
     this.lights.setTowers(this.stadium.towers);
     this.gbufferHidden.push(this.lights.group);
 
-    this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock);
+    this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
     this.scene.add(this.players.group);
     this.ball = new BallView(this.env);
@@ -146,22 +156,14 @@ export class Engine {
     window.addEventListener('keydown', (e) => this.onKey(e));
 
     this.setQuality(opts.quality ?? 'high');
-    // the time of day chosen in the menu is kept between sessions (an explicit option / ?tod= wins)
-    let storedTod: string | null = null;
-    try {
-      storedTod = localStorage.getItem('claudeball.tod');
-    } catch {
-      /* storage unavailable */
-    }
-    const startTod = opts.timeOfDay ?? (storedTod === 'day' || storedTod === 'dusk' || storedTod === 'night' ? storedTod : undefined);
-    if (startTod) this.setTimeOfDay(startTod);
+    if (opts.timeOfDay) this.setTimeOfDay(opts.timeOfDay);
     this.director.setAuto(true);
     this.resize();
   }
 
   /** Load Blender assets from /assets and swap them in for the procedural placeholders. */
-  async loadAssets(): Promise<Assets> {
-    const a = await loadAssets(this.renderer);
+  async loadAssets(onProgress?: (p: LoadProgress) => void): Promise<Assets> {
+    const a = await loadAssets(this.renderer, undefined, onProgress);
     this.assets = a;
     if (a.field) {
       this.fieldGroup.visible = false;
@@ -205,8 +207,53 @@ export class Engine {
     return a;
   }
 
+  /**
+   * Everything that has to happen before the first frame the player sees: assets, sky, shader compilation, a warm-up render of every
+   * variant and a few frames of a dummy game (see `warmup.ts`). The canvas should stay hidden until this resolves.
+   */
+  prepare(opts: PrepareOptions): Promise<PrepareResult> {
+    return prepareEngine(this, opts);
+  }
+
+  /** Compile and draw everything again after a quality / time-of-day change (so the next visible frame does not hitch). */
+  rewarm(): Promise<void> {
+    return rewarm(this);
+  }
+
+  /** Start a fresh game (same seed + config reproduces it exactly). The camera, HUD and puppets are reset; `paused` / `speed` are kept. */
+  newGame(seed: number, cfg: SimConfig = {}) {
+    this.sim.load(seed, cfg);
+    this.players.reset();
+    this.director.reset();
+    this.hud?.reset();
+    this.live = this.sim.state;
+    this.landed = false;
+    this.batted = false;
+    this.batAge = 0;
+    this.prevFar = null;
+    this.adaptive.reset();
+    this.resize();
+  }
+
+  private attractCamera(dt: number) {
+    // a slow arc across the outfield side of the park, looking in at the diamond and the stands behind it
+    const t = (this.attractT += dt);
+    const th = 0.85 * Math.sin(t * 0.06);
+    const r = 78 + 8 * Math.sin(t * 0.045);
+    const cam = this.camera;
+    cam.position.set(Math.sin(th) * r, 13 + 5 * Math.sin(t * 0.04 + 1), 30 + Math.cos(th) * r);
+    cam.lookAt(0, 4, 8 + 6 * Math.sin(t * 0.05));
+    if (cam.fov !== 38 || cam.near !== 0.5) {
+      cam.fov = 38;
+      cam.near = 0.5;
+      cam.far = 900;
+      cam.updateProjectionMatrix();
+    }
+  }
+
   private onKey(e: KeyboardEvent) {
-    if ((e.target as HTMLElement)?.tagName === 'SELECT') return;
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (!this.keysEnabled || tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
     const tods = ['day', 'dusk', 'night'] as const;
     switch (e.key.toLowerCase()) {
       case ' ':
@@ -251,20 +298,16 @@ export class Engine {
     this.resize();
   }
 
-  setTimeOfDay(t: TimeOfDay) {
-    this.env.setTimeOfDay(t);
+  setTimeOfDay(t: TimeOfDay): Promise<void> {
+    // the settings store (UI) remembers the choice; the tower lights follow at once, the sky / HDRI when its texture is ready
     this.lights.setTimeOfDay(t);
-    try {
-      localStorage.setItem('claudeball.tod', t);
-    } catch {
-      /* storage unavailable */
-    }
+    return this.env.setTimeOfDay(t);
   }
 
   resize() {
     const w = this.el.clientWidth || window.innerWidth;
     const h = this.el.clientHeight || window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, this.quality.maxDpr) * this.adaptive.scale;
+    const dpr = pixelRatioFor(this.quality, window.devicePixelRatio || 1, w, h, this.coarse) * this.adaptive.scale;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
@@ -287,7 +330,8 @@ export class Engine {
     cancelAnimationFrame(this.raf);
   }
 
-  tick(dt: number) {
+  /** One frame. `render = false` only updates (sim, director, puppets), e.g. to build the puppets before the shaders are compiled. */
+  tick(dt: number, render = true) {
     const t0 = performance.now();
     this.time += dt;
     const { state } = this.sim.advance(dt);
@@ -297,7 +341,8 @@ export class Engine {
     const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
-    const animDt = this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
+    if (this.attract) this.attractCamera(dt);
+    const animDt = this.attract ? dt : this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
     // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.
     let useGrip = !rs.bat.visible;
@@ -343,7 +388,7 @@ export class Engine {
     // pan motion blur: how far a distant point ahead of the camera slid across the screen since last frame
     {
       const fwd = this.tmpV.set(0, 0, -1).applyQuaternion(this.camera.quaternion).multiplyScalar(200).add(this.camera.position);
-      if (this.prevFar && !out.cut) {
+      if (this.prevFar && !out.cut && !this.attract) {
         const a = this.prevFar.clone().project(this.camera);
         const cap = 0.04;
         const mx = Math.max(-cap, Math.min(cap, (-a.x * 0.5) * 0.5)), my = Math.max(-cap, Math.min(cap, (-a.y * 0.5) * 0.5));
@@ -351,7 +396,7 @@ export class Engine {
       } else this.post.setMotion(0, 0);
       this.prevFar = fwd.clone();
     }
-    this.post.setFocus(out.focus, out.aperture * (this.director.auto ? 1 : 0));
+    this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
     this.stadium.crowd.update(this.time, dt);
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
@@ -359,6 +404,7 @@ export class Engine {
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();
+    if (!render) return;
     if (location.search.includes('nopost')) this.renderer.render(this.scene, this.camera);
     else this.post.render(this.time, dt);
     const ms = performance.now() - t0;

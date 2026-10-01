@@ -102,3 +102,16 @@ A contested `out` / `safe` (`closePlay` or |`margin`| < 0.10 s) cuts to the umpi
 HUD: name cards show 20-80 rating bars, today's line and the pitch arsenal; `B` toggles the box score.
 Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).
+
+## Boot, menus and new games (`src/ui`, `warmup.ts`)
+`main.ts` only calls `startApp()` (`src/ui/app.ts`): loading screen (markup + critical CSS in `index.html`) → `Engine.prepare()` → menu or game.
+- `Engine.prepare({assets, onProgress})` (`warmup.ts`): glTF assets (progress weighted by `assets/asset_sizes.json`, written by the Vite plugin), the HDRI sky
+  (`Environment.skyReady` / `preloadSky`), one update without drawing so every puppet exists, `initTexture` for every texture, `compileAsync` with all hidden variants
+  (hair, beards, gear, claws) shown, one frame with frustum culling off (every mesh / texture / shadow caster uploaded), then a dummy game through its first pitch with the real
+  broadcast cameras (DoF, GTAO, bloom, ball trail, HUD canvases, sim JIT). The canvas stays hidden (`#app.cb-veil`) meanwhile; the adaptive scale is reset afterwards.
+- `Engine.newGame(seed, {innings, homeTeam, awayTeam})` swaps the sim (`SimDriver.load`) and resets players, camera director and HUD; then `Engine.rewarm()` draws the new puppets once.
+  The same seed with the default config reproduces the old `?seed=N` game exactly.
+- `Engine.attract` = menu mode (sim frozen, slow fly-around camera, no motion blur, HUD hidden); `Engine.keysEnabled` gates the hot keys (also off while typing in an input).
+- `pixelRatioFor` (`quality.ts`): preset DPR cap on desktops; on touch screens up to 1.5 within a per-preset pixel budget (phone: ~0.7 MP on Low).
+- HUD (`hud.ts`): all sizes derive from `--u` (about 1% of the short side, 5.6-14 px), margins include `env(safe-area-inset-*)`; the scorebug, name card and call caption are one bottom-left column (portrait phones: scorebug on top),
+  the controls are a ☰ button with a drawer (tap, mouse movement or keyboard focus opens it), the name card collapses on small screens (tap to expand).
