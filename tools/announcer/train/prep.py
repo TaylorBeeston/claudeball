@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from common import SAMPLE_RATE, SPEAKER_NAMES, STYLE_SPEAKER, VOICE_DIR, assemble_ids, comparable, ensure_venv, load_script, log, tokenize, wer
+from common import load_whisper, SAMPLE_RATE, SPEAKER_NAMES, STYLE_SPEAKER, VOICE_DIR, assemble_ids, comparable, ensure_venv, load_script, log, tokenize, wer
 import lexicon as lexmod
 
 
@@ -60,23 +60,6 @@ def normalise(x: np.ndarray, sr: int, target_db=-23.0, peak_db=-1.0) -> np.ndarr
     peak = float(np.abs(x).max() + 1e-9)
     g = min(g, 10 ** (peak_db / 20) / peak)
     return (x * g).astype(np.float32)
-
-
-def load_whisper(name: str, device: str = "auto"):
-    """faster-whisper on the GPU when the CUDA libraries line up, else int8 on the CPU. The load succeeds even when cuBLAS/cuDNN are missing,
-    so a one-second warm-up transcription decides."""
-    from faster_whisper import WhisperModel
-
-    attempts = [("cuda", "float16"), ("cpu", "int8")] if device == "auto" else [(device, "float16" if device == "cuda" else "int8")]
-    for dev, ct in attempts:
-        try:
-            m = WhisperModel(name, device=dev, compute_type=ct)
-            list(m.transcribe(np.zeros(16000, dtype=np.float32), language="en")[0])
-            log(f"whisper {name} on {dev}/{ct}")
-            return m
-        except Exception as e:  # missing libcublas / cuDNN version mismatch are common
-            log(f"whisper on {dev} failed ({str(e).splitlines()[0][:90]}); trying next")
-    raise SystemExit("could not load faster-whisper")
 
 
 def main():
