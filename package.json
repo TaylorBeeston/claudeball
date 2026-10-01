@@ -13,7 +13,8 @@
     "sim": "tsx scripts/simulate.ts",
     "announcer:script": "tsx tools/announcer/script/generate.ts",
     "announcer:record": "vite --config tools/announcer/recorder/vite.config.ts",
-    "announcer:record:e2e": "tsx tools/announcer/recorder/e2e/recorder.e2e.ts"
+    "announcer:record:e2e": "tsx tools/announcer/recorder/e2e/recorder.e2e.ts",
+    "announcer:vocab": "tsx tools/announcer/script/words.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
