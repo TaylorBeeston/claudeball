@@ -27,7 +27,7 @@ import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } from './armClear';
+import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
@@ -290,6 +290,13 @@ export class GltfPuppet implements PuppetLike {
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
   private torso: TorsoVolume = torsoVolume(undefined);
+  private headVol: HeadVolume = headVolume(undefined);
+  private headVolHelmet: HeadVolume = headVolume(undefined, true);
+  private headVolCap: HeadVolume = headVolume(undefined, false);
+  /** smallest arm-to-head clearance (m) over the puppet's life; negative = an elbow or forearm inside the head */
+  headClearWorst = Infinity;
+  headClear = Infinity;
+  private warnedHead = false;
   /** smallest elbow-to-trunk clearance (m) this frame and over the puppet's life; negative = an elbow inside the torso */
   elbowClear = Infinity;
   minElbowClear = Infinity;
@@ -338,12 +345,27 @@ export class GltfPuppet implements PuppetLike {
       this.bodyScale = this.look.scale;
       this.applyMorphs(this.look.morphs);
       this.torso = torsoVolume(this.look.morphs);
+      this.headVolHelmet = headVolume(this.look.morphs, true);
+      this.headVolCap = headVolume(this.look.morphs, false);
+      this.headVol = this.headVolCap;
       this.applyGear(gearKindOf(snap.role), snap.role);
+      this.assertUniformHead(snap.id);
     } else {
       // fixed-look files (umpires): keep their configuration, hair hidden under caps / helmets
       const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
       if (hair && (this.nodes.get('Gear_Cap') || this.nodes.get('Gear_Helmet'))) hair.visible = false;
     }
+  }
+
+  /** conehead guard: the head's world scale must be uniform (clips carry unit scale tracks, the body scale is uniform); warns once in dev */
+  private assertUniformHead(id: string) {
+    if (!import.meta.env?.DEV) return;
+    const head = this.bones.Head;
+    if (!head) return;
+    this.model.updateMatrixWorld(true);
+    const s = new Vector3().setFromMatrixScale(head.matrixWorld);
+    const hi = Math.max(s.x, s.y, s.z), lo = Math.min(s.x, s.y, s.z);
+    if (lo <= 0 || hi / lo > 1.02) console.error(`[head-scale] ${id} head bone scale is not uniform (${s.x.toFixed(3)}, ${s.y.toFixed(3)}, ${s.z.toFixed(3)})`);
   }
 
   private applyMorphs(morphs: Record<string, number>) {
@@ -1104,12 +1126,27 @@ export class GltfPuppet implements PuppetLike {
     const Ps = rig.pos(spine, new Vector3());
     const Qi = rig.quat(spine, new Quaternion()).invert();
     let worst = Infinity;
+    // a helmet (batters, runners) is a bigger head than a cap
+    this.headVol = snap.role === 'batter' || snap.role === 'runner' ? this.headVolHelmet : this.headVolCap;
+    // head sphere centre in rig space (the head bone's own axes: +Y up, +Z forward)
+    const headB = this.bones.Head;
+    let hc = Infinity;
+    let headC: V3 | null = null;
+    if (headB) {
+      const hp = rig.pos(headB, new Vector3());
+      const hq = rig.quat(headB, new Quaternion());
+      const off = new Vector3(0, this.headVol.up, this.headVol.fwd).applyQuaternion(hq);
+      headC = [hp.x + off.x, hp.y + off.y, hp.z + off.z];
+    }
     for (const side of ['Left', 'Right'] as const) {
       const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
       if (!arm || !fore || !hand) continue;
       const E = rig.pos(fore, new Vector3());
       const loc = E.clone().sub(Ps).applyQuaternion(Qi);
-      let clear = torsoClearance(loc.x, loc.y, loc.z, this.torso);
+      const Sp = rig.pos(arm, new Vector3());
+      const Hp = rig.pos(hand, new Vector3());
+      const headClear = (e: V3) => (headC ? armHeadClearance([Sp.x, Sp.y, Sp.z], e, [Hp.x, Hp.y, Hp.z], headC, this.headVol) : Infinity);
+      let clear = Math.min(torsoClearance(loc.x, loc.y, loc.z, this.torso), headClear([E.x, E.y, E.z]));
       if (clear < 0.008 && !(globalThis as { __noElbowFix?: boolean }).__noElbowFix) {
         // swivel the elbow around the shoulder→hand axis: the hand stays where the clip / IK put it, only the elbow leaves the trunk
         const S = rig.pos(arm, new Vector3());
@@ -1117,7 +1154,7 @@ export class GltfPuppet implements PuppetLike {
         const tmp = new Vector3();
         const clearAt = (p: V3) => {
           tmp.set(p[0], p[1], p[2]).sub(Ps).applyQuaternion(Qi);
-          return torsoClearance(tmp.x, tmp.y, tmp.z, this.torso);
+          return Math.min(torsoClearance(tmp.x, tmp.y, tmp.z, this.torso), headClear(p));
         };
         const r = swivelElbow([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, 0.02);
         if (r.angle !== 0) {
@@ -1127,8 +1164,19 @@ export class GltfPuppet implements PuppetLike {
         clear = r.clear;
       }
       worst = Math.min(worst, clear);
+      if (headC) {
+        // what is left after the fix, measured from the final bone positions (the number the per-frame assertion watches)
+        const E2 = rig.pos(fore, new Vector3()), H2 = rig.pos(hand, new Vector3());
+        hc = Math.min(hc, armHeadClearance([Sp.x, Sp.y, Sp.z], [E2.x, E2.y, E2.z], [H2.x, H2.y, H2.z], headC, this.headVol));
+      }
     }
     this.elbowClear = worst;
+    this.headClear = hc;
+    this.headClearWorst = Math.min(this.headClearWorst, hc);
+    if (import.meta.env?.DEV && hc < -0.03 && !this.warnedHead) {
+      this.warnedHead = true;
+      console.error(`[head] ${snap.id} arm ${(-hc * 100).toFixed(1)} cm inside the head (${snap.anim})`);
+    }
     this.minElbowClear = Math.min(this.minElbowClear, worst);
     if (import.meta.env?.DEV && worst < -0.04 && !this.warnedElbow) {
       this.warnedElbow = true;
