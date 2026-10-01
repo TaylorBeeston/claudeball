@@ -235,23 +235,12 @@ function replayWhoosh(_b: number, _a: number, r: Rand): Rendered {
 }
 
 function paClick(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.35);
-  addNoise(o, SR, r, { tau: 0.004, amp: 0.8, bp: 1800, q: 1.2 });
-  addThump(o, SR, { f0: 120, f1: 100, pitchTau: 0.01, tau: 0.02, amp: 0.4 });
-  addModes(o, SR, [[60, 0.06, 0.4]]);
+  // a PA microphone being keyed: a soft pop plus a breath of room tone, nothing melodic
+  const o = buf(0.3);
+  addNoise(o, SR, r, { tau: 0.003, amp: 0.8, bp: 1500, q: 1 });
+  addThump(o, SR, { f0: 140, f1: 90, pitchTau: 0.01, tau: 0.02, amp: 0.5 });
+  addNoise(o, SR, r, { t0: 0.02, tau: 0.09, amp: 0.1, lp: 3200, hp: 300 }); // room tone tail
   return finish(mono(SR, o), 0.5);
-}
-
-function paChime(_b: number, _a: number, _r: Rand): Rendered {
-  // two-tone "ding-dong" through a telephone-bandwidth filter
-  const o = buf(1.5);
-  const note = (f: number, t0: number, a: number) => addModes(o, SR, [[f, a, 0.35], [f * 2.01, a * 0.3, 0.2], [f * 3.02, a * 0.12, 0.12]], t0);
-  note(659.3, 0, 0.9);
-  note(523.3, 0.42, 0.9);
-  const hp = new Biquad('hp', 320, 0.7, SR);
-  const lp = new Biquad('lp', 4200, 0.7, SR);
-  for (let i = 0; i < o.length; i++) o[i] = Math.tanh(1.6 * lp.tick(hp.tick(o[i])));
-  return finish(mono(SR, o), 0.55, 30);
 }
 
 /** Fallback shout ("HEY!" / "Aah!") for when the browser has no speech synthesis: one voice, open vowel, falling pitch. */
@@ -436,7 +425,6 @@ export const SFX_DEFS: Record<SfxId, SoundDef> = {
   firework: { buckets: 1, alts: 1, make: firework },
   replay_whoosh: { buckets: 1, alts: 1, make: replayWhoosh },
   pa_click: { buckets: 1, alts: 1, make: paClick },
-  pa_chime: { buckets: 1, alts: 1, make: paChime },
   ump_yell: { buckets: 1, alts: 2, make: umpYell },
 };
 

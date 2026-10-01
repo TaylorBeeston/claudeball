@@ -10,11 +10,29 @@ import { QUALITY_BLURB, type DeviceInfo } from './device';
 import type { QualityName } from '../engine/quality';
 import type { Settings as AudioSettings } from '../audio/mixer';
 
+/** Optional HD (neural) voices: opt-in download, state changes are pushed to the menu. */
+export interface HdStatus {
+  state: 'off' | 'loading' | 'ready' | 'error' | 'unavailable';
+  pct?: number;
+  text?: string;
+  /** the model is already downloaded */
+  cached?: boolean;
+  /** size of the download for this device, MB */
+  mb?: number;
+}
+
 export interface AudioBridge {
   get(): AudioSettings;
   set(patch: Partial<AudioSettings>): void;
   /** back to the audio defaults */
   reset(): void;
+  /** HD voices (the audio layer is only attached once a game has started) */
+  hd?: {
+    status(): HdStatus;
+    subscribe(cb: (s: HdStatus) => void): () => void;
+    toggle(): void;
+    remove(): void;
+  };
 }
 
 export interface AppCtx {
@@ -70,7 +88,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const tod = reg(segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v })), () => ctx.settings.tod);
 
   const a = () => ctx.audio.get();
-  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'announcer', hint?: string) => {
+  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', hint?: string) => {
     const s = reg(slider(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
     return field(label, s.el, hint);
   };
@@ -84,15 +102,29 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     segmented<Chatter>(
       'Commentary chatter',
       [
-        { value: 'low', label: 'Low', hint: 'Only the big plays: scoring plays, hard-hit balls, home runs.' },
-        { value: 'normal', label: 'Normal', hint: 'Play-by-play with some colour commentary.' },
-        { value: 'high', label: 'High', hint: 'As much as the booth has to say.' },
+        { value: 'low', label: 'Low', hint: 'Only the big plays: scoring plays, hard-hit balls, home runs. No colour commentary or filler.' },
+        { value: 'normal', label: 'Normal', hint: 'Play-by-play with colour commentary: roughly a line every 6-15 seconds.' },
+        { value: 'high', label: 'High', hint: 'The booth never stops: narrates most pitches, banters, and fills every quiet moment.' },
       ],
       a().chatter,
       (v) => ctx.audio.set({ chatter: v }),
     ),
     () => a().chatter,
   );
+  // optional neural voices: nothing is downloaded until the button is pressed
+  const hdNote = h('div', { class: 'cb-hint' });
+  const hdBtn = button('', () => ctx.audio.hd?.toggle(), 'ghost');
+  const hdRemove = button('Remove download', () => ctx.audio.hd?.remove(), 'quiet');
+  const paintHd = (st: HdStatus) => {
+    hdBtn.disabled = st.state === 'loading' || st.state === 'unavailable';
+    hdBtn.textContent = st.state === 'unavailable' ? 'HD voices unavailable' : st.state === 'ready' ? 'HD voices: on (switch off)' : st.state === 'loading' ? `Downloading… ${st.pct ?? 0}%` : st.cached ? 'Use HD voices' : `Download HD voices (~${st.mb ?? 90} MB)`;
+    hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'Available once the game has started (open Settings from the pause menu).' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
+    hdRemove.style.display = st.cached || st.state === 'ready' ? '' : 'none';
+  };
+  paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' });
+  ctx.audio.hd?.subscribe(paintHd);
+  syncs.push(() => paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' }));
+  const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdNote, hdRemove);
   const mute = reg(toggle('Sound off', a().muted, (v) => ctx.audio.set({ muted: v })), () => a().muted);
   const muteField = field('Mute everything', mute.el);
   muteField.classList.add('inline');
@@ -144,7 +176,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd & organ', 'crowd'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('HD voices', hdBox), muteField),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,

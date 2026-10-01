@@ -167,7 +167,17 @@ class App {
       } else if (!this.res.flags.noaudio) saveAudio({ ...this.audioLocal });
     },
     reset: () => this.audioBridge.set({ ...AUDIO_DEFAULTS }),
+    hd: {
+      status: () => this.audio?.hdStatus() ?? { state: 'unavailable' as const },
+      subscribe: (cb) => {
+        this.hdListeners.add(cb);
+        return () => this.hdListeners.delete(cb);
+      },
+      toggle: () => this.audio?.hdToggle(),
+      remove: () => void this.audio?.removeHd(),
+    },
   };
+  private hdListeners = new Set<(s: import('./menu').HdStatus) => void>();
 
   private ctx: AppCtx = {
     settings: undefined as unknown as GameSettings,
@@ -331,6 +341,8 @@ class App {
     this.audio = attachAudio(this.engine, this.root, { ui: false });
     if (!this.audio) return;
     Object.assign(this.audio.settings, this.audioLocal);
+    this.audio.onSettings = () => Object.assign(this.audioLocal, this.audio?.settings);
+    this.audio.subscribeHd((s) => this.hdListeners.forEach((l) => l(s)));
     this.audio.settingsChanged();
     void this.audio.unlock(); // unlocks without un-muting: a muted player stays muted
   }
