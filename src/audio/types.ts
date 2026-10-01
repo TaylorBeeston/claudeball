@@ -39,7 +39,6 @@ export type SfxId =
   | 'firework'
   | 'replay_whoosh'
   | 'pa_click'
-  | 'pa_chime'
   | 'ump_yell'; // fallback shout when there is no speech synthesis
 
 /** One-shot crowd reactions (stereo, played on the crowd bus, not positional). */
@@ -56,7 +55,8 @@ export type CrowdId =
   | 'swell'
   | 'whoop';
 
-export type OrganId = 'charge' | 'hr_fanfare' | 'ditty' | 'stretch' | 'walk_up' | 'sting' | 'dirge';
+import type { OrganId } from './music';
+export type { OrganId };
 
 /** Speech roles: they pick the voice/pitch/rate and the queue priority. */
 export type SpeakRole = 'pa' | 'ump' | 'pbp' | 'color';

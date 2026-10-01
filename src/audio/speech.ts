@@ -16,15 +16,75 @@ export interface Line {
   pri: number;
   /** seconds a line may wait before it is too stale to say */
   ttl: number;
+  /** lines of one exchange: if one is dropped, interrupted or goes stale, the rest of its group is dropped too */
+  group?: number;
 }
 
 /** The slice of SpeechSynthesis / SpeechSynthesisUtterance the queue uses (so tests can fake it). */
+export interface SpeakOptions {
+  voiceName?: string;
+  role?: SpeakRole;
+  pitch: number;
+  rate: number;
+  volume: number;
+  onend: () => void;
+  onerror: () => void;
+}
+
 export interface SpeechEngine {
   voices(): { name: string; lang: string; default?: boolean }[];
-  speak(text: string, o: { voiceName?: string; pitch: number; rate: number; volume: number; onend: () => void; onerror: () => void }): void;
+  speak(text: string, o: SpeakOptions): void;
   cancel(): void;
   pause(): void;
   resume(): void;
+  /** optional (neural voices): start synthesising a line that will be spoken soon */
+  prefetch?(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>): void;
+  /** optional: the voice to use for a role, overriding the name heuristics */
+  voiceFor?(role: SpeakRole): string | undefined;
+  /** optional: estimated ms before a newly requested line would be ready; large = the engine is falling behind */
+  busyMs?(): number;
+}
+
+/**
+ * One engine for the queue that can switch between the browser's voices and the optional neural ("HD") voices at run time.
+ * If the neural engine is not ready (still loading, failed) everything goes to the browser.
+ */
+export class SwitchEngine implements SpeechEngine {
+  neural: SpeechEngine | null = null;
+  constructor(private browser: SpeechEngine | null) {}
+  private get cur(): SpeechEngine | null {
+    return this.neural && this.neural.voices().length ? this.neural : this.browser;
+  }
+  get usingNeural() {
+    return !!this.neural && this.neural.voices().length > 0;
+  }
+  voices() {
+    return this.cur?.voices() ?? [];
+  }
+  speak(text: string, o: SpeakOptions) {
+    this.cur?.speak(text, o);
+  }
+  cancel() {
+    this.neural?.cancel();
+    this.browser?.cancel();
+  }
+  pause() {
+    this.neural?.pause();
+    this.browser?.pause();
+  }
+  resume() {
+    this.neural?.resume();
+    this.browser?.resume();
+  }
+  prefetch(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>) {
+    if (this.usingNeural) this.neural!.prefetch?.(text, o);
+  }
+  voiceFor(role: SpeakRole) {
+    return this.usingNeural ? this.neural!.voiceFor?.(role) : undefined;
+  }
+  busyMs() {
+    return this.usingNeural ? (this.neural!.busyMs?.() ?? 0) : 0;
+  }
 }
 
 export function browserSpeech(): SpeechEngine | null {
@@ -109,8 +169,11 @@ export class SpeechQueue {
   private token = 0;
   private seq = 0;
   private paused = false;
+  /** do not start new lines (the booth is waiting out the seventh-inning stretch) */
+  hold = false;
   private voiceChoice: VoiceChoice | null = null;
   private lastEnd = -1e9;
+  private lastActivity = 0;
   enabled: Record<SpeakRole, boolean> = { pa: true, ump: true, pbp: true, color: true };
   /** 0..1 */
   volume = 0.8;
@@ -118,7 +181,9 @@ export class SpeechQueue {
   constructor(
     private engine: SpeechEngine | null,
     private now: () => number = () => performance.now(),
-  ) {}
+  ) {
+    this.lastActivity = now();
+  }
 
   /** true if there is at least one voice to speak with */
   available(): boolean {
@@ -142,6 +207,11 @@ export class SpeechQueue {
   enqueue(line: Line) {
     if (!this.enabled[line.role]) return;
     const t = this.now();
+    // the neural voices are falling behind: drop chatter instead of letting it go stale
+    if (line.pri <= 2 && (this.engine?.busyMs?.() ?? 0) > 7000) {
+      this.stats.dropped++;
+      return;
+    }
     if (this.q.some((x) => x.text === line.text && t - x.at < 3000) || (this.cur?.item.text === line.text && t - this.cur.started < 3000)) return;
     this.q.push({ ...line, at: t, expires: t + line.ttl * 1000, seq: this.seq++ });
     while (this.q.length > 6) {
@@ -152,6 +222,21 @@ export class SpeechQueue {
       this.stats.dropped++;
     }
     this.pump();
+    this.prefetchNext();
+  }
+
+  /** ask the engine to start synthesising the line that will be spoken next */
+  private prefetchNext() {
+    if (!this.engine?.prefetch || !this.q.length) return;
+    let best = 0;
+    for (let i = 1; i < this.q.length; i++) if (this.q[i].pri > this.q[best].pri || (this.q[i].pri === this.q[best].pri && this.q[i].at < this.q[best].at)) best = i;
+    const it = this.q[best];
+    const p = PARAMS[it.role];
+    try {
+      this.engine.prefetch(it.text, { voiceName: this.engine.voiceFor?.(it.role) ?? this.voiceChoice?.[it.role], role: it.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume) });
+    } catch {
+      /* prefetch is an optimisation */
+    }
   }
 
   setPaused(p: boolean) {
@@ -164,6 +249,18 @@ export class SpeechQueue {
       /* ignore */
     }
     if (!p) this.pump();
+  }
+
+  private dropGroup(g: number | undefined) {
+    if (g === undefined) return;
+    const n = this.q.length;
+    this.q = this.q.filter((x) => x.group !== g);
+    this.stats.dropped += n - this.q.length;
+  }
+
+  /** milliseconds the booth has been silent (0 while speaking or lines are waiting) */
+  idleMs(): number {
+    return this.cur || this.q.length ? 0 : this.now() - this.lastActivity;
   }
 
   /** stop talking and forget everything (mute, skipping ahead, sped-up play) */
@@ -199,7 +296,8 @@ export class SpeechQueue {
   pump() {
     const t = this.now();
     const before = this.q.length;
-    this.q = this.q.filter((x) => x.expires > t);
+    const stale = new Set(this.q.filter((x) => x.expires <= t && x.group !== undefined).map((x) => x.group));
+    this.q = this.q.filter((x) => x.expires > t && !(x.group !== undefined && stale.has(x.group)));
     this.stats.dropped += before - this.q.length;
     if (this.cur && t - this.cur.started > 14000) {
       // Chrome sometimes never fires onend: cancel and move on
@@ -211,7 +309,7 @@ export class SpeechQueue {
         /* ignore */
       }
     }
-    if (!this.q.length || this.paused) return;
+    if (!this.q.length || this.paused || this.hold) return;
     let best = 0;
     for (let i = 1; i < this.q.length; i++) if (this.q[i].pri > this.q[best].pri || (this.q[i].pri === this.q[best].pri && this.q[i].at < this.q[best].at)) best = i;
     const next = this.q[best];
@@ -219,6 +317,7 @@ export class SpeechQueue {
       // a much more important line may cut a chatty one off (never the umpire)
       if (next.pri >= this.cur.item.pri + 2 && this.cur.item.role !== 'ump' && this.cur.item.role !== 'pa') {
         this.token++;
+        this.dropGroup(this.cur.item.group);
         this.cur = null;
         this.stats.interrupted++;
         try {
@@ -250,11 +349,12 @@ export class SpeechQueue {
     const done = () => {
       if (this.cur && this.cur.token === token) {
         this.cur = null;
-        this.lastEnd = this.now();
+        this.lastEnd = this.lastActivity = this.now();
       }
     };
     try {
-      this.engine.speak(item.text, { voiceName: this.voiceChoice[item.role], pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.prefetchNext();
     } catch {
       done();
     }
