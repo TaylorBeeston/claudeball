@@ -129,7 +129,7 @@ The voice model is **not** part of the game and never in this repo (size and pri
 
 ### No hosting: load from files
 
-In the game open the sound panel (⚙), find **My voice (custom announcer)** and press **Choose files...**; select `voice.json` and `model.int8.onnx` (or whichever model `voice.json` names as `default`) from `~/claudeball-voice/voicepack/`. The model is kept in your browser, so next time the game starts it comes back by itself. Works on this machine only.
+Start a game, open **Settings** (pause menu) > **Sound** > **Voices** > **My voice (custom announcer)** and press **Choose files...**; select `voice.json` and `model.int8.onnx` (or whichever model `voice.json` names as `default`) from `~/claudeball-voice/voicepack/`. The model is kept in your browser, so next time the game starts it comes back by itself. Works on this machine only.
 
 ### Hugging Face (recommended)
 
@@ -153,9 +153,9 @@ Your pack URL is `https://huggingface.co/YOUR-NAME/claudeball-voice/resolve/main
 
 ### Switching on
 
-1. Press the 🔊 button or any key once (browsers only allow audio after a click).
-2. Open ⚙, **My voice (custom announcer)**, paste the URL, **Load my voice pack** (or **Choose files...**). It downloads the model once (about 20 MB for int8) and keeps it in the browser's cache; the URL and "on" are remembered in `localStorage`.
-3. From then on the PA, umpire, play-by-play and colour lines use your voice. Anything it cannot say (a word that is not in the lexicon, a slow machine, any error) falls back to the browser's voice for that line, so the game never goes quiet. The Kokoro "HD voices" switch is separate: turning one on turns the other off.
+1. Click or press a key once in the game (browsers only allow audio after a click). The Voices area is available once a game has started.
+2. Open Settings > Sound > Voices > **My voice (custom announcer)**, paste the URL, **Load my voice pack** (or **Choose files...**). It downloads the model once (about 20 MB for int8) and keeps it in the browser's cache; the URL and "on" are remembered in `localStorage`.
+3. From then on the PA, umpire, play-by-play and colour lines use your voice. Anything it cannot say (a word that is not in the lexicon, a slow machine, any error) falls back to the browser's voice for that line, so the game never goes quiet. The Voices area has three choices, one speaking at a time: Browser voices, HD voices (Kokoro, WebGPU only) and My voice; turning one on turns the others off.
 4. **Switch off** returns to the browser voices; **Remove saved voice** also deletes the model from the browser.
 
 How it works: the page loads your model with onnxruntime-web (imported at run time from jsDelivr after you opt in, in a Web Worker, so the main game bundle is untouched); the text goes through the same normaliser the training data used, then through the word lexicon in `voice.json` to phoneme ids (no espeak-ng in the browser); the character (`playbyplay`, `hype`, `color`) is chosen per line from the speaker role, the crowd excitement and the words ("and it's gone!"); the audio goes through the same speech queue, prefetch and PA effects (band-limited horn, slap-back, stadium reverb for the PA announcer) as the other neural voices.
