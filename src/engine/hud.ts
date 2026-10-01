@@ -5,7 +5,7 @@ import { arsenalText, batLine, batterBars, batterTotals, boxBatters, boxPitchers
 const CSS = /* css */ `
 /* Layout units: --u is ~1% of the short side, never below 5.6px (phones) or above 14px; margins respect notches and rounded corners. */
 .cb-hud{position:absolute;inset:0;pointer-events:none;font-family:var(--cb-font,"Segoe UI","Helvetica Neue",Arial,sans-serif);color:#fff;
-  --u:clamp(5.6px,min(1vh,1.4vw),14px);
+  --u:clamp(5.6px,min(1vh,1.2vw),14px);
   --ml:max(calc(var(--u)*3),env(safe-area-inset-left,0px));--mr:max(calc(var(--u)*3),env(safe-area-inset-right,0px));
   --mt:max(calc(var(--u)*2.4),env(safe-area-inset-top,0px));--mb:max(calc(var(--u)*2),env(safe-area-inset-bottom,0px));
   --tick-h:calc(var(--u)*3.8);--bug-h:calc(var(--u)*8.4);--panel:linear-gradient(180deg,rgba(18,22,30,.94),rgba(8,10,16,.94));
@@ -39,9 +39,9 @@ const CSS = /* css */ `
 .cb-call{padding:calc(var(--u)*.7) calc(var(--u)*1.8);font-weight:800;font-size:max(14px,calc(var(--u)*2.6));letter-spacing:.14em;background:rgba(10,12,18,.92);border-radius:calc(var(--u)*.6);border-left:calc(var(--u)*.6) solid #ffcf4a;opacity:0;transform:translateY(calc(var(--u)*1));transition:opacity .2s,transform .2s;position:absolute;left:0;bottom:calc(100% + var(--u)*1)}
 .cb-call.show{opacity:1;transform:none}
 .cb-pt{position:absolute;right:var(--mr);bottom:calc(var(--mb) + var(--tick-h));width:clamp(64px,min(calc(var(--u)*19),22vh,17vw),calc(var(--u)*19));background:var(--panel);border-radius:calc(var(--u)*1.1);padding:calc(var(--u)*1.1);box-shadow:0 calc(var(--u)*.6) calc(var(--u)*2) rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.1);transition:opacity .4s}
-.cb-pt .hd{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;gap:calc(var(--u)*.5)}
+.cb-pt .hd{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;font-weight:800;gap:calc(var(--u)*.3) calc(var(--u)*.5)}
 .cb-pt .spd{font-size:max(15px,calc(var(--u)*4.4));line-height:1}.cb-pt .spd small{font-size:max(9px,calc(var(--u)*1.6));opacity:.7;margin-left:.2em}
-.cb-pt .typ{font-size:max(8px,calc(var(--u)*1.35));letter-spacing:.06em;color:#ffcf4a;text-align:right;line-height:1.2;max-width:50%}
+.cb-pt .typ{font-size:max(8px,calc(var(--u)*1.35));letter-spacing:.06em;color:#ffcf4a;text-align:right;line-height:1.2;max-width:100%;margin-left:auto}
 .cb-pt canvas{display:block;width:100%;margin-top:calc(var(--u)*.8)}
 .cb-card{display:flex;width:max-content;min-width:min(calc(var(--u)*38),100%);max-width:100%;transform:translateX(calc(-100% - var(--ml)));transition:transform .5s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 calc(var(--u)*.6) calc(var(--u)*1.4) rgba(0,0,0,.6));pointer-events:none;border-radius:calc(var(--u)*1);overflow:hidden}
 .cb-card.show{transform:none}
@@ -99,8 +99,7 @@ const CSS = /* css */ `
 @media (max-width:700px) and (orientation:portrait){
   .cb-bug{position:fixed;left:var(--ml);top:var(--mt);max-width:calc(100% - var(--ml) - var(--mr) - 56px)}
   .cb-bl{bottom:calc(var(--mb) + var(--tick-h) + var(--u)*1)}
-  .cb-bug+.cb-call{left:0}
-  .cb-call{bottom:auto;top:calc(100% + var(--u)*1)}
+  .cb-call{position:fixed;left:var(--ml);bottom:auto;top:calc(var(--mt) + var(--bug-h) + var(--u)*13)}
   .cb-rep{top:calc(var(--mt) + var(--bug-h) + var(--u)*1.4)}
   .cb-hit{top:calc(var(--mt) + var(--bug-h) + var(--u)*1.6);transform:translate(-50%,calc(var(--u)*-3))}
   .cb-hit.show{transform:translate(-50%,0)}

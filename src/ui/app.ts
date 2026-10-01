@@ -136,6 +136,7 @@ class App {
     console.info('[boot]', JSON.stringify(prepared.ms), prepared.missing.length ? `missing: ${prepared.missing.join(', ')}` : 'assets ok');
 
     e.newGame(this.match.seed, this.simConfig());
+    await e.rewarm(); // the new game's puppets and their textures, drawn once while hidden
     e.start();
     window.addEventListener('keydown', (ev) => this.onKey(ev));
     document.addEventListener('visibilitychange', () => document.hidden && this.mode === 'playing' && this.pause());
@@ -233,17 +234,26 @@ class App {
     this.scheduleNewGame();
   }
 
-  /** After a quality / time-of-day change: compile and draw everything again (debounced; the sky must be applied first). */
+  /** After a quality / time-of-day / new-game change: compile and draw everything again (debounced; the sky must be applied first). */
   private scheduleWarm() {
     clearTimeout(this.warmTimer);
-    this.warmTimer = window.setTimeout(() => {
-      this.warm = (async () => {
+    this.warmTimer = window.setTimeout(() => void this.runWarm(), 350);
+  }
+
+  private runWarm(): Promise<void> {
+    clearTimeout(this.warmTimer);
+    this.warmTimer = 0;
+    const prev = this.warm ?? Promise.resolve();
+    const p: Promise<void> = (this.warm = prev
+      .then(async () => {
         await this.engine.env.skyReady;
         await this.engine.rewarm();
-      })()
-        .catch((e) => console.warn('[warm] failed', e))
-        .finally(() => (this.warm = null));
-    }, 350);
+      })
+      .catch((e) => console.warn('[warm] failed', e))
+      .finally(() => {
+        if (this.warm === p) this.warm = null;
+      }));
+    return p;
   }
 
   /** Teams, seed or length changed in the menu: rebuild the (frozen) game behind it so its players are visible, debounced. */
@@ -257,6 +267,7 @@ class App {
     clearTimeout(this.matchTimer);
     this.matchTimer = 0;
     this.engine.newGame(this.match.seed, this.simConfig());
+    this.scheduleWarm();
     this.syncUrl();
   }
 
@@ -300,16 +311,17 @@ class App {
     if (this.mode !== 'menu') return;
     this.flushMatch();
     this.attachSound();
-    this.beginPlay(false);
+    if (this.warmTimer) void this.runWarm();
     if (this.warm) {
-      // a quality / sky change is still compiling: hold the first pitch behind the curtain until it is done
-      this.engine.sim.paused = true;
+      // a quality / sky / team change is still compiling: hold the first pitch behind the curtain until it is done
+      this.mode = 'boot';
       this.boot_.show('Preparing the match…');
       await this.warm;
       await nextFrame();
-      this.engine.sim.paused = false;
+      this.mode = 'menu';
+      this.beginPlay(false);
       await this.boot_.hide();
-    }
+    } else this.beginPlay(false);
   }
 
   private attachSound() {
@@ -399,9 +411,10 @@ class App {
   /** A new game behind the curtain. `fresh`: a new random seed (Play again); otherwise the same game from the first pitch (Restart). */
   private async restart(fresh: boolean) {
     this.attachSoundLater();
-    await this.curtain('Setting up the game…', () => {
+    await this.curtain('Setting up the game…', async () => {
       if (fresh) this.match.seed = 1 + Math.floor(Math.random() * 999_999);
       this.engine.newGame(this.match.seed, this.simConfig());
+      await this.engine.rewarm();
       this.syncUrl();
     });
     this.attachSound();
@@ -415,20 +428,21 @@ class App {
 
   private async quit() {
     this.attachSoundLater();
-    await this.curtain('Back to the menu…', () => {
+    await this.curtain('Back to the menu…', async () => {
       this.engine.newGame(this.match.seed, this.simConfig());
+      await this.engine.rewarm();
       this.showTitle();
       this.modal.hide(true);
     });
   }
 
   /** Cover the screen, run `work` (which may stall), draw two frames, uncover. */
-  private async curtain(stage: string, work: () => void) {
+  private async curtain(stage: string, work: () => void | Promise<void>) {
     this.boot_.show(stage);
     this.engine.keysEnabled = false;
     await nextFrame();
     await nextFrame();
-    work();
+    await work();
     await nextFrame();
     await nextFrame();
     await this.boot_.hide();

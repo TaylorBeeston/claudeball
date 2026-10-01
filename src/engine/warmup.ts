@@ -78,6 +78,7 @@ function drawEverything(e: Engine) {
 }
 
 export async function rewarm(e: Engine): Promise<void> {
+  e.tick(1e-4, false); // puppets of a new game exist before they are drawn
   const restore = showVariants(e);
   try {
     await e.renderer.compileAsync(e.scene, e.camera);
@@ -156,7 +157,8 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
 /** Play a dummy game up to and through its first pitch with the broadcast cameras and real rendering. */
 async function warmGame(e: Engine, progress: (f: number) => void) {
   const sim = e.sim;
-  const wasPaused = sim.paused, wasSpeed = sim.speed;
+  const wasPaused = sim.paused, wasSpeed = sim.speed, wasAttract = e.attract;
+  e.attract = false; // the real broadcast cameras, with depth of field (the attract camera has none, so its pass would stay uncompiled)
   let pitched = false;
   const off = sim.on((te) => te.event.type === 'pitch' && (pitched = true));
   sim.paused = false;
@@ -177,5 +179,6 @@ async function warmGame(e: Engine, progress: (f: number) => void) {
     off();
     sim.paused = wasPaused;
     sim.speed = wasSpeed;
+    e.attract = wasAttract;
   }
 }
