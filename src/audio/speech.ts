@@ -21,12 +21,70 @@ export interface Line {
 }
 
 /** The slice of SpeechSynthesis / SpeechSynthesisUtterance the queue uses (so tests can fake it). */
+export interface SpeakOptions {
+  voiceName?: string;
+  role?: SpeakRole;
+  pitch: number;
+  rate: number;
+  volume: number;
+  onend: () => void;
+  onerror: () => void;
+}
+
 export interface SpeechEngine {
   voices(): { name: string; lang: string; default?: boolean }[];
-  speak(text: string, o: { voiceName?: string; pitch: number; rate: number; volume: number; onend: () => void; onerror: () => void }): void;
+  speak(text: string, o: SpeakOptions): void;
   cancel(): void;
   pause(): void;
   resume(): void;
+  /** optional (neural voices): start synthesising a line that will be spoken soon */
+  prefetch?(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>): void;
+  /** optional: the voice to use for a role, overriding the name heuristics */
+  voiceFor?(role: SpeakRole): string | undefined;
+  /** optional: estimated ms before a newly requested line would be ready; large = the engine is falling behind */
+  busyMs?(): number;
+}
+
+/**
+ * One engine for the queue that can switch between the browser's voices and the optional neural ("HD") voices at run time.
+ * If the neural engine is not ready (still loading, failed) everything goes to the browser.
+ */
+export class SwitchEngine implements SpeechEngine {
+  neural: SpeechEngine | null = null;
+  constructor(private browser: SpeechEngine | null) {}
+  private get cur(): SpeechEngine | null {
+    return this.neural && this.neural.voices().length ? this.neural : this.browser;
+  }
+  get usingNeural() {
+    return !!this.neural && this.neural.voices().length > 0;
+  }
+  voices() {
+    return this.cur?.voices() ?? [];
+  }
+  speak(text: string, o: SpeakOptions) {
+    this.cur?.speak(text, o);
+  }
+  cancel() {
+    this.neural?.cancel();
+    this.browser?.cancel();
+  }
+  pause() {
+    this.neural?.pause();
+    this.browser?.pause();
+  }
+  resume() {
+    this.neural?.resume();
+    this.browser?.resume();
+  }
+  prefetch(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>) {
+    if (this.usingNeural) this.neural!.prefetch?.(text, o);
+  }
+  voiceFor(role: SpeakRole) {
+    return this.usingNeural ? this.neural!.voiceFor?.(role) : undefined;
+  }
+  busyMs() {
+    return this.usingNeural ? (this.neural!.busyMs?.() ?? 0) : 0;
+  }
 }
 
 export function browserSpeech(): SpeechEngine | null {
@@ -149,6 +207,11 @@ export class SpeechQueue {
   enqueue(line: Line) {
     if (!this.enabled[line.role]) return;
     const t = this.now();
+    // the neural voices are falling behind: drop chatter instead of letting it go stale
+    if (line.pri <= 2 && (this.engine?.busyMs?.() ?? 0) > 7000) {
+      this.stats.dropped++;
+      return;
+    }
     if (this.q.some((x) => x.text === line.text && t - x.at < 3000) || (this.cur?.item.text === line.text && t - this.cur.started < 3000)) return;
     this.q.push({ ...line, at: t, expires: t + line.ttl * 1000, seq: this.seq++ });
     while (this.q.length > 6) {
@@ -159,6 +222,21 @@ export class SpeechQueue {
       this.stats.dropped++;
     }
     this.pump();
+    this.prefetchNext();
+  }
+
+  /** ask the engine to start synthesising the line that will be spoken next */
+  private prefetchNext() {
+    if (!this.engine?.prefetch || !this.q.length) return;
+    let best = 0;
+    for (let i = 1; i < this.q.length; i++) if (this.q[i].pri > this.q[best].pri || (this.q[i].pri === this.q[best].pri && this.q[i].at < this.q[best].at)) best = i;
+    const it = this.q[best];
+    const p = PARAMS[it.role];
+    try {
+      this.engine.prefetch(it.text, { voiceName: this.engine.voiceFor?.(it.role) ?? this.voiceChoice?.[it.role], role: it.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume) });
+    } catch {
+      /* prefetch is an optimisation */
+    }
   }
 
   setPaused(p: boolean) {
@@ -275,7 +353,8 @@ export class SpeechQueue {
       }
     };
     try {
-      this.engine.speak(item.text, { voiceName: this.voiceChoice[item.role], pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.prefetchNext();
     } catch {
       done();
     }

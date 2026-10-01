@@ -33,9 +33,11 @@ export interface Settings {
   commentary: boolean;
   /** how much the booth talks */
   chatter: 'low' | 'normal' | 'high';
+  /** HD (neural) voices switched on (the model must have been downloaded) */
+  hd: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organ: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, chatter: 'normal' };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organ: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, chatter: 'normal', hd: false };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -72,7 +74,9 @@ export class Mixer {
   crowdBus!: GainNode;
   organBus!: GainNode;
   private sfxFilter!: BiquadFilterNode;
-  private reverbIn!: GainNode;
+  reverbIn!: GainNode;
+  /** neural (HD) voices: dry booth voices and the processed PA voice come in here */
+  voiceBus!: GainNode;
   analyser: AnalyserNode | null = null;
   ready = false;
   prepared = 0;
@@ -136,6 +140,8 @@ export class Mixer {
     this.crowdBus.connect(this.master);
     this.organBus = ctx.createGain();
     this.organBus.connect(this.master);
+    this.voiceBus = ctx.createGain();
+    this.voiceBus.connect(this.master);
     // stadium reverb: a synthetic decaying-noise impulse
     this.reverbIn = ctx.createGain();
     this.reverbIn.gain.value = 1;
@@ -182,6 +188,7 @@ export class Mixer {
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
     this.organBus.gain.setTargetAtTime(this.paused ? 0 : s.organ * s.organ * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
+    this.voiceBus.gain.setTargetAtTime(s.announcer * 1.6, t, 0.05);
   }
 
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */

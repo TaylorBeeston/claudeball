@@ -10,7 +10,8 @@ import { CueMapper, allowedAtSpeed, engineToRaw } from './cues';
 import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
-import { SpeechQueue, browserSpeech } from './speech';
+import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
+import { HD_MODES, pickMode } from './hdInfo';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
 import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
@@ -92,6 +93,10 @@ export class AudioController {
   readonly ambience: Ambience;
   readonly organ: Organ;
   readonly speech: SpeechQueue;
+  /** browser voices, or the optional neural voices when they are downloaded and switched on */
+  readonly sw: SwitchEngine;
+  /** HD voices state (the neural code is loaded lazily, only after the user opts in) */
+  hd: { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; engine: { stats: unknown; busyMs(): number; rtf: number; dispose(): void } | null } = { state: 'off', pct: 0, message: '', engine: null };
   readonly excitement = new Excitement();
   private ui: AudioUi | null = null;
   private mapper: CueMapper;
@@ -131,7 +136,8 @@ export class AudioController {
     this.mixer = new Mixer(this.settings);
     this.ambience = new Ambience(this.mixer);
     this.organ = new Organ(this.mixer);
-    this.speech = new SpeechQueue(browserSpeech());
+    this.sw = new SwitchEngine(browserSpeech());
+    this.speech = new SpeechQueue(this.sw);
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw });
@@ -145,6 +151,8 @@ export class AudioController {
       changed: () => this.settingsChanged(),
       gesture: () => void this.unlock(),
       enable: () => void this.enable(),
+      hdToggle: () => void (this.hd.state === 'ready' ? this.disableHd() : this.enableHd()),
+      hdRemove: () => void this.removeHd(),
     });
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
@@ -164,6 +172,69 @@ export class AudioController {
     window.addEventListener('keydown', key);
     this.offs.push(() => window.removeEventListener('keydown', key));
     this.interval = setInterval(() => this.tick(), 1000 / 30);
+    if (this.settings.hd) void this.autoHd();
+  }
+
+  // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
+
+  private async autoHd() {
+    try {
+      const { isCached } = await import('./neural');
+      if (await isCached(pickMode())) await this.enableHd();
+      else {
+        this.settings.hd = false;
+        saveSettings(this.settings);
+        this.ui?.setHd({ state: 'off' });
+      }
+    } catch {
+      this.ui?.setHd({ state: 'off' });
+    }
+  }
+
+  async enableHd(): Promise<void> {
+    if (this.hd.state === 'loading' || this.hd.state === 'ready') return;
+    const mode = pickMode();
+    this.hd = { state: 'loading', pct: 0, message: '', engine: null };
+    this.ui?.setHd({ state: 'loading', pct: 0 });
+    void this.enable(); // the click is a user gesture: make sure audio is running too
+    try {
+      const { NeuralSpeechEngine, WorkerSynth } = await import('./neural');
+      const engine = new NeuralSpeechEngine(new WorkerSynth(), this.mixer, browserSpeech(), mode);
+      this.hd.engine = engine;
+      await engine.init(mode, (l, t) => {
+        this.hd.pct = t > 0 ? Math.min(99, Math.round((l / t) * 100)) : 0;
+        this.ui?.setHd({ state: 'loading', pct: this.hd.pct });
+      });
+      this.sw.neural = engine;
+      this.hd.state = 'ready';
+      this.settings.hd = true;
+      saveSettings(this.settings);
+      this.ui?.setHd({ state: 'ready', text: `Kokoro HD voices on (${HD_MODES[mode].device}). Lines that cannot be generated in time use the browser voice.` });
+    } catch (e) {
+      this.hd.engine?.dispose();
+      this.hd = { state: 'error', pct: 0, message: String((e as Error)?.message ?? e), engine: null };
+      this.sw.neural = null;
+      this.settings.hd = false;
+      saveSettings(this.settings);
+      this.ui?.setHd({ state: 'error', text: `HD voices could not start (${this.hd.message}). Using the browser voices.` });
+    }
+  }
+
+  disableHd() {
+    this.speech.clear();
+    this.sw.neural = null;
+    this.hd.engine?.dispose();
+    this.hd = { state: 'off', pct: 0, message: '', engine: null };
+    this.settings.hd = false;
+    saveSettings(this.settings);
+    void import('./neural').then(({ isCached }) => isCached(pickMode())).then((cached) => this.ui?.setHd({ state: 'off', cached }));
+  }
+
+  async removeHd() {
+    this.disableHd();
+    const { clearCache } = await import('./neural');
+    await clearCache();
+    this.ui?.setHd({ state: 'off', cached: false });
   }
 
   // ---- settings / unlock ---------------------------------------------------------------------------------------------
@@ -587,7 +658,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,
