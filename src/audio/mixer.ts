@@ -24,20 +24,23 @@ export interface Settings {
   master: number;
   sfx: number;
   crowd: number;
-  organ: number;
   announcer: number;
   muted: boolean;
   /** PA announcer + umpire calls */
   pa: boolean;
   /** play-by-play + colour commentary */
   commentary: boolean;
-  /** how much the booth talks */
+  /** the stadium organ on/off (the app menu) */
+  organ: boolean;
+  /** organ volume 0..1 */
+  organVolume: number;
+  /** how much the commentators say: `low` keeps only the big plays (no chatter); `high` talks more and banters more */
   chatter: 'low' | 'normal' | 'high';
   /** HD (neural) voices switched on (the model must have been downloaded) */
   hd: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organ: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, chatter: 'normal', hd: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -186,7 +189,7 @@ export class Mixer {
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
-    this.organBus.gain.setTargetAtTime(this.paused ? 0 : s.organ * s.organ * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
+    this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
     this.voiceBus.gain.setTargetAtTime(s.announcer * 1.6, t, 0.05);
   }

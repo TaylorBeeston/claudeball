@@ -4,7 +4,7 @@
  * touch the engine HUD. Settings persist in localStorage (every access wrapped: it can throw or be empty).
  */
 import { DEFAULT_SETTINGS, type Settings } from './mixer';
-import { HD_MODES, pickMode } from './hdInfo';
+import { HD_MODES, hdSupported, pickMode } from './hdInfo';
 import { mountVoicePanel, type VoicePanel, type VoicePanelHandlers } from './voice/panel';
 
 const KEY = 'claudeball.audio.v1';
@@ -20,11 +20,12 @@ export function loadSettings(): Settings {
       master: num(o.master, DEFAULT_SETTINGS.master),
       sfx: num(o.sfx, DEFAULT_SETTINGS.sfx),
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
-      organ: num(o.organ, DEFAULT_SETTINGS.organ),
-      announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
+            announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
+      organ: bool(o.organ, true),
+      organVolume: num(o.organVolume, DEFAULT_SETTINGS.organVolume),
       chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
       hd: o.hd === true,
     };
@@ -109,7 +110,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organ' | 'announcer', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -143,7 +144,7 @@ export class AudioUi {
     slider('master', 'Master');
     slider('sfx', 'Effects');
     slider('crowd', 'Crowd');
-    slider('organ', 'Organ');
+    slider('organVolume', 'Organ');
     slider('announcer', 'Voices');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
@@ -201,11 +202,14 @@ export class AudioUi {
   /** HD voices status: off (not downloaded / switched off), loading (with progress), ready, error */
   setHd(o: { state: 'off' | 'loading' | 'ready' | 'error'; pct?: number; text?: string; cached?: boolean }) {
     const m = HD_MODES[pickMode()];
-    this.hdBtn.disabled = o.state === 'loading';
+    const supported = hdSupported();
+    this.hdBtn.disabled = o.state === 'loading' || !supported;
     this.hdBtn.textContent = o.state === 'ready' ? 'HD voices: on (switch off)' : o.state === 'loading' ? `Downloading… ${o.pct ?? 0}%` : o.cached ? 'Use HD voices' : `Download HD voices (~${m.mb} MB)`;
     this.hdNote.textContent =
       o.text ??
-      (o.state === 'off'
+      (!supported
+        ? 'HD voices need WebGPU, which this browser does not offer (the CPU version is slower than real time, so it is not offered).'
+        : o.state === 'off'
         ? pickMode() === 'gpu'
           ? 'Neural voices (Kokoro, Apache-2.0) run in your browser on the GPU. One-time download from Hugging Face, kept in the browser cache.'
           : 'Neural voices (Kokoro, Apache-2.0) run in your browser. No WebGPU here, so they are slower than real time on the CPU and the booth will talk less. One-time download.'

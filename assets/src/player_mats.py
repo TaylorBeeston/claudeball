@@ -52,10 +52,20 @@ I["skin_a"] = img("skin_albedo", np.repeat((np.clip(.90 + .12*sh, 0, 1))[..., No
 I["skin_o"] = img("skin_orm", orm(.9 + .1*sh, .55 + .12*(1-sh)), 'Non-Color')
 I["leather_a"] = img("leather_albedo", np.repeat((np.clip(.8 + .3*lh, 0, 1))[..., None], 3, 2)); I["leather_n"] = img("leather_normal", height_to_normal(lh, 5.0), 'Non-Color')
 I["leather_o"] = img("leather_orm", orm(.6 + .4*lh, .5 + .2*lh), 'Non-Color')
+def face_orm(n=1024):
+    """glTF ORM for the face (head UV space): AO darkens eye sockets / nostrils / mouth line, roughness varies (oily T-zone, rougher cheeks / chin, glossier lips)."""
+    uu, vv = np.meshgrid((np.arange(n)+.5)/n, (np.arange(n)+.5)/n); w = vv*2-1; r = np.sqrt(np.clip(1-w*w, 0, 1)); th = (uu-.5)*2*np.pi; x = r*np.sin(th); front = ((r*np.cos(th)) > -.05)*1.0
+    ao = np.ones((n, n)); rough = .58 + .1*noise_tex(n, [8, 32], 7) - .05
+    def blob(cx, cw, sx, sw, v):
+        return v*(g2(x, w, cx, cw, sx, sw) + (g2(x, w, -cx, cw, sx, sw) if cx else 0))*front
+    ao = ao - blob(.42, .09, .16, .10, .35) - blob(.10, -.285, .05, .04, .3) - blob(0, -.48, .22, .02, .25) - blob(.30, -.60, .30, .1, .0)
+    rough = rough - blob(0, .20, .30, .25, .12) - blob(0, .0, .08, .35, .10) - blob(0, -.46, .20, .05, .22) + blob(.55, -.15, .22, .22, .08) + blob(0, -.80, .25, .12, .08)
+    return np.stack([np.clip(ao, 0, 1), np.clip(rough, .2, .95), np.zeros((n, n))], -1)
+I["face_o"] = img("face_orm", face_orm(), 'Non-Color')
 I["face_a"] = img("face_albedo", face_texture()); I["eye_a"] = img("eye_albedo", eye_texture()); I["face_n"] = img("face_normal", height_to_normal(face_height(), 1.6), 'Non-Color')
 MATS = {
  "skin": pbr("skin", (.55, .36, .27, 1), I["skin_a"], I["skin_n"], I["skin_o"], nstrength=.5),
- "face": pbr("face", (.55, .36, .27, 1), I["face_a"], I["face_n"], I["skin_o"], nstrength=.45),
+ "face": pbr("face", (.55, .36, .27, 1), I["face_a"], I["face_n"], I["face_o"], nstrength=.45),
  "eye": pbr("eye", (1, 1, 1, 1), I["eye_a"], None, None, rough=.08),
  "hair": pbr("hair", (.09, .06, .035, 1), None, I["leather_n"], None, rough=.6, nstrength=.25),
  "uniform_jersey": pbr("uniform_jersey", (.8, .8, .8, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
