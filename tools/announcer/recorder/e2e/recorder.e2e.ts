@@ -98,7 +98,7 @@ async function main() {
     // --- script loads, first line is shown
     await page.waitForFunction(() => document.getElementById('line-text')?.textContent?.length);
     const first = await page.textContent('#line-text');
-    check('script loaded and first pilot line shown', !!first && first.length > 3 && (await page.textContent('#lineno'))!.includes('p0'), first ?? '');
+    check('script loaded and first pilot line shown', !!first && first.length > 3 && /line 1 of/.test((await page.textContent('#lineno')) ?? ''), first ?? '');
     check('session chips rendered', (await page.locator('.sess').count()) > 5);
 
     // --- open mic, no processing, rate is what we asked
