@@ -15,6 +15,7 @@ import * as fielding from './fielding';
 import * as inplay from './inplay';
 import * as rules from './rules';
 import { DUGOUT } from './setup';
+import { toBench } from './dugout';
 
 export const bpos = (b: number) => BASE_POS[b % 4];
 
@@ -65,6 +66,9 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
   };
   p.role = 'runner';
   p.onField = true;
+  p.dug = null; // (a hitter who was warming up on deck, a pinch runner from the bench: he is in the play now)
+  p.route = [];
+  p.after = null;
   w.leavers = w.leavers.filter((l) => l.p !== p);
   p.vmax = sprintOf(p.info.ratings.speed);
   p.lookAt = null;
@@ -196,10 +200,15 @@ export function snapRunnersToBases(w: World): void {
     if (r.state !== 'live') continue;
     if (r.base >= 1) {
       const b = bpos(r.base);
-      r.p.x = b.x;
-      r.p.z = b.z;
-      r.p.vx = r.p.vz = 0;
-      r.p.goal = null;
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 1.5 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+        // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
+        setGoal(r.p, b.x, b.z, true, 0.6);
+      } else {
+        r.p.x = b.x;
+        r.p.z = b.z;
+        r.p.vx = r.p.vz = 0;
+        r.p.goal = null;
+      }
       r.target = r.base;
       r.want = r.base;
       r.overrun = false;
@@ -368,11 +377,10 @@ export function tickRunners(w: World): void {
   if (w.exiting.length) {
     w.exiting = w.exiting.filter((r) => {
       const d = DUGOUT[r.p.team.side];
-      const done = Math.hypot(r.p.x - d.x, r.p.z - d.z) < 1.8 || w.tick - r.outTick > 12 * 240;
+      const done = Math.hypot(r.p.x - d.x, r.p.z - d.z) < 1.2 || w.tick - r.outTick > 12 * 240;
       if (done) {
-        r.p.onField = false;
         r.p.gait = null;
-        r.p.goal = null;
+        toBench(w, r.p); // through the door, down the steps, back to his seat
       }
       return !done;
     });
