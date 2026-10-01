@@ -78,7 +78,9 @@ def brim_from_edge(bm, inner_bm_verts, length, droop, side_curl, width_taper=0.5
         row = []
         for ang, p in pts:
             a = math.radians(ang); n = Vector((math.sin(a), -math.cos(a), 0)); L = length*(math.cos(a*.85)**.7)
-            row.append(bm.verts.new(p + n*(L*t) + Vector((0, 0, lift*t - droop*t**1.6 - side_curl*(math.sin(a)**2)*t))))
+            kf = .55*abs(math.sin(a))**.8; d = (n*(1 - kf) + Vector((0, -1, 0))*kf).normalized()          # the sides of the bill sweep forward, not outward (no sun-hat flare)
+            q = p + d*(L*t); q.x = HC.x + (q.x - HC.x)*(1 - .5*width_taper*t)                                # the tip is narrower than the base
+            row.append(bm.verts.new(q + Vector((0, 0, lift*t - droop*t**1.6 - side_curl*(math.sin(a)**2)*t))))
         grid.append(row)
     for r in range(rows-1):
         for i in range(len(pts)-1): bm.faces.new((grid[r][i], grid[r][i+1], grid[r+1][i+1], grid[r+1][i]))
@@ -97,7 +99,7 @@ def build_cap(head):
             v.co = v.co - Vector((q.x, q.y, q.z*.6)).normalized()*.0016*g
         bm.normal_update()
         edge_verts = [v for v in bm.verts if v.is_boundary]
-        brim_from_edge(bm, edge_verts, length=.074, droop=.034, side_curl=.05, thick=.0035, lift=.004, arc=54)
+        brim_from_edge(bm, edge_verts, length=.072, droop=.030, side_curl=.065, thick=.0035, lift=.004, arc=54, width_taper=.45)
     bm, inner, hbvh = head_shell(head, "Gear_Cap", lambda co: co.z - edge(co.x, co.y), lambda q: .0105 + .004*_sm1(-.02, .12, q.z), smooth_iters=6, thick=.0035, decorate=decorate, min_clear=.006)
     # button, eyelets
     top = Vector((HC.x, HC.y, 1.95))
@@ -191,7 +193,7 @@ def hair_cap_gap(cap_obj, hair_obj, cap_edge=None):
         worst = min(worst, (dist + .02) - r); n += 1
     return round(worst, 4), n
 def fit_summary(head, gear):
-    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square"])}
-    for k, n in (("hair", "Gear_Hair"), ("buzz", "Gear_Hair_Buzz"), ("curly", "Gear_Hair_Curly"), ("long", "Gear_Hair_Long")): items[k] = (gear[n], ["head_narrow", "head_wide", "ears_large"])
-    sets = [[], ["head_narrow"], ["head_wide"], ["jaw_square"], ["nose_large"], ["ears_large"], ["head_narrow", "jaw_square", "nose_large"], ["head_wide", "ears_large"]]
+    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide", "brow_heavy"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"])}
+    for k, n in (("hair", "Gear_Hair"), ("buzz", "Gear_Hair_Buzz"), ("curly", "Gear_Hair_Curly"), ("long", "Gear_Hair_Long")): items[k] = (gear[n], ["head_narrow", "head_wide", "ears_large", "brow_heavy"])
+    sets = [[], ["head_narrow"], ["head_wide"], ["jaw_square"], ["nose_large"], ["ears_large"], ["head_narrow", "jaw_square", "nose_large"], ["head_wide", "ears_large"], ["brow_heavy"], ["head_wide", "brow_heavy"]]
     return {"min_clearance_from_head": fit_report(head, items, sets), "hair_under_cap_gap": {n: hair_cap_gap(gear["Gear_Cap"], gear[n]) for n in ("Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly")}}

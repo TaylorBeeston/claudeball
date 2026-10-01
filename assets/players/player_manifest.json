@@ -1,5 +1,5 @@
 {
- "version": 5,
+ "version": 6,
  "fps": 24,
  "clips": {
   "idle": {
@@ -1119,6 +1119,236 @@
    "events_s": {
     "peak": 0.25
    }
+  },
+  "ondeck_ready": {
+   "frames": 60,
+   "first_key_frame": 0,
+   "duration_s": 2.5,
+   "loop": true
+  },
+  "ondeck_swing": {
+   "frames": 32,
+   "first_key_frame": 0,
+   "duration_s": 1.3333,
+   "loop": false,
+   "events_frame": {
+    "load": 9,
+    "contact": 18,
+    "finish": 24
+   },
+   "events_s": {
+    "load": 0.375,
+    "contact": 0.75,
+    "finish": 1.0
+   }
+  },
+  "ondeck_stretch": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
+  },
+  "bench_sit": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
+  },
+  "bench_stand_up": {
+   "frames": 28,
+   "first_key_frame": 0,
+   "duration_s": 1.1667,
+   "loop": false,
+   "events_frame": {
+    "rise_start": 5,
+    "standing": 22
+   },
+   "events_s": {
+    "rise_start": 0.2083,
+    "standing": 0.9167
+   }
+  },
+  "bench_cheer": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "clap": [
+     8,
+     16,
+     24
+    ]
+   },
+   "events_s": {
+    "clap": [
+     0.3333,
+     0.6667,
+     1.0
+    ]
+   }
+  },
+  "coach_ready": {
+   "frames": 60,
+   "first_key_frame": 0,
+   "duration_s": 2.5,
+   "loop": true,
+   "events_frame": {
+    "clap": [
+     33,
+     39
+    ]
+   },
+   "events_s": {
+    "clap": [
+     1.375,
+     1.625
+    ]
+   }
+  },
+  "coach_stop": {
+   "frames": 24,
+   "first_key_frame": 0,
+   "duration_s": 1.0,
+   "loop": false,
+   "events_frame": {
+    "hold_start": 8,
+    "hold_end": 20
+   },
+   "events_s": {
+    "hold_start": 0.3333,
+    "hold_end": 0.8333
+   }
+  },
+  "coach_go": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "windmill_start": 5,
+    "windmill_end": 29
+   },
+   "events_s": {
+    "windmill_start": 0.2083,
+    "windmill_end": 1.2083
+   }
+  },
+  "coach_go_loop": {
+   "frames": 12,
+   "first_key_frame": 0,
+   "duration_s": 0.5,
+   "loop": true,
+   "events_frame": {
+    "revolution_frames": 12
+   },
+   "events_s": {
+    "revolution_frames": 0.5
+   }
+  },
+  "coach_advance": {
+   "frames": 32,
+   "first_key_frame": 0,
+   "duration_s": 1.3333,
+   "loop": false,
+   "events_frame": {
+    "wave_start": 8,
+    "wave_end": 24
+   },
+   "events_s": {
+    "wave_start": 0.3333,
+    "wave_end": 1.0
+   }
+  },
+  "coach_slide": {
+   "frames": 24,
+   "first_key_frame": 0,
+   "duration_s": 1.0,
+   "loop": false,
+   "events_frame": {
+    "push_down": [
+     8,
+     16
+    ]
+   },
+   "events_s": {
+    "push_down": [
+     0.3333,
+     0.6667
+    ]
+   }
+  },
+  "coach_signs": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": false,
+   "events_frame": {
+    "touch_cap": 8,
+    "touch_belt": 16,
+    "touch_chest": 24,
+    "touch_arm": 32,
+    "touch_cap_2": 42,
+    "touch_belt_2": 50,
+    "touch_ear": 58
+   },
+   "events_s": {
+    "touch_cap": 0.3333,
+    "touch_belt": 0.6667,
+    "touch_chest": 1.0,
+    "touch_arm": 1.3333,
+    "touch_cap_2": 1.75,
+    "touch_belt_2": 2.0833,
+    "touch_ear": 2.4167
+   }
+  },
+  "ballkid_sit": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
+  },
+  "ballkid_pickup": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "pickup": 13,
+    "standing": 28
+   },
+   "events_s": {
+    "pickup": 0.5417,
+    "standing": 1.1667
+   }
+  },
+  "ballkid_toss": {
+   "frames": 24,
+   "first_key_frame": 0,
+   "duration_s": 1.0,
+   "loop": false,
+   "events_frame": {
+    "release": 10,
+    "backswing_peak": 6
+   },
+   "events_s": {
+    "release": 0.4167,
+    "backswing_peak": 0.25
+   }
+  },
+  "ballkid_wave": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "wave_start": 4,
+    "wave_end": 32
+   },
+   "events_s": {
+    "wave_start": 0.1667,
+    "wave_end": 1.3333
+   }
   }
  },
  "files": {
@@ -1128,6 +1358,8 @@
   "player_home_1b / player_away_1b": "first baseman, long 1B mitt",
   "player_catcher": "catcher, big round mitt + gear",
   "player_batter": "batter (helmet, batting gloves, fist hands)",
+  "player_coach": "base coach (1B/3B): uniform, helmet visible by default (Gear_Cap and Gear_LineupCard optional), wristbands, no glove",
+  "player_ballkid": "ball kid: polo, shorts, cap, 1.55 m (Armature node scale 0.838, extras cb_height_m), slimmer build default (build_lean 0.55), no glove; `bat_donut.glb`: weighted warm-up donut `Bat_Donut` (bat frame, sits at 0.50 m from the knob)",
   "player_umpire": "plate umpire (navy, mask, chest protector, shin guards)",
   "player_umpire_base": "base umpire (navy uniform and cap only)",
   "note": "in the glove files the node `Gear_Glove` is that role's glove, `Glove_Pocket` its pocket, `Hand_L` the open hand that lives inside it and `Hand_R` the ball-ready claw hand; each lod1/optimized/plain variant of a file has the same content"
@@ -1145,7 +1377,12 @@
   "head_only": [
    "jaw_square",
    "nose_large",
-   "ears_large"
+   "ears_large",
+   "brow_heavy",
+   "chin_strong",
+   "cheeks_full",
+   "nose_narrow",
+   "eyes_deep"
   ],
   "hair_only": [
    "hair_under_cap"
@@ -1376,7 +1613,8 @@
   "node": "Elbow_Pole_L / Elbow_Pole_R (children of Spine1: elbow position in the batting stance)",
   "clips": [
    "batting_stance",
-   "swing"
+   "swing",
+   "ondeck_swing"
   ]
  },
  "swing_bat_path": {
