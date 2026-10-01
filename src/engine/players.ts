@@ -362,6 +362,16 @@ export class PlayerManager {
     this.penv.time = state.time;
     (this.penv.ballVel ??= new Vector3()).set(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z);
     this.penv.ballSpeed = state.ball.visible ? Math.hypot(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z) : 0;
+    // the catcher counts as the carrier from the moment his mitt closes on the pitch (the sim hands him the ball a frame or two later)
+    const holder =
+      state.players.find((q) => q.hasBall && q.role !== 'batter' && q.role !== 'runner' && q.role !== 'umpire') ?? state.players.find((q) => q.role === 'catcher' && q.anim === 'catch_pitch');
+    if (holder) {
+      const c = (this.penv.carrier ??= { id: '', role: '', anim: '', pos: new Vector3() });
+      c.id = holder.id;
+      c.role = holder.role;
+      c.anim = holder.anim;
+      c.pos.set(holder.pos.x, holder.pos.y, holder.pos.z);
+    } else this.penv.carrier = null;
     this.used.clear();
     for (const snap of state.players) {
       this.used.add(snap.id);

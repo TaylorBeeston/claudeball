@@ -58,7 +58,7 @@ const POS_ROLE: Record<string, PlayerRole> = {
   P: 'pitcher', C: 'catcher', '1B': 'first', '2B': 'second', '3B': 'third', SS: 'short', LF: 'left', CF: 'center', RF: 'right', DH: 'first',
 };
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
-const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0 };
+const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_ready: 1.0, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0 };
 
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],

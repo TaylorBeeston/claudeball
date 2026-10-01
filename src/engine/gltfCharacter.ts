@@ -25,6 +25,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
+import { readyGlove, receiveReady } from './receiveReady';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
@@ -889,7 +890,8 @@ export class GltfPuppet implements PuppetLike {
 
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : snap.facing;
+    const ready = this.updateReady(snap, env, dt);
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -940,6 +942,37 @@ export class GltfPuppet implements PuppetLike {
 
   private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump']);
   private gloveW = 0;
+  private readyW = 0;
+  private readyGlovePos: { x: number; y: number; z: number } | null = null;
+  private readyLook: Vector3 | null = null;
+
+  /** easing for the waiting pose (glove up, turned toward the thrower); returns the yaw to face while it is on */
+  private updateReady(snap: PlayerSnap, env: PuppetEnv, dt: number): { yaw: number } | null {
+    const c = env.carrier && env.carrier.id !== snap.id ? env.carrier : null;
+    const dist = c ? Math.hypot(c.pos.x - snap.pos.x, c.pos.z - snap.pos.z) : 0;
+    const on = receiveReady({
+      hint: snap.anim === 'catch_ready',
+      role: snap.role,
+      anim: snap.anim,
+      hasBall: !!snap.hasBall,
+      carrier: c ? { role: c.role, anim: c.anim, distance: dist } : null,
+      liveBall: (env.ballSpeed ?? 0) > 14,
+      incoming: !!snap.gloveTarget && (snap.catchIn ?? 0) < 1.2,
+    });
+    // up in about a quarter second, down a little slower; a catch clip (own hint) takes over the glove from there
+    this.readyW += ((on ? 1 : 0) - this.readyW) * (1 - Math.exp(-dt * (on ? 9 : 6)));
+    if (this.readyW < 0.01) {
+      this.readyGlovePos = null;
+      this.readyLook = null;
+      return null;
+    }
+    const to = c ? c.pos : env.ball ?? (snap.gloveTarget ? new Vector3(snap.gloveTarget.x, snap.gloveTarget.y, snap.gloveTarget.z) : null);
+    if (!to) return null;
+    if (snap.gloveTarget) this.readyGlovePos = { x: snap.gloveTarget.x, y: snap.gloveTarget.y, z: snap.gloveTarget.z };
+    else this.readyGlovePos = readyGlove(snap.pos, to, snap.hand ?? 'R', this.readyGlovePos ?? undefined);
+    (this.readyLook ??= new Vector3()).set(to.x, to.y + 1.2, to.z);
+    return { yaw: Math.atan2(to.x - snap.pos.x, to.z - snap.pos.z) };
+  }
   private lastGlove: { x: number; y: number; z: number } | null = null;
   private gloveClosed = 0;
 
@@ -965,6 +998,10 @@ export class GltfPuppet implements PuppetLike {
       target = new Vector3(gt!.x, gt!.y, gt!.z);
       // reach out through the first half of the catch, then hold the pocket on the ball
       w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : p < 0.15 ? p / 0.15 : 1;
+    } else if (this.readyW > 0.02 && this.readyGlovePos) {
+      // glove out for a throw that has not left the thrower's hand yet
+      target = new Vector3(this.readyGlovePos.x, this.readyGlovePos.y, this.readyGlovePos.z);
+      w = this.readyW;
     } else if (tagging && env.positions) {
       // the runner the sim named in the tag event, else the nearest other player within reach
       let rid = env.tagRunner?.(snap.id) ?? null;
@@ -1204,7 +1241,7 @@ export class GltfPuppet implements PuppetLike {
     // idle players with nothing moving forget the ball and look ahead
     const still = (snap.anim === 'idle' || snap.anim === 'celebrate') && Math.hypot(snap.vel.x, snap.vel.z) < 0.3;
     const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
-    const focus = live ? env.ball : env.mound ?? null;
+    const focus = this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
     let t: LookTarget | null = null;
     if (focus) {
       const hp = rig.pos(head, _a);
