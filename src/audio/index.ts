@@ -6,7 +6,7 @@
  * Event source: the raw sim event bus when it can be reached (richer: swing/look calls, error kinds, wall contacts, robbed
  * home runs ...), else the engine's reduced GameEvent stream (`?mock`). Never both, or every cue would play twice.
  */
-import { CueMapper, allowedAtSpeed, engineToRaw } from './cues';
+import { CueMapper, PRI, allowedAtSpeed, engineToRaw } from './cues';
 import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
@@ -66,6 +66,8 @@ export function rawBusOf(game: unknown): RawBus | null {
 export interface AudioOptions {
   /** do not create any audio (URL `?noaudio`) */
   off?: boolean;
+  /** false: no sound button / panel / "click to enable" prompt (the app's own menu drives `AudioController` instead) */
+  ui?: boolean;
 }
 
 export interface DebugCue {
@@ -119,7 +121,7 @@ export class AudioController {
     events: 0,
   };
 
-  constructor(private host: AudioHost, root: HTMLElement) {
+  constructor(private host: AudioHost, root: HTMLElement, withUi = true) {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
     this.ambience = new Ambience(this.mixer);
@@ -133,12 +135,13 @@ export class AudioController {
       const r = engineToRaw(te.event);
       if (r) this.push(r);
     });
-    this.ui = new AudioUi(root, this.settings, {
-      toggleMute: () => this.toggleMute(),
-      changed: () => this.settingsChanged(),
-      gesture: () => void this.unlock(),
-      enable: () => void this.enable(),
-    });
+    if (withUi)
+      this.ui = new AudioUi(root, this.settings, {
+        toggleMute: () => this.toggleMute(),
+        changed: () => this.settingsChanged(),
+        gesture: () => void this.unlock(),
+        enable: () => void this.enable(),
+      });
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
       const t = e.target as HTMLElement | null;
@@ -191,7 +194,13 @@ export class AudioController {
     this.settingsChanged();
   }
 
-  private settingsChanged() {
+  /** true until the browser has let the AudioContext run (needs a click / key press) */
+  get isLocked() {
+    return this.locked;
+  }
+
+  /** Apply and save `settings` after a change made from outside (the app's menu). */
+  settingsChanged() {
     saveSettings(this.settings);
     this.mixer.applySettings();
     this.syncSpeech();
@@ -308,10 +317,12 @@ export class AudioController {
         this.excitement.add(c.amount, c.hold);
         return true;
       case 'organ':
-        return this.settings.muted ? false : this.organ.play(c.id, c.gain ?? 1, 0);
+        return this.settings.muted || !this.settings.organ ? false : this.organ.play(c.id, c.gain ?? 1, 0);
       case 'speak': {
         if (this.locked || this.settings.muted) return false;
         if (!this.speech.enabled[c.role]) return false;
+        // chatter "low": only the main play-by-play, no colour commentary
+        if (this.settings.chatter === 'low' && (c.role === 'color' || (c.role === 'pbp' && c.pri < PRI.pbp))) return false;
         if (!this.speech.available()) {
           // no voices in this browser: the umpire still gets a shout so the call is audible
           if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2, pos: c.pos ? { x: c.pos.x, y: 1.7, z: c.pos.z } : undefined });
@@ -443,7 +454,7 @@ export class AudioController {
 export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptions = {}): AudioController | null {
   if (opts.off) return null;
   try {
-    const a = new AudioController(host, root);
+    const a = new AudioController(host, root, opts.ui !== false);
     const dbg = {
       get cues() { return a.debug.cues; },
       get mapped() { return a.debug.mapped; },
