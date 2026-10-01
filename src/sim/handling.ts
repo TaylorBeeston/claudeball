@@ -5,6 +5,7 @@
  */
 import { SHOULDER_X } from './batting';
 import { emit } from './events';
+import { toBench } from './dugout';
 import { CATCH_LEAD, catchClipOn } from './fielding';
 import { MOUND_DIST, groundHeight } from './field';
 import { clamp } from './math';
@@ -239,7 +240,7 @@ export function sendHome(w: World, p: PlayerRT, respectBall = true): void {
 /** Players who are done for now (a replaced pitcher, the fielders at the end of an inning) jog to their dugout. */
 export function sendToDugout(w: World, p: PlayerRT): void {
   if (w.cfg.pace === 0 || w.tick === 0) {
-    p.onField = false;
+    toBench(w, p);
     return;
   }
   if (!w.leavers.some((l) => l.p === p)) w.leavers.push({ p, since: w.tick });
@@ -253,10 +254,9 @@ export function tickLeavers(w: World): void {
     const d = DUGOUT[p.team.side];
     setGoal(p, d.x, d.z, true, 0.75);
     p.gait = 'trot';
-    if (Math.hypot(p.x - d.x, p.z - d.z) < 1.8 || w.tick - l.since > 15 * 240) {
-      p.onField = false;
+    if (Math.hypot(p.x - d.x, p.z - d.z) < 1.2 || w.tick - l.since > 15 * 240) {
       p.gait = null;
-      p.goal = null;
+      toBench(w, p); // through the door, down the steps, back to his seat
       return false;
     }
     return true;
@@ -294,6 +294,7 @@ export function hurryStragglers(w: World): void {
     if (F.onField && F.goal && F.home && Math.hypot(F.x - F.home.x, F.z - F.home.z) > 1.5) F.goal.mul = 1;
   }
   if (w.batter?.goal) w.batter.goal.mul = 1;
+  if (w.batter && w.batter.route.length) w.batter.routeMul = clamp(4.5 / Math.max(1, w.batter.vmax), 0.1, 1); // (a jog, not a sprint)
 }
 
 export { MOUND_DIST, TICK };

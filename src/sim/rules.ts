@@ -1,4 +1,5 @@
 import { emit } from './events';
+import { toBench } from './dugout';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import { setGoal } from './movement';
@@ -329,13 +330,13 @@ export function endHalfInning(w: World): void {
   w.battingTeam.lob += w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead).length;
   emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half });
   // clear bases, ball to pitcher
-  for (const r of w.runners) r.p.onField = false;
-  for (const r of w.exiting) r.p.onField = false;
+  for (const r of w.runners) toBench(w, r.p);
+  for (const r of w.exiting) toBench(w, r.p);
   w.runners = [];
   w.exiting = [];
   w.paDone = false;
   const bat = w.batter;
-  if (bat) bat.onField = false;
+  if (bat) toBench(w, bat);
   if (w.half === 'top') {
     if (w.inning >= w.cfg.innings && w.teams.home.runs > w.teams.away.runs) {
       endGame(w, 'home');

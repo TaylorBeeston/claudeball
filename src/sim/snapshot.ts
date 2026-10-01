@@ -1,4 +1,5 @@
 import { groundHeight } from './field';
+import { dugoutFloorY } from './venue';
 import { teamStats } from './stats';
 import type { World, PlayerRT } from './world';
 import { TICK } from './world';
@@ -18,6 +19,9 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
   if (w.tick < p.animUntil) return { anim: p.anim, t: Math.min(1, (w.tick - p.animStart) / Math.max(1, p.animDur)) };
   if (p.anim === 'celebrate' && w.gameOver) return { anim: 'celebrate', t: 0 };
   const sp = Math.hypot(p.vx, p.vz);
+  if (p.dug === 'bench' && !p.route.length) return { anim: 'bench_sit', t: 0 };
+  if (p.dug === 'deck' && sp < 0.3) return { anim: 'ondeck_ready', t: 0 };
+  if (p.gait === 'walk' && sp > 0.25) return { anim: 'walk', t: 0 };
   if (sp > 1.2) return { anim: p.gait === 'trot' ? 'trot' : p.gait === 'turn' ? 'run_turn' : 'run', t: 0 };
   return { anim: 'idle', t: 0 };
 }
@@ -25,7 +29,8 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
 /** Height of the feet above the field's datum: the ground at his spot (the mound is 10 in up) plus the height of a wall leap. */
 function feetY(w: World, p: PlayerRT): number {
   const L = p.leap;
-  const ground = groundHeight(p.x, p.z); // on the mound the pitcher stands 10 inches up
+  const pit = dugoutFloorY(p.x, p.z);
+  const ground = pit < 0 ? pit : groundHeight(p.x, p.z); // on the mound the pitcher stands 10 inches up; in the dugout he is below the field
   if (!L) return ground;
   const u = (w.tick - L.t0) / L.dur;
   return ground + (u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0);
@@ -87,6 +92,14 @@ export function snapshot(w: World): GameStateSnapshot {
   if (w.batter && w.batter.onField && !seen.has(w.batter)) {
     seen.add(w.batter);
     players.push(snapPlayer(w, w.batter, 'batter'));
+  }
+  // the dugouts: seated on the bench / walking to or from it / on deck / in the bullpen
+  for (const t of [w.teams.home, w.teams.away]) {
+    for (const p of t.players.values()) {
+      if (p.onField || !p.dug || seen.has(p)) continue;
+      seen.add(p);
+      players.push(snapPlayer(w, p, p.dug === 'deck' || p.dug === 'toDeck' ? 'ondeck' : 'bench'));
+    }
   }
   for (const u of w.umpires) {
     const gesturing = w.tick < u.animUntil;
