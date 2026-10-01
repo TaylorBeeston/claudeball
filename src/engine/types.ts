@@ -36,6 +36,8 @@ export type AnimHint =
   | 'transfer'
   /** easy casual throw (return throws after routine outs) */
   | 'toss'
+  /** glove out, facing the thrower, waiting for a throw that has not left his hand yet (pitcher before the catcher's return) */
+  | 'catch_ready'
   // catches: the glove meets the ball at `gloveTarget`
   | 'catch_pitch'
   | 'catch_throw'
