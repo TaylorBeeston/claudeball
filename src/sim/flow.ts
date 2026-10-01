@@ -795,6 +795,7 @@ export function resetBatterToBox(w: World): void {
   const side = w.batStance === 'R' ? 1 : -1;
   b.role = 'batter';
   b.onField = true;
+  w.batDown = null; // (foul ball: he still has his bat)
   b.lookAt = { x: 0, z: MOUND_DIST };
   b.anim = 'idle';
   b.animUntil = 0;
