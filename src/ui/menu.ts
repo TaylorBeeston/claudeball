@@ -117,7 +117,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const hdRemove = button('Remove download', () => ctx.audio.hd?.remove(), 'quiet');
   const paintHd = (st: HdStatus) => {
     hdBtn.disabled = st.state === 'loading' || st.state === 'unavailable';
-    hdBtn.textContent = st.state === 'ready' ? 'HD voices: on (switch off)' : st.state === 'loading' ? `Downloading… ${st.pct ?? 0}%` : st.cached ? 'Use HD voices' : `Download HD voices (~${st.mb ?? 90} MB)`;
+    hdBtn.textContent = st.state === 'unavailable' ? 'HD voices unavailable' : st.state === 'ready' ? 'HD voices: on (switch off)' : st.state === 'loading' ? `Downloading… ${st.pct ?? 0}%` : st.cached ? 'Use HD voices' : `Download HD voices (~${st.mb ?? 90} MB)`;
     hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'Available once the game has started (open Settings from the pause menu).' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
     hdRemove.style.display = st.cached || st.state === 'ready' ? '' : 'none';
   };

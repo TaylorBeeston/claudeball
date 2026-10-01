@@ -11,5 +11,25 @@ export const HD_MODES: Record<HdMode, { device: string; dtype: string; mb: numbe
 };
 
 export function pickMode(): HdMode {
+  // `?hdmode=cpu|gpu` forces a mode (testing)
+  try {
+    const f = new URLSearchParams(location.search).get('hdmode');
+    if (f === 'cpu' || f === 'gpu') return f;
+  } catch {
+    /* no location (node) */
+  }
   return typeof navigator !== 'undefined' && !!(navigator as { gpu?: unknown }).gpu ? 'gpu' : 'cpu';
+}
+
+/**
+ * HD voices are offered only with WebGPU: measured in headless Chrome, the CPU (WASM) model runs 3x slower than real time on an idle
+ * machine and 5-7x while the game renders (see the audio README), so live commentary cannot keep up. `?hdmode=cpu` forces it for testing.
+ */
+export function hdSupported(): boolean {
+  if (pickMode() === 'gpu') return true;
+  try {
+    return new URLSearchParams(location.search).get('hdmode') === 'cpu';
+  } catch {
+    return false;
+  }
 }

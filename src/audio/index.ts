@@ -11,7 +11,7 @@ import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
-import { HD_MODES, pickMode } from './hdInfo';
+import { HD_MODES, hdSupported, pickMode } from './hdInfo';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
 import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
@@ -189,6 +189,11 @@ export class AudioController {
   // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
 
   private async autoHd() {
+    if (!hdSupported()) {
+      this.settings.hd = false;
+      this.persist();
+      return;
+    }
     try {
       const { isCached } = await import('./neural');
       if (await isCached(pickMode())) await this.enableHd();
@@ -212,6 +217,7 @@ export class AudioController {
   private lastHd: HdStatus = { state: 'off' };
 
   hdStatus(): HdStatus {
+    if (!hdSupported() && this.lastHd.state !== 'ready') return { state: 'unavailable', mb: HD_MODES[pickMode()].mb, text: 'HD voices need WebGPU, which this browser does not offer: the CPU version is slower than real time, so it is not offered.' };
     return { ...this.lastHd, mb: HD_MODES[pickMode()].mb };
   }
 
@@ -232,7 +238,7 @@ export class AudioController {
   }
 
   async enableHd(): Promise<void> {
-    if (this.hd.state === 'loading' || this.hd.state === 'ready') return;
+    if (this.hd.state === 'loading' || this.hd.state === 'ready' || !hdSupported()) return;
     const mode = pickMode();
     this.hd = { state: 'loading', pct: 0, message: '', engine: null };
     this.setHdUi({ state: 'loading', pct: 0 });
