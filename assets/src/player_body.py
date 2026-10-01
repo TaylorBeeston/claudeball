@@ -13,11 +13,11 @@ def body_skin(level=2, SC=1.12):
     wai = add((0, 0, 1.13), (.160, .112), pel)
     ch1 = add((0, -.005, 1.27), (.190, .135), wai)
     ch2 = add((0, -.005, 1.39), (.212, .135), ch1)
-    nb = add((0, .0, 1.49), (.125, .095), ch2)                 # trapezius base
-    nk = add((0, -.006, 1.640), (.060, .066), nb)              # neck (ends inside the head)
+    nb = add((0, .0, 1.495), (.138, .100), ch2)                # trapezius base
+    nk = add((0, -.018, 1.640), (.060, .066), nb)              # neck (ends inside the head)
     for sx in (1, -1):
         m = lambda v: Vector((v[0]*sx, v[1], v[2]))
-        trap = add(m((.115, .0, 1.505)), (.058, .052), nb)
+        trap = add(m((.112, .0, 1.515)), (.066, .056), nb)         # upper trapezius slope
         sh = Vector((.21, 0, 1.50))
         dl = add(m(sh), (.078, .080), trap)                    # deltoid
         b1 = add(m(sh + D_ARM*.11), (.060, .064), dl)          # biceps/triceps
@@ -44,7 +44,7 @@ def body_skin(level=2, SC=1.12):
 
 def sstep(a, b, x): t = np.clip((x-a)/(b-a), 0, 1); return t*t*(3-2*t)
 def g2(x, w, cx, cw, sx, sw): return np.exp(-(((x-cx)/sx)**2 + ((w-cw)/sw)**2))
-HC = Vector((0, -.004, 1.725)); HR = (.080, .100, .125)
+HC = Vector((0, -.004, 1.725)); HR = (.079, .100, .118)
 
 def head_uv_dir(x, y, z):
     """unit-sphere coords -> (u, v); front (-Y) at u = .5"""
@@ -56,18 +56,27 @@ def build_head(seg=72, rings=52):
     x, y, z = N[:, 0], N[:, 1], N[:, 2]; F = -y; ff = sstep(-.05, .55, F)
     a = np.array(HR)
     # base shape: jaw taper + chin, wider cranium
-    lowk = np.clip(-z, 0, 1); ax = HR[0]*(1 - .30*lowk**1.6 + .06*np.clip(z, 0, 1)); ay = HR[1]*(1 + .02*np.clip(z, 0, 1)); az = HR[2]
-    P = np.stack([x*ax, y*ay, z*az], 1)
+    lowk = np.clip(-z, 0, 1); ax = HR[0]*(1 - .23*lowk**1.8 + .05*np.clip(z, 0, 1)); ay = HR[1]*(1 + .02*np.clip(z, 0, 1))
+    # round cranium instead of a tall egg: the upper hemisphere is a superellipsoid (exponent 2 -> 2.5, fuller shoulders of the dome, no pointed crown), crown 11.8 cm above the head centre,
+    # chin 13 cm below it (head height 24.8 cm = 1/7.5 of the body); the back of the skull (occiput) bulges and the forehead is a little flatter
+    ne = 2.0 + .5*sstep(0.0, .35, z); rr = (np.abs(x)**ne + np.abs(y)**ne + np.abs(z)**ne)**(-1.0/ne); sx_, sy_, sz_ = x*rr, y*rr, z*rr
+    az = np.where(z > 0, HR[2], .130)
+    occ = .011*sstep(.0, .75, y)*np.exp(-((z - .18)/.42)**2)
+    P = np.stack([sx_*ax, sy_*ay + occ, sz_*az], 1)
     disp = np.zeros(len(vs))
     def add(cx, cw, sx, sw, amp, mirror=True):
         nonlocal disp
-        disp += amp*(g2(x, z, cx, cw, sx, sw) + (g2(x, z, -cx, cw, sx, sw) if mirror and cx != 0 else 0))*ff
-    add(0, -.18, .16, .11, .030); add(0, .06, .07, .24, .011); add(.20, -.24, .10, .07, .012)       # nose tip/bridge/wings
-    add(0, .21, .55, .075, .011)                                                                       # brow ridge
-    add(.42, .09, .17, .10, -.013)                                                                     # eye sockets
+        disp += amp*(g2(x, z, cx, cw, sx, sw) + (.94*g2(x, z, -cx, cw, sx, sw) if mirror and cx != 0 else 0))*ff      # right side 6 % weaker: subtle asymmetry
+    add(0, -.18, .16, .11, .019); add(0, .06, .07, .24, .009); add(.20, -.24, .10, .07, .009)       # nose tip/bridge/wings
+    add(0, .21, .55, .075, .008)                                                                       # brow ridge
+    add(.42, .09, .17, .10, -.008)                                                                     # eye sockets
     add(.55, -.10, .22, .15, .006)                                                                     # cheekbones
     add(0, -.43, .27, .05, .007); add(0, -.53, .25, .055, .008); add(0, -.478, .29, .014, -.007)    # lips + mouth line
     add(0, -.78, .26, .13, .012)                                                                       # chin
+    add(.42, .21, .20, .035, -.0045); add(.40, -.02, .20, .05, -.003)                                  # upper-lid crease, lower orbital bag
+    add(0, -.36, .05, .06, -.0025); add(.10, -.285, .045, .03, -.006)                                  # philtrum groove, nostrils
+    add(0, -.46, .14, .016, .0035)                                                                     # cupid bow / upper-lip edge
+    add(.80, -.45, .12, .22, .006); add(.55, -.92, .30, .06, -.004)                                    # jaw angle, under-chin crease
     add(.32, -.55, .35, .22, -.004)                                                                    # nasolabial/cheek hollow
     Nn = np.stack([x*ax/HR[0], y*ay/HR[1], z*az/HR[2]], 1); Nn /= np.linalg.norm(Nn, axis=1, keepdims=True)
     P = P + Nn*disp[:, None]
@@ -122,12 +131,12 @@ def eyes_meshes():
     for sx in (1, -1):
         bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=16, radius=.0125)
         bmesh.ops.rotate(bm, verts=bm.verts, cent=(0, 0, 0), matrix=Matrix.Rotation(math.pi/2, 3, 'X'))     # north pole -> -Y (front)
-        bmesh.ops.translate(bm, vec=(sx*.033, -.083, 1.738), verts=bm.verts)
+        bmesh.ops.translate(bm, vec=(sx*.033, -.074, 1.738), verts=bm.verts)
         me = bpy.data.meshes.new("Eye"); bm.to_mesh(me); bm.free()
         # uv: v measured from the pole facing forward
         uvl = me.uv_layers.new(name="UVMap")
         for lp in me.loops:
-            c = me.vertices[lp.vertex_index].co - Vector((sx*.033, -.083, 1.738)); c = c.normalized()
+            c = me.vertices[lp.vertex_index].co - Vector((sx*.033, -.074, 1.738)); c = c.normalized()
             uvl.data[lp.index].uv = (math.atan2(c.x, c.z)/(2*math.pi)+.5, .5 - .5*c.y)   # v -> 1 at the front pole (-Y => c.y=-1), 0 at the back
         for p in me.polygons: p.use_smooth = True
         o = bpy.data.objects.new("Eye", me); bpy.context.collection.objects.link(o); out.append(o)
