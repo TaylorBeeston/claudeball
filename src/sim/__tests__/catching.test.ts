@@ -4,7 +4,7 @@ import { CATCH_LEAD } from '../fielding';
 import { groundHeight } from '../field';
 import type { GameEvent, GameStateSnapshot } from '../types';
 
-const CATCH_HINTS = new Set(['catch_pitch', 'catch_throw', 'catch_throw_low', 'catch_throw_high', 'catch_stretch', 'catch_fly', 'catch_backhand', 'field_grounder', 'catch_fly_run', 'catch_line_drive', 'catch_comebacker']);
+const CATCH_HINTS = new Set(['catch_pitch', 'catch_throw', 'catch_throw_low', 'catch_throw_high', 'pitcher_catch_toss', 'catch_stretch', 'catch_fly', 'catch_backhand', 'field_grounder', 'catch_fly_run', 'catch_line_drive', 'catch_comebacker']);
 
 /** Play the first innings at broadcast pace, remembering the snapshot from the tick before every catch. */
 function catches(seed: string, innings = 3) {
@@ -69,7 +69,7 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
       progress.push(p.animT);
       if (e.kind === 'pitch') expect(p.anim).toBe('catch_pitch');
       if (e.kind === 'ground') expect(['field_grounder', 'catch_comebacker', 'catch_line_drive', 'catch_backhand']).toContain(p.anim);
-      if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_throw_low', 'catch_throw_high', 'catch_stretch']).toContain(p.anim);
+      if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_throw_low', 'catch_throw_high', 'pitcher_catch_toss', 'catch_stretch']).toContain(p.anim);
     }
     expect(n / all.length).toBeGreaterThan(0.85);
     const mean = progress.reduce((a, b) => a + b, 0) / progress.length;
@@ -89,7 +89,7 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
       if ((e.kind === 'throw' || e.kind === 'pickoff') && e.pos.y < 0.5) expect(p.anim).not.toBe('catch_throw'); // a throw at the ground is scooped, not caught at the chest
       if (e.kind === 'fly') expect(['catch_fly', 'catch_fly_run', 'catch_backhand', 'catch_jump']).toContain(p.anim);
       if (e.kind === 'ground') expect(['field_grounder', 'catch_comebacker', 'catch_backhand', 'catch_jump']).toContain(p.anim);
-      if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_throw_low', 'catch_throw_high', 'catch_stretch']).toContain(p.anim);
+      if (e.kind === 'throw' || e.kind === 'pickoff') expect(['catch_throw', 'catch_throw_low', 'catch_throw_high', 'pitcher_catch_toss', 'catch_stretch']).toContain(p.anim);
     }
     expect(hinted / all.length).toBeGreaterThan(0.98);
     expect(targeted / all.length).toBeGreaterThan(0.98);
@@ -106,7 +106,7 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
       if (!last || e.kind !== 'throw' || !returns.includes(e.fielderId)) return;
       const p = last.players.find((q) => q.id === e.fielderId)!;
       expect(p.gloveTarget).toBeTruthy();
-      expect(p.anim).toBe('catch_throw');
+      expect(['catch_throw', 'pitcher_catch_toss']).toContain(p.anim);
       expect(Math.hypot(p.gloveTarget!.x - e.pos.x, p.gloveTarget!.y - e.pos.y, p.gloveTarget!.z - e.pos.z)).toBeLessThan(0.2);
       checked++;
     });
