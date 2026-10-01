@@ -33,7 +33,8 @@ interface RSState {
   batter: { info: RSInfo; line: { ab: number; h: number; hr: number; rbi: number } } | null;
   pitcher: { info: RSInfo; line: { outs: number; so: number; er: number }; pitchCount: number } | null;
   ball: { pos: V; vel: V; spin: V; mode: string; inPlay: boolean };
-  bat: { active: boolean; knob: V; tip: V; swingT: number };
+  bat: { active: boolean; knob: V; tip: V; swingT: number; dropped?: V | null };
+  deadBall?: { pos: V; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
   gameOver: boolean;
@@ -79,7 +80,7 @@ const POS_ROLE: Record<string, PlayerRole> = {
   P: 'pitcher', C: 'catcher', '1B': 'first', '2B': 'second', '3B': 'third', SS: 'short', LF: 'left', CF: 'center', RF: 'right', DH: 'first',
 };
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
-const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_ready: 1.0, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0 };
+const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_ready: 1.0, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0, pitcher_catch_toss: 0.5, ondeck_swing: 2.0, coach_stop: 1.0, coach_go: 1.5, coach_advance: 1.333, coach_slide: 1.0, coach_signs: 3.0, ballkid_pickup: 1.5, ballkid_toss: 1.0, bench_stand_up: 1.167, bench_cheer: 1.5 };
 
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
@@ -208,6 +209,21 @@ export class RealSimAdapter implements GameLike {
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
+      case 'coachSignal':
+        this.emit({ type: 'coach_signal', coachId: String(e.coachId), signal: String(e.kind) as 'stop' | 'go' | 'advance' | 'slide' | 'signs', runnerId: e.runnerId as string | undefined, base: e.base as number | undefined, pos: s?.players.find((q) => q.id === e.coachId)?.pos });
+        break;
+      case 'ballKidRetrieve':
+        this.emit({ type: 'ball_kid_retrieve', kidId: String(e.ballKidId), pos: e.pos as V });
+        break;
+      case 'ballTossedToFan':
+        this.emit({ type: 'ball_tossed_to_fan', kidId: String(e.ballKidId), pos: e.pos as V, from: s?.players.find((q) => q.id === e.ballKidId)?.pos });
+        break;
+      case 'batBoyRetrieve':
+        this.emit({ type: 'bat_boy_retrieve', batBoyId: String(e.batBoyId), pos: e.pos as V });
+        break;
+      case 'onDeck':
+        this.emit({ type: 'on_deck', playerId: String(e.playerId), team: e.team === 'home' ? 1 : 0 });
+        break;
       case 'walk':
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
         break;
@@ -290,7 +306,8 @@ export class RealSimAdapter implements GameLike {
     const st: GameState = {
       time: s.time,
       ball: { pos: s.ball.pos, vel: s.ball.vel, spin: s.ball.spin, visible: s.ball.mode !== 'dead' || s.ball.inPlay },
-      bat: { visible: s.bat.active, pos: knob, quat: quatFromTo({ x: 0, y: 1, z: 0 }, { x: dir.x / dl, y: dir.y / dl, z: dir.z / dl }) },
+      bat: { visible: s.bat.active, pos: knob, quat: quatFromTo({ x: 0, y: 1, z: 0 }, { x: dir.x / dl, y: dir.y / dl, z: dir.z / dl }), dropped: s.bat.dropped ?? null },
+      deadBall: s.deadBall ?? null,
       players,
       umpireCall: { seq: this.callSeq, kind: call ? (CALL_KIND[call.kind] ?? 'none') : 'none' },
       count: { balls: s.balls, strikes: s.strikes },

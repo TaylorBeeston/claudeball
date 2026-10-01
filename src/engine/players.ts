@@ -266,7 +266,7 @@ export class BatView {
   }
 
   /** A practice bat with its donut for the on-deck batter's hand (knob at the origin, barrel along +Y): the bat model (or the procedural bat) and the donut. */
-  makeHandBat(): Object3D {
+  makeHandBat(withDonut = true): Object3D {
     const g = new Group();
     g.name = 'OnDeck_Bat';
     const src = this.model ?? null;
@@ -275,6 +275,7 @@ export class BatView {
       if ((o as Mesh).isMesh) (o as Mesh).castShadow = true;
     });
     g.add(m);
+    if (!withDonut) return g;
     if (this.donut) g.add(this.donut.clone(true));
     else {
       const ring = new Mesh(new TorusGeometry(0.056, 0.02, 8, 18).rotateX(Math.PI / 2), new MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));

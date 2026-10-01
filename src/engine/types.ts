@@ -38,6 +38,7 @@ export type AnimHint =
   | 'toss'
   /** glove out, facing the thrower, waiting for a throw that has not left his hand yet (pitcher before the catcher's return) */
   | 'catch_ready'
+  | 'pitcher_catch_toss'
   // catches: the glove meets the ball at `gloveTarget`
   | 'catch_pitch'
   | 'catch_throw'
@@ -83,6 +84,7 @@ export type AnimHint =
   | 'coach_signs'
   | 'ballkid_sit'
   | 'ballkid_run'
+  | 'ballkid_idle'
   | 'ballkid_pickup'
   | 'ballkid_toss';
 
@@ -105,7 +107,8 @@ export type PlayerRole =
   | 'ondeck'
   | 'coach1b'
   | 'coach3b'
-  | 'ballkid';
+  | 'ballkid'
+  | 'batboy';
 
 export interface PlayerSnap {
   id: string;
@@ -158,6 +161,8 @@ export interface BatSnap {
   /** position of the bat's knob end */
   pos: Vec3;
   quat: Quat;
+  /** a bat lying on the ground by the plate (the hitter ran with the ball in play) until the bat boy fetches it */
+  dropped?: Vec3 | null;
 }
 
 export interface TeamInfo {
@@ -226,6 +231,8 @@ export interface GameState {
   stats?: { away: TeamStatsView; home: TeamStatsView };
   /** pitcher fatigue 0..1 and pitch count, when known */
   pitchCount?: number;
+  /** a foul ball that nobody holds: flying / rolling / resting on the ground, carried by a ball kid (drawn by his hand), or tossed to a fan */
+  deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** who is on deck and on the benches (for the side cast), when the sim knows */
   side?: SideInfo;
 }
@@ -274,6 +281,10 @@ export type GameEvent =
   | { type: 'coach_signal'; coachId: string; signal: 'stop' | 'go' | 'advance' | 'slide' | 'signs'; runnerId?: string; base?: number; pos?: Vec3 }
   /** a ball kid picked up a ball (a foul ball) */
   | { type: 'ball_kid_retrieve'; kidId: string; pos: Vec3 }
+  /** the bat boy picked up the dropped bat */
+  | { type: 'bat_boy_retrieve'; batBoyId: string; pos: Vec3 }
+  /** the next hitter got up and went to the on-deck circle; the one before him is out of the box */
+  | { type: 'on_deck'; playerId: string; team: number }
   /** a ball kid tossed a ball to a fan in the stands; `pos` is where the fan sits */
   | { type: 'ball_tossed_to_fan'; kidId: string; pos: Vec3; from?: Vec3 }
   | { type: 'ball' | 'strike' | 'foul' }

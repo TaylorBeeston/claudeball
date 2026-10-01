@@ -39,9 +39,9 @@ export function readyGlove(pos: { x: number; z: number }, toward: { x: number; z
   const fx = dx / l, fz = dz / l;
   // glove hand is on the left of the facing for a right-hander
   const lx = fz, lz = -fx;
-  const s = (hand === 'L' ? -1 : 1) * 0.18;
-  out.x = pos.x + fx * 0.5 + lx * s;
+  const s = (hand === 'L' ? -1 : 1) * 0.3;
+  out.x = pos.x + fx * 0.55 + lx * s;
   out.y = 1.3;
-  out.z = pos.z + fz * 0.5 + lz * s;
+  out.z = pos.z + fz * 0.55 + lz * s;
   return out;
 }
