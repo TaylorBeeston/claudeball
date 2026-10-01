@@ -411,6 +411,43 @@ out in front; a pitch off the plate is reached for, the hands extend and, past t
 path at contact (hands 0.30 m toward the pitcher), the timing tolerance is larger and the pull tendency is now a contact depth (`pullDepth`: a puller meets the ball up to 0.14 m further out in front, where the bat is more turned, an opposite-field hitter deeper) instead of a timing shift; `sigmaT`,
 `baseBatSpeed`, the vertical bat-path noise, and the steal estimate's tag time were re-tuned (stats below).
 
+## People around the field: the return throw, the dugouts, coaches, ball kids
+
+All coordinates are metres in the usual frame (+X toward third base, +Z toward centre field); the home team is in the **third-base dugout (+X)**, the visitors in the first-base one (−X).
+They come from `src/sim/venue.ts` and the assets' `field.py` / `geom.py` (dugout footprint s 12–30 m, o 8.6–13.2 m along / off the base line, floor 1.05 m below the field).
+
+**The return throw.** When a fielder is about to throw the ball back (from the start of the last 0.35 s before it leaves his hand, also for each leg around the horn) the receiver — the pitcher
+usually — turns to face the thrower, holds his glove out (hint `catch_ready`, a loop) at the point where the ball will come to it and publishes `gloveTarget` / `catchIn` (seconds to the
+catch, counting through the throw's flight); in flight the clip is `pitcher_catch_toss` (the pitcher, catch frame 8/24 s) or `catch_throw`, and every `ballReturn` ends in a `catch` event
+at the glove (`kind: 'throw'`).
+
+**Lifecycle (nobody warps).** Everybody exists all the time. Position players and the pitchers who are in the game sit on their bench (role `bench`, hint `bench_sit`, `pos.y` = the dugout floor,
+−1.05 m) at seat `k` = `benchSeat(side, k)`: home seat 0 (18.6, 1.5) … seat 15 (28.7, 11.6), mirrored in X for the visitors; three relievers per team stand in the bullpen (role `bench`, home
+mound end (49.5, 38.2), mirrored). The hitter after the one at the plate gets up (event `onDeck {playerId, team}`), walks aisle → steps (16.0, 2.3) → door (14.6, 1.0) at field level → the
+**on-deck circle** (home (11.3, 0), mirrored; role `ondeck`), loose (`ondeck_ready`) with a swing with the donut (`ondeck_swing`, 2 s) every 6–10 s; when he is called (`batterUp`) he walks to his box
+(hint `walk`, 2.4 m/s, 3–8 s; around behind the plate through (±5.2, −3.6) → (±3.4, −3.6) if his box is on the far side) and the pitch waits for him (bounded). A man who is out, a runner who
+scored, fielders at the end of the inning and replaced players walk to the door, down the steps and sit down (`walk` → `bench_sit`); pinch runners and pinch hitters come from their seat;
+a reliever jogs in from the bullpen; fielders come up the steps and run out. At the end of a play nobody is snapped any more: a runner still running through the bag brakes and walks back, a
+batter sent out of the box by a foul walks back. Headless runs (`pace: 0`) place people directly.
+
+**Base coaches** (roles `coach3b` / `coach1b`, `position` `C3B` / `C1B`, ids `coach-<home|away>-<3b|1b>`): the batting team's stand in the coach boxes — third (23.7, 15.1), first (−23.7, 15.1) —
+the others are not on the field. Hints `coach_ready`, `coach_stop`, `coach_go` (windmill), `coach_slide`, `coach_advance`, `coach_signs`; event `coachSignal {coachId, kind: 'stop'|'go'|'slide'|
+'advance'|'signs', runnerId?, base?}` when a call changes. The call is a **decision** (`DecisionKind` `'coach'`, request `CoachRequest`: coach, runner, base / heading / want, ball, `ballToBase`,
+`runnerToBase`, `throwComing`; answer `{call: 'go'|'stop'|'advance'|'slide'|'none'}`). The built-in coach makes the runner's own call with his own judgement error and from the same state: `go`
+or `stop` for a runner at or heading for third, `advance` or `stop` for a batter-runner at first, `slide` when a throw is on its way to the base. The runner takes it with a probability that falls
+with his `iq` (0.75–0.97); if he does not, or if the side plays its runners with a provider that has no `coach`, his own decision stands. `coach_signs` is shown between pitches on the sim's
+own steal / bunt calls (and as flavour with runners on).
+
+**Ball kids and the bat boy** (roles `ballkid`, `batboy`; ids `ballkid-3b` / `ballkid-1b`, `batboy-<side>`): the kids sit on chairs down the lines in foul ground — (37.1, 30.8) and
+(−37.1, 30.8) — `ballkid_sit`; the bat boy stands by the batting team's dugout (15.3, 8.0). A foul ball that nobody holds keeps flying and rolling as `deadBall` (`GameStateSnapshot.deadBall
+{pos, state: rolling|resting|carried|tossed}`; the live ball is replaced in the pitcher's hand as before); when it stops in foul ground the nearer kid runs to it (`ballkid_run`), picks it
+up (`ballkid_pickup`, event `ballKidRetrieve {ballKidId, pos}`) and takes it back to his chair, or 40 % of the time tosses it into the stands (`ballkid_toss`, event `ballTossedToFan {ballKidId,
+pos}`). They keep out of a live play (the kid retreats when the ball is hit within 24 m). A hitter who runs with the ball in play drops his bat by the plate (`BatSnapshot.dropped`); the bat boy
+fetches it once the play is over (`batBoyRetrieve {batBoyId, pos}`) and carries it back.
+
+New hints: `catch_ready`, `pitcher_catch_toss`, `bench_sit`, `ondeck_ready`, `ondeck_swing`, `walk`, `bullpen_throw` (unused), `coach_*`, `ballkid_*`. New roles: `bench`, `ondeck`, `coach1b`, `coach3b`, `ballkid`, `batboy`.
+About 45 entities are in a snapshot (on the field 14-18, benches ~20, staff 5). Statistics are unchanged (seeds 1-8 x 60 games: R/G 4.4, AVG .241, K% 23.5, BABIP .296, HR/G 1.04).
+
 ## Pacing
 
 `pace: 1` gives a broadcast-like pace (a full 9-inning game is ~45 simulated minutes because dead time is
