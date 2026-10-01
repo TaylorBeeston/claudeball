@@ -175,3 +175,34 @@ describe('CustomVoiceController', () => {
     expect(sw.neural).toBeNull();
   });
 });
+
+import { planClips, stitch, trimClip } from '../voice/clips';
+import { ClipFirstSynth } from '../voice/clipSynth';
+
+describe('concatenative clips', () => {
+  const index = { version: 1 as const, gapMs: 20, keys: { 'now batting': 'a.ogg', 'number twenty three': 'b.ogg', aaron: 'c.ogg', abbott: 'd.ogg', strike: 'e.ogg' } };
+  it('covers a PA line from phrase clips, longest match first, and gives up on unknown words', () => {
+    expect(planClips('Now batting, number 23, Aaron Abbott.', index)).toEqual(['a.ogg', 'b.ogg', 'c.ogg', 'd.ogg']);
+    expect(planClips('Strike!', index)).toEqual(['e.ogg']);
+    expect(planClips('Now batting, number 23, Zach Young.', index)).toBeNull();
+  });
+  it('trims silence and stitches with a gap', () => {
+    const x = new Float32Array(48000);
+    x.fill(0.5, 20000, 20400);
+    expect(trimClip(x, 48000).length).toBeLessThan(4500);
+    expect(trimClip(x, 48000).length).toBeGreaterThan(400);
+    expect(stitch([new Float32Array(100), new Float32Array(50)], 1000, 20).length).toBe(170);
+  });
+  it('plays clips when the whole line is covered, otherwise asks the model', async () => {
+    const inner = { init: vi.fn(async () => {}), generate: vi.fn(async () => ({ samples: new Float32Array(10), sr: 22050 })), dispose: vi.fn() };
+    const fetcher = (async () => new Response(new Uint8Array(4))) as unknown as typeof fetch;
+    const dec = { decode: async () => ({ samples: new Float32Array(2205).fill(0.3), sr: 22050 }) };
+    const s = new ClipFirstSynth(inner, index, 'https://h.test/clips/index.json', dec, fetcher);
+    const a = await s.generate('Strike!', 'v', 1);
+    expect(a.samples.length).toBeGreaterThan(100);
+    expect(inner.generate).not.toHaveBeenCalled();
+    await s.generate('Ball four!', 'v', 1);
+    expect(inner.generate).toHaveBeenCalledTimes(1);
+    expect(s.stats).toEqual({ clipLines: 1, modelLines: 1 });
+  });
+});

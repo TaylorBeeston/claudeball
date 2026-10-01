@@ -63,7 +63,19 @@ export interface ControllerDeps {
 async function defaultMakeEngine(pack: LoadedPack, d: ControllerDeps): Promise<EngineLike> {
   const [{ NeuralSpeechEngine }, { PackSynth }] = await Promise.all([import('../neural'), import('./packSynth')]);
   // mode 'gpu' only seeds the speed estimate (a small model runs faster than real time); the engine re-measures it
-  return new NeuralSpeechEngine(new PackSynth(pack, d.getExcitement), d.mixer, d.browser(), 'gpu') as unknown as EngineLike;
+  let synth: import('../neural').Synth = new PackSynth(pack, d.getExcitement);
+  if (pack.manifest.clips && pack.manifestUrl) {
+    // the owner's own recordings first, for the lines they cover exactly; the model for everything else
+    try {
+      const { ClipFirstSynth } = await import('./clipSynth');
+      const idxUrl = new URL(pack.manifest.clips.index, pack.manifestUrl).toString();
+      const r = await fetch(idxUrl);
+      if (r.ok) synth = new ClipFirstSynth(synth, await r.json(), idxUrl);
+    } catch {
+      /* no clips: model only */
+    }
+  }
+  return new NeuralSpeechEngine(synth, d.mixer, d.browser(), 'gpu') as unknown as EngineLike;
 }
 
 export class CustomVoiceController {

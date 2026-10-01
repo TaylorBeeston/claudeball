@@ -24,6 +24,8 @@ export interface VoiceManifest {
   phonemeIdMap: PhonemeIdMap;
   lexicon: Record<string, number[]>;
   attribution?: string;
+  /** optional bank of the owner's own recordings (clips/index.json relative to voice.json), played for lines it covers exactly */
+  clips?: { index: string };
   /** where to get onnxruntime-web from (default: pinned jsDelivr URL) */
   runtime?: { ortUrl?: string };
 }
@@ -58,6 +60,7 @@ export function parseManifest(x: unknown): VoiceManifest {
     phonemeIdMap: idmap as PhonemeIdMap,
     lexicon: x.lexicon as Record<string, number[]>,
     attribution: typeof x.attribution === 'string' ? x.attribution : undefined,
+    clips: isObj(x.clips) && typeof x.clips.index === 'string' ? { index: x.clips.index } : undefined,
     runtime: isObj(x.runtime) ? (x.runtime as { ortUrl?: string }) : undefined,
   };
 }
@@ -96,6 +99,8 @@ export interface LoadedPack {
   model: ArrayBuffer;
   /** where it came from, for the settings */
   source: { kind: 'url'; url: string } | { kind: 'files'; names: string[] };
+  /** absolute URL of voice.json for URL packs (clips resolve against it) */
+  manifestUrl?: string;
 }
 
 export type Progress = (loaded: number, total: number) => void;
@@ -158,14 +163,14 @@ export async function loadPackFromUrl(input: string, onProgress?: Progress, f: t
   const key = `${modelUrl}#${manifest.built ?? manifest.models[manifest.default]!.bytes}`;
   const cache = await openCache();
   const hit = await cache?.match(key);
-  if (hit) return { manifest, model: await hit.arrayBuffer(), source: { kind: 'url', url: input } };
+  if (hit) return { manifest, model: await hit.arrayBuffer(), source: { kind: 'url', url: input }, manifestUrl: mUrl };
   const model = await fetchWithProgress(modelUrl, onProgress, f);
   try {
     await cache?.put(key, new Response(model.slice(0)));
   } catch {
     /* storage full or blocked: it just downloads again next time */
   }
-  return { manifest, model, source: { kind: 'url', url: input } };
+  return { manifest, model, source: { kind: 'url', url: input }, manifestUrl: mUrl };
 }
 
 /** Load a pack from files the user picked (voice.json + the model .onnx), and remember it in the Cache API for next time. */
