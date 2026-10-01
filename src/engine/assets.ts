@@ -57,9 +57,22 @@ export interface Assets {
   missing: string[];
 }
 
+/** Aggregate loading progress: `frac` in 0..1 (bytes loaded of the known file sizes), `label` names what is loading now. */
+export interface LoadProgress {
+  frac: number;
+  label: string;
+}
+
+const LABELS: [RegExp, string][] = [
+  [/^(optimized\/)?stadium/, 'Loading stadium…'],
+  [/^(optimized\/)?field/, 'Loading the field…'],
+  [/players\//, 'Loading players…'],
+  [/^(optimized\/)?(ball|bat)/, 'Loading ball and bat…'],
+];
+
 const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base'];
 
-export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (msg: string) => void): Promise<Assets> {
+export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (p: LoadProgress) => void): Promise<Assets> {
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
   const ktx2 = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}libs/basis/`).detectSupport(renderer);
   const loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
@@ -77,13 +90,43 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     /* no layout: assume current contract */
   }
 
+  // byte sizes of the shipped files (`asset_sizes.json`, written by the Vite plugin): the progress bar weights files by them, because
+  // `ProgressEvent.total` is 0 without a Content-Length and wrong for compressed responses
+  let sizes: Record<string, number> = {};
+  try {
+    const r = await fetch(base + 'asset_sizes.json', { cache: 'no-cache' });
+    if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) sizes = await r.json();
+  } catch {
+    /* no table: equal weights */
+  }
+  const fileWeight = (path: string) => Math.max(1, sizes[path] ?? 1_000_000);
+  const progress = new Map<string, { loaded: number; weight: number }>();
+  let label = 'Loading stadium…';
+  const report = () => {
+    let l = 0, w = 0;
+    for (const p of progress.values()) {
+      l += Math.min(p.loaded, p.weight);
+      w += p.weight;
+    }
+    onProgress?.({ frac: w ? l / w : 0, label });
+  };
+  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', ...CHARACTERS.map((c) => `players/${c}.glb`)];
+  for (const f of known) progress.set(f, { loaded: 0, weight: fileWeight(`optimized/${f}`) });
+
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
   const load = async (file: string, need?: string) => {
     const order = [`optimized/${file}`, file];
     for (const path of order) {
       try {
-        onProgress?.(`loading ${path}`);
-        const g = await loader.loadAsync(base + path);
+        label = LABELS.find(([re]) => re.test(path))?.[1] ?? label;
+        const entry = progress.get(file)!;
+        const g = await loader.loadAsync(base + path, (e) => {
+          entry.loaded = e.loaded;
+          if (path === file) entry.weight = Math.max(entry.weight, e.total || e.loaded);
+          report();
+        });
+        entry.loaded = entry.weight;
+        report();
         // players need their Bat_Grip / Ball_Grip attachment empties (optimize.sh keeps them; older builds pruned them)
         if (need && !g.scene.getObjectByName(need)) {
           out.missing.push(`${path} (no ${need}, using raw export)`);
@@ -106,6 +149,8 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     ...CHARACTERS.map((c) => load(`players/${c}.glb`, 'Bat_Grip')),
   ]);
 
+  for (const p of progress.values()) p.loaded = p.weight;
+  report();
   const wrap = (g: Group | undefined) => {
     if (!g) return undefined;
     if (!out.mirrored) return g;

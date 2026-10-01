@@ -13,11 +13,34 @@ function cbAssets(): Plugin {
     '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.json': 'application/json',
     '.ktx2': 'image/ktx2', '.jpg': 'image/jpeg', '.png': 'image/png', '.bin': 'application/octet-stream',
   };
+  // byte sizes of the shipped files, for the loading screen's progress bar (the same set the build copies, see `shipped` below)
+  const shippedFile = (src: string, f: string) => {
+    const rel = path.relative(src, f).split(path.sep);
+    return rel[0] === 'field_layout.json' || (rel[0] === 'optimized' && rel[1] !== 'lod1');
+  };
+  const sizes = () => {
+    const src = dir();
+    const out: Record<string, number> = {};
+    const walk = (d: string) => {
+      for (const e of fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }) : []) {
+        const f = path.join(d, e.name);
+        if (e.isDirectory()) walk(f);
+        else if (shippedFile(src, f)) out[path.relative(src, f).split(path.sep).join('/')] = fs.statSync(f).size;
+      }
+    };
+    walk(src);
+    return out;
+  };
   return {
     name: 'cb-assets',
     configureServer(server) {
       server.middlewares.use('/assets', (req, res, next) => {
         const rel = decodeURIComponent((req.url ?? '/').split('?')[0]);
+        if (rel === '/asset_sizes.json') {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-cache');
+          return void res.end(JSON.stringify(sizes()));
+        }
         const file = path.join(dir(), rel);
         if (!file.startsWith(dir()) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return next();
         res.setHeader('Content-Type', types[path.extname(file)] ?? 'application/octet-stream');
@@ -35,6 +58,7 @@ function cbAssets(): Plugin {
         return rel[0] === '' || rel[0] === 'field_layout.json' || (rel[0] === 'optimized' && rel[1] !== 'lod1');
       };
       fs.cpSync(src, path.resolve('dist/assets'), { recursive: true, filter: shipped });
+      fs.writeFileSync(path.resolve('dist/assets/asset_sizes.json'), JSON.stringify(sizes()));
     },
   };
 }

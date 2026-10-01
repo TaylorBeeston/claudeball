@@ -19,11 +19,12 @@ export function loadSettings(): Settings {
       master: num(o.master, DEFAULT_SETTINGS.master),
       sfx: num(o.sfx, DEFAULT_SETTINGS.sfx),
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
-      organ: num(o.organ, DEFAULT_SETTINGS.organ),
-      announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
+            announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
+      organ: bool(o.organ, true),
+      organVolume: num(o.organVolume, DEFAULT_SETTINGS.organVolume),
       chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
       hd: o.hd === true,
     };
@@ -105,7 +106,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organ' | 'announcer', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -139,7 +140,7 @@ export class AudioUi {
     slider('master', 'Master');
     slider('sfx', 'Effects');
     slider('crowd', 'Crowd');
-    slider('organ', 'Organ');
+    slider('organVolume', 'Organ');
     slider('announcer', 'Voices');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
