@@ -73,6 +73,8 @@ const GENS: Record<string, Gen> = {
   chain: (r) => r.pick(CHAINS),
   field: (r) => r.pick(['left field', 'center field', 'right field']),
   inn: (r) => String(r.int(2, 9)),
+  /** a 20-80 scouting grade, rounded to 5 like the commentary does */
+  pct: (r) => String(r.int(13, 16) * 5),
   /** "top of the third" etc. */
   inning: (r) => `${r.pick(['top', 'bottom'])} of the ${r.pick(INNING_WORDS.slice(0, 11))}`,
   /** "third" (1..9) */

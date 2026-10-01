@@ -2,6 +2,7 @@
  * Generates the recording script: `tools/announcer/script/data/*.jsonl` (machine-readable) and `SCRIPT.md` (readable / printable).
  * Run with `npm run announcer:script`. Deterministic: same game sources + same templates = same script.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -165,15 +166,23 @@ function assignSessions(lines: Omit<ScriptLine, 'session'>[], tier: Tier, prefix
 export function buildScript(): ScriptLine[] {
   const pools = loadPools();
   const raw = pickTiers([...expandTemplates(pools), ...expandFree(pools), ...expandVocabulary(pools)]);
-  const counters: Record<string, number> = { pilot: 0, core: 0, extended: 0 };
   const base: Omit<ScriptLine, 'session'>[] = [];
   const tierOrder: Tier[] = ['pilot', 'core', 'extended'];
+  const used = new Set<string>();
+  /** Ids are a hash of the text, not a counter: regenerating the script (new commentary, new templates) never renumbers lines you have already recorded. */
+  const idOf = (text: string) => {
+    for (let len = 8; ; len++) {
+      const id = createHash('sha1').update(text).digest('hex').slice(0, len);
+      if (!used.has(id)) return id;
+    }
+  };
   for (const tier of tierOrder) {
     for (const x of raw.filter((q) => q.tier === tier)) {
-      const n = ++counters[tier];
       const normalized = normalizeForSpeech(x.text);
+      const id = idOf(x.text);
+      used.add(id);
       base.push({
-        id: `${tier === 'pilot' ? 'p' : tier === 'core' ? 'c' : 'e'}${String(n).padStart(4, '0')}`,
+        id,
         text: x.text,
         normalized,
         style: x.style,

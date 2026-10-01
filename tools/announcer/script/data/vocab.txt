@@ -23,6 +23,7 @@ albany
 alex
 alive
 all
+allowed
 almost
 already
 also
@@ -86,6 +87,7 @@ baseman
 baserunning
 bases
 bat
+bat-to-ball
 batboy
 bats
 batted
@@ -119,6 +121,7 @@ big
 birds
 bison
 bit
+bits
 black
 blake
 blanco
@@ -139,6 +142,7 @@ box
 boy
 brandon
 break
+breaking
 breath
 breathes
 breeze
@@ -197,11 +201,13 @@ celebrated
 center
 center-field
 chair
+challenge
 chance
 change
 changed
 changes
 changeup
+changing
 charge
 charged
 chargers
@@ -217,6 +223,7 @@ cheers
 chill
 choice
 chopper
+chord
 chris
 chuck
 circled
@@ -243,16 +250,19 @@ come
 comes
 comets
 coming
+command
 competes
 concourse
 connor
 contact
+control
 cool
 corner
 corners
 costly
 could
 count
+counting
 course
 crack
 cracked
@@ -263,6 +273,7 @@ crowd
 crushed
 cruz
 curveball
+curveballs
 cut
 cutter
 cyclones
@@ -270,6 +281,7 @@ d
 dalton
 dan
 danced
+dangerous
 daniels
 darius
 darted
@@ -311,11 +323,13 @@ dogs
 dominic
 door
 double
+double-play
 doubled
 doubles
 douglas
 dove
 down
+download
 draw
 dream
 dribbled
@@ -337,6 +351,7 @@ dustin
 e
 each
 early
+earned
 easy
 echoed
 edwards
@@ -366,6 +381,7 @@ empty
 enable
 end
 ending
+energy
 enjoy
 enormous
 enough
@@ -392,6 +408,7 @@ experience
 exploded
 exposes
 extra
+eye
 f
 face
 facing
@@ -408,6 +425,7 @@ far
 farmer's
 fast
 fastball
+fastballs
 fastest
 feel
 feels
@@ -418,6 +436,7 @@ fence
 fernandez
 fetch
 few
+fewer
 field
 fielder
 fielder's
@@ -534,12 +553,15 @@ go
 goalies
 goes
 going
+golden
 gomez
 gone
 gonzalez
 good
 got
 grab
+grade
+grades
 graham
 grant
 grass
@@ -560,6 +582,7 @@ gus
 guy
 h
 had
+haircut
 half
 hall
 hamilton
@@ -578,8 +601,10 @@ harder
 hardest
 harris
 has
+hat
 have
 hayes
+hd
 he
 head
 headfirst
@@ -611,6 +636,7 @@ hold
 holds
 hole
 home
+homer
 homers
 honestly
 hop
@@ -627,7 +653,9 @@ humanly
 hundred
 hundred-mile-an-hour
 hundreds
+hundredths
 hunter
+hunting
 hurry
 hurts
 hush
@@ -651,6 +679,7 @@ into
 ironmen
 is
 isaac
+issued
 it
 it's
 its
@@ -822,6 +851,7 @@ misses
 mistake
 mitchell
 mitt
+mix
 mobile
 moment
 momentum
@@ -848,6 +878,7 @@ near
 nearly
 need
 needed
+needs
 neither
 nelson
 nervous
@@ -901,6 +932,7 @@ on
 once
 one
 one-foot
+one-run
 one-three
 one-two-three
 only
@@ -975,6 +1007,7 @@ pop-up
 popcorn
 pops
 portland
+position
 positioning
 possible
 pound
@@ -986,6 +1019,7 @@ prettiest
 pretty
 price
 probably
+protecting
 provo
 pull
 pulled
@@ -999,6 +1033,7 @@ quiet
 quinn
 quit
 r
+race
 raced
 rafael
 rail
@@ -1012,6 +1047,7 @@ rate
 rattled
 ray
 reach
+reached
 reaches
 react
 read
@@ -1027,6 +1063,7 @@ relief
 remember
 remembers
 reminder
+remove
 reno
 replacement
 replay
@@ -1041,7 +1078,9 @@ ricky
 riding
 right
 right-field
+right-handed
 right-hander
+righty
 riley
 rise
 rises
@@ -1086,6 +1125,7 @@ salem
 salt
 sam
 same
+same-handed
 sanchez
 sanders
 santiago
@@ -1102,6 +1142,7 @@ score
 scoreboard
 scored
 scores
+scoring
 scott
 scouts
 screen
@@ -1136,7 +1177,9 @@ seventh-inning
 seventy
 seventy-eight
 seventy-five
+seventy-five-grade
 seventy-four
+seventy-grade
 seventy-nine
 seventy-one
 seventy-seven
@@ -1152,6 +1195,7 @@ shame
 shane
 sharks
 sharp
+shave
 she
 shied
 shift
@@ -1168,6 +1212,7 @@ show
 shut
 shutout
 side
+sides
 sign
 signal
 silva
@@ -1190,6 +1235,7 @@ sixth
 sixty
 sixty-eight
 sixty-five
+sixty-five-grade
 sixty-four
 sixty-nine
 sixty-one
@@ -1197,12 +1243,14 @@ sixty-seven
 sixty-six
 sixty-three
 sixty-two
+skill
 skippers
 sky
 slapped
 slid
 slide
 slider
+sliders
 slow
 slowly
 slugger
@@ -1219,6 +1267,7 @@ snapped
 so
 soda
 solid
+sombrero
 some
 somebody
 something
@@ -1323,8 +1372,10 @@ teams
 tell
 tells
 ten
+tension
 tenth
 tenths
+terms
 than
 thank
 thanked
@@ -1415,6 +1466,7 @@ traveled
 travis
 trees
 trent
+trick
 tries
 triples
 trust
@@ -1468,6 +1520,7 @@ usually
 v
 vacation
 vargas
+variations
 velocity
 very
 veteran
@@ -1538,6 +1591,7 @@ winning
 wins
 wiped
 wipes
+wire
 with
 without
 woken
@@ -1549,6 +1603,7 @@ woodchuck
 wore
 work
 worked
+worker
 working
 works
 world
@@ -1562,6 +1617,7 @@ y
 year
 years
 yellow
+yet
 you
 you're
 young
