@@ -4,7 +4,7 @@
  * touch the engine HUD. Settings persist in localStorage (every access wrapped: it can throw or be empty).
  */
 import { DEFAULT_SETTINGS, type Settings } from './mixer';
-import { HD_MODES, pickMode } from './hdInfo';
+import { HD_MODES, hdSupported, pickMode } from './hdInfo';
 
 const KEY = 'claudeball.audio.v1';
 
@@ -197,11 +197,14 @@ export class AudioUi {
   /** HD voices status: off (not downloaded / switched off), loading (with progress), ready, error */
   setHd(o: { state: 'off' | 'loading' | 'ready' | 'error'; pct?: number; text?: string; cached?: boolean }) {
     const m = HD_MODES[pickMode()];
-    this.hdBtn.disabled = o.state === 'loading';
+    const supported = hdSupported();
+    this.hdBtn.disabled = o.state === 'loading' || !supported;
     this.hdBtn.textContent = o.state === 'ready' ? 'HD voices: on (switch off)' : o.state === 'loading' ? `Downloading… ${o.pct ?? 0}%` : o.cached ? 'Use HD voices' : `Download HD voices (~${m.mb} MB)`;
     this.hdNote.textContent =
       o.text ??
-      (o.state === 'off'
+      (!supported
+        ? 'HD voices need WebGPU, which this browser does not offer (the CPU version is slower than real time, so it is not offered).'
+        : o.state === 'off'
         ? pickMode() === 'gpu'
           ? 'Neural voices (Kokoro, Apache-2.0) run in your browser on the GPU. One-time download from Hugging Face, kept in the browser cache.'
           : 'Neural voices (Kokoro, Apache-2.0) run in your browser. No WebGPU here, so they are slower than real time on the CPU and the booth will talk less. One-time download.'
