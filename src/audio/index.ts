@@ -222,8 +222,10 @@ export class AudioController {
       case 'halfInningEnd':
         this.phase = 'break';
         break;
+      case 'gameStart':
       case 'plateAppearanceEnd':
-        this.phase = 'betweenBatters';
+      case 'playEnd':
+        this.phase = this.phase === 'break' ? 'break' : 'betweenBatters';
         break;
       case 'batterUp':
       case 'ballReturn':
@@ -556,6 +558,10 @@ export class AudioController {
     }
   }
 
+  get phaseNow() {
+    return this.phase;
+  }
+
   dispose() {
     if (this.interval) clearInterval(this.interval);
     for (const t of this.timers) clearTimeout(t);
@@ -581,7 +587,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, chat: a.debug.chat, organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,
