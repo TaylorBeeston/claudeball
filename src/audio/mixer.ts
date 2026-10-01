@@ -18,7 +18,7 @@ export const MAX_VOICES = 32;
 /** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
 const MAKEUP = 2;
 /** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
-const ORGAN_LEVEL = 1.6;
+const ORGAN_LEVEL = 1.0;
 
 export interface Settings {
   master: number;
