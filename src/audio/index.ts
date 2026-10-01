@@ -13,6 +13,7 @@ import { Organ } from './organ';
 import { SpeechQueue, browserSpeech } from './speech';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
+import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
 import { listenerFromMatrix } from './spatial';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
 
@@ -108,6 +109,11 @@ export class AudioController {
   private levelTimer = 0;
   private rawState: Record<string, any> | null = null;
   private raw: RawBus | null;
+  /** the booth: play-by-play + colour chatter, grounded in the sim state */
+  private chatter = new Chatter();
+  private phase: Phase | null = null;
+  private lastPull = 0;
+  private lastPlayText = '';
   private offs: (() => void)[] = [];
 
   readonly debug = {
@@ -115,6 +121,7 @@ export class AudioController {
     mapped: {} as Record<string, number>,
     played: {} as Record<string, number>,
     perHalf: {} as Record<string, Record<string, number>>,
+    chat: {} as Record<string, number>,
     energy: [] as { t: number; rms: number; peak: number }[],
     events: 0,
   };
@@ -209,6 +216,32 @@ export class AudioController {
 
   // ---- events --------------------------------------------------------------------------------------------------------
 
+  /** where the booth is in the game flow: when a filler line fits (never during a pitch) */
+  private trackPhase(ev: RawEvent) {
+    switch (ev.type) {
+      case 'halfInningEnd':
+        this.phase = 'break';
+        break;
+      case 'plateAppearanceEnd':
+        this.phase = 'betweenBatters';
+        break;
+      case 'batterUp':
+      case 'ballReturn':
+      case 'call':
+      case 'umpireCall':
+        if (this.phase !== 'break' || ev.type === 'batterUp') this.phase = 'prePitch';
+        break;
+      case 'windup':
+      case 'pitchReleased':
+      case 'contact':
+        this.phase = null;
+        break;
+      default:
+        break;
+    }
+    if (ev.type === 'playEnd') this.lastPlayText = String(ev.description ?? '');
+  }
+
   /** Ballparks play organ in the gaps, never during a pitch: a soft bed in breaks, cut when the pitcher starts his windup. */
   private organDirector(ev: RawEvent) {
     switch (ev.type) {
@@ -241,6 +274,7 @@ export class AudioController {
     this.debug.events++;
     if (this.host.sim.skipping) return;
     this.organDirector(ev);
+    this.trackPhase(ev);
     this.pending.push({ ev, at: performance.now() });
     if (this.pending.length > 200) this.pending.splice(0, this.pending.length - 200);
   }
@@ -285,6 +319,43 @@ export class AudioController {
         return s?.pitcher && (!id || s.pitcher.info?.id === id) ? { ...s.pitcher.line, pitchCount: s.pitcher.pitchCount } : undefined;
       },
     };
+  }
+
+  private chatCtx(st: StateLike): ChatCtx | null {
+    const rs = (this.rawState ??= this.raw?.getState?.() ?? null) as Record<string, any> | null;
+    if (!rs) return null;
+    const bi = rs.batter?.info;
+    const pi = rs.pitcher?.info;
+    const batter: ChatPerson | undefined = bi && { id: bi.id, name: bi.name, number: bi.jersey, hand: bi.bats, ratings: bi.ratings, bat: rs.batter.line };
+    const pitcher: ChatPerson | undefined = pi && { id: pi.id, name: pi.name, number: pi.jersey, hand: pi.throws, ratings: pi.ratings, pit: { ...rs.pitcher.line, pitches: rs.pitcher.pitchCount ?? rs.pitcher.line?.pitches ?? 0 } };
+    const runners = [rs.runners?.first, rs.runners?.second, rs.runners?.third];
+    const speedOf = (r: any) => (r ? (rs.players as any[] | undefined)?.find((p) => p.id === r.playerId)?.ratings?.speed : undefined);
+    return {
+      inning: st.inning, half: st.half, outs: st.outs, balls: st.count.balls, strikes: st.count.strikes, score: { home: st.score.home, away: st.score.away },
+      runners: st.runners, runnerNames: [runners[0]?.name, runners[1]?.name, runners[2]?.name], runnerSpeed: [speedOf(runners[0]), speedOf(runners[1]), speedOf(runners[2])],
+      teams: { home: st.teams.home.name, away: st.teams.away.name }, batter, pitcher, crowd: this.excitement.level, lastPlay: this.lastPlayText,
+    };
+  }
+
+  /** Queue the booth's lines (delayed ones through timers); only at normal speed and with commentary on. */
+  private say(lines: ChatLine[], speed: number) {
+    if (!lines.length) return;
+    for (const l of lines) {
+      const run = () => {
+        const ok = !this.locked && !this.settings.muted && speed <= 1.01 && !this.host.sim.skipping && this.speech.enabled[l.role] && this.speech.available();
+        if (ok) this.speech.enqueue({ role: l.role, text: l.text, pri: l.pri, ttl: l.ttl, group: l.group });
+        this.debug.chat[l.tag] = (this.debug.chat[l.tag] ?? 0) + 1;
+        this.debug.cues.push({ t: Math.round(performance.now()), simInning: '', kind: 'chat', id: l.role, played: ok, text: l.text });
+        if (this.debug.cues.length > 300) this.debug.cues.shift();
+      };
+      if (l.delay > 0) {
+        const t = setTimeout(() => {
+          this.timers.delete(t);
+          run();
+        }, l.delay * 1000);
+        this.timers.add(t);
+      } else run();
+    }
   }
 
   private dispatch(c: Cue, st: StateLike, simSpeed: number) {
@@ -366,7 +437,12 @@ export class AudioController {
       // modes: pause, slow-motion replay, speed, fast-forward
       const replay = this.host.director?.shot === 'replay';
       if (replay !== this.wasReplay) {
-        if (replay) this.mixer.playSfx({ kind: 'sfx', id: 'replay_whoosh', gain: 0.5, imp: 1 });
+        if (replay) {
+          this.mixer.playSfx({ kind: 'sfx', id: 'replay_whoosh', gain: 0.5, imp: 1 });
+          this.rawState = null;
+          const cc = this.raw ? this.chatCtx(st) : null;
+          if (cc) this.say(this.chatter.replay(cc), sim.speed);
+        }
         this.wasReplay = replay;
       }
       if (replay !== this.mixer.replay || sim.paused !== this.mixer.paused) this.mixer.setMode({ replay, paused: sim.paused });
@@ -395,6 +471,8 @@ export class AudioController {
         const ctx = this.buildCtx(st);
         const batch = this.pending;
         this.pending = [];
+        const cc = this.raw ? this.chatCtx(st) : null;
+        const level = this.settings.chatter;
         for (const { ev, at } of batch) {
           // a new batter may not be on the field yet: wait a moment for the name
           if (ev.type === 'batterUp' && !ctx.person(ev.batterId) && now - at < 1500) {
@@ -402,6 +480,10 @@ export class AudioController {
             continue;
           }
           for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
+          if (cc) {
+            this.chatter.observe(ev, cc);
+            this.say(this.chatter.react(ev, cc, level), sim.speed);
+          }
         }
       }
 
@@ -418,6 +500,16 @@ export class AudioController {
           const l = this.mixer.level();
           this.debug.energy.push({ t: Math.round(now), rms: +l.rms.toFixed(4), peak: +l.peak.toFixed(3) });
           if (this.debug.energy.length > 600) this.debug.energy.shift();
+        }
+      }
+      // idle chatter: when the booth has been quiet long enough and the game is between pitches
+      if (this.phase && this.raw && sim.speed <= 1.01 && !sim.paused && !sim.skipping && !this.locked && !this.settings.muted && this.settings.commentary && !this.speech.hold && this.speech.available()) {
+        const cfg = LEVELS[this.settings.chatter];
+        if (this.speech.idleMs() >= cfg.quiet * 1000 && now - this.lastPull >= cfg.quiet * 1000) {
+          this.lastPull = now;
+          this.rawState = null;
+          const cc = this.chatCtx(st);
+          if (cc) this.say(this.chatter.pull(cc, this.phase, this.settings.chatter), sim.speed);
         }
       }
       this.speech.pump();
@@ -489,7 +581,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending }, chat: a.debug.chat, organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

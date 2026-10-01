@@ -16,6 +16,8 @@ export interface Line {
   pri: number;
   /** seconds a line may wait before it is too stale to say */
   ttl: number;
+  /** lines of one exchange: if one is dropped, interrupted or goes stale, the rest of its group is dropped too */
+  group?: number;
 }
 
 /** The slice of SpeechSynthesis / SpeechSynthesisUtterance the queue uses (so tests can fake it). */
@@ -113,6 +115,7 @@ export class SpeechQueue {
   hold = false;
   private voiceChoice: VoiceChoice | null = null;
   private lastEnd = -1e9;
+  private lastActivity = 0;
   enabled: Record<SpeakRole, boolean> = { pa: true, ump: true, pbp: true, color: true };
   /** 0..1 */
   volume = 0.8;
@@ -120,7 +123,9 @@ export class SpeechQueue {
   constructor(
     private engine: SpeechEngine | null,
     private now: () => number = () => performance.now(),
-  ) {}
+  ) {
+    this.lastActivity = now();
+  }
 
   /** true if there is at least one voice to speak with */
   available(): boolean {
@@ -168,6 +173,18 @@ export class SpeechQueue {
     if (!p) this.pump();
   }
 
+  private dropGroup(g: number | undefined) {
+    if (g === undefined) return;
+    const n = this.q.length;
+    this.q = this.q.filter((x) => x.group !== g);
+    this.stats.dropped += n - this.q.length;
+  }
+
+  /** milliseconds the booth has been silent (0 while speaking or lines are waiting) */
+  idleMs(): number {
+    return this.cur || this.q.length ? 0 : this.now() - this.lastActivity;
+  }
+
   /** stop talking and forget everything (mute, skipping ahead, sped-up play) */
   clear() {
     if (this.q.length) this.stats.dropped += this.q.length;
@@ -201,7 +218,8 @@ export class SpeechQueue {
   pump() {
     const t = this.now();
     const before = this.q.length;
-    this.q = this.q.filter((x) => x.expires > t);
+    const stale = new Set(this.q.filter((x) => x.expires <= t && x.group !== undefined).map((x) => x.group));
+    this.q = this.q.filter((x) => x.expires > t && !(x.group !== undefined && stale.has(x.group)));
     this.stats.dropped += before - this.q.length;
     if (this.cur && t - this.cur.started > 14000) {
       // Chrome sometimes never fires onend: cancel and move on
@@ -221,6 +239,7 @@ export class SpeechQueue {
       // a much more important line may cut a chatty one off (never the umpire)
       if (next.pri >= this.cur.item.pri + 2 && this.cur.item.role !== 'ump' && this.cur.item.role !== 'pa') {
         this.token++;
+        this.dropGroup(this.cur.item.group);
         this.cur = null;
         this.stats.interrupted++;
         try {
@@ -252,7 +271,7 @@ export class SpeechQueue {
     const done = () => {
       if (this.cur && this.cur.token === token) {
         this.cur = null;
-        this.lastEnd = this.now();
+        this.lastEnd = this.lastActivity = this.now();
       }
     };
     try {

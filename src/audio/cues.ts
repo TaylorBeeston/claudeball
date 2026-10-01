@@ -206,8 +206,6 @@ export class CueMapper {
         if (b) {
           out.push({ kind: 'sfx', id: 'pa_click', imp: 1, delay: 0, gain: 0.22 }); // a tiny PA mic click, not melodic
           out.push(cue.speak('pa', `Now batting, number ${b.number ?? ''}, ${trimName(b.name)}.`.replace('number , ', ''), PRI.pa, 15, 0.1, 1));
-          const line = c.batterLine?.(ev.batterId);
-          if (line && line.ab >= 2 && this.plays % 3 === 1) out.push(cue.speak('color', `${trimName(b.name)} is ${line.h} for ${line.ab} today.`, PRI.color, 6, 4, 1));
         }
         if (c.runners[1] || c.runners[2]) out.push(cue.excite(0.15, 6, 1));
         if (hb) out.push({ kind: 'organ', id: 'walk_up', imp: 2, delay: 0.4, gain: 0.8 }); // the home batter's walk-up riff, under the PA
@@ -224,7 +222,6 @@ export class CueMapper {
         const bucket = mph < 82 ? 0 : mph < 92 ? 1 : 2;
         const m = c.catcher ?? { x: 0, y: 0.8, z: -1.1 };
         if (!this.detailed) out.push(cue.sfx('mitt_pop', 1, { pos: m, bucket, gain: 0.62 + 0.14 * bucket, delay: 0.03 }));
-        if (mph >= 99 && this.plays % 2 === 0) out.push(cue.speak('color', `${Math.round(mph)} miles an hour.`, PRI.color, 3, 0.6, 1));
         if (c.strikes >= 2) out.push(cue.excite(0.12, 2, 1));
         break;
       }
@@ -453,10 +450,6 @@ export class CueMapper {
         // with umpire events the ruling ('Strike three!', 'Out!') comes 0.2-0.6 s after the play: let the umpire go first
         const lag = this.detailed ? 1.3 : 0.4;
         out.push(cue.speak('pbp', desc + score, scored ? PRI.pbp + 1 : PRI.pbp - 1, (scored ? 8 : 5) + lag, lag, 1));
-        if (/strikes out/.test(desc)) {
-          const p = c.pitcherLine?.(this.lastPitcherId);
-          if (p && p.so > 0) out.push(cue.speak('color', `That's strikeout number ${p.so} on the night.`, PRI.color, 6, 2.5, 1));
-        }
         break;
       }
       case 'pitchingChange': {
@@ -470,8 +463,6 @@ export class CueMapper {
         out.push(cue.crowd('applause_small', 1, 0.5, 0.5), cue.excite(-0.3, 4, 1));
         if (inn === 7 && ev.half === 'top') out.push({ kind: 'organ', id: 'stretch', imp: 3, delay: 1.5, gain: 1 });
         else out.push({ kind: 'organ', id: 'ditty', imp: 2, delay: 1.5, gain: 0.9 });
-        if (ev.half === 'bottom' && inn >= 2)
-          out.push(cue.speak('color', `After ${inn}, it's ${teamSay(c.teams.away)} ${c.score.away}, ${teamSay(c.teams.home)} ${c.score.home}.`, PRI.color, 10, 3, 1));
         break;
       }
       case 'gameEnd': {
