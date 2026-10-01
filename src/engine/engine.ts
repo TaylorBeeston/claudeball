@@ -20,6 +20,7 @@ import { BallView, BatView, PlayerManager } from './players';
 import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
+import { StadiumLights } from './stadiumLights';
 import { loadAssets, type Assets } from './assets';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
@@ -45,6 +46,9 @@ export class Engine {
   readonly env: Environment;
   readonly post: PostFX;
   readonly stadium: Stadium;
+  /** pins the number of shadow-casting tower spots (tests / screenshots on a loaded machine); undefined = adaptive */
+  lightShadowCap?: number;
+  readonly lights: StadiumLights;
   readonly adaptive = new AdaptiveScale();
   readonly sim: SimDriver;
   readonly players: PlayerManager;
@@ -92,6 +96,9 @@ export class Engine {
     this.scene.add(this.stadium.group);
     this.gbufferHidden.push(...this.stadium.gbufferHidden);
     this.env.onStadiumLights((on) => this.stadium.setLightsOn(on));
+    this.lights = new StadiumLights(this.scene);
+    this.lights.setTowers(this.stadium.towers);
+    this.gbufferHidden.push(this.lights.group);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock);
     this.players = new PlayerManager(this.env);
@@ -139,7 +146,15 @@ export class Engine {
     window.addEventListener('keydown', (e) => this.onKey(e));
 
     this.setQuality(opts.quality ?? 'high');
-    if (opts.timeOfDay) this.setTimeOfDay(opts.timeOfDay);
+    // the time of day chosen in the menu is kept between sessions (an explicit option / ?tod= wins)
+    let storedTod: string | null = null;
+    try {
+      storedTod = localStorage.getItem('claudeball.tod');
+    } catch {
+      /* storage unavailable */
+    }
+    const startTod = opts.timeOfDay ?? (storedTod === 'day' || storedTod === 'dusk' || storedTod === 'night' ? storedTod : undefined);
+    if (startTod) this.setTimeOfDay(startTod);
     this.director.setAuto(true);
     this.resize();
   }
@@ -169,7 +184,10 @@ export class Engine {
       under.receiveShadow = true;
       this.scene.add(under);
     }
-    if (a.stadium) this.stadium.adoptGltf(a.stadium as never, a.mirrored);
+    if (a.stadium) {
+      this.stadium.adoptGltf(a.stadium as never, a.mirrored);
+      this.lights.setTowers(this.stadium.towers);
+    }
     if (a.ball) this.ball.useModel(a.ball, this.env);
     if (a.bat) this.bat.useModel(a.bat, this.env);
     if (a.characters.size) {
@@ -229,11 +247,18 @@ export class Engine {
     this.post.setQuality(this.quality);
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
+    this.lights.setQuality(name);
     this.resize();
   }
 
   setTimeOfDay(t: TimeOfDay) {
     this.env.setTimeOfDay(t);
+    this.lights.setTimeOfDay(t);
+    try {
+      localStorage.setItem('claudeball.tod', t);
+    } catch {
+      /* storage unavailable */
+    }
   }
 
   resize() {
@@ -328,6 +353,9 @@ export class Engine {
     }
     this.post.setFocus(out.focus, out.aperture * (this.director.auto ? 1 : 0));
     this.stadium.crowd.update(this.time, dt);
+    this.lights.update(this.time);
+    // slow frames: the shadow-casting tower spots go first (then all tower shadows)
+    this.lights.setShadowCap(this.lightShadowCap ?? (this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();

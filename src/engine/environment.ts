@@ -63,9 +63,9 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     skySun: [0.62, 0.11, 0.72],
     sunColor: 0xffa860,
     sunIntensity: 3.0,
-    env: 0.7,
+    env: 0.55,
     exposure: 1.2,
-    hemi: [0x8aa0d0, 0x40382a, 0.4],
+    hemi: [0x8aa0d0, 0x40382a, 0.28],
     lightsOn: true,
     sky: { turbidity: 6, rayleigh: 2.2, mie: 0.006, g: 0.9 },
     fog: 0xc0907a,
@@ -75,10 +75,11 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     sunDir: [0.3, 0.86, 0.2],
     skySun: [0.3, -0.18, -0.6],
     sunColor: 0xfff1de,
-    sunIntensity: 3.6,
-    env: 0.25,
-    exposure: 1.0,
-    hemi: [0x7f9cd0, 0x2c3c28, 0.95],
+    // a night game: the towers do the lighting (see stadiumLights.ts); only a faint moon-blue ambient and a dim moon remain
+    sunIntensity: 0.45,
+    env: 0.1,
+    exposure: 1.25,
+    hemi: [0x6f88c0, 0x1c2a20, 0.12],
     lightsOn: true,
     sky: { turbidity: 1, rayleigh: 0.12, mie: 0.001, g: 0.7 },
     fog: 0x0a1020,
@@ -223,7 +224,7 @@ export class Environment {
     this.scene.environmentIntensity = t.env;
     this.scene.backgroundIntensity = name === 'night' ? 1 : 1.0;
     this.scene.fog = new FogExp2(t.fog, t.fogDensity);
-    this.fill.intensity = name === 'dusk' ? 4.5 : 0;
+    this.fill.intensity = name === 'dusk' ? 2.2 : 0;
     this.hemi.color.setHex(t.hemi[0]);
     this.hemi.groundColor.setHex(t.hemi[1]);
     this.hemi.intensity = t.hemi[2];
@@ -301,7 +302,7 @@ export class Environment {
     this.hdriEnv = this.pmrem.fromEquirectangular(h.tex);
     this.scene.environment = this.hdriEnv.texture;
     const t = this.tod;
-    this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.9 : 0.35;
+    this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.7 : 0.12;
     this.scene.backgroundIntensity = name === 'dusk' ? 0.6 : 1.0;
     if (name !== 'night') {
       this.sunDir.copy(sunDir).normalize();
