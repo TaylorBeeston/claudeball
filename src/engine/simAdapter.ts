@@ -11,15 +11,22 @@ import { MockGame } from './mockSim';
 import { RealSimAdapter, looksLikeRealSim, type RealGame } from './realSimAdapter';
 import { lerpAngle } from './dims';
 
-type CreateGame = (opts: { seed: number }) => GameLike;
+/** The part of the sim's `GameConfig` the menu sets (teams are the sim's `Team`s; opaque here so the engine does not depend on src/sim). */
+export interface SimConfig {
+  innings?: number;
+  homeTeam?: unknown;
+  awayTeam?: unknown;
+}
+
+type CreateGame = (opts: { seed: number } & SimConfig) => GameLike;
 
 // `import.meta.glob` resolves to {} when src/sim does not exist yet.
 const simModules = import.meta.glob('../sim/index.ts', { eager: true }) as Record<string, { createGame?: CreateGame }>;
 
-export function createSimSource(seed: number, forceMock = false): { game: GameLike; kind: 'sim' | 'mock' } {
+export function createSimSource(seed: number, forceMock = false, cfg: SimConfig = {}): { game: GameLike; kind: 'sim' | 'mock' } {
   const mod = Object.values(simModules)[0];
   if (!forceMock && mod?.createGame) {
-    const g = mod.createGame({ seed });
+    const g = mod.createGame({ seed, ...cfg });
     // the real sim exposes its own snapshot/event shapes; wrap them into the engine contract
     if (looksLikeRealSim(g.getState())) return { game: new RealSimAdapter(g as unknown as RealGame), kind: 'sim' };
     return { game: g, kind: 'sim' };
@@ -62,8 +69,8 @@ export function interpolateState(a: GameState, b: GameState, t: number): GameSta
 }
 
 export class SimDriver {
-  readonly game: GameLike;
-  readonly kind: 'sim' | 'mock';
+  game!: GameLike;
+  kind!: 'sim' | 'mock';
   speed = 1;
   paused = false;
   /** set by the camera director while a replay plays: the live game waits (unlike `paused`, animations keep running) */
@@ -72,8 +79,8 @@ export class SimDriver {
   skipping = false;
 
   private acc = 0;
-  private prev: GameState;
-  private curr: GameState;
+  private prev!: GameState;
+  private curr!: GameState;
   private listeners = new Set<(e: TimedEvent) => void>();
   private histAcc = 0;
   readonly history: GameState[] = [];
@@ -82,17 +89,39 @@ export class SimDriver {
   private stepsThisFrame = 0;
   private crossListeners = new Set<(x: number, y: number, inZone: boolean) => void>();
 
-  constructor(seed = 20260928, forceMock = false) {
-    const src = createSimSource(seed, forceMock);
+  private offGame: (() => void) | null = null;
+
+  constructor(seed = 20260928, forceMock = false, cfg: SimConfig = {}) {
+    this.forceMock = forceMock;
+    this.load(seed, cfg);
+  }
+
+  private forceMock: boolean;
+
+  /**
+   * (Re)start with a fresh game: same driver, so every listener (engine, director, HUD) keeps working. Clears history, the
+   * accumulator and any fast-forward; `paused` / `speed` are left as they are.
+   */
+  load(seed: number, cfg: SimConfig = {}) {
+    this.offGame?.();
+    const src = createSimSource(seed, this.forceMock, cfg);
     this.game = src.game;
     this.kind = src.kind;
     this.curr = this.prev = this.game.getState();
-    this.game.on((event) => {
+    this.acc = 0;
+    this.histAcc = 0;
+    this.history.length = 0;
+    this.historyEvents = [];
+    this.skipTarget = null;
+    this.skipping = false;
+    this.hold = false;
+    const off = this.game.on((event) => {
       const te = { simTime: this.curr.time, event };
       this.historyEvents.push(te);
       if (this.historyEvents.length > 200) this.historyEvents.shift();
       for (const l of this.listeners) l(te);
     });
+    this.offGame = typeof off === 'function' ? off : null;
   }
 
   on(cb: (e: TimedEvent) => void) {
