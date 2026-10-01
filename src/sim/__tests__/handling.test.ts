@@ -1,3 +1,4 @@
+import { bullpenMound } from '../venue';
 import { describe, expect, it } from 'vitest';
 import { armMps } from '../attributes';
 import { fielders } from '../fielding';
@@ -81,7 +82,8 @@ describe('getting set before the pitch', () => {
     const np = t.bullpen.find((p) => !p.used)!;
     substitutePitcher(w, t, np);
     const d = DUGOUT[t.side];
-    expect(Math.hypot(np.x - d.x, np.z - d.z)).toBeLessThan(0.1);
+    const bp = bullpenMound(t.side);
+    expect(Math.hypot(np.x - bp.x, np.z - bp.z)).toBeLessThan(6); // he comes in from the bullpen, where he was warming up
     expect(old.onField).toBe(true); // still on screen, walking off
     let pitchAt = -1;
     l.g.on('windup', () => (pitchAt = pitchAt < 0 ? w.tick : pitchAt));
