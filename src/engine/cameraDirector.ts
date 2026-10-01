@@ -13,6 +13,7 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
+import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
 import type { GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
@@ -93,6 +94,8 @@ export class CameraDirector {
   /** a contested play (close play / tag) waiting for its slow-motion replay */
   private close: { simT: number; base: number | null; pos: Vector3; umpireId?: string } | null = null;
   private umpireUntil = 0;
+  private rack = new RackFocus(0.22, 6);
+  private focusSubject = new Vector3();
   private lastEventText = '';
   private lastCutFrame = false;
   private events: TimedEvent[] = [];
@@ -366,9 +369,9 @@ export class CameraDirector {
 
     this.computeDesired(rs, live, dt, players);
     this.applySmoothing(dt);
-    const focus = this.focusTarget.distanceTo(this.pos);
+    const af = this.autofocus(rs, live, dt);
     void ball;
-    return { renderState: rs, focus, aperture: this.des.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: !!label && this.shot === 'replay', replaySpeed: this.shot === 'replay' && this.replay ? this.replay.speed : 1 };
+    return { renderState: rs, focus: af.focus, aperture: af.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: !!label && this.shot === 'replay', replaySpeed: this.shot === 'replay' && this.replay ? this.replay.speed : 1 };
   }
 
   /** Runners / the batter-runner that are actually moving (ball in play). */
@@ -511,6 +514,39 @@ export class CameraDirector {
     this.ballSm.copy(focus);
     void live;
     return true;
+  }
+
+  /**
+   * The camera operator's focus: the subject depends on the shot (the plate region before a pitch, the ball in flight once it is thrown,
+   * the ball on the follow cam, the fielder on his cam, ...), the focus distance is racked to it smoothly (and snaps on a cut), and the
+   * aperture is whatever keeps a slab of `slabFor(shot)` metres around the subject sharp. Wide shots stay in deep focus.
+   */
+  private autofocus(rs: GameState, live: GameState, dt: number): { focus: number; aperture: number } {
+    const subj = this.focusSubject;
+    switch (this.shot) {
+      case 'pitch': {
+        // before release the strike zone region (batter + catcher), while the pitch is in flight the ball, so the pitch is seen sharp all the way in
+        const b = rs.ball;
+        const flying = b.visible && b.vel.z < -8 && b.pos.z > 0.3 && b.pos.z < 19.5;
+        if (flying) subj.set(b.pos.x, b.pos.y, Math.max(0, b.pos.z));
+        else {
+          const batter = rs.players.find((p) => p.role === 'batter');
+          subj.set((batter?.pos.x ?? 0) * 0.5, 1.0, 0);
+        }
+        break;
+      }
+      case 'follow':
+        subj.copy(this.ballSm);
+        break;
+      default:
+        subj.copy(this.focusTarget);
+    }
+    const dist = Math.max(1, subj.distanceTo(this.pos));
+    const focus = this.lastCutFrame ? (this.rack.snap(dist), dist) : this.rack.step(dist, dt);
+    const slab = slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
+    // a shot that asks for a shallower look than its slab allows (des.aperture) keeps its own, never deeper focus than the slab needs
+    const aperture = slab === 0 ? 0 : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
+    return { focus, aperture };
   }
 
   private nearestFielder(s: GameState): string | null {
