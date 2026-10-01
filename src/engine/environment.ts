@@ -202,7 +202,15 @@ export class Environment {
     cb(this.tod.lightsOn);
   }
 
-  setTimeOfDay(name: TimeOfDay) {
+  /** Settles when the photographic sky for the current time of day is applied (immediately when only the procedural sky exists). */
+  skyReady: Promise<void> = Promise.resolve();
+
+  /** Download and decode the HDRI skies for these times of day ahead of use (they are cached; a missing file is remembered too). */
+  preloadSky(names: TimeOfDay[]): Promise<unknown> {
+    return Promise.all(names.filter((n) => (n as string) !== 'night').map((n) => this.loadHdri(n)));
+  }
+
+  setTimeOfDay(name: TimeOfDay): Promise<void> {
     this.todName = name;
     const t = (this.tod = PRESETS[name]);
     this.sunDir.set(...t.sunDir).normalize();
@@ -235,7 +243,7 @@ export class Environment {
     this.renderer.toneMappingExposure = t.exposure;
     for (const cb of this.onLights) cb(t.lightsOn);
     this.hdriActive = false;
-    void this.applyHdri(name);
+    return (this.skyReady = this.applyHdri(name));
   }
 
   /** Which `sky_<tod>.hdr` files exist (from the `/hdri/index.json` manifest); none when the manifest or files are absent. */

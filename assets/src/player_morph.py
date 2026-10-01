@@ -51,6 +51,16 @@ def head_morph(P, kind):
     elif kind == "ears_large":
         m = (np.abs(x) > .068)*_g(z, -.003, .03)*_g(y, .006, .030); c = np.array([0, .006, HEAD_C[2]-.003])
         out[:, 0] += np.sign(x)*.005*m; out[:, 1] += (y-.006)*.32*m; out[:, 2] += (z+.003)*.32*m
+    elif kind == "brow_heavy":
+        m = _g(x, 0, .045)*_g(z, .045, .018)*(y < -.06); out[:, 1] -= .008*m; out[:, 2] -= .002*m
+    elif kind == "chin_strong":
+        m = _g(x, 0, .030)*_g(z, -.098, .026)*(y < -.04); out[:, 1] -= .011*m; out[:, 2] -= .005*m; out[:, 0] += x*.10*m
+    elif kind == "cheeks_full":
+        m = (np.abs(x) > .035)*_g(z, -.035, .034)*_g(y, -.045, .045); out[:, 0] += np.sign(x)*.007*m
+    elif kind == "nose_narrow":
+        m = _g(x, 0, .026)*_g(z, -.015, .036)*(y < -.06); out[:, 0] -= x*.28*m; out[:, 1] += .002*m
+    elif kind == "eyes_deep":
+        m = (np.abs(np.abs(x) - .033) < .028)*_g(z, .012, .020)*(y < -.06); out[:, 1] += .0035*m
     return out
 
 BODY_KEYS = ("build_lean", "build_stocky", "build_muscular")
