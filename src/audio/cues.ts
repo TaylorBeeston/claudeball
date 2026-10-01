@@ -191,7 +191,7 @@ export class CueMapper {
       case 'gameStart': {
         this.reset();
         out.push(cue.crowd('roar_med', 2, 0.8), cue.speak('pa', `Ladies and gentlemen, welcome to Claudeball. Tonight, the ${teamSay(c.teams.away)} visit the ${teamSay(c.teams.home)}.`, PRI.pa, 20, 0.5, 1));
-        out.push({ kind: 'organ', id: 'ditty', imp: 1, delay: 0.2 });
+        out.push({ kind: 'organ', id: 'ditty', imp: 2, delay: 0.2 });
         break;
       }
       case 'batterUp': {
@@ -210,6 +210,7 @@ export class CueMapper {
           if (line && line.ab >= 2 && this.plays % 3 === 1) out.push(cue.speak('color', `${trimName(b.name)} is ${line.h} for ${line.ab} today.`, PRI.color, 6, 4, 1));
         }
         if (c.runners[1] || c.runners[2]) out.push(cue.excite(0.15, 6, 1));
+        if (hb) out.push({ kind: 'organ', id: 'walk_up', imp: 2, delay: 0.4, gain: 0.8 }); // the home batter's walk-up riff, under the PA
         break;
       }
       case 'pitchReleased': {
@@ -339,7 +340,7 @@ export class CueMapper {
           out.push(cue.crowd('ooh', 2, 0.75, 0.05), cue.excite(0.4, 3, 2));
         } else if (ot === 'strikeout') out.push(cue.crowd(fieldingHome ? 'cheer_short' : 'ooh', 2, fieldingHome ? 1 : 0.5, 0.2), cue.excite(0.4, 3, 1, 0.2));
         else out.push(cue.crowd(fieldingHome ? 'applause_small' : 'groan', 1, fieldingHome ? 0.7 : 0.35, 0.25));
-        if (c.outs >= 2) out.push({ kind: 'organ', id: 'sting', imp: 1, delay: 1.2, gain: 0.6 });
+        if (ot === 'strikeout' && fieldingHome) out.push({ kind: 'organ', id: 'sting', imp: 2, delay: 1.3, gain: 0.9 });
         break;
       }
       case 'safe': {
@@ -402,7 +403,7 @@ export class CueMapper {
         out.push(cue.crowd('roar_big', 3, this.favour(c, hb), 0.1), cue.excite(1, 9, 3, 0.1));
         out.push(cue.sfx('seat_thump', 2, { pos: seat, gain: 0.7, delay: 0.7 + clamp(dist / 120, 0, 1) * 0.5 }));
         if (hb) {
-          out.push({ kind: 'organ', id: 'hr_fanfare', imp: 3, delay: 1.2 });
+          out.push({ kind: 'organ', id: 'hr_fanfare', imp: 3, delay: 1.2, gain: 1 });
           out.push(cue.sfx('firework', 3, { pos: { x: 0, y: 60, z: 130 }, gain: 0.6, delay: 1.6 }));
         } else out.push(cue.crowd('boo', 2, 0.35, 0.6));
         this.spokenPlay = true;
@@ -421,18 +422,17 @@ export class CueMapper {
       case 'runScored': {
         const homeScored = ev.team === 'home' || (ev.team == null && hb);
         out.push(cue.crowd(homeScored ? 'cheer_short' : 'ooh', 2, homeScored ? 0.9 : 0.4, 0.2), cue.excite(0.5, 5, 2, 0.2));
-        if (homeScored) out.push({ kind: 'organ', id: 'charge', imp: 2, delay: 1.0, gain: 0.8 });
+        if (homeScored) out.push({ kind: 'organ', id: 'charge', imp: 2, delay: 1.0, gain: 1 });
         break;
       }
       case 'plateAppearanceEnd': {
         const r = str(ev.result);
         if (r === 'single' || r === 'double' || r === 'triple') {
           out.push(cue.crowd(r === 'single' ? 'applause_small' : 'cheer_short', 2, this.favour(c, hb) * (r === 'single' ? 0.8 : 1), 0.4), cue.excite(r === 'single' ? 0.35 : 0.6, 4, 2, 0.4));
-          if (hb) out.push({ kind: 'organ', id: r === 'single' ? 'charge' : 'ditty', imp: 1, delay: 1.5, gain: 0.7 });
-        } else if (r.startsWith('strikeout') && !hb) {
-          out.push({ kind: 'organ', id: 'sting', imp: 1, delay: 1.0, gain: 0.7 });
+          // a hit with runners on, or extra bases: the long rally build; otherwise the plain charge
+          if (hb) out.push({ kind: 'organ', id: c.runners.some(Boolean) || r !== 'single' ? 'rally' : 'charge', imp: 2, delay: 1.2, gain: 1 });
         } else if (r === 'walk' || r === 'intentional walk') {
-          if (hb) out.push({ kind: 'organ', id: 'walk_up', imp: 1, delay: 1.0, gain: 0.7 });
+          if (hb) out.push({ kind: 'organ', id: 'charge', imp: 2, delay: 1.2, gain: 0.9 });
         } else if (r === 'double play') {
           out.push(cue.crowd(hb ? 'groan' : 'cheer_short', 2, 0.8, 0.3));
         }
@@ -468,8 +468,8 @@ export class CueMapper {
       case 'halfInningEnd': {
         const inn = num(ev.inning, c.inning);
         out.push(cue.crowd('applause_small', 1, 0.5, 0.5), cue.excite(-0.3, 4, 1));
-        if (inn === 7 && ev.half === 'top') out.push({ kind: 'organ', id: 'stretch', imp: 2, delay: 1.5, gain: 0.9 });
-        else out.push({ kind: 'organ', id: 'ditty', imp: 1, delay: 1.5, gain: 0.7 });
+        if (inn === 7 && ev.half === 'top') out.push({ kind: 'organ', id: 'stretch', imp: 3, delay: 1.5, gain: 1 });
+        else out.push({ kind: 'organ', id: 'ditty', imp: 2, delay: 1.5, gain: 0.9 });
         if (ev.half === 'bottom' && inn >= 2)
           out.push(cue.speak('color', `After ${inn}, it's ${teamSay(c.teams.away)} ${c.score.away}, ${teamSay(c.teams.home)} ${c.score.home}.`, PRI.color, 10, 3, 1));
         break;
@@ -477,7 +477,7 @@ export class CueMapper {
       case 'gameEnd': {
         const w = str(ev.winner);
         const hw = num(ev.home, c.score.home), aw = num(ev.away, c.score.away);
-        out.push(cue.crowd(w === 'home' ? 'roar_big' : 'groan', 3, w === 'home' ? 1 : 0.6, 0.2), { kind: 'organ', id: w === 'home' ? 'hr_fanfare' : 'dirge', imp: 3, delay: 1, gain: 0.8 });
+        out.push(cue.crowd(w === 'home' ? 'roar_big' : 'groan', 3, w === 'home' ? 1 : 0.6, 0.2), { kind: 'organ', id: w === 'home' ? 'hr_fanfare' : 'dirge', imp: 3, delay: 1, gain: 1 });
         const nm = w === 'home' ? c.teams.home : w === 'away' ? c.teams.away : '';
         out.push(cue.speak('pbp', w === 'tie' ? "And that's the ballgame." : `And that's the ballgame. ${teamSay(nm)} win, ${Math.max(hw, aw)} to ${Math.min(hw, aw)}.`, PRI.big, 20, 0.5, 3));
         break;
