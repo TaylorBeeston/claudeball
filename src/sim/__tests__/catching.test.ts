@@ -119,6 +119,55 @@ describe('catching: the glove is where the ball is, and the catch is shown', () 
     expect(checked).toBeGreaterThanOrEqual(5);
   });
 
+  it('the receiver of a return throw has the glove out before the ball leaves the thrower: catch_ready + gloveTarget + catchIn, then the catch clip and a catch event', () => {
+    const g = createGame({ seed: 'ready', pace: 1 });
+    const w = g._world;
+    type Rec = { tick: number; anim: string; target: boolean; catchIn: number; facing: number };
+    const hist = new Map<string, Rec[]>();
+    let checked = 0;
+    let pitcherChecked = 0;
+    const pending: { id: string; from: string; tick: number }[] = [];
+    g.on('ballReturn', (e) => {
+      const rec = hist.get(e.toId) ?? [];
+      const window = rec.filter((r) => w.tick - r.tick >= 30 && w.tick - r.tick <= 66); // 0.13-0.28 s before the throw leaves
+      expect(window.length).toBeGreaterThan(0);
+      for (const r of window) {
+        expect(r.anim).toBe('catch_ready');
+        expect(r.target).toBe(true);
+        expect(r.catchIn).toBeGreaterThan(0.2); // the throw has not left yet: catchIn counts through its flight too
+      }
+      // he faces the thrower
+      const to = [...w.teams.home.players.values(), ...w.teams.away.players.values()].find((p) => p.info.id === e.toId)!;
+      const fromP = [...w.teams.home.players.values(), ...w.teams.away.players.values()].find((p) => p.info.id === e.fromId)!;
+      const want = Math.atan2(fromP.x - to.x, fromP.z - to.z);
+      let d = Math.abs(to.facing - want) % (2 * Math.PI);
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      expect(d).toBeLessThan(0.5);
+      pending.push({ id: e.toId, from: e.fromId, tick: w.tick });
+      if (to === w.pitcher) pitcherChecked++;
+      checked++;
+    });
+    const caught: string[] = [];
+    g.on('catch', (e) => {
+      if (e.kind === 'throw' && pending.some((p) => p.id === e.fielderId)) caught.push(e.fielderId);
+    });
+    let n = 0;
+    while (!g.over && checked < 8 && n++ < 240 * 1500) {
+      g.step(1 / 240);
+      const r = w.ret;
+      if (r) {
+        const arr = hist.get(r.to.info.id) ?? [];
+        arr.push({ tick: w.tick, anim: r.to.anim, target: !!r.to.gloveTarget, catchIn: r.to.gloveTarget ? (r.to.gloveAt - w.tick) / 240 : 0, facing: r.to.facing });
+        if (arr.length > 200) arr.shift();
+        hist.set(r.to.info.id, arr);
+      }
+    }
+    for (let i = 0; i < 240 * 3; i++) g.step(1 / 240);
+    expect(checked).toBeGreaterThanOrEqual(5);
+    expect(pitcherChecked).toBeGreaterThanOrEqual(3);
+    expect(caught.length).toBeGreaterThanOrEqual(checked - 1); // every return ends in a catch event
+  });
+
   it('catchIn counts down to the catch: the hint starts CATCH_LEAD before it, so the catch frame lands on arrival', () => {
     let n = 0;
     let err = 0;
