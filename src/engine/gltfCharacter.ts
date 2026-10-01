@@ -71,10 +71,11 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'ondeck_swing': return ['ondeck_swing', 'swing'];
     case 'coach_ready': case 'coach_signs': return [hint, 'coach_ready', 'idle'];
     case 'coach_stop': return ['coach_stop', 'ump_time', 'idle'];
-    case 'coach_go': case 'coach_advance': return [hint, 'celebrate', 'idle'];
+    case 'coach_go': case 'coach_advance': case 'coach_go_loop': return [hint, 'celebrate', 'idle'];
+    case 'bench_cheer': case 'bench_stand_up': return [hint, 'bench_sit', 'idle'];
     case 'coach_slide': return ['coach_slide', 'ump_safe', 'idle'];
     case 'ballkid_sit': return ['ballkid_sit', 'bench_sit', 'idle'];
-    case 'ballkid_run': return ['ballkid_run', 'jog'];
+    case 'ballkid_run': return ['ballkid_run', 'jog', 'run'];
     case 'ballkid_pickup': return ['ballkid_pickup', 'field_grounder', 'idle'];
     case 'ballkid_toss': return ['ballkid_toss', 'throw_casual', 'throw'];
     default: return idleFor(role);
@@ -406,7 +407,9 @@ export class GltfPuppet implements PuppetLike {
     if (!this.look || key === this.gearKind) return;
     this.gearKind = key;
     const L = this.look;
-    const defaults = this.gearSets[kind] ?? this.gearSets.field ?? this.tpl.defaults;
+    // the coach and ball-kid files carry their own pre-configured outfits (helmet and uniform, polo and shorts)
+    const own = this.tpl.name === 'player_coach' || this.tpl.name === 'player_ballkid';
+    const defaults = own ? this.tpl.defaults : this.gearSets[kind] ?? this.gearSets.field ?? this.tpl.defaults;
     for (const [name, o] of this.nodes) {
       const grp = o.userData?.cb_group;
       if (grp === undefined || grp === 'hand') continue;
@@ -417,18 +420,20 @@ export class GltfPuppet implements PuppetLike {
       if (o) o.visible = on;
     };
     // clothes variants
-    if (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible) {
+    if (!own && (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible)) {
       for (const n of JERSEY_NODES) show(n, n === L.jerseyNode);
     }
-    for (const n of PANTS_NODES) show(n, n === L.pantsNode);
+    if (!own) for (const n of PANTS_NODES) show(n, n === L.pantsNode);
     // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
     const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
     for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
-    for (const n of FACIAL_NODES) show(n, n === L.facialNode);
+    for (const n of FACIAL_NODES) show(n, n === L.facialNode && role !== 'ballkid');
     show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
     // arms
-    show('Gear_Wristband_L', L.wristbands.L);
-    show('Gear_Wristband_R', L.wristbands.R);
+    if (!own) {
+      show('Gear_Wristband_L', L.wristbands.L);
+      show('Gear_Wristband_R', L.wristbands.R);
+    }
     show('Gear_ArmSleeve_L', L.armSleeves.L && kind !== 'batter');
     show('Gear_ArmSleeve_R', L.armSleeves.R && kind !== 'batter');
     // gloves: each role wears its own (infield, outfield, first-base mitt, catcher's mitt), with its own pocket
@@ -958,7 +963,7 @@ export class GltfPuppet implements PuppetLike {
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
     this.root.updateMatrixWorld(true);
-    this.updateProp(snap);
+    this.updateProp(snap, env);
     if (lod1) {
       this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
       return;
@@ -997,13 +1002,13 @@ export class GltfPuppet implements PuppetLike {
   private prop: Object3D | null = null;
 
   /** the on-deck batter's bat with a donut: the model's own `Bat_Donut` when it has one, else a plain bat and ring in his hand */
-  private updateProp(snap: PlayerSnap) {
+  private updateProp(snap: PlayerSnap, env: PuppetEnv) {
     const want = snap.role === 'ondeck';
     const donut = this.nodes.get('Bat_Donut');
     if (donut) donut.visible = want;
     if (!want && !this.prop) return;
     if (want && !this.prop && this.batGrip) {
-      this.prop = makeOnDeckBat(!!donut);
+      this.prop = env.makeBat ? env.makeBat() : makeOnDeckBat(!!donut);
       this.batGrip.add(this.prop);
     }
     if (this.prop) this.prop.visible = want;

@@ -210,12 +210,14 @@ export class Engine {
     }
     if (a.ball) this.ball.useModel(a.ball, this.env);
     if (a.bat) this.bat.useModel(a.bat, this.env);
+    this.bat.useDonut(a.donut ?? null);
     if (a.characters.size) {
       this.players.makePuppet = (snap) => {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const name = snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' ? 'player_coach' : null;
+        const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
       };
@@ -397,6 +399,7 @@ export class Engine {
     this.side.setClips((n) => !!this.assets?.manifest?.clips?.[n]);
     const extras = this.side.update(state, animDt, (e) => this.sim.emit(e));
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
+    this.players.makeBat = () => this.bat.makeHandBat();
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
     this.updateTossBall();
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
