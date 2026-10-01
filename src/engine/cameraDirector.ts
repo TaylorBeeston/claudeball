@@ -98,6 +98,8 @@ export class CameraDirector {
   private lastCoachCut = -99;
   private tossFan = new Vector3();
   private kidTossing = false;
+  private lastOnDeckCut = -99;
+  private onDeckPending = -99;
   private replay: Replay | null = null;
   /** a contested play (close play / tag) waiting for its slow-motion replay */
   private close: { simT: number; base: number | null; pos: Vector3; umpireId?: string } | null = null;
@@ -208,6 +210,10 @@ export class CameraDirector {
       case 'foul':
         this.holdUntil = this.clock + 1.6;
         break;
+      case 'on_deck':
+        // the next hitter got up in the dugout: the cutaway waits until he is loose at his circle (see update)
+        this.onDeckPending = this.clock;
+        break;
       case 'coach_signal':
         // the third-base coach waving a runner home during a play
         if (e.signal === 'go' && e.base === 3 && this.inPlay && !this.hr && this.shot !== 'replay' && this.clock - this.lastCoachCut > 25 && live.players.some((q) => q.id === e.coachId)) {
@@ -282,8 +288,8 @@ export class CameraDirector {
       case 'half_inning':
         this.hr = null;
         this.crowdPick = -1;
-        this.cutawayIdx = (this.cutawayIdx + 1) % 4;
-        this.cutaway = (['crowd', 'dugout', 'ondeck', 'wide'] as const)[this.cutawayIdx];
+        this.cutawayIdx = (this.cutawayIdx + 1) % 3;
+        this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
         this.cutawayUntil = this.clock + 5.5;
         this.cut('cutaway');
         this.inPlay = false;
@@ -323,6 +329,17 @@ export class CameraDirector {
       this.cut('toss');
     }
     this.kidTossing = !!kidToss;
+    if (this.clock - this.onDeckPending < 40 && !this.inPlay && !this.hr && this.shot === 'pitch' && !this.sim.hold && !this.sim.skipping && pit?.anim === 'idle' && this.clock - this.lastOnDeckCut > 40) {
+      const od = live.players.find((q) => q.role === 'ondeck');
+      // loose at the circle: at field level, standing, a few metres up the line
+      if (od && od.pos.y > -0.2 && Math.hypot(od.vel.x, od.vel.z) < 0.3 && Math.abs(od.pos.x) > 6 && Math.abs(od.pos.x) < 14 && od.pos.z < 4) {
+        this.onDeckPending = -99;
+        this.lastOnDeckCut = this.clock;
+        this.cutaway = 'ondeck';
+        this.cutawayUntil = this.clock + 3.4;
+        this.cut('cutaway');
+      }
+    }
     if (pit?.anim !== 'windup' && pit?.anim !== 'pitch') this.lastWindup = Math.min(this.lastWindup, live.time - 3);
 
     let rs = live;
@@ -928,8 +945,8 @@ export class CameraDirector {
           const fwd = new Vector3(Math.sin(f), 0, Math.cos(f));
           const t = this.clock - this.shotStart;
           d.pos.copy(o).addScaledVector(fwd, 7).addScaledVector(new Vector3(-fwd.z, 0, fwd.x), 2.2 + Math.sin(t * 0.3) * 0.4).setY(1.5);
-          d.tgt.copy(o).setY(1.15);
-          d.fov = this.tele(2.6, d.pos.distanceTo(d.tgt));
+          d.tgt.copy(o).setY(1.0);
+          d.fov = this.tele(4.6, d.pos.distanceTo(d.tgt));
         } else {
           const t = this.clock - this.shotStart;
           d.pos.set(-30 + t * 3, 45 - t, -80);
@@ -999,6 +1016,8 @@ export class CameraDirector {
     this.umpireUntil = 0;
     this.crewUntil = 0;
     this.lastCoachCut = -99;
+    this.lastOnDeckCut = -99;
+    this.onDeckPending = -99;
     this.cutawayUntil = 0;
     this.actionQuiet = 0;
     this.lastEventText = '';

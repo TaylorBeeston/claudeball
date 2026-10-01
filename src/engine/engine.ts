@@ -328,6 +328,27 @@ export class Engine {
     return this.env.setTimeOfDay(t);
   }
 
+  /** Create the lazily-made loose props (dead foul ball, dropped bat, the ball kid's toss ball), hidden, so the warm-up draws them once. */
+  ensureLooseProps(): Object3D[] {
+    if (!this.deadBallObj) {
+      this.deadBallObj = this.ball.makeHandBall();
+      this.deadBallObj.visible = false;
+      this.scene.add(this.deadBallObj);
+    }
+    if (!this.droppedBat) {
+      this.droppedBat = this.bat.makeHandBat(false);
+      this.droppedBat.name = 'DroppedBat';
+      this.droppedBat.visible = false;
+      this.scene.add(this.droppedBat);
+    }
+    if (!this.tossBall) {
+      this.tossBall = this.ball.makeHandBall();
+      this.tossBall.visible = false;
+      this.scene.add(this.tossBall);
+    }
+    return [this.deadBallObj, this.droppedBat, this.tossBall];
+  }
+
   /** the sim's dead foul ball and the dropped bat, drawn where they lie (a ball a kid carries is in his hand instead) */
   private updateLoose(rs: GameState) {
     const db = rs.deadBall;
