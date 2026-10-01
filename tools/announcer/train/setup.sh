@@ -23,7 +23,7 @@ if [ ! -d vendor/piper1-gpl ]; then git clone --depth 50 "$PIPER_REPO" vendor/pi
 uv pip install -q torch  # the default wheel bundles its own CUDA runtime; the NVIDIA driver is all that is needed
 uv pip install -q -e "vendor/piper1-gpl[train]" scikit-build cmake ninja
 (cd vendor/piper1-gpl && ./build_monotonic_align.sh >/dev/null && python3 setup.py build_ext --inplace >/dev/null)
-uv pip install -q faster-whisper onnxruntime soundfile pyloudnorm numpy scipy jiwer huggingface_hub onnxconverter-common
+uv pip install -q torchaudio faster-whisper onnxruntime soundfile pyloudnorm numpy scipy jiwer huggingface_hub onnxconverter-common
 
 python - <<'PY'
 import torch, sys
