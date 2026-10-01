@@ -11,7 +11,9 @@
     "hdri": "node scripts/fetch-hdri.mjs",
     "test": "vitest run",
     "sim": "tsx scripts/simulate.ts",
-    "announcer:script": "tsx tools/announcer/script/generate.ts"
+    "announcer:script": "tsx tools/announcer/script/generate.ts",
+    "announcer:record": "vite --config tools/announcer/recorder/vite.config.ts",
+    "announcer:record:e2e": "tsx tools/announcer/recorder/e2e/recorder.e2e.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
