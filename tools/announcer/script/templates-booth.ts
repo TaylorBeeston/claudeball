@@ -22,7 +22,7 @@ export const BOOTH_TEMPLATES: Template[] = [
   { id: 'booth-pitchmix', kind: 'color', style: 'deadpan', direction: dry, n: [0, 6, 3], text: [
     'That is four sliders in a row from {name}.', 'That is three curveballs in a row from {name}.', 'Five straight fastballs, counting the variations, from {name}.', 'The first changeup of the night from {name}.',
     '{name} has gone to the fastball {k} times out of {np} tonight.', 'Six breaking balls so far tonight from {name}.', 'That is as hard as {name} has thrown tonight.', 'That change of speed, {mph} then {lo}, is what you want to see.', 'Four pitches in this at-bat.'] },
-  { id: 'booth-twostrike', kind: 'setup', style: 'building', direction: setup, n: [0, 5, 3], text: [
+  { id: 'booth-twostrike', kind: 'situation', style: 'building', direction: setup, n: [0, 5, 3], text: [
     'Two strikes on {name}, and the pitcher is ahead.', 'Ball three, and {name2} needs to find the zone.', 'Full count, and everyone is up.', '{name} is down 0 and 2, protecting the plate now.', '{name2} is behind 3 and 0, and {name} may be taking.',
     'With a runner on first and fewer than two out, {name2} would love a double-play ball.', 'The bases are loaded and {name} is at the plate.', 'The crowd is into it.'] },
   { id: 'booth-result', kind: 'color', style: 'deadpan', direction: stat, n: [1, 7, 4], text: [
