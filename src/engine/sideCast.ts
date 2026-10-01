@@ -211,6 +211,7 @@ export class SideCast {
   setLayout(l: Layout) {
     this.layout = l;
     this.agents.clear();
+    this.simRoles.clear();
   }
 
   setClips(has: (name: string) => boolean) {
@@ -235,17 +236,21 @@ export class SideCast {
     if (!this.enabled) return [];
     dt = Math.min(Math.max(dt, 0), 0.1);
     this.time += dt;
-    this.simRoles.clear();
     this.battingSide = (state.side?.battingSide ?? (state.half === 'top' ? 0 : 1)) as 0 | 1;
     const simIds = new Set<string>();
     for (const p of state.players) {
       simIds.add(p.id);
-      this.simRoles.add(p.role);
+      this.simRoles.add(p.role); // sticky: once the sim sends a category it is never made up here again (no double crews between innings)
+    }
+    // a category the sim supplies is never made up here: drop anything this module made of it before the sim's people showed up
+    for (const [id, a] of this.agents) {
+      const r = a.role === 'coach1b' || a.role === 'coach3b' ? (this.simRoles.has('coach1b') || this.simRoles.has('coach3b') || this.simRoles.has('coach') ? a.role : null) : this.simRoles.has(a.role) ? a.role : null;
+      if (r) this.agents.delete(id);
     }
     this.events = [];
     if (!this.simRoles.has('bench')) this.updateBench(state, dt);
     if (!this.simRoles.has('ondeck')) this.updateOnDeck(state, dt, simIds);
-    if (!this.simRoles.has('coach1b') && !this.simRoles.has('coach')) this.updateCoaches(state, dt);
+    if (!this.simRoles.has('coach1b') && !this.simRoles.has('coach3b') && !this.simRoles.has('coach')) this.updateCoaches(state, dt);
     if (!this.simRoles.has('ballkid')) this.updateKids(state, dt);
     this.updateToss(dt);
     const out: PlayerSnap[] = [];
@@ -481,7 +486,7 @@ export class SideCast {
       const dur = SIDE_DUR[a.anim];
       if (dur && this.time - a.hintAt > dur) {
         // a windmill goes on until the runner is past; the other gestures end in the ready stance
-        const goOn = (a.anim === 'coach_go' || a.anim === 'coach_go_loop') && a.target && dist2(a.target, d.bag) > 2.5 && this.time - a.hintAt < 6;
+        const goOn = (a.anim === 'coach_go' || a.anim === 'coach_go_loop') && a.target && dist2(a.target, { x: d.bag.x, y: 0, z: d.bag.z }) > 2.5 && this.time - a.hintAt < 6;
         this.hint(a, goOn ? 'coach_go_loop' : 'coach_ready');
       }
       const bagV = { x: d.bag.x, y: 0, z: d.bag.z };

@@ -13,12 +13,13 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
+import { isFielderRole } from './roles';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
 import type { GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
-export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire';
+export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss';
 
 interface Desired {
   pos: Vector3;
@@ -89,7 +90,14 @@ export class CameraDirector {
   private ballFar = 0;
   private cutawayIdx = 0;
   private cutawayUntil = 0;
-  private cutaway: 'crowd' | 'wide' | 'dugout' = 'wide';
+  private cutaway: 'crowd' | 'wide' | 'dugout' | 'ondeck' = 'wide';
+  /** side-cast shots (a coach sending a runner, a ball kid's toss to the stands) */
+  private crewUntil = 0;
+  private crewId: string | null = null;
+  private crewRunner: string | null = null;
+  private lastCoachCut = -99;
+  private tossFan = new Vector3();
+  private kidTossing = false;
   private replay: Replay | null = null;
   /** a contested play (close play / tag) waiting for its slow-motion replay */
   private close: { simT: number; base: number | null; pos: Vector3; umpireId?: string } | null = null;
@@ -200,6 +208,19 @@ export class CameraDirector {
       case 'foul':
         this.holdUntil = this.clock + 1.6;
         break;
+      case 'coach_signal':
+        // the third-base coach waving a runner home during a play
+        if (e.signal === 'go' && e.base === 3 && this.inPlay && !this.hr && this.shot !== 'replay' && this.clock - this.lastCoachCut > 25 && live.players.some((q) => q.id === e.coachId)) {
+          this.crewId = e.coachId;
+          this.crewRunner = e.runnerId ?? null;
+          this.lastCoachCut = this.clock;
+          this.crewUntil = this.clock + 2.4;
+          this.cut('coach');
+        }
+        break;
+      case 'ball_tossed_to_fan':
+        this.tossFan.copy(toScene(e.pos, new Vector3()));
+        break;
       case 'homerun': {
         // the ball just cleared the fence: show it leaving, then the crowd, then the trot (see updateHr)
         const b = live.ball.pos;
@@ -261,8 +282,8 @@ export class CameraDirector {
       case 'half_inning':
         this.hr = null;
         this.crowdPick = -1;
-        this.cutawayIdx = (this.cutawayIdx + 1) % 3;
-        this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
+        this.cutawayIdx = (this.cutawayIdx + 1) % 4;
+        this.cutaway = (['crowd', 'dugout', 'ondeck', 'wide'] as const)[this.cutawayIdx];
         this.cutawayUntil = this.clock + 5.5;
         this.cut('cutaway');
         this.inPlay = false;
@@ -288,12 +309,20 @@ export class CameraDirector {
       this.lastWindup = live.time;
       if (this.hr && this.hr.stage === 'home') this.hrReplayOrEnd(live); // next batter is up: replay now rather than never
       const hrBusy = this.hr && this.hr.stage !== 'home' && this.hr.stage !== 'replay';
-      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide' && !hrBusy && !(this.hr && this.hr.stage === 'replay')) {
+      if (this.shot !== 'pitch' && this.shot !== 'replay' && this.shot !== 'wide' && !(this.shot === 'coach' && this.clock < this.crewUntil) && !hrBusy && !(this.hr && this.hr.stage === 'replay')) {
         this.inPlay = false;
         this.hr = null;
         this.cut('pitch');
       }
     }
+    // a ball kid starts to toss a foul ball to the stands while the game is waiting: show it (a pitch coming ends the shot at its windup)
+    const kidToss = live.players.find((p) => p.role === 'ballkid' && p.anim === 'ballkid_toss');
+    if (kidToss && !this.kidTossing && !this.hr && !this.inPlay && this.shot !== 'replay' && this.shot !== 'cutaway' && !this.sim.skipping && pit?.anim !== 'windup' && pit?.anim !== 'pitch') {
+      this.crewId = kidToss.id;
+      this.crewUntil = this.clock + 3.2;
+      this.cut('toss');
+    }
+    this.kidTossing = !!kidToss;
     if (pit?.anim !== 'windup' && pit?.anim !== 'pitch') this.lastWindup = Math.min(this.lastWindup, live.time - 3);
 
     let rs = live;
@@ -342,6 +371,10 @@ export class CameraDirector {
       }
     }
     if (this.shot === 'umpire' && this.clock > this.umpireUntil) this.endPlay(live);
+    if ((this.shot === 'coach' || this.shot === 'toss') && this.clock > this.crewUntil) {
+      if (this.shot === 'coach' && this.inPlay) this.enterAction();
+      else this.cut('pitch');
+    }
     if (this.shot === 'cutaway' && this.clock > this.cutawayUntil) this.cut('pitch');
     if (this.shot === 'wide' && this.clock - this.shotStart > 8 && !live.over) this.cut('pitch');
 
@@ -553,7 +586,7 @@ export class CameraDirector {
     let best: string | null = null;
     let bd = 1e9;
     for (const p of s.players) {
-      if (p.team < 0 || p.role === 'batter' || p.role === 'runner' || p.role === 'coach') continue;
+      if (p.team < 0 || !isFielderRole(p.role)) continue;
       const d = Math.hypot(p.pos.x - s.ball.pos.x, p.pos.z - s.ball.pos.z);
       if (d < bd) {
         bd = d;
@@ -724,6 +757,42 @@ export class CameraDirector {
         this.focusTarget.copy(d.tgt);
         break;
       }
+      case 'coach': {
+        // the third-base coach windmilling, the runner coming at him: from behind the coach, the runner in the frame
+        const coach = rs.players.find((p) => p.id === this.crewId);
+        const run = this.crewRunner ? rs.players.find((p) => p.id === this.crewRunner) : null;
+        const c = coach ? toScene(coach.pos, new Vector3()) : new Vector3(23.7, 0, 15.1);
+        const r = run ? toScene(run.pos, new Vector3()) : new Vector3(0, 0, 38);
+        const dir = r.clone().sub(c).setY(0);
+        if (dir.lengthSq() < 0.01) dir.set(-1, 0, 0);
+        dir.normalize();
+        d.pos.copy(c).addScaledVector(dir, -5.5).addScaledVector(new Vector3(-dir.z, 0, dir.x), 1.4).setY(1.7);
+        d.tgt.copy(c).lerp(r, 0.35).setY(1.3);
+        const dist = d.pos.distanceTo(d.tgt);
+        d.fov = this.tele(9, dist);
+        d.focus = d.pos.distanceTo(c);
+        d.aperture = 0.5;
+        d.lp = d.lt = d.lf = 5;
+        this.focusTarget.copy(c).setY(1.3);
+        break;
+      }
+      case 'toss': {
+        // a ball kid's toss into the stands: from the field side, the kid, the ball's arc and the fan in the frame
+        const kid = rs.players.find((p) => p.id === this.crewId);
+        const k = kid ? toScene(kid.pos, new Vector3()) : this.tossFan.clone().setY(0);
+        const mid = k.clone().lerp(this.tossFan, 0.5);
+        const side = new Vector3(-Math.sign(this.tossFan.x || 1), 0, 0.2).normalize();
+        d.pos.copy(mid).addScaledVector(side, 13).setY(2.0);
+        const bd = rs.deadBall && rs.deadBall.state === 'tossed' ? toScene(rs.deadBall.pos, new Vector3()) : null;
+        d.tgt.copy(bd ?? mid).setY(Math.max(1.6, bd ? bd.y : 1.8));
+        const dist = d.pos.distanceTo(d.tgt);
+        d.fov = this.tele(16, dist);
+        d.focus = dist;
+        d.aperture = 0.5;
+        d.lp = 6; d.lt = 9; d.lf = 5;
+        this.focusTarget.copy(d.tgt);
+        break;
+      }
       case 'action': {
         // frame the ball, the fielder with it / the throw target, and every runner in motion from the high-home camera
         const pts: Vector3[] = [];
@@ -850,6 +919,17 @@ export class CameraDirector {
             d.tgt.set(19, 1.2, 2.5);
           }
           d.fov = 26;
+        } else if (this.cutaway === 'ondeck') {
+          // the batter on deck, taking his swings: from the front, a little to the side, a shallow telephoto
+          const od = rs.players.find((p) => p.role === 'ondeck');
+          const batting = live.half === 'top' ? -1 : 1; // the away team's dugout is on the first-base side (−X)
+          const o = od ? toScene(od.pos, new Vector3()) : new Vector3(batting * 8.6, 0, -5.2);
+          const f = od ? od.facing : Math.atan2(-batting, 0.3);
+          const fwd = new Vector3(Math.sin(f), 0, Math.cos(f));
+          const t = this.clock - this.shotStart;
+          d.pos.copy(o).addScaledVector(fwd, 7).addScaledVector(new Vector3(-fwd.z, 0, fwd.x), 2.2 + Math.sin(t * 0.3) * 0.4).setY(1.5);
+          d.tgt.copy(o).setY(1.15);
+          d.fov = this.tele(2.6, d.pos.distanceTo(d.tgt));
         } else {
           const t = this.clock - this.shotStart;
           d.pos.set(-30 + t * 3, 45 - t, -80);
@@ -917,6 +997,8 @@ export class CameraDirector {
     this.thrown = false;
     this.fielderId = null;
     this.umpireUntil = 0;
+    this.crewUntil = 0;
+    this.lastCoachCut = -99;
     this.cutawayUntil = 0;
     this.actionQuiet = 0;
     this.lastEventText = '';

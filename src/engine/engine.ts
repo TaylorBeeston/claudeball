@@ -56,6 +56,9 @@ export class Engine {
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
   private tossBall: Object3D | null = null;
+  /** a foul ball on the ground / in flight with nobody holding it, and the bat the hitter dropped (both from the sim) */
+  private deadBallObj: Object3D | null = null;
+  private droppedBat: Object3D | null = null;
   readonly adaptive = new AdaptiveScale();
   readonly sim: SimDriver;
   readonly players: PlayerManager;
@@ -216,7 +219,7 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' ? 'player_coach' : null;
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' ? 'player_coach' : null;
         const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
@@ -325,6 +328,34 @@ export class Engine {
     return this.env.setTimeOfDay(t);
   }
 
+  /** the sim's dead foul ball and the dropped bat, drawn where they lie (a ball a kid carries is in his hand instead) */
+  private updateLoose(rs: GameState) {
+    const db = rs.deadBall;
+    const showBall = !!db && db.state !== 'carried';
+    if (showBall && !this.deadBallObj) {
+      this.deadBallObj = this.ball.makeHandBall();
+      this.scene.add(this.deadBallObj);
+    }
+    if (this.deadBallObj) {
+      this.deadBallObj.visible = showBall;
+      if (showBall) this.deadBallObj.position.set(db!.pos.x, Math.max(0.037, db!.pos.y), db!.pos.z);
+    }
+    const d = rs.bat.dropped;
+    if (d && !this.droppedBat) {
+      this.droppedBat = this.bat.makeHandBat(false);
+      this.droppedBat.name = 'DroppedBat';
+      this.scene.add(this.droppedBat);
+    }
+    if (this.droppedBat) {
+      this.droppedBat.visible = !!d;
+      if (d) {
+        // lying flat on the ground, pointing a little toward the first-base side (the same way every time: no flicker)
+        this.droppedBat.position.set(d.x, Math.max(0.034, d.y + 0.034), d.z);
+        this.droppedBat.rotation.set(0, 0.5, Math.PI / 2, 'YXZ');
+      }
+    }
+  }
+
   /** the ball a kid tosses to a fan, drawn on its arc */
   private updateTossBall() {
     const t = this.side.toss;
@@ -402,6 +433,7 @@ export class Engine {
     this.players.makeBat = () => this.bat.makeHandBat();
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
     this.updateTossBall();
+    this.updateLoose(rs);
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
     const held = this.players.ballHeld;
     if (this.ball.heldByPlayer && !held && rs.ball.visible) {
