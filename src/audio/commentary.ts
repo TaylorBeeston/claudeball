@@ -427,6 +427,9 @@ export class Chatter {
     const call = ev.type === 'call' ? (ev.call as { kind?: string; balls?: number; strikes?: number } | undefined) : undefined;
     const kind = ev.type === 'umpireCall' ? String(ev.kind) : String(call?.kind);
     if (kind === 'strikeout' || kind === 'ball_four') return null; // the mapper's play-by-play covers these
+    const strikesBefore = call?.strikes ?? -1;
+    if (strikesBefore >= 2 && (kind === 'strikeLooking' || kind === 'strikeSwinging')) return null; // strike three: the umpire and the play-by-play have it
+    if ((call?.balls ?? -1) >= 3 && kind === 'ball') return null; // ball four
     const loc = rec.x !== undefined && rec.y !== undefined ? locationWords(rec.x, rec.y, f.bats) : '';
     const name = pitchName(rec.type);
     const head = `${name[0].toUpperCase()}${name.slice(1)}, ${rec.mph}${loc ? `, ${loc}` : ''}.`;
