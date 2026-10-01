@@ -1,4 +1,4 @@
-for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_headwear", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
+for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_crew", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_headwear", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
 import os, json
 reset_scene()
 arm = build_armature()
@@ -16,6 +16,7 @@ SH["Jersey_Sleeveless"] = make_shell_cut(body, "Jersey_Sleeveless", f_jersey(-.0
 SH["Undershirt"] = make_shell_cut(body, "Undershirt", f_undershirt, "undershirt", .0055)            # torso + full arms to the wrist
 SH["Pants"] = make_shell_cut(body, "Pants", f_pants(.50), "pants", .0125, taper_top=.0085)                           # knee length (stirrup socks show)
 SH["Pants_Long"] = make_shell_cut(body, "Pants_Long", f_pants(.135), "pants", .0135, taper_top=.0095)                # long pants over the shoes
+SH["Shorts"] = make_shell_cut(body, "Shorts", f_pants(.70), "pants", .0125, taper_top=.0085)                                   # ball-kid shorts (mid thigh)
 SH["Socks"] = make_shell_cut(body, "Socks", f_socks, "socks", .005)
 SH["Cleats"] = make_shell_cut(body, "Cleats", f_cleats, "cleats", .011)
 for side, sx in (("L", 1), ("R", -1)): SH["Gear_ArmSleeve_"+side] = make_shell_cut(body, "Gear_ArmSleeve_"+side, f_armsleeve(sx), "undershirt", .0085)   # compression sleeve over the undershirt
@@ -47,6 +48,11 @@ for kind_, K_ in KINDS.items():                                                 
 G("Gear_CatcherMask", "Head", cage_mask); G("Gear_ChestProtector", "Spine1", chest_prot)
 G("Gear_ShinGuard_L", "LeftLeg", lambda bm: shin_guard(bm, 1)); G("Gear_ShinGuard_R", "RightLeg", lambda bm: shin_guard(bm, -1))
 G("Gear_Collar", "Spine2", neck_collar)
+def lineup_card(bm):                                                                      # coach's lineup card: a 9 x 14 cm card in the right hand (optional node, hidden by default)
+    xr, yr, zr = hand_frame("Right"); c = JOINTS["RightHand"][1] + zr*.06 + xr*.042
+    g = bmesh.ops.create_cube(bm, size=2.0); M3 = Matrix((xr*.0016, yr*.045, zr*.07)).transposed(); M4 = M3.to_4x4(); M4.translation = c
+    bmesh.ops.transform(bm, matrix=M4, verts=g["verts"])
+G("Gear_LineupCard", "RightHand", lineup_card)
 # head-fitted headwear and hair (built from the head mesh: never inside the skull, morph-aware)
 cap_o, cap_inner = build_cap(head); gear["Gear_Cap"] = cap_o; set_weight(cap_o, arm, "Head")
 helm_o, helm_inner = build_helmet(head); gear["Gear_Helmet"] = helm_o; set_weight(helm_o, arm, "Head")
@@ -92,7 +98,7 @@ ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Hand_L": "skin", 
           "Gear_Belt": "belt", "Gear_BeltBuckle": "buckle", "Gear_Collar": "uniform_undershirt",
           "Gear_Hair_Buzz": "hair", "Gear_Hair_Curly": "hair", "Gear_Hair_Long": "hair", "Gear_Beard_Full": "hair", "Gear_Mustache": "hair", "Gear_Goatee": "hair", "Gear_Beard_Stubble": "stubble",
           "Gear_EyeBlack": "eyeblack", "Gear_Piping": "piping", "Gear_Buttons": "button", "Gear_BattingGlove_L": "batting_glove", "Gear_BattingGlove_R": "batting_glove",
-          "Gear_Wristband_L": "wristband", "Gear_Wristband_R": "wristband", "Gear_ArmSleeve_L": "arm_sleeve", "Gear_ArmSleeve_R": "arm_sleeve", "Gear_Soles": "sole", "Gear_Laces": "laces"}
+          "Gear_Wristband_L": "wristband", "Gear_Wristband_R": "wristband", "Gear_LineupCard": "wristband", "Shorts": "uniform_pants", "Gear_ArmSleeve_L": "arm_sleeve", "Gear_ArmSleeve_R": "arm_sleeve", "Gear_Soles": "sole", "Gear_Laces": "laces"}
 allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Hand_L": handL, "Hand_R": handR, "Hand_R_Ball": handRB, "Hand_L_Open": handLO, "Hand_L_Open_Catcher": handLOC, **gear}
 for n, mname in ASSIGN.items():
     o = allobjs[n]; o.data.materials.clear(); o.data.materials.append(MATS[mname])
@@ -118,16 +124,16 @@ HAIR_SQUASH = {}
 BODY_MORPH_OBJS = [body] + [SH[n] for n in SH if n not in ("Cleats",)] + [gear[n] for n in ("Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R",
                    "Gear_Piping", "Gear_Buttons", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_Number_Tens", "Gear_Number_Ones")]
 for o in BODY_MORPH_OBJS: add_keys(o, body_morph, BODY_KEYS)
-HEAD_ONLY = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large")
+HEAD_ONLY = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large", "brow_heavy", "chin_strong", "cheeks_full", "nose_narrow", "eyes_deep")
 add_keys(head, head_morph, HEAD_ONLY)
-for n in ("Gear_Cap", "Gear_Helmet", "Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long", "Gear_CatcherMask", "Gear_EyeBlack"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide") + (("ears_large",) if n.startswith("Gear_Hair") else ()))
+for n in ("Gear_Cap", "Gear_Helmet", "Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long", "Gear_CatcherMask", "Gear_EyeBlack"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy") + (("ears_large",) if n.startswith("Gear_Hair") else ()))
 add_keys(gear["Gear_Helmet"], head_morph, ("ears_large", "jaw_square"))
 for n in ("Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long"): HAIR_SQUASH[n] = add_under_cap_key(gear[n], cap_inner)
 add_keys(eyeobj, head_morph, ("head_narrow", "head_wide"))
 for n in ("Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "jaw_square"))
-GROUPS = {"jersey": ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless"), "pants": ("Pants", "Pants_Long"), "hair": ("Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long"),
+GROUPS = {"jersey": ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless"), "pants": ("Pants", "Pants_Long", "Shorts"), "hair": ("Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long"),
           "facial_hair": ("Gear_Beard_Stubble", "Gear_Beard_Full", "Gear_Mustache", "Gear_Goatee"), "headwear": ("Gear_Cap", "Gear_Helmet"),
-          "accessory": ("Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R", "Gear_Glove"),
+          "accessory": ("Gear_LineupCard", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R", "Gear_Glove"),
           "trim": ("Gear_Piping", "Gear_Buttons"), "shoe": ("Cleats", "Gear_Soles", "Gear_Laces"), "hand": ("Hand_R", "Hand_R_Ball"), "protective": ("Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R")}
 FIT = fit_summary(head, gear)
 ACTS = bake_clips(arm)
@@ -162,7 +168,7 @@ def _elbow_guides():
         loc = S0i @ M0[side+"ForeArm"].translation; E[tag] = grip_empty("Elbow_Pole_"+tag, "Spine1", Matrix.Translation(Mr @ loc))
         E[tag].empty_display_type = 'SPHERE'
     guides = {}
-    for nm in ("batting_stance", "swing"):
+    for nm in ("batting_stance", "swing", "ondeck_swing"):
         rows = []
         for f, sp in CLIPS[nm][1]:
             M, _ = solve(dict(sp)); Si = M["Spine1"].inverted()
@@ -204,6 +210,7 @@ OPT = ["Jersey_ShortSleeve", "Jersey_Sleeveless", "Pants_Long", "Gear_Hair_Buzz"
 HOME = dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), uniform_undershirt=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1), belt=(.02, .02, .02, 1), piping=(.05, .08, .3, 1))
 AWAY = dict(HOME, uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), uniform_undershirt=(.5, .03, .03, 1), cap=(.5, .03, .03, 1), piping=(.5, .03, .03, 1))
 NAVY = dict(HOME, uniform_jersey=(.015, .03, .10, 1), uniform_pants=(.02, .035, .09, 1), uniform_socks=(.01, .015, .04, 1), uniform_undershirt=(.015, .03, .10, 1), cap=(.012, .022, .07, 1), helmet=(.012, .022, .07, 1), belt=(.01, .01, .012, 1), piping=(.015, .03, .10, 1), catcher_gear=(.015, .025, .08, 1))
+KID = dict(HOME, uniform_jersey=(.10, .45, .75, 1), uniform_pants=(.12, .13, .16, 1), uniform_socks=(.9, .9, .9, 1), uniform_undershirt=(.10, .45, .75, 1), cap=(.10, .45, .75, 1), piping=(.9, .9, .9, 1))      # ball kid: bright polo, dark shorts
 CATCH = ["Gear_Helmet", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"]
 # name: (colours, extra nodes, glove kind (None / role / "ALL"), right hand (fist / claw), left hand (fist / open))
 VARIANTS = {
@@ -218,7 +225,15 @@ VARIANTS = {
  "player_catcher":  (HOME, CATCH + NUM, "catcher", "claw", "open"),
  "player_umpire":   (NAVY, ["Gear_Cap", "Gear_CatcherMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R"], None, "fist", "fist"),
  "player_umpire_base": (NAVY, ["Gear_Cap"], None, "fist", "fist"),
+ "player_coach":    (HOME, ["Gear_Cap", "Gear_Helmet", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_LineupCard"] + NUM, None, "fist", "fist"),
+ "player_ballkid":  (KID, ["Gear_Cap", "Jersey_ShortSleeve", "Shorts"], None, "fist", "fist"),
 }
+DROP = {"player_ballkid": ["Jersey", "Pants", "Gear_Piping", "Gear_Buttons", "Gear_Belt", "Gear_BeltBuckle"]}
+NODEFAULT = {"player_coach": ["Gear_Cap", "Gear_LineupCard"]}
+def setk_all(name, val):
+    for o_ in bpy.data.objects:
+        sk_ = getattr(o_.data, "shape_keys", None) if o_.type == 'MESH' else None
+        if sk_ and name in sk_.key_blocks: sk_.key_blocks[name].value = val
 os.makedirs(ROOT+"/players", exist_ok=True); info = {}
 arm.animation_data.action = ACTS["idle"]
 allnodes = {**allobjs, **gear, "Elbow_Pole_L": E_ELBOW["L"], "Elbow_Pole_R": E_ELBOW["R"], "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, **{K_["pocket_node"]: POCKET[k_] for k_, K_ in KINDS.items()}}
@@ -227,9 +242,10 @@ GROUPS["accessory"] = tuple(n for n in GROUPS["accessory"] if n != "Gear_Glove")
 GROUPS["hand"] = ("Hand_L", "Hand_L_Open", "Hand_R", "Hand_R_Ball")
 for vn, (cols, gl, gkind, rhand, lhand) in VARIANTS.items():
     for k, c in cols.items(): setc(k, c)
-    bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl]; renames = []
+    bpy.ops.object.select_all(action='DESELECT'); sel = [arm] + [allnodes[n] for n in CORE + gl if n not in DROP.get(vn, [])]; renames = []
     def rn(o, new): renames.append((o, o.name)); o.name = new
     dflt = set(CORE + gl) - set(OPT) if vn != "player_base" else set(CORE + ["Gear_Cap"] + NUM)
+    dflt -= set(NODEFAULT.get(vn, [])); dflt |= {"Jersey_ShortSleeve", "Shorts"} if vn == "player_ballkid" else set()
     if vn == "player_batter": dflt |= {"Gear_BattingGlove_L", "Gear_BattingGlove_R"}
     # gloves: one role glove exported under the canonical names (Gear_Glove / Gear_Glove_Laces / Glove_Pocket); the base file carries all four under their own names
     if gkind == "ALL":
@@ -259,9 +275,16 @@ for vn, (cols, gl, gkind, rhand, lhand) in VARIANTS.items():
     if rhand == "both": handRB["cb_default"] = 0
     if lhand == "both": handLO["cb_default"] = 0
     bpy.context.view_layer.objects.active = arm
+    if vn == "player_ballkid":                                         # 1.55 m kid: the whole armature is scaled to 0.838 (clips scale with it), slimmer build
+        arm.scale = (.838, .838, .838); arm["cb_height_m"] = 1.55; arm["cb_scale_note"] = "Armature node scale 0.838 (rig height 1.85 m -> 1.55 m)"; setk_all("build_lean", .55)
+    if vn == "player_coach": arm["cb_note"] = "base coach; Gear_Helmet visible by default (1B/3B coach), Gear_Cap and Gear_LineupCard optional"
+    if vn == "player_ballkid": arm["cb_note"] = "ball kid: 1.55 m (Armature node scale 0.838); polo + shorts + cap, no glove"
     bpy.ops.export_scene.gltf(filepath=ROOT+f"/players/{vn}.glb", use_selection=True, export_format='GLB', export_yup=True, export_image_format='JPEG',
         export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False,
         export_vertex_color='NONE', export_extras=True, export_morph=True)
     for o, old in reversed(renames): o.name = old
+    if vn == "player_ballkid": arm.scale = (1, 1, 1); setk_all("build_lean", 0.0)
+    for k_ in ("cb_note", "cb_height_m", "cb_scale_note"):
+        if k_ in arm: del arm[k_]
     info[vn] = os.path.getsize(ROOT+f"/players/{vn}.glb")//1024
 result = {"kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values()), "fit": FIT}
