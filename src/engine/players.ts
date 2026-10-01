@@ -347,8 +347,9 @@ export class PlayerManager {
   readonly heldPos = new Vector3();
   private heldTmp = new Vector3();
 
-  update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
+  update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D, cameraPos?: Vector3) {
     this.penv.makeBall = makeBall;
+    this.penv.cameraPos = cameraPos;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;

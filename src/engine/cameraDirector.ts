@@ -838,9 +838,9 @@ export class CameraDirector {
           d.tgt.copy(s.target);
           d.fov = 15;
         } else if (this.cutaway === 'dugout') {
-          // the batting team's dugout (top = away = 3B side by convention here; falls back to either)
+          // the batting team's dugout (the sim seats the home team on the third-base side)
           const shots = this.dugoutShots;
-          const s = shots[live.half === 'top' ? 0 : 1] ?? shots[0];
+          const s = shots[live.half === 'top' ? 1 : 0] ?? shots[0]; // [3B (+X, home), 1B (−X, away)]: the away team bats in the top
           if (s) {
             const t = this.clock - this.shotStart;
             d.pos.copy(s.pos).x += Math.sin(t * 0.25) * 0.6;

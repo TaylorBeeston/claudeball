@@ -46,6 +46,11 @@ export const TOD_LIGHT: Record<TimeOfDay, { intensity: number; haze: number }> =
   night: { intensity: 34000, haze: 1 },
 };
 
+/** most shadow-casting spots a GPU with `units` texture units per fragment shader can take next to the sun's cascades and the materials' maps */
+export function unitsToShadowLimit(units: number): number {
+  return units >= 32 ? 4 : units >= 24 ? 3 : units >= 16 ? 2 : 0;
+}
+
 /** Where tower `i` aims: towers behind the plate light the deep field, the outfield ones the infield, so the pools overlap in the middle. */
 export function aimPoint(tower: Vector3, i: number, out = new Vector3()): Vector3 {
   // three bands of the park so the pools overlap: infield, shallow outfield, deep outfield (the side the tower stands on aims across the field)
@@ -115,6 +120,7 @@ export class StadiumLights {
   private budget: LightBudget = LIGHT_BUDGETS.high;
   /** extra reduction requested by the adaptive scaler (shadows first) */
   private shadowCap = 99;
+  private unitCap = 99;
   readonly hidden: Object3D[] = [];
 
   constructor(private scene: Scene) {
@@ -134,6 +140,17 @@ export class StadiumLights {
 
   setTimeOfDay(t: TimeOfDay) {
     this.tod = t;
+    this.apply();
+  }
+
+  /**
+   * Every shadow-casting spot is one more sampler in every lit material's shader (plus the sun's cascades and the material's own maps), and a
+   * GPU with only 16 texture units cannot link them all: fewer shadow spots there.
+   */
+  setTextureUnits(units: number) {
+    const cap = unitsToShadowLimit(units);
+    if (cap === this.unitCap) return;
+    this.unitCap = cap;
     this.apply();
   }
 
@@ -216,7 +233,7 @@ export class StadiumLights {
   private apply() {
     const t = TOD_LIGHT[this.tod];
     // distance from a tower to its aim point scales the candela so the pools keep about the same illuminance whatever the park size
-    const cap = Math.min(this.budget.shadows, this.shadowCap);
+    const cap = Math.min(this.budget.shadows, this.shadowCap, this.unitCap);
     const nCast = t.intensity > 0 ? this.spots.filter((l) => l.userData.rank >= 0 && l.userData.rank < cap).length : 0;
     const w = spotWeights(this.spots.length, nCast);
     for (const l of this.spots) {
