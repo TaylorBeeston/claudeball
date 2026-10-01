@@ -4,6 +4,7 @@
  * touch the engine HUD. Settings persist in localStorage (every access wrapped: it can throw or be empty).
  */
 import { DEFAULT_SETTINGS, type Settings } from './mixer';
+import { HD_MODES, pickMode } from './hdInfo';
 
 const KEY = 'claudeball.audio.v1';
 
@@ -24,6 +25,7 @@ export function loadSettings(): Settings {
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
       chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
+      hd: o.hd === true,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -49,6 +51,9 @@ const CSS = `
 .cb-snd label{display:flex;align-items:center;justify-content:space-between;gap:1vh;margin:.5vh 0}
 .cb-snd input[type=range]{width:14vh}
 .cb-snd select{font:inherit;color:#fff;background:rgba(40,50,70,.9);border:1px solid rgba(255,255,255,.2);border-radius:.4vh;padding:.3vh .6vh}
+.cb-snd .hd{margin-top:1vh;padding-top:.8vh;border-top:1px solid rgba(255,255,255,.12)}
+.cb-snd .hdt{font-weight:700;margin-bottom:.5vh}
+.cb-snd .hd button{width:100%;margin:.3vh 0;opacity:1}
 .cb-snd .hint{opacity:.6;font-size:1.3vh;margin-top:.6vh}
 .cb-snd-prompt{position:fixed;left:50%;bottom:9.5vh;transform:translateX(-50%);z-index:21;padding:1vh 2.2vh;border-radius:5vh;background:rgba(255,207,74,.96);color:#111;font:700 1.9vh "Segoe UI",Arial,sans-serif;letter-spacing:.02em;box-shadow:0 .6vh 2vh rgba(0,0,0,.5);cursor:pointer;transition:opacity .4s;animation:cbsndp 1.6s ease-in-out infinite}
 @keyframes cbsndp{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.04)}}
@@ -61,6 +66,10 @@ export interface UiHandlers {
   gesture(): void;
   /** the user asked for sound (the prompt): unlock and unmute */
   enable(): void;
+  /** HD voices: download + switch on / switch off */
+  hdToggle(): void;
+  /** HD voices: forget the downloaded model */
+  hdRemove(): void;
 }
 
 export class AudioUi {
@@ -69,6 +78,9 @@ export class AudioUi {
   private prompt: HTMLElement;
   private inputs: Record<string, HTMLInputElement> = {};
   private locked = true;
+  private hdBtn!: HTMLButtonElement;
+  private hdNote!: HTMLElement;
+  private hdRemove!: HTMLButtonElement;
 
   constructor(host: HTMLElement, private s: Settings, private h: UiHandlers) {
     const st = document.createElement('style');
@@ -149,6 +161,25 @@ export class AudioUi {
       l.append(sel);
       panel.append(l);
     }
+    {
+      // optional neural voices: strictly opt-in, nothing is downloaded until this button is pressed
+      const box = document.createElement('div');
+      box.className = 'hd';
+      const title = document.createElement('div');
+      title.className = 'hdt';
+      title.textContent = 'HD voices (optional)';
+      this.hdBtn = document.createElement('button');
+      this.hdBtn.onclick = () => h.hdToggle();
+      this.hdNote = document.createElement('div');
+      this.hdNote.className = 'hint';
+      this.hdRemove = document.createElement('button');
+      this.hdRemove.textContent = 'Remove download';
+      this.hdRemove.style.display = 'none';
+      this.hdRemove.onclick = () => h.hdRemove();
+      box.append(title, this.hdBtn, this.hdNote, this.hdRemove);
+      panel.append(box);
+      this.setHd({ state: 'off' });
+    }
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = 'M mutes. Voices use your browser’s speech synthesis.';
@@ -160,6 +191,21 @@ export class AudioUi {
     this.prompt.onclick = () => h.enable();
     host.append(this.root, this.prompt);
     this.refresh();
+  }
+
+  /** HD voices status: off (not downloaded / switched off), loading (with progress), ready, error */
+  setHd(o: { state: 'off' | 'loading' | 'ready' | 'error'; pct?: number; text?: string; cached?: boolean }) {
+    const m = HD_MODES[pickMode()];
+    this.hdBtn.disabled = o.state === 'loading';
+    this.hdBtn.textContent = o.state === 'ready' ? 'HD voices: on (switch off)' : o.state === 'loading' ? `Downloading… ${o.pct ?? 0}%` : o.cached ? 'Use HD voices' : `Download HD voices (~${m.mb} MB)`;
+    this.hdNote.textContent =
+      o.text ??
+      (o.state === 'off'
+        ? pickMode() === 'gpu'
+          ? 'Neural voices (Kokoro, Apache-2.0) run in your browser on the GPU. One-time download from Hugging Face, kept in the browser cache.'
+          : 'Neural voices (Kokoro, Apache-2.0) run in your browser. No WebGPU here, so they are slower than real time on the CPU and the booth will talk less. One-time download.'
+        : '');
+    this.hdRemove.style.display = o.cached || o.state === 'ready' ? '' : 'none';
   }
 
   refresh() {
