@@ -22,6 +22,8 @@ export function loadSettings(): Settings {
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
+      organ: bool(o.organ, true),
+      chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
