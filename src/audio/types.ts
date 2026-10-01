@@ -55,7 +55,8 @@ export type CrowdId =
   | 'swell'
   | 'whoop';
 
-export type OrganId = 'charge' | 'hr_fanfare' | 'ditty' | 'stretch' | 'walk_up' | 'sting' | 'dirge';
+import type { OrganId } from './music';
+export type { OrganId };
 
 /** Speech roles: they pick the voice/pitch/rate and the queue priority. */
 export type SpeakRole = 'pa' | 'ump' | 'pbp' | 'color';

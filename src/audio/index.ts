@@ -209,9 +209,38 @@ export class AudioController {
 
   // ---- events --------------------------------------------------------------------------------------------------------
 
+  /** Ballparks play organ in the gaps, never during a pitch: a soft bed in breaks, cut when the pitcher starts his windup. */
+  private organDirector(ev: RawEvent) {
+    switch (ev.type) {
+      case 'halfInningEnd':
+        this.bedWanted = true;
+        break;
+      case 'plateAppearanceEnd': {
+        const st = this.host.sim.state as { inning?: number; half?: string } | undefined;
+        const idx = ((st?.inning ?? 1) - 1) * 2 + (st?.half === 'bottom' ? 1 : 0);
+        if (idx % 3 === 0) this.bedWanted = true; // a continuous organ bed between batters in every third half inning
+        break;
+      }
+      case 'windup':
+      case 'pitchReleased': {
+        this.bedWanted = false;
+        const cur = this.organ.playing;
+        if (cur && cur !== 'stretch' && cur !== 'hr_fanfare' && cur !== 'rally') this.organ.stop(0.5);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+
+  /** organ bed wanted: during the break between half innings, and between batters in some half innings */
+  private bedWanted = false;
+
   private push(ev: RawEvent) {
     this.debug.events++;
     if (this.host.sim.skipping) return;
+    this.organDirector(ev);
     this.pending.push({ ev, at: performance.now() });
     if (this.pending.length > 200) this.pending.splice(0, this.pending.length - 200);
   }
@@ -267,7 +296,7 @@ export class AudioController {
     h[tag] = (h[tag] ?? 0) + 1;
     let played = false;
     const speech = c.kind === 'speak';
-    const gated = !allowedAtSpeed(c.imp, simSpeed, this.host.sim.skipping) || (speech && simSpeed > 1.01);
+    const gated = !allowedAtSpeed(c.imp, simSpeed, this.host.sim.skipping) || (speech && simSpeed > 1.01) || (c.kind === 'organ' && simSpeed > 2.01);
     if (!gated) {
       const run = () => {
         played = this.play(c);
@@ -349,6 +378,15 @@ export class AudioController {
         this.timers.clear();
       }
       this.wasSkipping = sim.skipping;
+      // the organ: silent while paused / muted / skipping, a soft bed in the gaps, and the booth waits out the seventh-inning stretch
+      if ((sim.paused || sim.skipping || this.settings.muted || this.locked) && this.organ.playing) this.organ.stop(0.25);
+      if (sim.skipping) this.bedWanted = false;
+      const speaking = !!this.speech.speaking;
+      if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
+      if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
+      const stretch = this.organ.playing === 'stretch';
+      if (stretch && !this.speech.hold) this.speech.clearRoles(['pbp', 'color']);
+      this.speech.hold = stretch;
       if (sim.speed > 1.01 && this.lastSpeed <= 1.01) this.speech.clear();
       this.lastSpeed = sim.speed;
 

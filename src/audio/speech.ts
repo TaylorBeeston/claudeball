@@ -109,6 +109,8 @@ export class SpeechQueue {
   private token = 0;
   private seq = 0;
   private paused = false;
+  /** do not start new lines (the booth is waiting out the seventh-inning stretch) */
+  hold = false;
   private voiceChoice: VoiceChoice | null = null;
   private lastEnd = -1e9;
   enabled: Record<SpeakRole, boolean> = { pa: true, ump: true, pbp: true, color: true };
@@ -211,7 +213,7 @@ export class SpeechQueue {
         /* ignore */
       }
     }
-    if (!this.q.length || this.paused) return;
+    if (!this.q.length || this.paused || this.hold) return;
     let best = 0;
     for (let i = 1; i < this.q.length; i++) if (this.q[i].pri > this.q[best].pri || (this.q[i].pri === this.q[best].pri && this.q[i].at < this.q[best].at)) best = i;
     const next = this.q[best];

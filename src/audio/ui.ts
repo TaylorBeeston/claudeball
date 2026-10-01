@@ -18,10 +18,12 @@ export function loadSettings(): Settings {
       master: num(o.master, DEFAULT_SETTINGS.master),
       sfx: num(o.sfx, DEFAULT_SETTINGS.sfx),
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
+      organ: num(o.organ, DEFAULT_SETTINGS.organ),
       announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
+      chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -46,6 +48,7 @@ const CSS = `
 .cb-snd.open .panel{display:block}
 .cb-snd label{display:flex;align-items:center;justify-content:space-between;gap:1vh;margin:.5vh 0}
 .cb-snd input[type=range]{width:14vh}
+.cb-snd select{font:inherit;color:#fff;background:rgba(40,50,70,.9);border:1px solid rgba(255,255,255,.2);border-radius:.4vh;padding:.3vh .6vh}
 .cb-snd .hint{opacity:.6;font-size:1.3vh;margin-top:.6vh}
 .cb-snd-prompt{position:fixed;left:50%;bottom:9.5vh;transform:translateX(-50%);z-index:21;padding:1vh 2.2vh;border-radius:5vh;background:rgba(255,207,74,.96);color:#111;font:700 1.9vh "Segoe UI",Arial,sans-serif;letter-spacing:.02em;box-shadow:0 .6vh 2vh rgba(0,0,0,.5);cursor:pointer;transition:opacity .4s;animation:cbsndp 1.6s ease-in-out infinite}
 @keyframes cbsndp{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.04)}}
@@ -90,7 +93,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'announcer', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organ' | 'announcer', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -123,10 +126,29 @@ export class AudioUi {
     };
     slider('master', 'Master');
     slider('sfx', 'Effects');
-    slider('crowd', 'Crowd & organ');
+    slider('crowd', 'Crowd');
+    slider('organ', 'Organ');
     slider('announcer', 'Voices');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
+    {
+      const l = document.createElement('label');
+      l.append('Chatter');
+      const sel = document.createElement('select');
+      for (const v of ['low', 'normal', 'high'] as const) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v[0].toUpperCase() + v.slice(1);
+        sel.append(o);
+      }
+      sel.value = s.chatter;
+      sel.onchange = () => {
+        s.chatter = sel.value as Settings['chatter'];
+        h.changed();
+      };
+      l.append(sel);
+      panel.append(l);
+    }
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = 'M mutes. Voices use your browser’s speech synthesis.';

@@ -17,20 +17,25 @@ import { mulberry32, type Rendered } from './dsp';
 export const MAX_VOICES = 32;
 /** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
 const MAKEUP = 2;
+/** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
+const ORGAN_LEVEL = 1.6;
 
 export interface Settings {
   master: number;
   sfx: number;
   crowd: number;
+  organ: number;
   announcer: number;
   muted: boolean;
   /** PA announcer + umpire calls */
   pa: boolean;
   /** play-by-play + colour commentary */
   commentary: boolean;
+  /** how much the booth talks */
+  chatter: 'low' | 'normal' | 'high';
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, announcer: 0.7, muted: false, pa: true, commentary: true };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organ: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, chatter: 'normal' };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -74,6 +79,8 @@ export class Mixer {
   totalToPrepare = 0;
   replay = false;
   paused = false;
+  /** someone is speaking: the organ and crowd sit back */
+  speaking = false;
   droppedVoices = 0;
   stolenVoices = 0;
   /** counters per sound id, for debug and tests */
@@ -172,15 +179,16 @@ export class Mixer {
     const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
-    this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : 1), t, 0.2);
-    this.organBus.gain.setTargetAtTime(this.paused ? 0 : s.crowd * s.crowd * 0.55, t, 0.1);
+    this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
+    this.organBus.gain.setTargetAtTime(this.paused ? 0 : s.organ * s.organ * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
   }
 
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */
-  setMode(o: { replay?: boolean; paused?: boolean }) {
+  setMode(o: { replay?: boolean; paused?: boolean; speaking?: boolean }) {
     if (o.replay !== undefined) this.replay = o.replay;
     if (o.paused !== undefined) this.paused = o.paused;
+    if (o.speaking !== undefined) this.speaking = o.speaking;
     this.applySettings();
   }
 
