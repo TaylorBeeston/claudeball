@@ -103,6 +103,7 @@ export function tickBallReturn(w: World): void {
     w.ret = null;
     return;
   }
+  readyReceiver(w, ret);
   const b = ball.body;
   const from = ret.from;
   const hx = from.x + Math.sin(from.facing) * 0.32;
@@ -149,6 +150,28 @@ function lobGlove(from: PlayerRT, to: PlayerRT): { x: number; y: number; z: numb
   return { x: to.x + ux * 0.4 + uz * gs * 0.22, y: groundHeight(to.x, to.z) + 1.15, z: to.z + uz * 0.4 - ux * gs * 0.22 };
 }
 
+/** The receiver gets his glove out this long before the throw leaves (s). */
+export const READY_LEAD = 0.35;
+
+/**
+ * Before a return throw leaves the thrower's hand the receiver (the pitcher, or the next man around the horn) turns to face him, holds his glove out at the
+ * point where the ball will come to it (`catch_ready`, loops) and publishes it as `gloveTarget` with `catchIn` = seconds until the catch, counting through
+ * the throw's flight; `tickLob` then switches to the catch clip at its lead.
+ */
+function readyReceiver(w: World, ret: NonNullable<World['ret']>): void {
+  const from = ret.from;
+  const to = ret.to;
+  const preSec = Math.max(0, (ret.until - w.tick) * TICK) + (ret.stage === 'transfer' ? ret.look : 0);
+  if (preSec > READY_LEAD) return;
+  const D = Math.hypot(to.x - from.x, to.z - from.z);
+  const flight = D / (casualSpeed(D) * (from === w.catcher ? 1.04 : 1)) + 0.06;
+  const g = lobGlove(from, to);
+  to.gloveTarget = g;
+  to.gloveAt = w.tick + secToTicks(preSec + flight);
+  to.lookAt = { x: from.x, z: from.z };
+  if (to.anim !== 'catch_ready' || w.tick >= to.animUntil) setAnim(w, to, 'catch_ready', preSec + flight + 0.15);
+}
+
 /** Casual return of the ball: purely kinematic arc from his hand to the receiver's glove, at the chosen speed. The receiver's catch is shown like any other. */
 export function tickLob(w: World): void {
   const l = w.ball.lob!;
@@ -160,9 +183,10 @@ export function tickLob(w: World): void {
   // the glove target, and the catch clip started its catch-frame time before the arrival
   to.gloveTarget = g;
   to.gloveAt = l.start + l.dur;
-  if (!catchClipOn(w, to) && (remaining <= CATCH_LEAD.catch_throw || l.dur * TICK <= CATCH_LEAD.catch_throw)) {
+  const hint = to === w.pitcher || to.fieldPos === 'P' ? 'pitcher_catch_toss' : 'catch_throw';
+  if (!catchClipOn(w, to) && (remaining <= CATCH_LEAD[hint] || l.dur * TICK <= CATCH_LEAD[hint])) {
     to.catchArmed = true;
-    setAnim(w, to, 'catch_throw', CATCH_LEAD.catch_throw * 2);
+    setAnim(w, to, hint, CATCH_LEAD[hint] * 2);
   }
   if (t >= 1) {
     b.x = g.x;

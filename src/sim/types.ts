@@ -59,6 +59,8 @@ export type AnimHint =
   | 'catch_fly_run'
   | 'catch_line_drive'
   | 'catch_comebacker'
+  | 'catch_ready'
+  | 'pitcher_catch_toss'
   | 'catch_throw_low'
   | 'catch_throw_high'
   /** Umpire signals (umpires only). `ump_ready` is the default stance. */
