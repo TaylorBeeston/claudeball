@@ -1,0 +1,302 @@
+/**
+ * Menu screens: title, game setup and settings. They only read and write through `AppCtx` (see app.ts), so the same settings screen
+ * serves the main menu and the pause menu.
+ */
+import { h } from './dom';
+import { button, field, segmented, slider, toggle, type Control } from './widgets';
+import { CLUBS, clubColors, randomClubs, seedTeams, type Club } from './clubs';
+import { GAME_LENGTHS, inningsLabel, seedFromText, type Chatter, type GameSettings, type MatchSetup, type QualityChoice, type TimeOfDay } from './settings';
+import { QUALITY_BLURB, type DeviceInfo } from './device';
+import type { QualityName } from '../engine/quality';
+import type { Settings as AudioSettings } from '../audio/mixer';
+
+export interface AudioBridge {
+  get(): AudioSettings;
+  set(patch: Partial<AudioSettings>): void;
+  /** back to the audio defaults */
+  reset(): void;
+}
+
+export interface AppCtx {
+  settings: GameSettings;
+  match: MatchSetup;
+  device: DeviceInfo;
+  /** what "Auto" resolves to on this device */
+  autoQuality: QualityName;
+  /** URL parameters that were set by the link (shown as a note) */
+  fromUrl: Set<string>;
+  /** asset files that failed to load */
+  missing: string[];
+  audio: AudioBridge;
+  update(patch: Partial<GameSettings>): void;
+  updateMatch(patch: Partial<MatchSetup>): void;
+  resetDefaults(): void;
+  start(): void;
+  link(): string;
+  toast(msg: string): void;
+}
+
+const TOD_ITEMS = [
+  { value: 'day' as TimeOfDay, label: '☀ Day' },
+  { value: 'dusk' as TimeOfDay, label: '🌇 Dusk' },
+  { value: 'night' as TimeOfDay, label: '🌙 Night' },
+];
+
+const LENGTH_ITEMS = GAME_LENGTHS.map((n) => ({ value: n, label: n === 9 ? '9 · Full' : n === 3 ? '3 · Short' : '1 · Demo', hint: n === 9 ? 'A regulation game, about 20 minutes at normal speed.' : n === 3 ? 'Three innings: a quick game.' : 'One inning: a quick look at everything.' }));
+
+function qualityItems(ctx: AppCtx) {
+  const auto = ctx.autoQuality;
+  return [
+    { value: 'auto' as QualityChoice, label: 'Auto', hint: `Picks a preset for this device (${auto[0].toUpperCase() + auto.slice(1)}) and lowers the resolution when frames get slow.` },
+    ...(['low', 'medium', 'high', 'ultra'] as QualityName[]).map((q) => ({ value: q as QualityChoice, label: q[0].toUpperCase() + q.slice(1), hint: QUALITY_BLURB[q] })),
+  ];
+}
+
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+/** All settings controls: Graphics, Sound, Camera and game. `sync()` repaints them from the current values (after a reset). */
+export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
+  const syncs: (() => void)[] = [];
+  const reg = <C extends Control<never>>(c: C, read: () => Parameters<C['set']>[0]): C => {
+    syncs.push(() => c.set(read()));
+    return c;
+  };
+  const section = (title: string, ...kids: (HTMLElement | null)[]) => h('section', { class: 'cb-section' }, h('h3', { class: 'cb-h3' }, title), ...kids);
+
+  const quality = reg(
+    segmented<QualityChoice>('Graphics quality', qualityItems(ctx), ctx.settings.quality, (v) => ctx.update({ quality: v })),
+    () => ctx.settings.quality,
+  );
+  const tod = reg(segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v })), () => ctx.settings.tod);
+
+  const a = () => ctx.audio.get();
+  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'announcer', hint?: string) => {
+    const s = reg(slider(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
+    return field(label, s.el, hint);
+  };
+  const sw = (label: string, key: 'pa' | 'commentary' | 'organ', hint?: string) => {
+    const t = reg(toggle(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
+    const f = field(label, t.el, hint);
+    f.classList.add('inline');
+    return f;
+  };
+  const chatter = reg(
+    segmented<Chatter>(
+      'Commentary chatter',
+      [
+        { value: 'low', label: 'Low', hint: 'Only the big plays: scoring plays, hard-hit balls, home runs.' },
+        { value: 'normal', label: 'Normal', hint: 'Play-by-play with some colour commentary.' },
+        { value: 'high', label: 'High', hint: 'As much as the booth has to say.' },
+      ],
+      a().chatter,
+      (v) => ctx.audio.set({ chatter: v }),
+    ),
+    () => a().chatter,
+  );
+  const mute = reg(toggle('Sound off', a().muted, (v) => ctx.audio.set({ muted: v })), () => a().muted);
+  const muteField = field('Mute everything', mute.el);
+  muteField.classList.add('inline');
+
+  const camera = reg(
+    segmented<'auto' | 'free'>('Camera', [
+      { value: 'auto', label: 'Broadcast', hint: 'A director cuts between TV-style shots and replays.' },
+      { value: 'free', label: 'Free', hint: 'Drag (or one finger) to orbit, scroll (or pinch) to zoom.' },
+    ], ctx.settings.camera, (v) => ctx.update({ camera: v })),
+    () => ctx.settings.camera,
+  );
+  const replays = reg(toggle('Replays', ctx.settings.replays, (v) => ctx.update({ replays: v })), () => ctx.settings.replays);
+  const speed = reg(
+    segmented<number>('Game speed', [
+      { value: 1, label: '1×', hint: 'Real time: pitch by pitch, with commentary.' },
+      { value: 2, label: '2×' },
+      { value: 4, label: '4×', hint: 'Fast: commentary and crowd stay quiet.' },
+    ], ctx.settings.speed, (v) => ctx.update({ speed: v as 1 | 2 | 4 })),
+    () => ctx.settings.speed,
+  );
+  const hud = reg(toggle('Broadcast graphics', ctx.settings.hud, (v) => ctx.update({ hud: v })), () => ctx.settings.hud);
+  const box = reg(toggle('Box score', ctx.settings.box, (v) => ctx.update({ box: v })), () => ctx.settings.box);
+
+  const inl = (label: string, c: HTMLElement, hint?: string) => {
+    const f = field(label, c, hint);
+    f.classList.add('inline');
+    return f;
+  };
+
+  let armed = 0;
+  const resetBtn = button('Reset to defaults', () => {
+    if (!armed) {
+      resetBtn.textContent = 'Tap again to reset everything';
+      armed = window.setTimeout(() => {
+        armed = 0;
+        resetBtn.textContent = 'Reset to defaults';
+      }, 3000);
+      return;
+    }
+    clearTimeout(armed);
+    armed = 0;
+    resetBtn.textContent = 'Reset to defaults';
+    ctx.resetDefaults();
+    syncs.forEach((s) => s());
+    ctx.toast('Settings reset');
+  }, 'danger');
+
+  const el = h(
+    'div',
+    { class: 'cb-stack' },
+    section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd & organ', 'crowd'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), muteField),
+    section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
+    h('hr', { class: 'cb-sep' }),
+    resetBtn,
+  );
+  return { el, sync: () => syncs.forEach((s) => s()) };
+}
+
+/** Name, abbreviation and colour of the club in a slot: the seed's own team when the slot is on auto. */
+function clubFor(ctx: AppCtx, side: 'away' | 'home'): Club {
+  const i = ctx.match[side];
+  return i >= 0 ? CLUBS[i] : seedTeams(ctx.match.seed)[side];
+}
+
+export function matchSummary(ctx: AppCtx): HTMLElement {
+  const a = clubFor(ctx, 'away'), hm = clubFor(ctx, 'home');
+  const dot = (c: Club, side: 'away' | 'home') => h('i', { class: 'cb-dot', style: `--tc:${clubColors(c, side).color === '#f4f4f0' ? clubColors(c, side).trim : clubColors(c, side).color}` });
+  return h('div', { class: 'cb-match' }, dot(a, 'away'), h('span', {}, a.name), h('span', { class: 'cb-hint' }, 'at'), dot(hm, 'home'), h('span', {}, hm.name));
+}
+
+export function titleScreen(ctx: AppCtx, go: (s: 'setup' | 'settings') => void): HTMLElement {
+  const startBtn = button('Start Game', () => ctx.start(), 'primary', { 'data-testid': 'start' });
+  const chips = h(
+    'div',
+    { class: 'cb-btnrow' },
+    h('span', { class: 'cb-chip' }, h('b', {}, inningsLabel(ctx.settings.innings))),
+    h('span', { class: 'cb-chip' }, h('b', {}, cap(ctx.settings.tod))),
+    h('span', { class: 'cb-chip' }, 'Seed ', h('b', {}, String(ctx.match.seed))),
+  );
+  const notes: HTMLElement[] = [];
+  if (ctx.missing.length) notes.push(h('div', { class: 'cb-note' }, 'Some 3D assets did not load, so simple stand-ins are used.'));
+  if (ctx.fromUrl.size) notes.push(h('div', { class: 'cb-hint' }, 'Some settings come from the link you opened.'));
+  return h(
+    'div',
+    { class: 'cb-main cb-title-screen' },
+    h(
+      'div',
+      { class: 'cb-col' },
+      h('div', { class: 'cb-eyebrow' }, 'Real baseball simulation'),
+      h('h1', { class: 'cb-title' }, 'Claude', h('b', {}, 'ball')),
+      h('p', { class: 'cb-tag' }, 'Two AI managers play a full game, pitch by pitch. Nothing is scripted: physics, ratings and decisions decide every play.'),
+      matchSummary(ctx),
+      chips,
+      h('div', { class: 'cb-menu' }, startBtn, button('Game Setup', () => go('setup')), button('Settings', () => go('settings'))),
+      h('div', { class: 'cb-foot' }, ...notes),
+    ),
+  );
+}
+
+export function setupScreen(ctx: AppCtx, back: () => void): HTMLElement {
+  const teamsEl = h('div', { class: 'cb-teams-pick' });
+  const summaryEl = h('div');
+  const seedInput = h('input', { type: 'text', class: 'cb-input', inputmode: 'numeric', 'aria-label': 'Game seed', value: String(ctx.match.seed), maxlength: 15, autocomplete: 'off', spellcheck: 'false' });
+
+  const clubOptions = (select: HTMLSelectElement, side: 'away' | 'home') => {
+    const auto = seedTeams(ctx.match.seed)[side];
+    select.append(h('option', { value: '-1' }, `Auto: ${auto.name}`));
+    const grp = h('optgroup', { label: 'League' });
+    for (const c of CLUBS) grp.append(h('option', { value: String(c.index) }, `${c.abbr} · ${c.name}`));
+    select.append(grp);
+    select.value = String(ctx.match[side]);
+  };
+
+  const paintTeams = () => {
+    teamsEl.replaceChildren();
+    for (const side of ['away', 'home'] as const) {
+      const c = clubFor(ctx, side);
+      const col = clubColors(c, side);
+      const sel = h('select', { class: 'cb-select', 'aria-label': `${cap(side)} team` });
+      clubOptions(sel, side);
+      sel.addEventListener('change', () => {
+        const v = Number(sel.value);
+        const other = side === 'away' ? 'home' : 'away';
+        const patch: Partial<MatchSetup> = { [side]: v };
+        if (v >= 0 && ctx.match[other] === v) patch[other] = ctx.match[side]; // same club on both sides: swap
+        ctx.updateMatch(patch);
+        paint();
+      });
+      teamsEl.append(
+        h('div', { class: 'cb-teampick', style: `--tc:${col.color === '#f4f4f0' ? col.trim : col.color}` }, h('div', { class: 'side' }, side === 'away' ? 'AWAY' : 'HOME'), h('div', { class: 'abbr' }, c.abbr), h('div', { class: 'nm' }, c.name), sel),
+      );
+    }
+  };
+  const paint = () => {
+    paintTeams();
+    summaryEl.replaceChildren(matchSummary(ctx));
+    seedInput.value = String(ctx.match.seed);
+  };
+  const commitSeed = () => {
+    const t = seedInput.value.trim();
+    if (!t) return void paint();
+    const seed = seedFromText(t);
+    if (seed !== ctx.match.seed) ctx.updateMatch({ seed });
+    paint();
+  };
+  seedInput.addEventListener('change', commitSeed);
+  seedInput.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') {
+      e.preventDefault();
+      commitSeed();
+      seedInput.blur();
+    }
+  });
+
+  const length = segmented<number>('Game length', LENGTH_ITEMS, ctx.settings.innings, (v) => ctx.update({ innings: v }));
+  const tod = segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v }));
+
+  const randomTeams = button('🎲 Randomize teams', () => {
+    ctx.updateMatch(randomClubs());
+    paint();
+  });
+  const randomSeed = button('🎲', () => {
+    ctx.updateMatch({ seed: 1 + Math.floor(Math.random() * 999_999) });
+    paint();
+  }, 'ghost', { 'aria-label': 'Random seed', title: 'Random seed' });
+  randomSeed.classList.add('icon');
+  const copy = button('Copy link', async () => {
+    const url = ctx.link();
+    try {
+      await navigator.clipboard.writeText(url);
+      ctx.toast('Link copied: it reproduces this game');
+    } catch {
+      seedInput.value = url;
+      seedInput.select();
+      ctx.toast('Copy the link from the box');
+    }
+  }, 'ghost', { title: 'A link that starts this exact game' });
+
+  paint();
+  return h(
+    'div',
+    { class: 'cb-main' },
+    h(
+      'div',
+      { class: 'cb-col' },
+      h('div', { class: 'cb-panel', style: 'padding:var(--cb-pad);display:flex;flex-direction:column;gap:var(--cb-gap)' },
+        h('div', { class: 'cb-head' }, button('←', back, 'quiet', { 'aria-label': 'Back' }), h('h2', { class: 'cb-h2' }, 'Game Setup')),
+        summaryEl,
+        teamsEl,
+        h('div', { class: 'cb-btnrow' }, randomTeams),
+        field('Seed', h('div', { class: 'cb-seedrow' }, seedInput, randomSeed, copy), 'The same seed and teams always play the same game. Share the link to replay it.'),
+        field('Game length', length.el, undefined),
+        length.hintEl,
+        field('Time of day', tod.el),
+        button('Start Game', () => ctx.start(), 'primary'),
+      ),
+    ),
+  );
+}
+
+export function settingsScreen(ctx: AppCtx, back: () => void, modal = false): HTMLElement {
+  const view = settingsView(ctx);
+  const head = h('div', { class: 'cb-head' }, button('←', back, 'quiet', { 'aria-label': 'Back' }), h('h2', { class: 'cb-h2' }, 'Settings'));
+  if (modal) return h('div', { class: 'cb-panel', style: 'width:min(560px,94vw)' }, head, view.el);
+  return h('div', { class: 'cb-main' }, h('div', { class: 'cb-col' }, h('div', { class: 'cb-panel', style: 'padding:var(--cb-pad);display:flex;flex-direction:column;gap:var(--cb-gap)' }, head, view.el)));
+}

@@ -28,9 +28,13 @@ export interface Settings {
   pa: boolean;
   /** play-by-play + colour commentary */
   commentary: boolean;
+  /** the stadium organ */
+  organ: boolean;
+  /** how much the commentators say: `low` keeps only the big plays (no colour commentary) */
+  chatter: 'low' | 'normal' | 'high';
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, announcer: 0.7, muted: false, pa: true, commentary: true };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, announcer: 0.7, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal' };
 
 interface Voice {
   src: AudioBufferSourceNode;
