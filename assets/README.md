@@ -273,3 +273,44 @@ Profile, exact (metres, sim coordinates: x toward third, z toward center field, 
 ### Fixes
 - **Glove cuff:** the cuff mouth is flared (bore radius 59 mm at the forearm end, 52 mm at the hand): the closest approach to the forearm over every frame of all catch/tag clips is now >= 0.5 mm (was -1.7 mm): `catch_fly_run` 0.5, `catch_pitch_high` 0.6, `tag_glove` 0.9, `field_grounder_backhand` 1.3, the rest 3-4 mm, rest pose 6.5 mm. Hand inside: 1842-1843 / 1843 vertices, min clearance 2.1 mm, 0 glove vertices inside the forearm.
 - **Helmet bill/flap edge:** the bill is now built from smooth r(angle) / z(angle) curves fitted to the irregular crown edge and resampled at 33 even angles (the ripple came from the uneven boundary vertices); 7-angle close-ups show a clean bill and an even ear-flap rim.
+
+## Seventh pass: batters' elbows, rounder heads, on-deck / dugout / coaches / ball kids (supersedes older notes where they differ)
+88 clips per player GLB now (17 new), 13 player files, `bat_donut.glb`; `players/player_manifest.json` version 6.
+
+### Batters' elbows (`batting_stance`, `swing`, new `ondeck_swing`)
+The elbow optimiser (`src/player_arms.py`, config `BAT`) now also checks, per frame and per arm, a **head clearance** (head + helmet ellipsoid with the `head_wide` / `ears_large` morphs and a 2 cm margin, plus a neck cylinder, the head turning with the head bone) and keeps each elbow between chest and shoulder height (`dz` in [-0.22, +0.02] m relative to the shoulder), beside and a little behind the shoulder line, never behind the head.
+- Analytic (optimiser, all four builds, no tolerance): `batting_stance` elbows within +0.03 / -0.03 m of shoulder height, torso clearance >= 30 mm, head clearance >= 51 mm beyond the margin; `swing`: torso >= 32 mm, head >= 0 beyond the margin (the follow-through lifts the front elbow up to 0.17 m above the shoulder as the hands finish over the shoulder); `ondeck_swing`: head >= 8 mm beyond the margin, torso >= -11 mm at one frame at the stocky extreme.
+- **Real skinned meshes** (`src/arm_head_check.py`: every arm vertex of `Body_Skin` and the jersey sleeve against the evaluated `Head` + `Gear_Helmet` surface, every frame, morphs at rest, `head_wide + brow_heavy`, `head_narrow + ears_large`): `batting_stance` >= 91 mm from the head, `ondeck_ready` >= 159 mm, `swing` and `ondeck_swing` min 0.1-1.6 mm (at the load the head is turned onto the front shoulder: the chin touches the shoulder, nothing goes through the head or helmet; all distances positive).
+- `Elbow_Pole_L/R` and `players/elbow_guides.json` (per-frame elbow and wrist positions in Spine1 bone-local axes) are regenerated for the new poses and now also contain `ondeck_swing`.
+
+### Heads (`src/player_body.py` `build_head`, `src/player_headwear.py`)
+- The tall egg skull is replaced: the upper half is a superellipsoid (exponent 2.0 -> 2.5, round dome with fuller shoulders, no pointed crown), crown 11.8 cm above the head centre and chin 13 cm below it (head height 24.8 cm = 1/7.5 of the 1.85 m body), width 15.8 cm, depth ~20 cm, occiput bulge at the back, a less V-shaped jaw (taper 0.23), neck set further under the skull (neck top 1.2 cm more forward); face: smaller nose (tip 19 mm), softer brow, shallower sockets, eyes set back 9 mm, upper-lid crease, lower orbital bags, philtrum, nostrils, cupid bow, jaw angles, under-chin crease, 6 % weaker right-side features (subtle asymmetry); trapezius slope and neck base are fuller.
+- Cap: the crown follows the new dome automatically (it is built from the head surface), the bill sweeps forward instead of flaring sideways (taper 0.45, side curl 6.5 cm), button on top; the helmet likewise. Worst-case clearance of cap / helmet / hair from the head over every morph set (incl. the new `brow_heavy`): cap 5.7 mm, helmet 2.2 mm, short hair 0.6 mm, curly 4.2 mm, long 0.4 mm, buzz 0.1 mm.
+- More face variety: new head morph targets `brow_heavy`, `chin_strong`, `cheeks_full`, `nose_narrow`, `eyes_deep` on `Head` (and `brow_heavy` on cap, helmet, hair so they follow), next to `head_narrow`, `head_wide`, `jaw_square`, `nose_large`, `ears_large`.
+- Skin: the face material has its own ORM map (AO in eye sockets / nostrils / mouth line, roughness variation: oily forehead and nose, glossier lips, rougher cheeks and chin) next to the pore / wrinkle normal map.
+- Turntables (`.herdr-project/.../library/seventh_*_turntable*.png`): bare head, cap, cap + hair at 6 angles and a broadcast-distance body turntable.
+
+### On deck, dugout, coaches, ball kids (`src/player_crew.py`; every clip is in every player file)
+Files: `player_coach.glb` (uniform, `Gear_Helmet` visible by default for 1B/3B coaches, `Gear_Cap` and `Gear_LineupCard` optional (cb_default 0), wristbands, no glove), `player_ballkid.glb` (polo = `Jersey_ShortSleeve`, `Shorts`, `Gear_Cap`, no glove, no belt; the **Armature node is scaled 0.838** = 1.55 m, extras `cb_height_m`; `build_lean` default 0.55) and `bat_donut.glb` (node `Bat_Donut`: steel ring with a rubber band, 136 mm outer diameter, 30 mm thick, hole 59 mm, in the bat's frame: add it as a child of the bat node with an identity transform, it sits 0.50 m from the knob). `ballkid_run` = the `run` clip (the file has it). Not made: `walk_to_plate_bat`, which needs the bat in one hand (the bat IK drives both hands); the engine can keep `walk`.
+#### on deck / dugout / coaches / ball kids
+| clip | frames | duration | loop | event frames |
+|---|---|---|---|---|
+| `ondeck_ready` | 60 | 2.500 s | loop | - |
+| `ondeck_swing` | 32 | 1.333 s | one-shot | load f9 (0.375), contact f18 (0.75), finish f24 (1.0) |
+| `ondeck_stretch` | 72 | 3.000 s | loop | - |
+| `bench_sit` | 72 | 3.000 s | loop | - |
+| `bench_stand_up` | 28 | 1.167 s | one-shot | rise_start f5 (0.2083), standing f22 (0.9167) |
+| `bench_cheer` | 36 | 1.500 s | one-shot | clap f[8, 16, 24] |
+| `coach_ready` | 60 | 2.500 s | loop | clap f[33, 39] |
+| `coach_stop` | 24 | 1.000 s | one-shot | hold_start f8 (0.3333), hold_end f20 (0.8333) |
+| `coach_go` | 36 | 1.500 s | one-shot | windmill_start f5 (0.2083), windmill_end f29 (1.2083) |
+| `coach_go_loop` | 12 | 0.500 s | loop | revolution_frames f12 (0.5) |
+| `coach_advance` | 32 | 1.333 s | one-shot | wave_start f8 (0.3333), wave_end f24 (1.0) |
+| `coach_slide` | 24 | 1.000 s | one-shot | push_down f[8, 16] |
+| `coach_signs` | 72 | 3.000 s | one-shot | touch_cap f8 (0.3333), touch_belt f16 (0.6667), touch_chest f24 (1.0), touch_arm f32 (1.3333), touch_cap_2 f42 (1.75), touch_belt_2 f50 (2.0833), touch_ear f58 (2.4167) |
+| `ballkid_sit` | 72 | 3.000 s | loop | - |
+| `ballkid_pickup` | 36 | 1.500 s | one-shot | pickup f13 (0.5417), standing f28 (1.1667) |
+| `ballkid_toss` | 24 | 1.000 s | one-shot | release f10 (0.4167), backswing_peak f6 (0.25) |
+| `ballkid_wave` | 36 | 1.500 s | one-shot | wave_start f4 (0.1667), wave_end f32 (1.3333) |
+
+Notes: `ondeck_ready` has the bat resting vertically in front, both hands on the knob; `ondeck_swing` goes ready -> stance -> a loose version of the `swing` poses (shorter stride) -> bat lowered across the front -> ready (load f9, contact f18, finish f24); `ondeck_stretch` is the bat across the shoulders with trunk twists; `bench_sit` is root = the ground under the seat centre, seat height 0.45 m (hips 0.58 m, feet 0.36 m forward), `bench_stand_up` ends standing 0.30 m in front of the seat (root motion in hips y), `bench_cheer` starts/ends standing there; coach clips start/end upright except `coach_ready` (hands on knees, light clap f33 / f39), `coach_stop` hold f8..f20, `coach_go` windmill f5..f29 (two turns), `coach_go_loop` = one windmill turn (12 frames) looping, `coach_signs` 3 s touching cap / belt / chest / arm / cap / belt / ear; ball kid `ballkid_toss` releases at f10, `ballkid_pickup` closes the hand at f13; frames above are in the table.

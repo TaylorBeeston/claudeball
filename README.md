@@ -44,18 +44,41 @@ exports and finally to procedural placeholders, so it works with any subset of t
 the Vite plugin serves `assets/` at `/assets/` in dev and copies it to `dist/assets` on build (`CB_ASSETS_DIR=/other/dir`
 overrides the folder). Re-run `assets/optimize.sh` after re-exporting from Blender.
 
-### Controls and URL parameters
+### Menus, controls and URL parameters
 
-Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` skip to next half inning · `c` auto camera on/off · `q` quality ·
-`t` time of day · `m` sound on/off. `?quality=low|medium|high|ultra`, `?tod=day|dusk|night`, `?mock` (dev mock game instead of the real
-sim), `?noassets`, `?nopost`, `?noaudio`. Details in [`src/engine/README.md`](src/engine/README.md).
+The page opens on a **loading screen** (assets, sky, shaders and a warm-up game, so nothing pops in later; about 5 s on a desktop GPU), then a
+**title screen**: *Start Game*, *Game Setup* (pick both teams from a 30-club league or leave them to the seed, randomize teams, seed box with a
+random-seed button and a *Copy link* that reproduces the exact game, game length 9 / 3 / 1 innings, time of day) and *Settings* (quality preset
+with a device-based *Auto*, sound: master / effects / crowd / voices, PA, commentary, chatter level, organ, mute; camera, replays, default speed, broadcast
+graphics, box score; *Reset to defaults*). The game does not start until *Start Game*; that click also unlocks the browser's audio. Preferences
+persist in `localStorage`. In game, `Esc` / `P` or the ☰ → *Menu* button opens the pause menu (resume, settings, restart this game, quit to menu); at the
+end a *Final* screen with the box score offers *Play again* (new seed, same teams) and *Menu*.
+
+Keys: Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` next half inning · `c` auto/free camera · `b` box score · `q` quality · `t` time of day · `m` sound on/off · `Esc` menu.
+Phones and tablets: tap the game to show the controls (☰ at the top right), one finger orbits and two fingers pinch-zoom in the free camera, the fullscreen button
+and a "rotate your device" hint for portrait. The HUD respects notches (`safe-area-inset`), the render resolution is capped per device and quality preset.
+
+| URL parameter | effect |
+|---|---|
+| `?seed=N` | game seed (digits, or any text, which is hashed); with the teams below it reproduces a game exactly |
+| `?away=DEN&home=AUS` | clubs by abbreviation or index 0-29 (default: the teams the seed generates) |
+| `?innings=1..9`, `?tod=day\|dusk\|night`, `?quality=auto\|low\|medium\|high\|ultra` | settings (a parameter beats the saved preference) |
+| `?camera=free`, `?replays=0`, `?speed=1\|2\|4`, `?hud=0`, `?box=1`, `?chatter=low\|normal\|high` | more settings |
+| `?menu=1` | show the menu even in an automated browser |
+| `?autostart` or `?menu=0` | skip the menu and play at once. **Automated browsers (`navigator.webdriver`: Playwright, Puppeteer, Selenium) skip the menu by default** and use the fixed legacy seed 20260928 when no `?seed` is given, so existing scripts keep working; people get a random seed |
+| `?mock`, `?noassets`, `?nopost`, `?noaudio` | dev: mock game, placeholders only, no post-processing, no audio |
+
+Scripts can wait for `await page.waitForFunction('window.__boot && window.__boot.tti > 0')`; `window.__boot` holds `tti` (ms since navigation start), `steps` (ms per
+preparation step), `stages` (the progress log) and `missing` (asset files that failed). `window.engine` is the engine.
+`scripts/ui-shots.py` takes screenshots of loading, menus and HUD at the reference phone / tablet / desktop sizes.
+Details in [`src/engine/README.md`](src/engine/README.md).
 
 ### Sound
 
 A stadium soundscape driven by the same events as the picture: bat cracks that depend on how hard and how well the ball was hit, mitt pops scaled by pitch speed, glove pops, throws, bounces, dirt, fence and slide sounds panned and
 attenuated by the broadcast camera, a crowd whose murmur and roar follow the situation (late innings, close score, runners in scoring position, two strikes, a ball in the air) and that reacts to the outcome (cheers for the home team,
-groans, a gasp on a robbed home run), an organ, fireworks after home-team homers, a PA announcer (`Now batting, number 23, ...`), umpire calls and two-voice commentary that reuses the sim's play-by-play text. Replays go dull and slow, pause quiets the field, fast-forward is silent.
-Press `m` or click 🔊 (top right) to mute; ⚙ has volumes and the announcer / commentary toggles. Browsers need one click or key press before they play audio (a small prompt says so). Sounds are synthesised in the browser (plus three CC0 applause clips),
+groans, a gasp on a robbed home run), a real-sounding stadium organ (walk-up riffs, charge and rally builds, fanfares, soft beds between innings and the 7th-inning stretch with *Take Me Out to the Ball Game*), fireworks after home-team homers, a PA announcer (`Now batting, number 23, ...`), umpire calls and a two-voice booth (play-by-play and colour) that narrates pitches, matchups, tendencies and close plays from the live game state, with a chatter level (Low / Normal / High). Optional **HD voices** (Settings): neural voices (Kokoro, Apache-2.0) downloaded on request and run in the browser. Replays go dull and slow, pause quiets the field, fast-forward is silent.
+Press `m` or use the 🔊 button in the ☰ controls (or the sound settings in the menu) to mute. Browsers need a click before they play audio: *Start Game* is that click (with `?autostart` the first tap or key press unlocks it). Sounds are synthesised in the browser (plus three CC0 applause clips),
 and voices use your browser's speech synthesis (none in some headless/Linux setups: then only the effects play). See [`src/audio/README.md`](src/audio/README.md).
 
 ## Deployment
@@ -84,6 +107,7 @@ repo) are CC0.
 |---|---|
 | `src/sim/` | pure TypeScript baseball simulation (no rendering dependencies), see [`src/sim/README.md`](src/sim/README.md) |
 | `src/engine/` | three.js renderer: stadium, players, cameras/replays, HUD, post-processing |
+| `src/ui/` | loading screen, title / setup / settings / pause / game-over screens, settings store and URL parameters, touch + fullscreen, boot sequence (`app.ts`) |
 | `src/audio/` | Web Audio sound: synthesised effects, crowd, organ, PA/umpire/commentary voices; listens to the game's events, see [`src/audio/README.md`](src/audio/README.md) |
 | `assets/` | Blender sources, glTF exports and the optimize script |
 | `scripts/` | headless season sim (`simulate.ts`), diagnostics, HDRI fetch |

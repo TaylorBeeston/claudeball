@@ -6,12 +6,12 @@
  * Event source: the raw sim event bus when it can be reached (richer: swing/look calls, error kinds, wall contacts, robbed
  * home runs ...), else the engine's reduced GameEvent stream (`?mock`). Never both, or every cue would play twice.
  */
-import { CueMapper, allowedAtSpeed, engineToRaw } from './cues';
+import { CueMapper, PRI, allowedAtSpeed, engineToRaw } from './cues';
 import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
-import { HD_MODES, pickMode } from './hdInfo';
+import { HD_MODES, hdSupported, pickMode } from './hdInfo';
 import { CustomVoiceController, loadVoiceSettings } from './voice/controller';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
@@ -66,9 +66,19 @@ export function rawBusOf(game: unknown): RawBus | null {
   return g ?? null;
 }
 
+export interface HdStatus {
+  state: 'off' | 'loading' | 'ready' | 'error' | 'unavailable';
+  pct?: number;
+  text?: string;
+  cached?: boolean;
+  mb?: number;
+}
+
 export interface AudioOptions {
   /** do not create any audio (URL `?noaudio`) */
   off?: boolean;
+  /** false: no sound button / panel / "click to enable" prompt (the app's own menu drives `AudioController` instead) */
+  ui?: boolean;
 }
 
 export interface DebugCue {
@@ -87,6 +97,8 @@ const WALL = (x: number, z: number) => {
   const a = Math.min(1, Math.abs(phi) / (Math.PI / 4));
   return 100.6 + (121.9 - 100.6) * (1 - a * a);
 };
+
+export type VoiceStatus = { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; name: string };
 
 export class AudioController {
   readonly settings: Settings;
@@ -134,7 +146,7 @@ export class AudioController {
     events: 0,
   };
 
-  constructor(private host: AudioHost, root: HTMLElement) {
+  constructor(private host: AudioHost, root: HTMLElement, withUi = true) {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
     this.ambience = new Ambience(this.mixer);
@@ -161,23 +173,26 @@ export class AudioController {
       onChange: (s) => {
         if (s.state !== 'loading') this.speech.clear();
         this.ui?.voicePanel?.set(s);
+        this.lastVoice = s;
+        for (const l of this.voiceListeners) l(s);
       },
     });
-    this.ui = new AudioUi(root, this.settings, {
-      voice: {
-        initialUrl: loadVoiceSettings().url,
-        url: (u) => void this.voice.enableFromUrl(u),
-        files: (f) => void this.voice.enableFromFiles(f),
-        off: () => this.voice.disable(),
-        forget: () => void this.voice.forget(),
-      },
-      toggleMute: () => this.toggleMute(),
-      changed: () => this.settingsChanged(),
-      gesture: () => void this.unlock(),
-      enable: () => void this.enable(),
-      hdToggle: () => void (this.hd.state === 'ready' ? this.disableHd() : this.enableHd()),
-      hdRemove: () => void this.removeHd(),
-    });
+    if (withUi)
+      this.ui = new AudioUi(root, this.settings, {
+        voice: {
+          initialUrl: loadVoiceSettings().url,
+          url: (u) => void this.voice.enableFromUrl(u),
+          files: (f) => void this.voice.enableFromFiles(f),
+          off: () => this.voice.disable(),
+          forget: () => void this.voice.forget(),
+        },
+        toggleMute: () => this.toggleMute(),
+        changed: () => this.settingsChanged(),
+        gesture: () => void this.unlock(),
+        enable: () => void this.enable(),
+        hdToggle: () => void this.hdToggle(),
+        hdRemove: () => void this.removeHd(),
+      });
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
       const t = e.target as HTMLElement | null;
@@ -203,25 +218,71 @@ export class AudioController {
   // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
 
   private async autoHd() {
+    if (!hdSupported()) {
+      this.settings.hd = false;
+      this.persist();
+      return;
+    }
     try {
       const { isCached } = await import('./neural');
       if (await isCached(pickMode())) await this.enableHd();
       else {
         this.settings.hd = false;
-        saveSettings(this.settings);
-        this.ui?.setHd({ state: 'off' });
+        this.persist();
+        this.setHdUi({ state: 'off' });
       }
     } catch {
-      this.ui?.setHd({ state: 'off' });
+      this.setHdUi({ state: 'off' });
     }
   }
 
+  /** "My voice (custom announcer)" status for the menu's Voices section */
+  private voiceListeners = new Set<(s: VoiceStatus) => void>();
+  private lastVoice: VoiceStatus = { state: 'off', pct: 0, message: '', name: '' };
+  voiceStatus(): VoiceStatus & { url: string; available: true } {
+    return { ...this.lastVoice, url: this.voice.settings.url, available: true };
+  }
+  subscribeVoice(cb: (s: VoiceStatus) => void): () => void {
+    this.voiceListeners.add(cb);
+    return () => this.voiceListeners.delete(cb);
+  }
+
+  hdToggle() {
+    return this.hd.state === 'ready' ? this.disableHd() : this.enableHd();
+  }
+
+  /** called after the controller itself changes `settings` (HD voices on/off), so the app's copy can follow */
+  onSettings: (() => void) | null = null;
+  private hdListeners = new Set<(s: HdStatus) => void>();
+  private lastHd: HdStatus = { state: 'off' };
+
+  hdStatus(): HdStatus {
+    if (!hdSupported() && this.lastHd.state !== 'ready') return { state: 'unavailable', mb: HD_MODES[pickMode()].mb, text: 'HD voices need WebGPU, which this browser does not offer: the CPU version is slower than real time, so it is not offered.' };
+    return { ...this.lastHd, mb: HD_MODES[pickMode()].mb };
+  }
+
+  subscribeHd(cb: (s: HdStatus) => void): () => void {
+    this.hdListeners.add(cb);
+    return () => this.hdListeners.delete(cb);
+  }
+
+  private setHdUi(s: HdStatus) {
+    this.lastHd = s;
+    this.ui?.setHd(s.state === 'unavailable' ? { state: 'off' } : (s as Parameters<AudioUi['setHd']>[0]));
+    for (const l of this.hdListeners) l(this.hdStatus());
+  }
+
+  private persist() {
+    saveSettings(this.settings);
+    this.onSettings?.();
+  }
+
   async enableHd(): Promise<void> {
-    if (this.hd.state === 'loading' || this.hd.state === 'ready') return;
+    if (this.hd.state === 'loading' || this.hd.state === 'ready' || !hdSupported()) return;
     if (this.voice.state !== 'off') this.voice.disable();
     const mode = pickMode();
     this.hd = { state: 'loading', pct: 0, message: '', engine: null };
-    this.ui?.setHd({ state: 'loading', pct: 0 });
+    this.setHdUi({ state: 'loading', pct: 0 });
     void this.enable(); // the click is a user gesture: make sure audio is running too
     try {
       const { NeuralSpeechEngine, WorkerSynth } = await import('./neural');
@@ -229,20 +290,20 @@ export class AudioController {
       this.hd.engine = engine;
       await engine.init(mode, (l, t) => {
         this.hd.pct = t > 0 ? Math.min(99, Math.round((l / t) * 100)) : 0;
-        this.ui?.setHd({ state: 'loading', pct: this.hd.pct });
+        this.setHdUi({ state: 'loading', pct: this.hd.pct });
       });
       this.sw.neural = engine;
       this.hd.state = 'ready';
       this.settings.hd = true;
-      saveSettings(this.settings);
-      this.ui?.setHd({ state: 'ready', text: `Kokoro HD voices on (${HD_MODES[mode].device}). Lines that cannot be generated in time use the browser voice.` });
+      this.persist();
+      this.setHdUi({ state: 'ready', text: `Kokoro HD voices on (${HD_MODES[mode].device}). Lines that cannot be generated in time use the browser voice.` });
     } catch (e) {
       this.hd.engine?.dispose();
       this.hd = { state: 'error', pct: 0, message: String((e as Error)?.message ?? e), engine: null };
       this.sw.neural = null;
       this.settings.hd = false;
-      saveSettings(this.settings);
-      this.ui?.setHd({ state: 'error', text: `HD voices could not start (${this.hd.message}). Using the browser voices.` });
+      this.persist();
+      this.setHdUi({ state: 'error', text: `HD voices could not start (${this.hd.message}). Using the browser voices.` });
     }
   }
 
@@ -252,15 +313,15 @@ export class AudioController {
     this.hd.engine?.dispose();
     this.hd = { state: 'off', pct: 0, message: '', engine: null };
     this.settings.hd = false;
-    saveSettings(this.settings);
-    void import('./neural').then(({ isCached }) => isCached(pickMode())).then((cached) => this.ui?.setHd({ state: 'off', cached }));
+    this.persist();
+    void import('./neural').then(({ isCached }) => isCached(pickMode())).then((cached) => this.setHdUi({ state: 'off', cached }));
   }
 
   async removeHd() {
     this.disableHd();
     const { clearCache } = await import('./neural');
     await clearCache();
-    this.ui?.setHd({ state: 'off', cached: false });
+    this.setHdUi({ state: 'off', cached: false });
   }
 
   // ---- settings / unlock ---------------------------------------------------------------------------------------------
@@ -295,7 +356,13 @@ export class AudioController {
     this.settingsChanged();
   }
 
-  private settingsChanged() {
+  /** true until the browser has let the AudioContext run (needs a click / key press) */
+  get isLocked() {
+    return this.locked;
+  }
+
+  /** Apply and save `settings` after a change made from outside (the app's menu). */
+  settingsChanged() {
     saveSettings(this.settings);
     this.mixer.applySettings();
     this.syncSpeech();
@@ -438,7 +505,7 @@ export class AudioController {
 
   /** Queue the booth's lines (delayed ones through timers); only at normal speed and with commentary on. */
   private say(lines: ChatLine[], speed: number) {
-    if (!lines.length) return;
+    if (!lines.length || this.settings.chatter === 'low') return; // Low: only the event-driven big-play calls, no filler or colour
     for (const l of lines) {
       const run = () => {
         const ok = !this.locked && !this.settings.muted && speed <= 1.01 && !this.host.sim.skipping && this.speech.enabled[l.role] && this.speech.available();
@@ -507,10 +574,12 @@ export class AudioController {
         this.excitement.add(c.amount, c.hold);
         return true;
       case 'organ':
-        return this.settings.muted ? false : this.organ.play(c.id, c.gain ?? 1, 0);
+        return this.settings.muted || !this.settings.organ ? false : this.organ.play(c.id, c.gain ?? 1, 0);
       case 'speak': {
         if (this.locked || this.settings.muted) return false;
         if (!this.speech.enabled[c.role]) return false;
+        // chatter "low": only the main play-by-play, no colour commentary
+        if (this.settings.chatter === 'low' && (c.role === 'color' || (c.role === 'pbp' && c.pri < PRI.pbp))) return false;
         if (!this.speech.available()) {
           // no voices in this browser: the umpire still gets a shout so the call is audible
           if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2, pos: c.pos ? { x: c.pos.x, y: 1.7, z: c.pos.z } : undefined });
@@ -554,11 +623,11 @@ export class AudioController {
       }
       this.wasSkipping = sim.skipping;
       // the organ: silent while paused / muted / skipping, a soft bed in the gaps, and the booth waits out the seventh-inning stretch
-      if ((sim.paused || sim.skipping || this.settings.muted || this.locked) && this.organ.playing) this.organ.stop(0.25);
+      if ((sim.paused || sim.skipping || this.settings.muted || !this.settings.organ || this.locked) && this.organ.playing) this.organ.stop(0.25);
       if (sim.skipping) this.bedWanted = false;
       const speaking = !!this.speech.speaking;
       if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
-      if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
+      if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
       const stretch = this.organ.playing === 'stretch';
       if (stretch && !this.speech.hold) this.speech.clearRoles(['pbp', 'color']);
       this.speech.hold = stretch;
@@ -677,7 +746,7 @@ export class AudioController {
 export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptions = {}): AudioController | null {
   if (opts.off) return null;
   try {
-    const a = new AudioController(host, root);
+    const a = new AudioController(host, root, opts.ui !== false);
     const dbg = {
       get cues() { return a.debug.cues; },
       get mapped() { return a.debug.mapped; },
