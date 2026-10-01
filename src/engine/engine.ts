@@ -232,8 +232,8 @@ export class Engine {
     this.resize();
   }
 
-  setTimeOfDay(t: TimeOfDay) {
-    this.env.setTimeOfDay(t);
+  setTimeOfDay(t: TimeOfDay): Promise<void> {
+    return this.env.setTimeOfDay(t);
   }
 
   resize() {
