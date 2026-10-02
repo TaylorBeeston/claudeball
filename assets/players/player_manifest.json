@@ -2204,7 +2204,7 @@
   "hair (+ hair_short01, hair_short03, hair_short04, hair_bob01, hair_afro01, hair_long01, hair_ponytail01: luminance-normalised strand textures, recolour all `hair*`)",
   "eyebrow",
   "eyelash",
-  "eye (iris colour is in the texture; alternative iris colours: tex/eyes_<colour>.webp)",
+  "eye (iris colour is in the texture; alternative iris colours: players/textures/eyes_<colour>.webp)",
   "cornea",
   "stubble",
   "uniform_jersey",
