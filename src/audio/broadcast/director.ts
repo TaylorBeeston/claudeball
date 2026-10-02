@@ -39,6 +39,8 @@ export interface Item {
   interject?: boolean;
   excited?: boolean;
   fold?: Fold;
+  /** may carry a folded (missed) count in front of it: batted-ball calls, the next batter ... */
+  foldable?: boolean;
   tag?: string;
   /** set by the director */
   createdAt?: number;
@@ -91,8 +93,8 @@ export interface DirectorCfg {
 
 export const CFG: Record<Level, DirectorCfg> = {
   low: { pauseMin: 0.3, pauseMax: 0.7, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 99, breatheMax: 99, topics: false },
-  normal: { pauseMin: 0.2, pauseMax: 0.6, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 4, breatheMax: 9, topics: true },
-  high: { pauseMin: 0.2, pauseMax: 0.5, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 1.5, breatheMax: 4, topics: true },
+  normal: { pauseMin: 0.2, pauseMax: 0.6, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 5, breatheMax: 11, topics: true },
+  high: { pauseMin: 0.2, pauseMax: 0.5, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 2.5, breatheMax: 6, topics: true },
 };
 
 interface VoiceState {
@@ -206,8 +208,11 @@ export class Director {
   /** earliest time a voice may start a new line */
   private freeAt(voice: VoiceId, t: number): number {
     const v = this.voices[voice];
-    if (v.item) return v.end + this.cfg.pauseMin;
-    return Math.max(t, v.lastEnd + this.cfg.pauseMin);
+    const o = this.voices[voice === 'pxp' ? 'color' : 'pxp'];
+    // one person talks at a time: the other voice must be finished (or nearly) too
+    const own = v.item ? v.end + this.cfg.pauseMin : Math.max(t, v.lastEnd + this.cfg.pauseMin);
+    const theirs = o.item ? o.end + this.cfg.pauseMin : 0;
+    return Math.max(own, theirs);
   }
 
   private cutNow(voice: VoiceId, at: number, reason: string): CutAction {
@@ -228,7 +233,7 @@ export class Director {
 
   /** resolve folds for a line that is about to start */
   private foldClauses(t: number, item: Item): { text: string; fold: true }[] {
-    if (item.importance === 'could' || item.interject) return [];
+    if (!item.foldable || item.interject) return [];
     const out: { text: string; fold: true }[] = [];
     for (const [key, f] of [...this.folds]) {
       if (item.fold?.key === key) {
@@ -294,6 +299,29 @@ export class Director {
       const voice: VoiceId = it.speaker === 'color' ? 'color' : 'pxp';
       if (it.notBefore !== undefined && t < it.notBefore) continue;
       const v = this.voices[voice];
+      const other = this.voices[voice === 'pxp' ? 'color' : 'pxp'];
+      if (other.item && other.item.importance !== 'must' && !other.item.interject) {
+        // the other voice is mid-line: it yields at its next clause (or finishes if nearly done)
+        const rem = other.end - t;
+        if (rem > this.cfg.finishUnder) {
+          let cutAt = t;
+          for (const e of other.clauseEnds) {
+            const abs = other.start + e;
+            if (abs > t) {
+              if (abs - t <= this.cfg.maxCutWait) cutAt = abs;
+              break;
+            }
+          }
+          actions.push(this.cutNow(voice === 'pxp' ? 'color' : 'pxp', cutAt, 'must'));
+          it.notBefore = cutAt + 0.1;
+          continue;
+        }
+        it.notBefore = other.end + 0.1;
+        continue;
+      } else if (other.item && other.item.importance === 'must') {
+        it.notBefore = Math.max(it.notBefore ?? 0, other.end + 0.1);
+        if (!v.item) continue;
+      }
       if (!v.item) {
         if (t >= v.lastEnd + 0.15) {
           this.start(voice, t, it, actions);

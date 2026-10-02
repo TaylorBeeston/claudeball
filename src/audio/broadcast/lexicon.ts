@@ -20,6 +20,7 @@ export interface Call {
   ttl: number;
   tag: string;
   fold?: Fold;
+  foldable?: boolean;
   /** colour voice reaction that may start over the end of the call ("Ooh!", "Wow!") */
   react?: string;
 }
@@ -42,9 +43,10 @@ export const baseWord = (b: number) => BASE[b] ?? 'the bag';
 
 export function countWords(balls: number, strikes: number): string {
   if (balls === 3 && strikes === 2) return 'full';
-  return `${numWord(balls)} and ${numWord(strikes)}`;
+  return `${ohw(balls)} and ${ohw(strikes)}`;
 }
-const countPhrase = (b: number, s: number) => (b === 3 && s === 2 ? 'a full count' : `${numWord(b)} and ${numWord(s)}`);
+const ohw = (n: number) => (n === 0 ? 'oh' : numWord(n));
+const countPhrase = (b: number, s: number) => (b === 3 && s === 2 ? 'a full count' : `${ohw(b)} and ${ohw(s)}`);
 
 /** where a batted ball went, from the sim's spray angle (+ = toward third base / left field) */
 export function sprayZone(sprayDeg: number): { id: string; dir: string; side: 'left' | 'center' | 'right'; gap?: string; line?: string } {
@@ -92,11 +94,11 @@ export const LEX: Record<string, string[]> = {
   // -- pitch calls (SHOULD; the count is folded in when they cannot be said in time) --
   'ball': [
     'Ball $n[, $loc].', '$loc. Ball $n.', 'Just {misses|off}[ $loc], ball $n.', 'Takes it for ball $n.', 'Ball $n, {taken|and $b lets it go}.', 'Ball $n[, $loc]. {The count|It} {is|goes to} $count.',
-    '{Low|High|Outside} again, ball $n.', 'Not {this time|that one}, ball $n.', '$typeCap, $mph. Ball $n.',
+    '{Low|High|Outside} again, ball $n.', 'Not {this time|that one}, ball $n.', '$typeCap, $mph. Ball $n.', '$b does not bite. Ball $n.', 'Misses the zone, ball $n.', 'Off the plate, ball $n.', 'Ball $n, and $b stays patient.',
   ],
   'strike.called': [
     'Called strike $n[, $loc].', 'Strike $n, taken[ $loc].', '$b watches it go by, strike $n.', 'Strike $n, looking.', 'Taken for strike $n.', '$typeCap, $mph, called strike $n.',
-    'Right there[, $loc]. Strike $n.', 'Gets the call, strike $n.', 'And that one is a strike, number $n.',
+    'Right there[, $loc]. Strike $n.', 'Gets the call, strike $n.', 'And that one is a strike, number $n.', 'Strike $n, and $b does not offer.', 'In there for strike $n.', '$b takes a strike, $count.', 'Locates it, strike $n.', 'Over the plate, strike $n.',
   ],
   'strike.swinging': [
     'Swing and a miss, strike $n.', '$b swings through it. Strike $n.', 'Swings and misses!', 'Whiffs! Strike $n.', 'Chases it, and misses. Strike $n.', 'Strike $n, swinging.',
@@ -143,7 +145,7 @@ export const LEX: Record<string, string[]> = {
   'contact.pop': ['Popped up near the $where...', 'Pop-up, $where...', 'High pop-up in the infield...', 'Skies one, in the infield...', 'Up in the air, in the infield...'],
   'contact.bunt': ['Bunt! $b lays it down.', 'A bunt, rolling toward $pos...', 'Squares and bunts it...', 'Lays down a bunt...', 'Bunt, down the $side line...'],
   // -- fielding (SHOULD, streamed into the call) --
-  'fielded.clean': ['$f has it...', '$f {fields|gathers} it cleanly...', 'Scooped up by $f...', '$f {glove|gloves} it...', 'Fielded by $f...'],
+  'fielded.clean': ['$f has it...', '$f {fields|gathers} it cleanly...', 'Scooped up by $f...', '$f gloves it...', 'Fielded by $f...'],
   'fielded.bobble': ['$f bobbles it!', '$f can not come up with it!', 'Off the glove of $f!', '$f {boots|fumbles} it!'],
   'catch.fly': ['$f {settles under it|camps under it}...', '$f {has it|is under it}...', '$f drifts over...', '$f tracks it down...', '$f waits on it...'],
   'catch.dive': ['$f dives... and makes the catch!', '$f lays out and snags it!', 'Diving catch by $f!', 'Sliding catch by $f!'],
@@ -224,8 +226,16 @@ export const LEX: Record<string, string[]> = {
     'Unbelievable! $f steals a home run from $b!',
   ],
   // -- flow --
-  'half.start': ['{Top|Bottom} of the $ord.', 'We move to the $half of the $ord.', 'Here we go, $half of the $ord.', '$half $ord, $team coming up.', 'Underway in the $half of the $ord.'],
+  'half.start': ['The $half of the $ord.', 'We move to the $half of the $ord.', 'Here we go, $half of the $ord.', '$team coming up in the $half of the $ord.', 'Underway in the $half of the $ord.'],
   'half.end': ["And that'll do it for the $half of the $ord.", 'Three outs, and the side is retired.', 'That ends the $half $ord.', 'And we go to the {break|next half}.'],
+  'batter.up': ['$b steps in.', 'Here comes $b.', '$b is up.', 'Now it is $b.', 'And $b {comes to the plate|digs in}.'],
+  // short colour reactions (the analyst chiming in over the last words of a call)
+  'react.k': ['Nasty.', 'Good pitch.', 'Well pitched.', 'That is a tough at-bat.', 'Ooh.', 'Great sequence there.'],
+  'react.hit': ['Nice piece of hitting.', 'Good swing.', 'That is a quality at-bat.', 'Beautiful swing.', 'Great approach.', 'Good, solid contact.'],
+  'react.out': ['Good play.', 'Nice job by the defense.', 'Routine.', 'That is how you do it.', 'Smooth.', 'Clean.'],
+  'react.big': ['Wow!', 'Oh my!', 'Unbelievable!', 'What a play!', 'Absolutely crushed!', 'Incredible!', 'Are you kidding me?'],
+  'react.err': ['Ooh, that hurts.', 'That is a tough one.', 'They will want that back.', 'Costly.', 'Oh no.'],
+  'replay.pxp': ["Let's take another look at that.", 'Here it is again from a different angle.', 'Watch this replay.', 'And in slow motion.', 'Let us have another look.'],
   'start': ['And we are underway.', 'First pitch is coming up.', 'Here we go.', "Let's play ball."],
   'sub.ph': ['$in will pinch hit for $out.', 'A pinch hitter: $in.', '$in {comes in|steps in} to hit for $out.', 'Pinch hitting, $in.'],
   'sub.pr': ['$in will run for $out.', 'A pinch runner: $in.', '$in comes in to run for $out.', 'Pinch running, $in.'],
@@ -238,6 +248,7 @@ export const LEX: Record<string, string[]> = {
 /** which lexicon keys cover which sim event (for the coverage test and the report) */
 export const EVENT_KEYS: Record<string, string[]> = {
   gameStart: ['start'],
+  batterUp: ['batter.up'],
   halfInningStart: ['half.start'],
   halfInningEnd: ['half.end'],
   call: ['ball', 'strike.called', 'strike.swinging', 'strike.foul', 'strike.foul.two', 'strikeout.looking', 'strikeout.swinging', 'balk'],
@@ -271,7 +282,7 @@ export const EVENT_KEYS: Record<string, string[]> = {
 };
 
 /** sim events the booth deliberately says nothing about (they are sounds, gestures or bookkeeping) */
-export const SILENT_EVENTS = ['batterUp', 'windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved'];
+export const SILENT_EVENTS = ['windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved'];
 
 export const lexiconStats = () => Object.fromEntries(Object.entries(LEX).map(([k, v]) => [k, v.reduce((a, t) => a + variants(t), 0)]));
 
@@ -325,7 +336,7 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
       if (!tpl) continue;
       const text = say(tpl, slots, rng);
       if (text) {
-        out.push({ importance, speaker: o.speaker ?? 'pxp', text, excited: o.excited, ttl: o.ttl ?? (importance === 'must' ? 60 : 6), tag: o.tag ?? k, fold: o.fold, react: o.react });
+        out.push({ importance, speaker: o.speaker ?? 'pxp', text, excited: o.excited, ttl: o.ttl ?? (importance === 'must' ? 60 : 6), tag: o.tag ?? k, fold: o.fold, react: o.react, foldable: o.foldable ?? (k.startsWith('contact') || k === 'batter.up' || k === 'half.start') });
         return;
       }
     }
@@ -334,6 +345,9 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
   switch (ev.type) {
     case 'gameStart':
       push('start', 'could');
+      break;
+    case 'batterUp':
+      if (c.batter) push('batter.up', 'could', { ttl: 6 });
       break;
     case 'halfInningStart': {
       const half = ev.half === 'bottom' ? 'bottom' : 'top';

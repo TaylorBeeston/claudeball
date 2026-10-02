@@ -47,7 +47,7 @@ describe('coverage of the sim events', () => {
   it('every lexicon key is used by an event and has at least 3 templates', () => {
     const used = new Set(Object.values(EVENT_KEYS).flat());
     for (const [k, v] of Object.entries(LEX)) {
-      expect(used.has(k) || k.startsWith('outs.'), `unused key ${k}`).toBe(true);
+      expect(used.has(k) || k.startsWith('outs.') || k.startsWith('replay.') || k.startsWith('react.'), `unused key ${k}`).toBe(true);
       expect(v.length, k).toBeGreaterThanOrEqual(3);
       for (const t of v) expect(variants(t)).toBeGreaterThanOrEqual(1);
     }

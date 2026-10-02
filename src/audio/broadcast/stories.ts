@@ -85,9 +85,13 @@ export function slotsOf(c: BoothCtx): Slots {
     outsw: c.outs === 0 ? 'nobody' : numWord(c.outs),
     diff,
     diffw: numWord(diff),
+    runs: diff === 1 ? 'run' : 'runs',
+    sep: diff === 1 ? 'separates' : 'separate',
+    leads: 'lead',
     lead: batScore > fldScore ? batTeam : fldScore > batScore ? fldTeam : undefined,
     trail: batScore > fldScore ? fldTeam : fldScore > batScore ? batTeam : undefined,
     score: `${c.teams.away} ${c.score.away}, ${c.teams.home} ${c.score.home}`,
+    tiescore: c.score.home,
   };
 }
 
@@ -350,7 +354,7 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
   }
   if (diff !== 0 && Math.abs(diff) >= 6 && c.inning >= 6) {
     add({ id: 'blowout', key: `blow:${c.inning}`, salience: 0.45, relevance: 0.6, opener: 'color', build: (rng, o) => script([
-      { who: 'A', t: ['$lead {has|have} {a comfortable|a big} lead, $score.', '$score. $lead is {in control|cruising}.'] },
+      { who: 'A', t: ['$lead lead {comfortably|by a good margin}, $score.', '$score. $lead is {in control|cruising}.'] },
       { who: 'B', t: ['{Time|Hard} for the {bullpen|bench} to {get some work|see action}.', 'It would take {a big inning|something special} from $trail.', 'Not much drama left.'] },
     ], S, rng, o) });
   }
@@ -382,25 +386,24 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
     ], S, rng, o) });
   }
   if (bat && pit && bat.hand && pit.hand && bat.hand !== 'S' && pit.hand !== 'S' && bat.hand === pit.hand) {
-    add({ id: 'sameHand', key: `hand:${bid}:${pid}`, salience: 0.35, relevance: 0.5, opener: 'color', build: (rng, o) => script([
+    add({ id: 'sameHand', key: `hand:${bat.hand}${pit.hand}:${c.inning}`, salience: 0.22, relevance: 0.4, opener: 'color', build: (rng, o) => script([
       { who: 'A', t: ['$h against $h2 here.', 'It is $h on $h2 in this matchup.'] },
       { who: 'B', t: ['That {usually|tends to} {favors|helps} the pitcher.', '{The break|The angle} {works|plays} for $p.'], opt: true },
-    ], { ...S, h: bat.hand === 'L' ? 'Lefty' : 'Righty', h2: bat.hand === 'L' ? 'lefty' : 'righty' }, rng, o) });
+    ], { ...S, h: bat.hand === 'L' ? 'lefty' : 'righty', h2: bat.hand === 'L' ? 'lefty' : 'righty' }, rng, o) });
   }
   return stories;
 }
 
-/** neutral lines when nothing is interesting (state-conditioned, never a claim about the players) */
+/** neutral lines when nothing is interesting: only facts about the moment (inning, score, outs), never a claim about the players */
 export function neutralStories(c: BoothCtx): Story[] {
   const S = slotsOf(c);
   const out: Story[] = [];
   const add = (id: string, lines: Line[], ok = true, tense = false) => ok && out.push({ id, key: `n:${id}`, salience: 0.1, relevance: 0.2, tense, opener: 'either', build: (rng, o) => script(lines, S, rng, o) });
-  add('n.baseball', [{ who: 'A', t: ['{That is|It is} baseball.', 'Baseball is a {funny|strange} game.', 'You {never|can never} {know|tell} with this game.'] }, { who: 'B', t: ['{That is|That is what makes it} the {beauty|charm} of it.', 'And {that is why|we keep} {we watch|watching}.', '{True|Right}.'], opt: true }]);
-  add('n.pace', [{ who: 'A', t: ['{Nice|Good} pace tonight.', 'The game is {moving along|flowing} {nicely|well}.'] }, { who: 'B', t: ['{Just how|Exactly how} {you like|we like} it.', '{Plenty|Lots} of baseball {left|ahead}.'], opt: true }]);
-  add('n.inning', [{ who: 'A', t: ['{We are|We are now} in the $ord inning.', 'It is the $half of the $ord.'] }, { who: 'B', t: ['{Still|Plenty of} {time|room} for {anything|surprises}.', '{It all|Everything} {comes down|starts} {to|with} {the pitcher|one pitch}.'], opt: true }], true);
-  add('n.score', [{ who: 'A', t: ['$score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['{A game|It is a game} {still|that is still} {in the balance|up for grabs}.', '{Anyone\'s|A} {game|ballgame}.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2);
-  add('n.lead', [{ who: 'A', t: ['$lead {lead|leads} by $diffw.', '$diffw runs separate the teams, $lead on top.'] }, { who: 'B', t: ['{Not|Hardly} a {safe|big} {margin|lead}.', '{That can disappear|One swing changes that} {in a hurry|quickly}.'], opt: true }], S.lead !== undefined && Number(S.diff) > 0 && Number(S.diff) <= 3);
-  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : c.outs === 1 ? ['One out.', 'One down, two to go.'] : ['Nobody out yet.', 'Plenty of outs left.'] }]);
+  add('n.inning', [{ who: 'A', t: ['We are in the $half of the $ord.', 'It is the $half of the $ord inning.'] }, { who: 'B', t: ['Plenty of baseball left.', 'Still a lot of game ahead.'], opt: true }], c.inning <= 6);
+  add('n.score', [{ who: 'A', t: ['It is $score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['A game that is still up for grabs.', 'Anybody\'s ballgame.', 'Nothing decided yet.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2);
+  add('n.tied', [{ who: 'A', t: ['All tied up at $tiescore.', 'Tied at $tiescore.'] }, { who: 'B', t: ['And the next run could matter a lot.', 'Somebody is going to have to break it open.'], opt: true }], c.score.home === c.score.away);
+  add('n.lead', [{ who: 'A', t: ['$lead lead by $diffw.', '$lead are up $diffw.'] }, { who: 'B', t: ['Not a safe margin.', 'That can disappear in a hurry.', 'One swing changes that.'], opt: true }], S.lead !== undefined && Number(S.diff) > 0 && Number(S.diff) <= 3);
+  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : c.outs === 1 ? ['One out.', 'One down, two to go.'] : ['Nobody out yet.', 'No outs so far this half.'] }]);
   return out;
 }
 
@@ -438,6 +441,7 @@ export class TopicPicker {
       this.neutralInRow = 0; // stay quiet this time, then allow it again
       return null;
     }
+    if (this.rng() > 0.4) return null; // fillers are rare
     const neutral = neutralStories(c).filter((s) => !this.recentIds.slice(-6).includes(s.id));
     while (neutral.length) {
       const i = Math.floor(this.rng() * neutral.length);
