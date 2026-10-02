@@ -88,7 +88,7 @@ export interface PlayerRT {
   /** Pitcher's rattled state 0..1 (runs, walks and hits against him this outing). */
   rattle: number;
   /** Where he is when he is not in the play: seated on the bench, walking to / from it, on deck, in the bullpen (null = on the field or hidden). */
-  dug: 'bench' | 'toBench' | 'toDeck' | 'deck' | 'bullpen' | null;
+  dug: 'bench' | 'toBench' | 'toDeck' | 'deck' | 'bullpen' | 'toMound' | null;
   /** His bench seat (index) and the way points he still has to walk through (the dugout door, the steps, the aisle ...), and the goal he takes up after them. */
   seat: number;
   route: { x: number; z: number }[];
@@ -272,7 +272,7 @@ export interface BallRT {
   thrower: PlayerRT | null;
   throwTarget: { x: number; z: number } | null;
   /** For throws that are not physics (catcher -> pitcher lobs). */
-  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number; arc?: number } | null;
+  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number; arc?: number; kind?: 'pitch' | 'throw' } | null;
   /** Cached prediction for fielders. */
   path: PathSample[];
   pathStart: number; // tick when path was computed
@@ -368,6 +368,10 @@ export interface PrePitch {
   readyBy: number;
   /** Runner asked about stealing on this pitch and the answer. */
   steal: { r: RunnerRT; go: boolean } | null;
+  /** The between-pitch routine of this pitch (batter, catcher, pitcher). */
+  routine: import('./tempo').Routine | null;
+  /** Mound visit / lull stage of this pitch already handled. */
+  lullDone: boolean;
 }
 
 export type UmpKey = 'plate' | 'first' | 'second' | 'third';
@@ -376,7 +380,7 @@ export type UmpKey = 'plate' | 'first' | 'second' | 'third';
 export interface StaffRT {
   id: string;
   name: string;
-  role: 'coach1b' | 'coach3b' | 'ballkid' | 'batboy';
+  role: 'coach1b' | 'coach3b' | 'ballkid' | 'batboy' | 'manager' | 'pitchcoach';
   team: import('./types').TeamSide;
   jersey: number;
   x: number;
@@ -386,6 +390,8 @@ export interface StaffRT {
   facing: number;
   /** Where he is heading (null = standing), his speed cap, and what he is doing. */
   goal: { x: number; z: number } | null;
+  /** Way points he is walking through (the goal is the first). */
+  path: { x: number; z: number }[];
   speed: number;
   anim: import('./types').AnimHint;
   animStart: number;
@@ -400,6 +406,14 @@ export interface StaffRT {
   /** Ball kid: the home chair; bat boy: his spot. */
   homeX: number;
   homeZ: number;
+}
+
+/** A lull in the action: what kind, when it started, how long it is expected to last. */
+export interface Lull {
+  kind: import('./types').LullKind;
+  detail: string;
+  start: number;
+  sec: number;
 }
 
 export interface UmpireRT {
@@ -419,6 +433,8 @@ export interface UmpireRT {
   anim: import('./types').AnimHint;
   animStart: number;
   animUntil: number;
+  /** Where he is told to stand (a huddle, the plate for a brush), null = his usual spot for the play. */
+  hold: { x: number; z: number } | null;
 }
 
 /** A fielder at a bag with the ball secure and his glove set down where the runner's foot / hand will arrive. */
@@ -471,7 +487,7 @@ export interface BallReturn {
 }
 
 export interface World {
-  cfg: Required<Pick<GameConfig, 'dh' | 'innings' | 'extraInningsRunner' | 'pace'>> & GameConfig;
+  cfg: Required<Pick<GameConfig, 'dh' | 'innings' | 'extraInningsRunner' | 'pace' | 'tempo'>> & GameConfig;
   rng: Rng;
   /** Randomness of the AI's own judgement / mixed strategies (separate from physics noise, so another provider never shifts the physics stream). */
   aiRng: Rng;
@@ -563,6 +579,22 @@ export interface World {
   umpires: UmpireRT[];
   /** Umpire calls waiting for their moment (after the catch, after the tag / touch). */
   umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean }[];
+  /** The lull in the action the game is in (B-roll / announcers' time), if any. */
+  lull: Lull | null;
+  /** Mound visit, pitching change, review and the inning break show in progress. */
+  visit: import('./visits').MoundVisit | null;
+  change: import('./visits').ChangeSeq | null;
+  review: import('./visits').Review | null;
+  breakShow: import('./breaks').BreakShow | null;
+  /** The last close call at a base (for a challenge): when, what, who, how close; `used` once it has been considered. */
+  lastClose: { tick: number; call: 'out' | 'safe'; runnerId: string; base: number; margin: number; used: boolean } | null;
+  /** Tick of the last pickoff throw (the pitcher steps off the rubber after one). */
+  pickoffTick: number;
+  /** Mound visits so far per team, challenges used per team, pitches since the last visit. */
+  visits: { home: number; away: number; lastPitchNo: { home: number; away: number } };
+  challenges: { home: number; away: number };
+  /** Balls that are only for show (warm-up tosses between innings). */
+  extraBalls: { x: number; y: number; z: number }[];
   /** Base coaches (both teams), ball kids and the bat boy. */
   staff: StaffRT[];
   /** A foul ball that is out of play: where it is, whether a ball kid has it, and who is after it. */

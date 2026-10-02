@@ -13,6 +13,10 @@ import type { PlayerRT, RunnerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import * as fielding from './fielding';
 import * as staff from './staff';
+import { noteClose } from './visits';
+const visitsNoteClose = (w: World, id: string, b: number, margin: number, close: boolean) => {
+  if (close) noteClose(w, 'safe', id, b, margin);
+};
 import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
@@ -206,7 +210,7 @@ export function snapRunnersToBases(w: World): void {
     if (r.state !== 'live') continue;
     if (r.base >= 1) {
       const b = bpos(r.base);
-      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 1.5 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.4 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
         // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
         setGoal(r.p, b.x, b.z, true, 0.6);
       } else {
@@ -249,6 +253,7 @@ export function stagePickoff(w: World): 'none' | 'wait' | 'thrown' {
   if (d === PENDING) return 'wait';
   if (d.throw && r.state === 'live') {
     inplay.beginPickoff(w, r);
+    w.pickoffTick = w.tick;
     return 'thrown';
   }
   return 'none';
@@ -522,6 +527,7 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
   if (!r.dead && fielding.playNearBase(w, b)) {
     const eta = tagging.fielderETA(w, b);
     emit(w, { type: 'safe', playerId: r.p.info.id, base: b, margin: -eta, closePlay: eta < 0.1 });
+    visitsNoteClose(w, r.p.info.id, b, -eta, eta < 0.1);
     scheduleCall(w, b === 4 ? 'plate' : b === 1 ? 'first' : b === 2 ? 'second' : 'third', 'safe', baseCallDelay(eta < 0.1), { atBase: b, playerId: r.p.info.id });
   }
   if (b === 1 && r.isBatter && r.want === 1) r.overrun = true;

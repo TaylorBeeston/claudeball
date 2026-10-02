@@ -8,6 +8,7 @@ import { sendToDugout } from './handling';
 import { scheduleCall } from './umpires';
 import { DEFAULT_SPOTS } from './setup';
 import { leaveDugout, toBench } from './dugout';
+import { beginChange, changeTick } from './visits';
 import { bullpenMound } from './venue';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { giveBall } from './util';
@@ -225,6 +226,7 @@ function pinchRun(w: World, t: TeamRT, r: RunnerRT, best: PlayerRT): void {
 // ---------------------------------------------------------------------------------------------
 
 export function stagePitchingChange(w: World): boolean {
+  if (w.change) return changeTick(w); // the manager's walk, the hand-over, the warm-up pitches (tempo)
   const t = w.fieldingTeam;
   const pool = t.bullpen.filter((b) => !b.used);
   if (!pool.length) return true;
@@ -245,7 +247,13 @@ export function stagePitchingChange(w: World): boolean {
   );
   if (d === PENDING) return false;
   const np = d.replaceWith ? pool.find((p) => p.info.id === d.replaceWith) : null;
-  if (np) substitutePitcher(w, t, np);
+  if (np) {
+    if (w.cfg.pace === 0) substitutePitcher(w, t, np);
+    else {
+      beginChange(w, t, np);
+      return changeTick(w);
+    }
+  }
   return true;
 }
 
