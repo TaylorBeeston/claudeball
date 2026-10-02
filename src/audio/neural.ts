@@ -145,8 +145,13 @@ export class NeuralSpeechEngine implements SpeechEngine {
   private lines = new Set<{ stop(): void }>();
   private paused = false;
 
-  constructor(private synth: Synth, private mixer: Mixer, private fallback: SpeechEngine | null, mode: HdMode = 'cpu') {
+  constructor(private synth: Synth, private mixer: Mixer | null, private fallback: SpeechEngine | null, mode: HdMode = 'cpu') {
     this.rtf = mode === 'gpu' ? 0.25 : 3;
+  }
+
+  /** the audio controller of a game (or the preview's own mixer) plays the lines; generation works without one */
+  setMixer(m: Mixer | null) {
+    this.mixer = m;
   }
 
   async init(mode: HdMode, onProgress: (loaded: number, total: number) => void) {
@@ -176,8 +181,6 @@ export class NeuralSpeechEngine implements SpeechEngine {
 
   /** One generation job at a time, in priority order (a spoken line never waits behind background warm-up). */
   private request(text: string, voice: string, speed: number, prio: number): Gen | null {
-    const ctx = this.mixer.ctx;
-    if (!ctx) return null;
     const k = this.key(text, voice, speed);
     const hit = this.cache.get(k);
     if (hit) {
@@ -207,13 +210,13 @@ export class NeuralSpeechEngine implements SpeechEngine {
     this.jobs.sort((a, b) => a.prio - b.prio || a.seq - b.seq);
     const job = this.jobs.shift()!;
     this.inflight = job;
-    const ctx = this.mixer.ctx;
     const t0 = performance.now();
     this.synth
       .generate(job.text, job.voice, job.speed)
       .then((r) => {
-        if (!ctx) throw new Error('no context');
-        const b = ctx.createBuffer(1, r.samples.length, r.sr);
+        const ctx = this.mixer?.ctx;
+        // an AudioBuffer belongs to no context: lines can be generated before any game (or context) exists
+        const b = ctx ? ctx.createBuffer(1, r.samples.length, r.sr) : new AudioBuffer({ numberOfChannels: 1, length: r.samples.length, sampleRate: r.sr });
         b.copyToChannel(r.samples as Float32Array<ArrayBuffer>, 0);
         const secs = r.samples.length / r.sr;
         const ratio = (performance.now() - t0) / 1000 / Math.max(0.3, secs);
@@ -264,7 +267,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
   }
 
   speak(text: string, o: SpeakOptions): SpeakHandle {
-    const ctx = this.mixer.ctx;
+    const ctx = this.mixer?.ctx;
     const { voice, speed, shift } = this.params(o);
     const parts = this.pieces(text, o.role);
     let alive = true;
@@ -378,8 +381,9 @@ export class NeuralSpeechEngine implements SpeechEngine {
   }
 
   private play(buf: AudioBuffer, o: SpeakOptions, shift: number, onDone: () => void): { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null {
-    const ctx = this.mixer.ctx;
-    if (!ctx || ctx.state !== 'running') {
+    const ctx = this.mixer?.ctx;
+    const mixer = this.mixer;
+    if (!ctx || !mixer || ctx.state !== 'running') {
       return null;
     }
     const nodes: AudioNode[] = [];
@@ -412,7 +416,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
       const dry = ctx.createGain();
       dry.gain.value = 0.85;
       drive.connect(dry);
-      dry.connect(this.mixer.paBus);
+      dry.connect(mixer.paBus);
       const slap = ctx.createDelay(0.5);
       slap.delayTime.value = 0.19;
       const fb = ctx.createGain();
@@ -423,11 +427,11 @@ export class NeuralSpeechEngine implements SpeechEngine {
       slap.connect(fb);
       fb.connect(slap);
       slap.connect(wet);
-      wet.connect(this.mixer.paBus);
+      wet.connect(mixer.paBus);
       const send = ctx.createGain();
       send.gain.value = 0.7;
       drive.connect(send);
-      send.connect(this.mixer.reverbIn);
+      send.connect(mixer.reverbIn);
       nodes.push(hp, lp, drive, dry, slap, fb, wet, send);
     } else if (o.role === 'ump') {
       // the umpire is on the field: part of the stadium, in the room reverb, a little band-limited, no slap-back
@@ -439,11 +443,11 @@ export class NeuralSpeechEngine implements SpeechEngine {
       lp.frequency.value = 6500;
       tail.connect(hp);
       hp.connect(lp);
-      lp.connect(this.mixer.paBus);
+      lp.connect(mixer.paBus);
       const send = ctx.createGain();
       send.gain.value = 0.45;
       lp.connect(send);
-      send.connect(this.mixer.reverbIn);
+      send.connect(mixer.reverbIn);
       nodes.push(hp, lp, send);
     } else {
       // booth voices stay dry and close-miked: roll off the rumble, add a little presence
@@ -456,7 +460,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
       pres.gain.value = 2;
       tail.connect(hp);
       hp.connect(pres);
-      pres.connect(this.mixer.boothBus);
+      pres.connect(mixer.boothBus);
       nodes.push(hp, pres);
     }
     const c = { src, nodes, shift };
