@@ -21,7 +21,7 @@ import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
 import { DUGOUT } from './setup';
-import { toBench } from './dugout';
+import { leaveDugout, toBench } from './dugout';
 
 export const bpos = (b: number) => BASE_POS[b % 4];
 
@@ -90,6 +90,7 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
 }
 
 export function placeGhostRunner(w: World, p: PlayerRT): void {
+  const seated = p.dug === 'bench';
   const r = makeRunner(w, p, false);
   r.base = 2;
   r.target = 2;
@@ -97,11 +98,21 @@ export function placeGhostRunner(w: World, p: PlayerRT): void {
   r.ghost = true;
   r.origin = 2;
   r.touched[2] = true;
+  r.reaction = 0;
+  if (w.cfg.pace > 0 && w.tick > 0) {
+    // the extra-innings runner walks out to second: from the bench, or from wherever he is (he may be jogging in from the field), the break gives him time
+    const goal = { x: bpos(2).x, z: bpos(2).z, stop: true, mul: clamp(3.0 / Math.max(1, p.vmax), 0.1, 1) };
+    if (seated) {
+      p.dug = 'bench';
+      p.goal = null;
+      leaveDugout(p, [], goal, 3.0);
+    } else p.goal = goal;
+    return;
+  }
   p.x = bpos(2).x;
   p.z = bpos(2).z;
   p.vx = p.vz = 0;
   p.goal = null;
-  r.reaction = 0;
 }
 
 export const liveRunners = (w: World) => w.runners.filter((r) => r.state === 'live');

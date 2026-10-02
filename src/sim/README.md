@@ -448,6 +448,61 @@ fetches it once the play is over (`batBoyRetrieve {batBoyId, pos}`) and carries 
 New hints: `catch_ready`, `pitcher_catch_toss`, `bench_sit`, `ondeck_ready`, `ondeck_swing`, `walk`, `bullpen_throw` (unused), `coach_*`, `ballkid_*`. New roles: `bench`, `ondeck`, `coach1b`, `coach3b`, `ballkid`, `batboy`.
 About 45 entities are in a snapshot (on the field 14-18, benches ~20, staff 5). Statistics are unchanged (seeds 1-8 x 60 games: R/G 4.4, AVG .241, K% 23.5, BABIP .296, HR/G 1.04).
 
+## Tempo: the real game's non-pitch time
+
+`GameConfig.tempo: 'quick' | 'standard' | 'broadcast'` says how much of baseball's non-pitch time is modelled. The sim's default is `quick` (a little more than it always had); the browser game
+passes `broadcast` (`simAdapter.ts`). `pace: 0` (headless, seasons, `npm run sim`) skips **all** of it: no routine, no signs, no visits, no breaks, and a pace-0 game is bit-for-bit what it was
+before. `ritual` durations (waiting parts of the batter / pitcher routines) are `TEMPO_RITUAL` = 0.10 / 0.60 / 1.0 of the broadcast time and the long lulls (mound visits, pitching changes, challenges, breaks)
+`TEMPO_LULL` = 0.25 / 0.60 / 1.0 (both times `pace`); an optional bit of ritual (a step-out, the rosin bag, the signs at `quick`) is shown with probability `showP` (0.25 / 1 / 1). A clip is never cut short.
+What is decided (steps out, calls time, shakes off, steps off the rubber, who goes to the mound, whether a manager challenges) comes from the state and `aiRng`; what is only show (how long, how many warm-up swings)
+from `propRng`, which nothing in the physics or the decisions reads. Same seed + same tempo = the same game.
+
+**Measured** (`npm run sim -- 40 1 1 <tempo>`, 8 seeds x 40 games; pitch-to-pitch = release to release inside a plate appearance, medians):
+| | quick | standard | broadcast |
+|---|---|---|---|
+| nobody on | 7.3 s | 13.5 s | 15.7 s (p10 12.7, p90 39 after a foul / a ball in play) |
+| runners on | 7.2 s | 15.8 s | 22.2 s |
+| mean half-inning (3 outs) | 4.0 min | 6.6 min | 7.5 min |
+| a 9-inning game | 73 min | 116-126 min | 134-144 min |
+| inning break | 6-15 s | 16-36 s | 26-60 s |
+League line is unchanged by tempo: AVG .247 / .243 / .245, K% 23.4 / 23.2 / 23.4, BABIP .300 / .294 / .301, R/G 4.63 / 4.67 / 4.56, pitches per PA 3.63 / 3.65 / 3.63.
+
+**Between pitches** (`tempo.ts`, run once the pitch is chosen; two lanes in parallel, then the stages in order): the batter on the first pitch of his turn takes 1-2 practice swings (`batter_practice_swing`,
+1.2 s), adjusts (`batter_adjust`: his habit `PlayerSnapshot.tic` = `tap_plate | adjust_helmet | rock_bat | stretch`, fixed by his appearance seed) and digs in (`batter_step_in`); between pitches he steps out
+(`batter_step_out` -> `batter_adjust` -> `batter_step_in`, 3-8 s, to 1.95 m off the plate) with a probability from foul balls, two strikes, the count of pitches and his `consistency`, or calls time (event
+`timeCalled {by: 'batter'|'catcher'|'pitcher', playerId}`, the plate umpire's `ump_time`). The pitcher works (`pitcher_rosin` 2 s, `pitcher_adjust` 1.4 s, a step off the rubber `pitcher_step_off` after a pickoff
+throw / a foul / a runner, then back), the time scaled by his `delivery.tempo`, his rattle and the runners; the catcher sometimes signals the infield (`catcher_signal_infield`); then **the signs**:
+`catcher_signs` 1.2-2.4 s (a runner on second: +1 s and a decoyed 4-number sequence), event `signsGiven {catcherId, pitcherId, pitchType, complex, seq, reshown?}` where `seq` follows the pitch chosen
+**before** the signs (the pitch-choice decision; `PitchRequest.shookOff` is set on the second one). He may **shake off** (`pitcher_shake_off` 1.3 s, event `shakeOff {pitcherId, catcherId, rejected}`: 3 % + rattle +
+composure + a call that is not one of his better pitches, about 7 % overall): a second pitch decision refusing that type, new signs (`reshown: true`), then `pitcher_nod`, `pitcher_look_runner` with a runner
+on, and the pitch. Everything is bounded (70 s) and `pace`-scaled.
+
+**Mound visits** (`visits.ts`): by the state (rattle, bases loaded, runs this inning, pitch count, a walk, late and close with a man in scoring position; at most 4 per team per game and 14 pitches apart), event
+`moundVisit {by: 'catcher'|'pitchingCoach'|'manager'|'infielders', purpose, visitorId, team, start, end}` and `moundVisitEnd`. The visitor walks out (`walk`; coach and manager from the dugout rail through the steps and
+door as staff, roles `pitchcoach` / `manager`, hint `manager_walk`), 12-25 s of `mound_talk` (visitor) / `mound_talk_listen` (pitcher, the gathered infielders who stand at `moundRing` of `venue.ts`), and walks back; the pitcher
+is steadier afterwards (rattle x 0.72, x 0.6 for the manager). Plate umpire `ump_time`. About 2-3 per game.
+**Pitching change** (the decision is the old one; at `pace > 0` it is a sequence): `pitchingChangeStart {team, outId, inId, managerId}`, the manager signals (`manager_signal`) and walks out (`manager_walk`, ~14 s), the
+reliever jogs in from the bullpen (`dug: 'toMound'`, role `pitcher`, `trot`), they talk (`mound_talk`, sometimes the infield gathers), `pitcher_handoff` (the ball goes to the manager's hand, `ball.holder` is null while he has it),
+the old pitcher leaves, the manager gives the ball to the new one (`pitchingChange` + `substitution` events), 5-8 `warmup_pitch` throws to the catcher (each caught as a `catch` `kind: 'pitch'`, returned with the usual transfer
+and toss), the catcher's throw down to second (the shortstop covers) and back, the plate umpire brushes off the plate (`umpire_brush_plate`); about 75-100 s at `broadcast`, 4 per game.
+**Challenge**: a close call at a base (`out` / `safe` with |margin| < 0.1 s) can be challenged by the manager it went against (two per team per game, likelier the closer and the more it matters): `challenge {team,
+managerId, base, runnerId, call, margin}`, `manager_signal`, the four umpires huddle at `umpHuddle` (`ump_huddle`), 45-115 s, `challengeResult {overturned}`. The verdict comes from the play's own margin; the sim's calls
+come from the physics, so they stand (the check exists but cannot fail until the umpires can get something wrong).
+
+**Dead-ball time**: after a ball goes out of play the plate umpire hands a new one (`ump_new_ball`); after an out with the bases empty the infield tosses it around the horn more often (+20 % at `broadcast`); the bench cheers
+(`bench_cheer`) or stands (`bench_stand_up`) for hits, runs, homers and strikeouts; the reliever likely to come in loosens in the bullpen (`bullpen_throw`) when the pitcher is tiring (pitch count, rattle, runs). Not
+modelled: the first baseman holding the runner at the bag (it would change the fielding), the grounds crew.
+**Between innings** (`breaks.ts`): 26-60 s at `broadcast` (event `breakStart {inning, half, sec}`; the first half-inning 22-28 s): the fielders trot out and in as before, then the pitcher throws eight warm-up pitches (`warmup_pitch`) to the
+catcher (the last followed by his throw down to second), the infielders roll ground balls to each other (`throw` / `field_grounder`) and the outfielders play catch (`toss` / `catch_toss`) with **extra balls that are only for show**
+(`GameStateSnapshot.extraBalls`, positions in metres), the field umpires walk in to the plate, the plate umpire brushes it off; the first batter walks in after (bounded: 25 s over).
+
+**Snapshot, additive**: `phaseDetail` ('batterRoutine' | 'pitcherRoutine' | 'signs' | 'shakeOff' | 'moundVisit' | 'pitchingChange' | 'review' | 'break' | null; `phase` itself is unchanged), `lull` (bool), `lullKind`
+('walkup' | 'betweenPitches' | 'moundVisit' | 'pitchingChange' | 'break' | 'review'), `lullSec` (expected length), `lullRemaining`, `extraBalls`, `PlayerSnapshot.tic`. New roles `manager` (`MGR`) and
+`pitchcoach` (`PCH`) at the dugout rail (manager (±17.1, 4.1), pitching coach (±18.4, 5.4), `venue.ts`; home +X), always on the snapshot. New hints: `batter_step_in`, `batter_practice_swing`, `batter_adjust`, `batter_step_out`, `catcher_signs`,
+`catcher_signal_infield`, `pitcher_shake_off`, `pitcher_nod`, `pitcher_step_off`, `pitcher_rosin`, `pitcher_adjust`, `pitcher_look_runner`, `mound_talk`, `mound_talk_listen`, `manager_walk`, `manager_signal`,
+`pitcher_handoff`, `warmup_pitch`, `umpire_brush_plate`, `ump_new_ball`, `ump_huddle`, `bench_cheer`, `bench_stand_up`, `catch_toss`, `bullpen_throw` (now used). New events: `signsGiven`, `shakeOff`, `timeCalled`,
+`moundVisit`, `moundVisitEnd`, `pitchingChangeStart`, `challenge`, `challengeResult`, `breakStart`. The reliever coming in from the bullpen walks through the outfield wall (he is not on the field yet).
+
 ## Pacing
 
 `pace: 1` gives a broadcast-like pace (a full 9-inning game is ~45 simulated minutes because dead time is
