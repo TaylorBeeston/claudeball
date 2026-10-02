@@ -176,8 +176,20 @@ class App {
       toggle: () => this.audio?.hdToggle(),
       remove: () => void this.audio?.removeHd(),
     },
+    voice: {
+      status: () => this.audio?.voiceStatus() ?? { state: 'off' as const, pct: 0, message: '', name: '', url: '', available: false },
+      subscribe: (cb) => {
+        this.voiceListeners.add(cb);
+        return () => this.voiceListeners.delete(cb);
+      },
+      loadUrl: (url) => void this.audio?.voice.enableFromUrl(url),
+      loadFiles: (files) => void this.audio?.voice.enableFromFiles(files),
+      off: () => this.audio?.voice.disable(),
+      forget: () => void this.audio?.voice.forget(),
+    },
   };
   private hdListeners = new Set<(s: import('./menu').HdStatus) => void>();
+  private voiceListeners = new Set<(s: import('./menu').VoiceMenuStatus) => void>();
 
   private ctx: AppCtx = {
     settings: undefined as unknown as GameSettings,
@@ -343,6 +355,7 @@ class App {
     Object.assign(this.audio.settings, this.audioLocal);
     this.audio.onSettings = () => Object.assign(this.audioLocal, this.audio?.settings);
     this.audio.subscribeHd((s) => this.hdListeners.forEach((l) => l(s)));
+    this.audio.subscribeVoice(() => this.voiceListeners.forEach((l) => l(this.audioBridge.voice!.status())));
     this.audio.settingsChanged();
     void this.audio.unlock(); // unlocks without un-muting: a muted player stays muted
   }
