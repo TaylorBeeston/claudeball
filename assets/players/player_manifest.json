@@ -2039,6 +2039,7 @@
   ],
   "headwear": [
    "Gear_Cap",
+   "Gear_CapLogo (stitched logo on the cap front, own material cap_logo)",
    "Gear_Helmet"
   ],
   "accessory": [
@@ -2059,6 +2060,7 @@
   "shoe": [
    "Cleats",
    "Gear_Soles",
+   "Gear_Spikes (metal cleat spikes, material spikes)",
    "Gear_Laces"
   ],
   "guide": [
@@ -2224,10 +2226,17 @@
   "cleats",
   "laces",
   "sole",
+  "spikes",
+  "cap_logo (own colours; do not recolour)",
+  "jersey_number",
   "eyeblack",
   "button",
   "catcher_gear"
  ],
+ "extra_textures": {
+  "eyes_<colour>.webp": "optimized/players/textures/eyes_brown|hazel|green|blue|gray.webp: equirect iris textures to swap onto material `eye`",
+  "skin_sss.webp": "optimized/players/textures/skin_sss.webp: R = skin thickness (0..4 cm), G = curvature, same UV layout as the skin atlas (materials skin / face)"
+ },
  "elbow_guides": {
   "file": "players/elbow_guides.json",
   "node": "Elbow_Pole_L / Elbow_Pole_R (children of Spine1: elbow position in the batting stance)",
