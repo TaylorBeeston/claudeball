@@ -351,7 +351,7 @@ export interface GameLike {
  */
 export type ShotLabel =
   | 'walkup' | 'ondeck' | 'faceCloseup' | 'shakeOff' | 'catcherSigns' | 'leadOff' | 'coachSigns' | 'managerWalk' | 'relieverJog' | 'relieverFace'
-  | 'dugout' | 'dugoutReaction' | 'bullpen' | 'bullpenDoor' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'umpires'
+  | 'dugout' | 'dugoutReaction' | 'bullpen' | 'bullpenDoor' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'umpires' | 'infieldDrill' | 'outfieldCatch'
   | 'coachSend' | 'kidToss';
 
 export type BroadcastEvent =

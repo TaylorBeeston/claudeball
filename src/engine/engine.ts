@@ -64,6 +64,8 @@ export class Engine {
   private tossBall: Object3D | null = null;
   /** a foul ball on the ground / in flight with nobody holding it, and the bat the hitter dropped (both from the sim) */
   private deadBallObj: Object3D | null = null;
+  /** the show-only balls of the warm-up between innings (the sim's `extraBalls`) */
+  private extraBallObjs: Object3D[] = [];
   private droppedBat: Object3D | null = null;
   readonly adaptive = new AdaptiveScale();
   readonly sim: SimDriver;
@@ -370,7 +372,13 @@ export class Engine {
       this.tossBall.visible = false;
       this.scene.add(this.tossBall);
     }
-    return [this.deadBallObj, this.droppedBat, this.tossBall];
+    while (this.extraBallObjs.length < 8) {
+      const o = this.ball.makeHandBall();
+      o.visible = false;
+      this.scene.add(o);
+      this.extraBallObjs.push(o);
+    }
+    return [this.deadBallObj, this.droppedBat, this.tossBall, ...this.extraBallObjs];
   }
 
   /** the sim's dead foul ball and the dropped bat, drawn where they lie (a ball a kid carries is in his hand instead) */
@@ -384,6 +392,22 @@ export class Engine {
     if (this.deadBallObj) {
       this.deadBallObj.visible = showBall;
       if (showBall) this.deadBallObj.position.set(db!.pos.x, Math.max(0.037, db!.pos.y), db!.pos.z);
+    }
+    const xb = rs.extraBalls ?? [];
+    for (let i = 0; i < Math.max(xb.length, this.extraBallObjs.length); i++) {
+      if (i >= xb.length) {
+        if (this.extraBallObjs[i]) this.extraBallObjs[i].visible = false;
+        continue;
+      }
+      if (!this.extraBallObjs[i]) {
+        if (this.extraBallObjs.length >= 8) break;
+        const o = this.ball.makeHandBall();
+        this.scene.add(o);
+        this.extraBallObjs.push(o);
+      }
+      const o = this.extraBallObjs[i];
+      o.visible = true;
+      o.position.set(xb[i].x, Math.max(0.037, xb[i].y), xb[i].z);
     }
     const d = rs.bat.dropped;
     if (d && !this.droppedBat) {
