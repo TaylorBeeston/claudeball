@@ -314,3 +314,45 @@ Files: `player_coach.glb` (uniform, `Gear_Helmet` visible by default for 1B/3B c
 | `ballkid_wave` | 36 | 1.500 s | one-shot | wave_start f4 (0.1667), wave_end f32 (1.3333) |
 
 Notes: `ondeck_ready` has the bat resting vertically in front, both hands on the knob; `ondeck_swing` goes ready -> stance -> a loose version of the `swing` poses (shorter stride) -> bat lowered across the front -> ready (load f9, contact f18, finish f24); `ondeck_stretch` is the bat across the shoulders with trunk twists; `bench_sit` is root = the ground under the seat centre, seat height 0.45 m (hips 0.58 m, feet 0.36 m forward), `bench_stand_up` ends standing 0.30 m in front of the seat (root motion in hips y), `bench_cheer` starts/ends standing there; coach clips start/end upright except `coach_ready` (hands on knees, light clap f33 / f39), `coach_stop` hold f8..f20, `coach_go` windmill f5..f29 (two turns), `coach_go_loop` = one windmill turn (12 frames) looping, `coach_signs` 3 s touching cap / belt / chest / arm / cap / belt / ear; ball kid `ballkid_toss` releases at f10, `ballkid_pickup` closes the hand at f13; frames above are in the table.
+
+## Eighth pass, track 1: ritual clips (pace of play), manager, props, hand finger morphs
+115 clips per player GLB (27 new), 14 player files (`player_manager.glb` new), `players/player_manifest.json` version 7. All new clips are 24 fps, start at t = 0, same rig, right-handed (the engine mirrors lefties), times = frame / 24 s.
+
+- **Finger morphs for the catcher's signs:** `Hand_R` (fist in the batter files, claw in the glove files, both in `player_base`) has morph targets `fingers_1` .. `fingers_4` (the first n fingers, index first, extended straight; weight 1 = shown, 0 = fist/claw). The clips cannot animate morphs; each sign clip has `finger_keys` in the manifest: `[frame, n]` pairs (n = 0 fist) to drive the weight (blend over one frame). `catcher_signs` shows 1 then 2, `catcher_signs_runner_on` 1-3-2-1 with a glove cover, `catcher_signal_infield` 2 then 1.
+- **`player_manager.glb`:** older face by default morphs (`build_stocky` .55, `cheeks_full` .6, `brow_heavy` .5, `eyes_deep` .5, `jaw_square` .3, `nose_large` .3, `chin_strong` .2), gray hair (`hair` colour), gray stubble (`Gear_Beard_Stubble`, visible), team jacket `Gear_Jacket` (hip length, wrist sleeves, material `jacket`, recolour via baseColorFactor) over the jersey, optional `Gear_Beard_Full`, `Gear_Mustache`, `Gear_Hair_Buzz` (cb_default 0), cap.
+- **Umpire props** (plate umpire file `player_umpire.glb` only): `Ball_Bag` (belt pouch on the right hip, visible) and `Umpire_Broom` (whisk broom, child of the right hand, `cb_default` 0: show it during `ump_brush_plate`).
+- `throw` (and so `bullpen_throw`) now clears the torso: its follow-through pose was moved forward (hands 0.5 m ahead of the hips) and the clip runs through the elbow optimiser (min clearance 30 mm, was -95 mm).
+- Elbow clearance of the new clips (analytic, optimiser): all >= 28 mm except `batter_step_in` (-35 mm while the bat taps the plate: the left forearm touches the belly), `batter_step_out` (-50 mm, the bat carried low with both hands in front of the belly), `batter_adjust` (-12 mm, tugging the glove strap across the body) and `pitcher_rosin` (9 mm). Real-mesh arm-vs-head distance of every new clip with a hand near the head >= 88 mm (`batter_practice_swing` 0.2 mm at the follow-through like `swing`).
+- Clips with a hand-held bat (`batter_step_in/step_out/practice_swing`) set the bat through the `bat` target as `swing` does; `batter_adjust` and the pitcher/manager clips have no bat target: `Bat_Grip` simply follows the right hand.
+- `warmup_pitch` = `pitch_three_quarter_windup` retimed to 29 frames (release f13 = 0.542 s), pairs with `catch_pitch` (catch f7: start `catch_pitch` ~0.4 s after the release); `bullpen_throw` = the `throw` poses with a 3/4 arm path and 34 frames (release f14); `manager_walk` is an in-place loop with `footSpeed` 1.2 m/s (hands in pockets); `pitcher_step_on` is `pitcher_step_off` backwards; `mound_talk*` loops start and end in the same pose so two actors can be offset in time. `ump_brush_plate` is the name (no `umpire_` alias).
+- Known weaknesses: the bat carry in `batter_step_out` is behind the hips and the cleat taps are small; the broom is a plain whisk silhouette; `pitcher_rosin` has no bag prop; `walk_to_plate_bat` is not provided (the bat IK drives both hands).
+#### rituals: batter, catcher, pitcher, mound, manager, umpire, warm-ups
+| clip | frames | duration | loop | event frames |
+|---|---|---|---|---|
+| `batter_step_in` | 38 | 1.583 s | one-shot | dig_start f8 (0.3333), dig_end f16 (0.6667), tap_1 f18 (0.75), tap_2 f22 (0.9167), settled f38 (1.5833) |
+| `batter_practice_swing` | 31 | 1.292 s | one-shot | load f7 (0.2917), contact f14 (0.5833), finish f20 (0.8333), back_in_stance f31 (1.2917) |
+| `batter_adjust` | 48 | 2.000 s | one-shot | strap_tug f[10, 18], helmet_touch f[28, 32, 36] |
+| `batter_step_out` | 34 | 1.417 s | one-shot | foot_out f13 (0.5417), tap_cleats f[21, 25, 29] |
+| `catcher_signs` | 53 | 2.208 s | one-shot | flash f[9, 20]; fingers f9:1, f16:1, f20:2, f27:2 |
+| `catcher_signs_runner_on` | 60 | 2.500 s | one-shot | flash f[9, 20, 31, 42]; fingers f9:1, f16:1, f20:3, f27:3, f31:2, f38:2, f42:1, f49:1 |
+| `catcher_signal_infield` | 36 | 1.500 s | one-shot | gesture f[12, 20, 24]; fingers f12:2, f20:2, f21:1, f25:1 |
+| `bullpen_catcher_ready` | 48 | 2.000 s | loop | - |
+| `pitcher_shake_off` | 24 | 1.000 s | one-shot | shake f[4, 8, 12, 16] |
+| `pitcher_nod` | 19 | 0.792 s | one-shot | nod f[4, 12] |
+| `pitcher_step_off` | 36 | 1.500 s | one-shot | back_foot_off f8 (0.3333), stepped_off f26 (1.0833) |
+| `pitcher_step_on` | 36 | 1.500 s | one-shot | stepping_on f10 (0.4167), on_rubber f36 (1.5) |
+| `pitcher_rosin` | 43 | 1.792 s | one-shot | rosin_touch f[9, 16], clap f[23, 29] |
+| `pitcher_adjust` | 38 | 1.583 s | one-shot | cap_touch f[8, 12], rub_ball f[20, 26] |
+| `pitcher_look_runner` | 24 | 1.000 s | one-shot | look_peak f8 (0.3333), look_end f15 (0.625) |
+| `pitcher_handoff` | 30 | 1.250 s | one-shot | handoff f13 (0.5417) |
+| `warmup_pitch` | 29 | 1.208 s | one-shot | hand_break f7 (0.2917), plant f10 (0.4167), release f13 (0.5417) |
+| `bullpen_throw` | 34 | 1.417 s | one-shot | release f14 (0.5833) |
+| `mound_talk` | 72 | 3.000 s | loop | - |
+| `mound_talk_listen` | 72 | 3.000 s | loop | - |
+| `mound_talk_cover` | 60 | 2.500 s | loop | - |
+| `manager_walk` | 20 | 0.833 s | loop | - |
+| `manager_signal` | 43 | 1.792 s | one-shot | arm_up f11 (0.4583), point_start f20 (0.8333), point_hold f[24, 32] |
+| `manager_challenge` | 29 | 1.208 s | one-shot | tap f[9, 13, 17] |
+| `ump_brush_plate` | 60 | 2.500 s | one-shot | bend_done f8 (0.3333), strokes f[16, 24, 32, 40], upright f50 (2.0833) |
+| `ump_new_ball` | 36 | 1.500 s | one-shot | ball_taken f13 (0.5417), release f21 (0.875), tossed f24 (1.0) |
+| `ump_huddle` | 72 | 3.000 s | loop | - |
