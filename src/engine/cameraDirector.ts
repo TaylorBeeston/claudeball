@@ -104,6 +104,10 @@ export class CameraDirector {
   private tossFan = new Vector3();
   private kidTossing = false;
   private lastOnDeckCut = -99;
+  /** the interesting play waiting for a lull to be shown again (with the REPLAY tag) */
+  private deferred: { t0: number; t1: number; variant: 'infield' | 'outfield' | 'hr'; cam: Vector3 | null; at: number } | null = null;
+  private playScore = 0;
+  private playOuts = 0;
   /** B-roll planner state */
   readonly landmarks: Landmarks;
   brollEnabled = true;
@@ -198,6 +202,8 @@ export class CameraDirector {
         this.cut('pitch');
         break;
       case 'contact':
+        this.playScore = e.exitVelo >= 45 ? 1 : 0; // 100 mph and up
+        this.playOuts = 0;
         this.hr = null;
         this.inPlay = true;
         this.playStart = te.simTime;
@@ -291,6 +297,7 @@ export class CameraDirector {
         break;
       }
       case 'wall_leap':
+        this.playScore += 2;
         if (this.inPlay && !this.hr) {
           this.fielderId = e.playerId;
           this.cut('fielder');
@@ -313,6 +320,8 @@ export class CameraDirector {
         break;
       case 'out':
       case 'run':
+        if (e.type === 'run') this.playScore += 1;
+        if (e.type === 'out' && ++this.playOuts >= 2) this.playScore += 2; // a double play
         if (e.type === 'run') this.reaction = { team: live.half === 'top' ? 0 : 1, at: this.clock };
         if (e.type === 'out' && !this.hr) this.noteClosePlay(e, te.simTime, live);
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
@@ -470,9 +479,9 @@ export class CameraDirector {
 
   /** The non-pitch time the game is in, with how many real seconds of it are left (null when pitching is about to happen / going on). */
   private lullNow(live: GameState): { kind: string; remaining: number } | null {
-    let l: { kind: string; sec: number } | null = live.lull ?? null;
+    let l: { kind: string; sec: number } | null = live.lull && typeof live.lull === 'object' && live.lull.kind ? live.lull : null;
     let inferred = false;
-    if (!l && live.phase === 'halfInningBreak') {
+    if (!l && (live.phase === 'halfInningBreak' || live.phase === 'halfBreak')) {
       l = { kind: 'break', sec: 0 };
       inferred = true;
     }
@@ -519,6 +528,13 @@ export class CameraDirector {
       return;
     }
     if (!lull || !calm || this.shot !== 'pitch' || this.clock - this.shotStart < 0.7) return;
+    const dr = this.deferred;
+    if (dr && this.clock - dr.at > 12) {
+      if (this.clock - dr.at > 150 || !this.replaysEnabled) this.deferred = null;
+      else if (this.sim.speed <= 1.01 && (lull.kind === 'break' || lull.kind === 'walkup' || lull.kind === 'review' || lull.kind === 'pitchingChange') && lull.remaining >= (lull.kind === 'break' ? 3 : 8)) {
+        if (this.startDeferredReplay()) return;
+      }
+    }
     const next = this.planBroll(live, lull);
     if (next) this.startBroll(next);
   }
@@ -579,6 +595,7 @@ export class CameraDirector {
 
   /** The play is over: replay it if that was wanted and possible, otherwise back to the pitcher. */
   private endPlay(live: GameState) {
+    this.noteDeferred(false);
     const okToReplay = this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping;
     if (okToReplay && this.close && this.startCloseReplay(live)) {
       this.close = null;
@@ -652,6 +669,7 @@ export class CameraDirector {
     const h = this.hr;
     if (!h) return;
     this.pendingReplay = true;
+    this.noteDeferred(true);
     if (this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live, true)) {
       h.stage = 'replay';
       h.t = this.clock;
@@ -672,6 +690,7 @@ export class CameraDirector {
     const b = base && base >= 1 && base <= 3 ? BASES[base - 1] : { x: 0, z: 0 };
     this.close = { simT, base, pos: new Vector3(b.x, 0, b.z) };
     this.pendingReplay = true;
+    this.playScore += 2;
     // cut to the umpire making the call, briefly, live
     this.umpireUntil = this.clock + 1.7;
     this.holdUntil = this.clock + 4;
@@ -751,6 +770,39 @@ export class CameraDirector {
       }
     }
     return best;
+  }
+
+  /** Remember an interesting play (a home run, a wall catch, a double play, a hard hit that scored, a close call) to show again in a quiet moment. */
+  private noteDeferred(homeRun: boolean) {
+    if (!this.replaysEnabled) return;
+    const h = this.hr;
+    if (homeRun && h) {
+      const mid = new Vector3(h.pos.x * 0.5, 0, h.pos.z * 0.5);
+      const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(-h.side);
+      this.deferred = { t0: h.contactSimT - 0.8, t1: h.simT + 2.6, variant: 'hr', cam: mid.addScaledVector(perp, 46).setY(7.5), at: this.clock };
+      return;
+    }
+    if (this.playScore < 2 || this.hr) return;
+    this.deferred = { t0: this.playStart - 0.8, t1: Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5), variant: this.ballFar > 55 ? 'outfield' : 'infield', cam: null, at: this.clock };
+    this.playScore = 0;
+  }
+
+  /** The queued play, from the sim's history, in slow motion with the REPLAY tag (the live game waits). */
+  private startDeferredReplay(): boolean {
+    const d = this.deferred;
+    this.deferred = null;
+    const hist = this.sim.history;
+    if (!d || hist.length < 30) return false;
+    const i0 = hist.findIndex((st) => st.time >= d.t0);
+    if (i0 < 0) return false;
+    let i1 = hist.length - 1;
+    for (let i = hist.length - 1; i >= 0; i--) if (hist[i].time <= d.t1) { i1 = i; break; }
+    if (i1 - i0 < 30) return false;
+    const frames = hist.slice(i0, i1 + 1);
+    this.replay = { frames, t: 0, end: frames.length, variant: d.variant, until: 0, cam: d.cam, speed: d.variant === 'hr' ? 0.5 : 0.6, caption: null };
+    this.ballSm.copy(toScene(frames[0].ball.pos));
+    this.cut('replay');
+    return true;
   }
 
   private startReplay(live: GameState, homeRun = false): boolean {
