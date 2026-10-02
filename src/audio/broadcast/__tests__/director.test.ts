@@ -33,28 +33,26 @@ describe('text helpers', () => {
 describe('SHOULD: calls are never said over a line in progress', () => {
   it('a ball call that arrives during a colour line does not interrupt it, and the count is folded into the next line', () => {
     const r = rig();
-    // a long colour line is running on the colour voice, the play-by-play voice is free
+    // a long colour line is running; the play-by-play voice is free but one person talks at a time
     r.submit({ importance: 'could', speaker: 'color', text: 'He has been mixing his changeup in all night, and that has kept the hitters off the fastball completely.' });
     r.run(1);
     expect(r.d.voices.color.item).toBeTruthy();
-    // the play-by-play voice is busy too (a SHOULD that is itself running)
     r.submit({ importance: 'should', text: 'Fastball, low and away.', fold: { key: 'count', epoch: 1, render: () => 'That makes it two and one.' } });
-    r.run(0.1);
-    expect(r.d.voices.pxp.item?.text).toContain('Fastball');
-    // while it speaks, the next call arrives: not within 0.7 s, so it must not be said over it
     r.run(0.3);
     r.submit({ importance: 'should', text: 'Called strike two.', fold: { key: 'count', epoch: 1, render: () => 'And that is strike two.' } });
-    r.run(0.3);
-    expect(r.d.voices.pxp.item?.text).not.toContain('strike two'); // not interrupted
+    r.run(0.5);
+    // nothing was said over the colour line and nobody was cut
     expect(r.log.filter((a) => a.type === 'cut')).toHaveLength(0);
     expect(say(r, 'Called strike two')).toBeUndefined();
-    // the next line (a MUST) carries the folded count in front of it
-    r.run(3);
-    r.submit({ importance: 'must', text: 'Swing and a miss! Strike three!' });
+    expect(say(r, 'Fastball, low')).toBeUndefined();
+    expect(r.d.voices.color.item?.text).toContain('changeup');
+    // after the colour line, a batted-ball call (foldable) carries the newest missed count in front of it
+    r.run(12);
+    r.submit({ importance: 'should', text: 'Fly ball to left field...', foldable: true });
     r.run(2);
-    const must = say(r, 'Strike three')!;
-    expect(must).toBeTruthy();
-    expect(must.clauses[0]).toEqual({ text: 'And that is strike two.', fold: true });
+    const call = say(r, 'Fly ball')!;
+    expect(call).toBeTruthy();
+    expect(call.clauses[0]).toEqual({ text: 'And that is strike two.', fold: true });
     expect(r.d.stats.foldedIn).toBe(1);
   });
 
@@ -83,7 +81,7 @@ describe('SHOULD: calls are never said over a line in progress', () => {
     r.run(0.1);
     r.submit({ importance: 'should', text: 'Ball two.', fold: { key: 'count', epoch: 1, render: () => 'Two and oh.' } });
     r.run(10);
-    r.submit({ importance: 'must', text: 'Strikes him out.' });
+    r.submit({ importance: 'must', foldable: true, text: 'Strikes him out.' });
     r.run(2);
     const m = say(r, 'Strikes him out')!;
     expect(m.clauses.filter((c) => c.fold).map((c) => c.text)).toEqual(['Two and oh.']);
@@ -95,7 +93,7 @@ describe('SHOULD: calls are never said over a line in progress', () => {
     r.run(0.1);
     r.submit({ importance: 'should', text: 'Ball two.', fold: { key: 'count', epoch: 1, render: () => null } });
     r.run(10);
-    r.submit({ importance: 'must', text: 'Strikes him out.' });
+    r.submit({ importance: 'must', foldable: true, text: 'Strikes him out.' });
     r.run(2);
     expect(say(r, 'Strikes him out')!.clauses).toHaveLength(1);
     expect(r.d.stats.foldDropped).toBe(1);
@@ -164,6 +162,21 @@ describe('MUST', () => {
     r.run(3);
     expect(r.log.some((a) => a.type === 'cut')).toBe(true);
     expect(say(r, 'Strike three')).toBeTruthy();
+  });
+});
+
+describe('one person talks at a time', () => {
+  it('a SHOULD is not said over the colour voice, and a MUST makes the colour voice yield at a clause', () => {
+    const r = rig();
+    r.submit({ importance: 'could', speaker: 'color', text: 'It is a long colour comment, with several clauses, that keeps going for a good while yet.' });
+    r.run(0.5);
+    r.submit({ importance: 'must', text: 'Swing and a miss! Strike three!', excited: true });
+    r.run(3);
+    const cut = r.log.find((a) => a.type === 'cut')!;
+    expect(cut.voice).toBe('color');
+    const must = say(r, 'Strike three')!;
+    expect(must.t).toBeGreaterThanOrEqual(cut.at);
+    expect(must.t - cut.at).toBeLessThan(0.5);
   });
 });
 
