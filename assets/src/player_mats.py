@@ -192,6 +192,14 @@ def _rgba_image(name, a):
 bpy.data.materials.remove(MATS["hair"]); MATS["hair"] = _alpha_mat("hair", (.09, .06, .035, 1), card_image("hair_short02_a", "hair_short02.webp"), .5, clip=True)
 for _h in ("short01", "short03", "short04", "bob01", "afro01", "long01", "ponytail01"):
     MATS["hair_" + _h] = _alpha_mat("hair_" + _h, (.09, .06, .035, 1), card_image("hair_" + _h + "_a", f"hair_{_h}.webp"), .5, clip=True)
+def _beard_maps(n=512, seed=17):
+    """Opaque fibre texture for beards / mustache / goatee (the hair-card textures are alpha cards: on a head shell they cut the beard into shards): per-column fibres with slow vertical shading; luminance-normalised so baseColorFactor is the hair colour."""
+    rng = np.random.default_rng(seed); col = rng.random(n).astype(np.float32); col = (col + np.roll(col, 1)*.5 + np.roll(col, -1)*.5)/2
+    slow = noise_tex(n, [4, 16], seed)[:n, :n]; fine = rng.random((n, n)).astype(np.float32)*.25
+    h = np.clip(.55*col[None, :] + .30*slow + fine, 0, 1); lum = np.clip(.78 + .30*(h - .5), 0, 1)
+    return np.repeat(lum[..., None], 3, 2).astype(np.float32), h
+_bl, _bh = _beard_maps()
+MATS["hair_beard"] = pbr("hair_beard", (.09, .06, .035, 1), make_image("beard_albedo", _bl[::-1].copy(), 'sRGB', None), make_image("beard_normal", height_to_normal(_bh, 3.0)[::-1].copy(), 'Non-Color', None), None, rough=.55, nstrength=.9)
 MATS["eyebrow"] = _alpha_mat("eyebrow", (.07, .045, .03, 1), card_image("eyebrow_a", "eyebrow004.webp"), .6, blend=True)
 MATS["eyelash"] = _alpha_mat("eyelash", (.03, .02, .015, 1), card_image("eyelash_a", "eyelashes02.webp"), .6, clip=True)
 MATS["teeth"] = _alpha_mat("teeth", (1, 1, 1, 1), card_image("teeth_a", "teeth.webp", lum=False), .3, clip=True)

@@ -95,7 +95,7 @@ weights_by(extra["Gear_Soles"], _sole_w); weights_by(extra["Gear_Spikes"], _sole
 extra["Gear_Laces"] = laces(SH["Cleats"]); weights_by(extra["Gear_Laces"], lambda co: {("Left" if co.x >= 0 else "Right")+"Foot": 1.0})
 gear.update(extra)
 # ---------------- box-projected UVs (1 tile = 0.25 m) for everything without UVs
-TILES = {"Cleats": 10.0, "Gear_Belt": 9.0, "Gear_Soles": 9.0, "Gear_Glove": 9.0, "Gear_Glove_Outfield": 9.0, "Gear_Glove_FirstBase": 9.0, "Gear_Glove_Catcher": 9.0, "Gear_Helmet": 7.0, "Gear_Cap": 7.0}      # texture repeats per metre / 4 (1 = 0.25 m)
+TILES = {"Cleats": 10.0, "Gear_Belt": 9.0, "Gear_Soles": 9.0, "Gear_Glove": 9.0, "Gear_Glove_Outfield": 9.0, "Gear_Glove_FirstBase": 9.0, "Gear_Glove_Catcher": 9.0, "Gear_Helmet": 7.0, "Gear_Cap": 7.0, "Gear_Beard_Full": 26.0, "Gear_Mustache": 26.0, "Gear_Goatee": 26.0}      # texture repeats per metre / 4 (1 = 0.25 m)
 def box_uv(o, tile=None):
     tile = tile or TILES.get(o.name, 7.0)
     me = o.data
@@ -114,7 +114,7 @@ ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Eyes_Cornea": "co
           "Jersey_ShortSleeve": "uniform_jersey", "Jersey_Sleeveless": "uniform_jersey", "Pants_Long": "uniform_pants", "Pants": "uniform_pants", "Socks": "uniform_socks", "Cleats": "cleats", "Gear_Cap": "cap", "Gear_Helmet": "helmet", "Gear_Hair": "hair", "Gear_Glove": "glove",
           "Gear_CatcherMask": "catcher_gear", "Gear_ChestProtector": "catcher_gear", "Gear_ShinGuard_L": "catcher_gear", "Gear_ShinGuard_R": "catcher_gear",
           "Gear_Belt": "belt", "Gear_BeltBuckle": "buckle", "Gear_Collar": "uniform_undershirt",
-          "Gear_Hair_Buzz": "hair_short01", "Gear_Hair_Curly": "hair_afro01", "Gear_Hair_Long": "hair_long01", "Gear_Hair_SidePart": "hair_short03", "Gear_Hair_SlickBack": "hair_short04", "Gear_Hair_Bob": "hair_bob01", "Gear_Hair_Ponytail": "hair_ponytail01", "Gear_Hair_Receding": "hair", "Gear_Hair_Balding": "hair", "Gear_Eyebrows": "eyebrow", "Gear_Eyelashes": "eyelash", "Gear_Teeth": "teeth", "Gear_Tongue": "tongue", "Gear_Beard_Full": "hair", "Gear_Mustache": "hair", "Gear_Goatee": "hair", "Gear_Beard_Stubble": "stubble",
+          "Gear_Hair_Buzz": "hair_short01", "Gear_Hair_Curly": "hair_afro01", "Gear_Hair_Long": "hair_long01", "Gear_Hair_SidePart": "hair_short03", "Gear_Hair_SlickBack": "hair_short04", "Gear_Hair_Bob": "hair_bob01", "Gear_Hair_Ponytail": "hair_ponytail01", "Gear_Hair_Receding": "hair", "Gear_Hair_Balding": "hair", "Gear_Eyebrows": "eyebrow", "Gear_Eyelashes": "eyelash", "Gear_Teeth": "teeth", "Gear_Tongue": "tongue", "Gear_Beard_Full": "hair_beard", "Gear_Mustache": "hair_beard", "Gear_Goatee": "hair_beard", "Gear_Beard_Stubble": "stubble",
           "Gear_EyeBlack": "eyeblack", "Gear_Piping": "piping", "Gear_Buttons": "button", "Gear_BattingGlove_L": "batting_glove", "Gear_BattingGlove_R": "batting_glove",
           "Gear_Jacket": "jacket", "Umpire_Broom": "belt", "Ball_Bag": "belt", "Gear_Wristband_L": "wristband", "Gear_Wristband_R": "wristband", "Gear_LineupCard": "wristband", "Shorts": "uniform_pants", "Gear_ArmSleeve_L": "arm_sleeve", "Gear_ArmSleeve_R": "arm_sleeve", "Gear_Soles": "sole", "Gear_Spikes": "spikes", "Gear_CapLogo": "cap_logo", "Gear_Laces": "laces"}
 allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Eyes_Cornea": eyecornea, "Hand_L": handL, "Hand_R": handR, "Hand_R_Ball": handRB, "Hand_L_Relaxed": handLr, "Hand_R_Relaxed": handRr, "Hand_L_Open": handLO, "Hand_L_Open_Catcher": handLOC, **gear}
@@ -150,7 +150,7 @@ add_keys(gear["Gear_Helmet"], head_morph, ("ears_large", "jaw_square"))
 for n in HAIR_NAMES: HAIR_SQUASH[n] = add_under_cap_key(gear[n], cap_inner)
 add_keys(eyeobj, head_morph, ("head_narrow", "head_wide")); add_keys(eyecornea, head_morph, ("head_narrow", "head_wide"))
 for n in ("Gear_Eyebrows", "Gear_Eyelashes"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy", "eyes_deep", "eyes_blink", "brow_raise", "brow_furrow"))
-for n in ("Gear_Teeth", "Gear_Tongue"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "mouth_open", "smile", "mouth_pucker", "jaw_square", "chin_strong"))
+for n in ("Gear_Teeth", "Gear_Tongue"): add_keys(gear[n], (lambda P, k, _t=(n == "Gear_Tongue"): teeth_morph(P, k, _t)), ("head_narrow", "head_wide", "mouth_open", "smile", "mouth_pucker", "jaw_square", "chin_strong"))
 for n in ("Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "jaw_square", "chin_strong", "mouth_open", "smile", "mouth_pucker"))
 GROUPS = {"jersey": ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless", "Gear_Jacket"), "pants": ("Pants", "Pants_Long", "Shorts"), "prop": ("Umpire_Broom", "Ball_Bag"), "hair": tuple(h[0] for h in HAIR_STYLES), "face_parts": ("Gear_Eyebrows", "Gear_Eyelashes", "Gear_Teeth", "Gear_Tongue", "Eyes_Cornea"),
           "facial_hair": ("Gear_Beard_Stubble", "Gear_Beard_Full", "Gear_Mustache", "Gear_Goatee"), "headwear": ("Gear_Cap", "Gear_CapLogo", "Gear_Helmet"),
