@@ -20,13 +20,14 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { AnimationClip } from 'three';
+import { AnimationClip, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
 import { makeOnDeckBat } from './ondeckProp';
+import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
@@ -149,6 +150,8 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
       m = pm;
     } else m = b.clone();
     m.userData = {};
+    if (skin) shadeSkin(m);
+    if (name === 'hair' || name === 'stubble') shadeHair(m);
     m.color = new Color(color);
     reg(m);
     matCache.set(key, m);
@@ -327,6 +330,8 @@ export class GltfPuppet implements PuppetLike {
   private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
+  /** glassy cornea shells over the eyes (visible only in the full tier, near the camera) */
+  private cornea: Object3D[] = [];
   private torso: TorsoVolume = torsoVolume(undefined);
   private headVol: HeadVolume = headVolume(undefined);
   private headVolHelmet: HeadVolume = headVolume(undefined, true);
@@ -363,6 +368,23 @@ export class GltfPuppet implements PuppetLike {
         this.meshes.push(m);
       }
     });
+    // eyes and leather become clear-coated materials; every eye gets a glassy cornea shell (drawn only when the tier and the distance ask for it)
+    for (const m of [...this.meshes]) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      const next = mats.map((mat) => {
+        const u = upgradeMaterial(mat);
+        if (u !== mat) reg(u);
+        return u;
+      });
+      m.material = Array.isArray(m.material) ? next : next[0];
+      if (m.name === 'Eyes' && (m as SkinnedMesh).isSkinnedMesh && m.parent) {
+        const shell = makeCorneaShell(m as SkinnedMesh);
+        shell.visible = false;
+        m.parent.add(shell);
+        this.cornea.push(shell);
+        this.meshes.push(shell);
+      }
+    }
     this.rig = new Rig(this.model);
     for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
       const b = this.bones[n];
@@ -977,6 +999,11 @@ export class GltfPuppet implements PuppetLike {
     // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
     const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
     this.lod1 = lod1;
+    if (this.cornea.length) {
+      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 24;
+      const vis = shadingTier() === 'full' && !lod1 && near;
+      for (const c of this.cornea) c.visible = vis;
+    }
     if (lod1) {
       this.lodAcc += dt;
       this.lodFlip = !this.lodFlip;
@@ -1347,6 +1374,18 @@ export class GltfPuppet implements PuppetLike {
     if (!this.ballHeld || !this.ballObj) return null;
     this.ballObj.updateWorldMatrix(true, false);
     return out.setFromMatrixPosition(this.ballObj.matrixWorld);
+  }
+
+  faceCenter(out: Vector3): Vector3 | null {
+    const head = this.bones.Head;
+    if (!head) return null;
+    this.root.updateMatrixWorld(true);
+    this.rig.refresh();
+    const p = this.rig.pos(head, new Vector3());
+    const q = this.rig.quat(head, new Quaternion());
+    // the face sits a hand above the head bone and a little forward (head-local +Y up, +Z forward)
+    p.add(new Vector3(0, 0.105, 0.05).applyQuaternion(q));
+    return out.copy(p).applyMatrix4(this.model.matrixWorld);
   }
 
   shoulderCenter(out: Vector3): Vector3 | null {

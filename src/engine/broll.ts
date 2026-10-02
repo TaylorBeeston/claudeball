@@ -253,6 +253,8 @@ export interface RigView {
   aspect: number;
   /** the camera's current position (some shots keep a distance from it) */
   battingSide: number;
+  /** where a player's face is (from the puppet's head bone), when known */
+  face?: (id: string, out: Vector3) => Vector3 | null;
 }
 
 const _a = new Vector3(), _b = new Vector3(), _c = new Vector3();
@@ -260,6 +262,8 @@ const tele = (width: number, dist: number, aspect: number) => MathUtils.radToDeg
 const sc = (p: { x: number; y: number; z: number }) => new Vector3(p.x, p.y, p.z);
 const find = (s: GameState, id: string | undefined, pred?: (p: PlayerSnap) => boolean) => (id ? s.players.find((p) => p.id === id) : undefined) ?? (pred ? s.players.find(pred) : undefined);
 const headY = (p: PlayerSnap) => p.pos.y + (p.physique?.heightM ?? 1.85) * 0.93;
+/** face centre: the puppet's own head position when the view can tell, else a standing estimate */
+const faceOf = (v: RigView, p: PlayerSnap, out: Vector3) => v.face?.(p.id, out) ?? out.set(p.pos.x, headY(p) - 0.05, p.pos.z);
 
 function makeRig(): BrollRig {
   return { pos: new Vector3(), tgt: new Vector3(), fov: 30, focus: new Vector3(), slab: 6, lp: 6, lt: 8, lf: 6 };
@@ -299,11 +303,11 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
     case 'batterFace': {
       const b = find(s, shot.subject, (p) => p.role === 'batter');
       if (!b) return fallback();
-      const head = _c.set(b.pos.x, headY(b), b.pos.z).clone();
+      const head = faceOf(v, b, _c).clone();
       // from the pitcher's side, a little off-axis: the face he turns toward the mound
       const toMound = _a.set(MOUND.x - head.x, 0, MOUND.z - head.z).normalize();
-      r.pos.copy(head).addScaledVector(toMound, 6.5).addScaledVector(_b.set(-toMound.z, 0, toMound.x), 1.1 * side).setY(head.y - 0.02);
-      r.tgt.copy(head).setY(head.y - 0.03);
+      r.pos.copy(head).addScaledVector(toMound, 6.5).addScaledVector(_b.set(-toMound.z, 0, toMound.x), 1.1 * side).setY(head.y + 0.03);
+      r.tgt.copy(head);
       r.fov = tele(0.95, r.pos.distanceTo(r.tgt), v.aspect);
       // rack focus: starts on the background behind him, settles on his face after about a second
       const back = head.clone().addScaledVector(toMound, -3.2);
@@ -353,9 +357,9 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
     }
     case 'pitcherFace': {
       const p = find(s, shot.subject, (q) => q.role === 'pitcher');
-      const head = p ? _c.set(p.pos.x, headY(p), p.pos.z).clone() : new Vector3(0, 1.9, 18.44);
+      const head = p ? faceOf(v, p, _c).clone() : new Vector3(0, 1.9, 18.44);
       r.pos.copy(CF_CAM);
-      r.tgt.copy(head).y -= 0.1;
+      r.tgt.copy(head);
       r.fov = tele(2.0, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(head);
       r.slab = 1.2;
@@ -364,10 +368,10 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
     }
     case 'shakeOff': {
       const p = find(s, shot.subject, (q) => q.role === 'pitcher');
-      const head = p ? _c.set(p.pos.x, headY(p), p.pos.z).clone() : new Vector3(0, 1.9, 18.44);
+      const head = p ? faceOf(v, p, _c).clone() : new Vector3(0, 1.9, 18.44);
       // three-quarter close-up from the dugout side: the shake of the head reads from the side
       r.pos.set(head.x + 9 * side, 2.0, head.z - 9.5);
-      r.tgt.copy(head).setY(head.y - 0.05);
+      r.tgt.copy(head);
       r.fov = tele(1.7, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(head);
       r.slab = 1;
@@ -532,7 +536,7 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
         r.fov = tele(3.4, r.pos.distanceTo(r.tgt), v.aspect);
         r.slab = 2.6;
       } else {
-        const head = _c.set(pp.x, headY(p), pp.z).clone();
+        const head = faceOf(v, p, _c).clone();
         r.pos.copy(head).addScaledVector(dir, 6).addScaledVector(_b.set(-dir.z, 0, dir.x), 0.9 * side).setY(head.y);
         r.tgt.copy(head);
         r.fov = tele(1.0, r.pos.distanceTo(r.tgt), v.aspect);

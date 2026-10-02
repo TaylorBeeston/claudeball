@@ -110,6 +110,8 @@ export class CameraDirector {
   private playOuts = 0;
   /** B-roll planner state */
   readonly landmarks: Landmarks;
+  /** where a player's face is (the engine plugs in the puppets' head bones) */
+  faceLookup: ((id: string, out: Vector3) => Vector3 | null) | null = null;
   brollEnabled = true;
   /** hold the current B-roll shot (screenshots / tests) */
   brollLock = false;
@@ -968,7 +970,7 @@ export class CameraDirector {
       }
       case 'broll': {
         if (!this.broll) break;
-        this.brollRig = computeRig(this.broll.shot, { state: rs, lm: this.landmarks, t: this.clock - this.broll.start, aspect: this.camera.aspect, battingSide: rs.half === 'top' ? 0 : 1 }, this.brollRig ?? undefined);
+        this.brollRig = computeRig(this.broll.shot, { state: rs, lm: this.landmarks, t: this.clock - this.broll.start, aspect: this.camera.aspect, battingSide: rs.half === 'top' ? 0 : 1, face: this.faceLookup ?? undefined }, this.brollRig ?? undefined);
         const r = this.brollRig;
         d.pos.copy(r.pos);
         d.tgt.copy(r.tgt);

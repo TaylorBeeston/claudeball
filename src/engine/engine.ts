@@ -1,5 +1,5 @@
 import {
-  ACESFilmicToneMapping,
+  NeutralToneMapping,
   Object3D,
   PerspectiveCamera,
   Quaternion,
@@ -21,6 +21,7 @@ import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
+import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
@@ -98,7 +99,9 @@ export class Engine {
     this.el = root;
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = SRGBColorSpace;
-    this.renderer.toneMapping = ACESFilmicToneMapping;
+    // Khronos PBR Neutral: keeps the hue and saturation of albedo (ACES pushed lit skin to a pale cream); the contrast comes from the grade pass
+    this.renderer.toneMapping = NeutralToneMapping;
+    installCharacterShading();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
@@ -129,6 +132,7 @@ export class Engine {
     this.hookGBufferVisibility();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
+    this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
 
     this.hud =
       opts.hud === false
@@ -324,6 +328,7 @@ export class Engine {
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
     this.lights.setQuality(name);
+    setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
     this.resize();
   }
