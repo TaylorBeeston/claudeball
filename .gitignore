@@ -5,3 +5,19 @@ dist/
 public/hdri/
 __pycache__/
 *.pyc
+
+# announcer voice pipeline: recordings, datasets, checkpoints and the trained model are private and never committed
+*.wav
+*.flac
+*.onnx
+*.ckpt
+*.pt
+*.safetensors
+.venv/
+tools/announcer/**/.venv/
+tools/announcer/**/out/
+tools/announcer/**/runs/
+claudeball-voice/
+voicepack/
+_placeholder/
+work/

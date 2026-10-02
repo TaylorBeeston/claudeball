@@ -52,6 +52,17 @@ function saveFlag(enabled: boolean) {
 /** the umpire's calls and the counts the booth folds in: generated ahead so they are instant */
 export const WARM_UMP = ['Ball!', 'Ball four!', 'Strike!', 'Strike three!', 'Foul ball!', 'Foul tip!', 'Safe!', 'Out!', 'Time!', 'Take your base!', 'Infield fly!', 'Balk!'];
 
+/** a PA line, a play-by-play call and a colour remark through any engine (HD voices, the custom voice) */
+export async function playPreview(e: SpeechEngine): Promise<void> {
+  const say = (role: 'pa' | 'pbp' | 'color', text: string, ex = false) =>
+    new Promise<void>((res) => {
+      e.speak(text, { role, voiceName: e.voiceFor?.(role), pitch: ex ? 1.1 : 1, shift: ex ? 1.06 : 1, rate: ex ? 1.12 : role === 'pbp' ? 1.04 : role === 'pa' ? 0.92 : 1, volume: 0.8, onend: res, onerror: res });
+    });
+  await say('pa', 'Now batting, number 23, Tyler Vance.');
+  await say('pbp', 'Deep drive to left... gone! Home run!', true);
+  await say('color', 'What a swing. That ball is not coming back.');
+}
+
 export type NeuralModule = typeof import('./neural');
 
 export class HdManager {
@@ -69,6 +80,8 @@ export class HdManager {
   private generation = 0;
   /** called whenever the engine becomes (un)available: the controller of a running game plugs it into its speech switch */
   onEngine: ((e: HdEngine | null) => void) | null = null;
+  /** called just before the model is loaded (the custom voice switches itself off here) */
+  beforeEnable: (() => void) | null = null;
 
   status(): HdStatus {
     const mb = HD_MODES[pickMode()].mb;
@@ -122,6 +135,7 @@ export class HdManager {
 
   async enable(): Promise<void> {
     if (this.state === 'loading' || this.state === 'ready' || !hdSupported()) return;
+    this.beforeEnable?.();
     const mode = pickMode();
     const gen = ++this.generation;
     this.state = 'loading';
@@ -204,13 +218,7 @@ export class HdManager {
         if (!(await m.unlock())) throw new Error('audio is blocked');
         e.setMixer(m);
       }
-      const say = (role: 'pa' | 'pbp' | 'color', text: string, ex = false) =>
-        new Promise<void>((res) => {
-          e.speak(text, { role, voiceName: e.voiceFor?.(role), pitch: ex ? 1.1 : 1, shift: ex ? 1.06 : 1, rate: ex ? 1.12 : role === 'pbp' ? 1.04 : role === 'pa' ? 0.92 : 1, volume: 0.8, onend: res, onerror: res });
-        });
-      await say('pa', 'Now batting, number 23, Tyler Vance.');
-      await say('pbp', 'Deep drive to left... gone! Home run!', true);
-      await say('color', 'What a swing. That ball is not coming back.');
+      await playPreview(e);
     } catch {
       /* the preview is a convenience */
     } finally {

@@ -14,6 +14,7 @@ import './ui.css';
 import { Engine } from '../engine/engine';
 import { attachAudio, type AudioController } from '../audio';
 import { hdManager } from '../audio/hd';
+import { voiceManager } from '../audio/voiceManager';
 import { DEFAULT_SETTINGS as AUDIO_DEFAULTS, type Settings as AudioSettings } from '../audio/mixer';
 import { loadSettings as loadAudio, saveSettings as saveAudio } from '../audio/ui';
 import type { QualityName } from '../engine/quality';
@@ -92,7 +93,10 @@ class App {
     this.autoQuality = deviceQuality(this.device);
     this.audioLocal = this.res.flags.noaudio ? { ...AUDIO_DEFAULTS } : loadAudio();
     // HD voices: switch on silently when the player had them on and the model is still cached; works from the menu, before any game
-    if (!this.res.flags.noaudio) void hdManager.autoStart();
+    if (!this.res.flags.noaudio) {
+      void hdManager.autoStart();
+      void voiceManager.autoStart();
+    }
     report.autostart = this.res.autostart;
   }
 
@@ -176,6 +180,15 @@ class App {
       toggle: () => void hdManager.toggle(),
       remove: () => void hdManager.remove(),
       preview: () => void hdManager.preview(),
+    },
+    voice: {
+      status: () => ({ ...voiceManager.status(), available: true as const }),
+      subscribe: (cb) => voiceManager.subscribe((st) => cb({ ...st, available: true })),
+      loadUrl: (url) => void voiceManager.controller.enableFromUrl(url),
+      loadFiles: (files) => void voiceManager.controller.enableFromFiles(files),
+      off: () => voiceManager.controller.disable(),
+      forget: () => void voiceManager.controller.forget(),
+      preview: () => void voiceManager.preview(),
     },
   };
 

@@ -51,7 +51,7 @@ function sceneTextures(root: Object3D): Set<Texture> {
 /** Show the hidden variant nodes (and anything else invisible) of the moving parts; returns the function that hides them again. */
 function showVariants(e: Engine): () => void {
   const hidden: Object3D[] = [];
-  for (const root of [e.players.group, e.ball.group, e.bat.obj]) root.traverse((o) => !o.visible && hidden.push(o));
+  for (const root of [e.players.group, e.ball.group, e.bat.obj, ...e.ensureLooseProps()]) root.traverse((o) => !o.visible && hidden.push(o));
   for (const o of hidden) o.visible = true;
   return () => {
     for (const o of hidden) o.visible = false;

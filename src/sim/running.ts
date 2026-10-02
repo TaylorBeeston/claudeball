@@ -12,9 +12,12 @@ import { setAnim } from './util';
 import type { PlayerRT, RunnerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import * as fielding from './fielding';
+import * as staff from './staff';
+import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
 import { DUGOUT } from './setup';
+import { toBench } from './dugout';
 
 export const bpos = (b: number) => BASE_POS[b % 4];
 
@@ -45,6 +48,10 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     earned: false,
     overrun: false,
     bias: 0,
+    coachBias: 0,
+    coachObey: null,
+    coachCall: null,
+    coachFresh: null,
     tagWait: false,
     retouchDone: false,
     reaction: w.tick + secToTicks(0.12),
@@ -65,6 +72,9 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
   };
   p.role = 'runner';
   p.onField = true;
+  p.dug = null; // (a hitter who was warming up on deck, a pinch runner from the bench: he is in the play now)
+  p.route = [];
+  p.after = null;
   w.leavers = w.leavers.filter((l) => l.p !== p);
   p.vmax = sprintOf(p.info.ratings.speed);
   p.lookAt = null;
@@ -196,10 +206,15 @@ export function snapRunnersToBases(w: World): void {
     if (r.state !== 'live') continue;
     if (r.base >= 1) {
       const b = bpos(r.base);
-      r.p.x = b.x;
-      r.p.z = b.z;
-      r.p.vx = r.p.vz = 0;
-      r.p.goal = null;
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 1.5 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+        // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
+        setGoal(r.p, b.x, b.z, true, 0.6);
+      } else {
+        r.p.x = b.x;
+        r.p.z = b.z;
+        r.p.vx = r.p.vz = 0;
+        r.p.goal = null;
+      }
       r.target = r.base;
       r.want = r.base;
       r.overrun = false;
@@ -368,11 +383,10 @@ export function tickRunners(w: World): void {
   if (w.exiting.length) {
     w.exiting = w.exiting.filter((r) => {
       const d = DUGOUT[r.p.team.side];
-      const done = Math.hypot(r.p.x - d.x, r.p.z - d.z) < 1.8 || w.tick - r.outTick > 12 * 240;
+      const done = Math.hypot(r.p.x - d.x, r.p.z - d.z) < 1.2 || w.tick - r.outTick > 12 * 240;
       if (done) {
-        r.p.onField = false;
         r.p.gait = null;
-        r.p.goal = null;
+        toBench(w, r.p); // through the door, down the steps, back to his seat
       }
       return !done;
     });
@@ -599,13 +613,39 @@ export function runnerAI(w: World): void {
     const sig = runnerSig(w, r);
     if (!r.asking && sig === r.lastSig && w.tick < r.recheckTick) continue;
     r.asking = true;
+    // the base coach's call comes first (the third-base coach for a runner at or heading for third, the first-base coach for a batter-runner at first)
+    if (!r.coachFresh) {
+      const cd = staff.consultCoach(w, r, () => {
+        const rq = buildRunnerRequest(w, r);
+        const full = rq as RunnerRequest;
+        return {
+          est: rq.ballToBase,
+          eta: rq.runnerToBase,
+          ball: rq.ball,
+          suggest: (bias: number) => {
+            const old = r.bias;
+            r.bias = bias;
+            const want = aiRunner(w, r, full).want;
+            r.bias = old;
+            return want;
+          },
+        };
+      });
+      if (cd === PENDING) {
+        pending = true;
+        continue;
+      }
+      r.coachFresh = cd;
+    }
     const d = ask(w, `run:${r.p.info.id}`, 'runner', w.battingTeam.side, () => buildRunnerRequest(w, r), { r });
     if (d === PENDING) {
       pending = true;
       continue;
     }
     r.asking = false;
-    applyRunnerDecision(w, r, d);
+    const cd = r.coachFresh;
+    r.coachFresh = null;
+    applyRunnerDecision(w, r, d, cd);
     r.lastSig = runnerSig(w, r);
     r.recheckTick = d.recheckSec !== undefined ? w.tick + secToTicks(d.recheckSec) : Infinity;
   }
@@ -613,7 +653,7 @@ export function runnerAI(w: World): void {
 }
 
 /** The rules around a runner's decision: forces, tag-up obligations and the point of no return are the sim's, not the provider's. */
-function applyRunnerDecision(w: World, r: RunnerRT, d: RunnerDecision): void {
+function applyRunnerDecision(w: World, r: RunnerRT, d: RunnerDecision, cd: CoachDecision | null = null): void {
   const play = w.play!;
   const bip = play.bip;
   const p = r.p;
@@ -624,6 +664,7 @@ function applyRunnerDecision(w: World, r: RunnerRT, d: RunnerDecision): void {
     return;
   }
   let want = clamp(Math.round(Number.isFinite(d.want) ? d.want : r.base), r.base, 4);
+  want = clamp(staff.applyCoachCall(r, want, cd), r.base, 4); // ... unless he takes the coach's word for it
   const frc = forced(w, r);
   // a runner cannot pass the runner ahead of him
   for (const q of w.runners) if (q !== r && q.state === 'live' && q.base > r.base) want = Math.min(want, Math.max(q.base, q.want) - 1);

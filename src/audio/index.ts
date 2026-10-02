@@ -13,6 +13,8 @@ import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
 import { hdManager, type HdStatus } from './hd';
 import { hdSupported } from './hdInfo';
+import { voiceManager } from './voiceManager';
+import { loadVoiceSettings } from './voice/controller';
 export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
@@ -105,6 +107,10 @@ export class AudioController {
   /** browser voices, or the optional neural voices when they are downloaded and switched on */
   readonly sw: SwitchEngine;
   readonly excitement = new Excitement();
+  /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/); the manager outlives games */
+  get voice() {
+    return voiceManager.controller;
+  }
   private ui: AudioUi | null = null;
   private mapper: CueMapper;
   private pending: { ev: RawEvent; at: number }[] = [];
@@ -167,6 +173,13 @@ export class AudioController {
     });
     if (withUi)
       this.ui = new AudioUi(root, this.settings, {
+        voice: {
+          initialUrl: loadVoiceSettings().url,
+          url: (u) => void this.beforeVoice().then(() => this.voice.enableFromUrl(u)),
+          files: (f) => void this.beforeVoice().then(() => this.voice.enableFromFiles(f)),
+          off: () => this.voice.disable(),
+          forget: () => void this.voice.forget(),
+        },
         toggleMute: () => this.toggleMute(),
         changed: () => this.settingsChanged(),
         gesture: () => void this.unlock(),
@@ -192,18 +205,23 @@ export class AudioController {
     };
     window.addEventListener('keydown', key);
     this.offs.push(() => window.removeEventListener('keydown', key));
-    // HD voices: the manager outlives games; this game plays through its mixer
+    // the HD and custom-voice managers outlive games; this game plays through its mixer and follows whichever engine is on
     hdManager.bindMixer(this.mixer);
-    this.sw.neural = hdManager.engine;
-    hdManager.onEngine = (e) => {
-      this.sw.neural = e;
+    voiceManager.bindMixer(this.mixer, () => this.excitement.level);
+    const follow = () => {
+      this.sw.neural = voiceManager.engine ?? hdManager.engine;
       this.speech.clear();
       this.sink.stopAll();
-      this.settings.hd = !!e;
+      this.settings.hd = !!hdManager.engine;
       this.onSettings?.();
     };
+    this.sw.neural = voiceManager.engine ?? hdManager.engine;
+    hdManager.onEngine = follow;
+    voiceManager.onEngine = follow;
     this.offs.push(hdManager.subscribe((st) => this.ui?.setHd(st.state === 'unavailable' ? { state: 'off', text: st.text } : (st as Parameters<AudioUi['setHd']>[0]))));
+    this.offs.push(voiceManager.subscribe((s) => this.ui?.voicePanel?.set(s)));
     this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
+    this.ui?.voicePanel?.set(voiceManager.status());
     this.interval = setInterval(() => this.tick(), 1000 / 30);
   }
 
@@ -211,6 +229,18 @@ export class AudioController {
 
   /** called after the controller itself changes `settings`, so the app's copy can follow */
   onSettings: (() => void) | null = null;
+
+  /** the click that starts the custom voice is a user gesture: make sure audio is running too */
+  private async beforeVoice() {
+    await this.enable();
+  }
+
+  voiceStatus() {
+    return voiceManager.status();
+  }
+  subscribeVoice(cb: Parameters<typeof voiceManager.subscribe>[0]) {
+    return voiceManager.subscribe(cb);
+  }
 
   get hd() {
     return { state: hdManager.state === 'unavailable' ? 'off' : hdManager.state, pct: hdManager.pct, message: hdManager.message, engine: hdManager.engine };
@@ -612,6 +642,8 @@ export class AudioController {
   dispose() {
     hdManager.onEngine = null;
     hdManager.bindMixer(null);
+    voiceManager.onEngine = null;
+    voiceManager.bindMixer(null);
     this.sw.neural = null;
     if (this.interval) clearInterval(this.interval);
     for (const t of this.timers) clearTimeout(t);
@@ -637,7 +669,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

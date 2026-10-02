@@ -6,7 +6,9 @@ import { ask, situationOf } from './dispatch';
 import { fatigueOf } from './pitchai';
 import { sendToDugout } from './handling';
 import { scheduleCall } from './umpires';
-import { DEFAULT_SPOTS, DUGOUT } from './setup';
+import { DEFAULT_SPOTS } from './setup';
+import { leaveDugout, toBench } from './dugout';
+import { bullpenMound } from './venue';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import { giveBall } from './util';
 
@@ -159,10 +161,13 @@ export function substitutePitcher(w: World, t: TeamRT, np: PlayerRT): void {
     np.z = spot.z;
     np.goal = null;
   } else {
-    // the reliever jogs in from the dugout side
-    const d = DUGOUT[t.side];
-    np.x = d.x;
-    np.z = d.z;
+    // the reliever jogs in from the bullpen (where he was warming up; if he was not visible there, from its gate)
+    if (np.dug !== 'bullpen') {
+      const bm = bullpenMound(t.side);
+      np.x = bm.x;
+      np.z = bm.z;
+    }
+    np.dug = null;
     np.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.8 };
   }
   if (t === w.fieldingTeam) {
@@ -180,6 +185,7 @@ function replaceInLineup(w: World, t: TeamRT, out: PlayerRT, inn: PlayerRT, reas
   inn.inGame = true;
   inn.used = true;
   out.inGame = false;
+  if (out.dug === 'deck' || out.dug === 'toDeck') toBench(w, out); // the hitter who was warming up for his turn sits back down
   const pos = slot.position;
   slot.player = inn;
   inn.fieldPos = pos === 'DH' ? 'DH' : pos;
@@ -197,14 +203,13 @@ function pinchRun(w: World, t: TeamRT, r: RunnerRT, best: PlayerRT): void {
   best.onField = true;
   best.vx = best.vz = 0;
   if (w.cfg.pace === 0 || w.tick === 0) {
+    best.dug = null;
     best.x = out.x;
     best.z = out.z;
   } else {
     // the pinch runner comes out of the dugout to the base (he walks to his lead like anyone else on base)
-    const d = DUGOUT[t.side];
-    best.x = d.x;
-    best.z = d.z;
     best.goal = null;
+    leaveDugout(best, [], null, 4);
   }
   best.vmax = sprintOf(best.info.ratings.speed);
   best.accel = accelOfRating(best.info.ratings.acceleration);

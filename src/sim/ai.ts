@@ -10,6 +10,7 @@ import { callPitch } from './pitchai';
 import * as fielding from './fielding';
 import * as manager from './manager';
 import * as running from './running';
+import * as staff from './staff';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import type { SwingObservation } from './batting';
 
@@ -43,6 +44,10 @@ export function createAI(w: World): FullDecisionProvider {
     },
     runner(req) {
       return running.aiRunner(w, ctxOf<{ r: RunnerRT }>(req).r, req);
+    },
+    coach(req) {
+      const c = ctxOf<{ r: RunnerRT; which: '1b' | '3b'; suggest: (bias: number) => number }>(req);
+      return staff.aiCoach(w, c.r, c.which, c.suggest);
     },
     throw(req) {
       const c = ctxOf<{ F: PlayerRT; options: Parameters<typeof fielding.aiThrow>[2] }>(req);

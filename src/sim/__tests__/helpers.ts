@@ -1,3 +1,4 @@
+import { BATTER_X } from '../game';
 import { createGame, Game } from '../game';
 import { beginBattedBall } from '../inplay';
 import { makeRunner } from '../running';
@@ -22,6 +23,19 @@ export function lab(seed: string | number, cfg: Partial<GameConfig> = {}): Lab {
   // (tick by tick: a whole windup can fit inside one 0.05 s step)
   for (let i = 0; i < 24000 && !(w.phase === 'prePitch' && w.batter); i++) g.step(1 / 240);
   w.ball.lob = null;
+  // (the batter has just been called: he is still walking up from the on-deck circle: the lab puts him in his box)
+  if (w.batter) {
+    const side = w.batStance === 'R' ? 1 : -1;
+    const b = w.batter;
+    b.route = [];
+    b.after = null;
+    b.dug = null;
+    b.gait = null;
+    b.goal = null;
+    b.vx = b.vz = 0;
+    b.x = side * BATTER_X;
+    b.z = 0.15;
+  }
   for (const r of w.runners) r.p.onField = false;
   w.runners = [];
   w.outs = 0;

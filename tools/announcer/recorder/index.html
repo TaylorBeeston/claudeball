@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claudeball announcer recorder</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+<header>
+  <h1>⚾ Announcer recorder</h1>
+  <span id="where" class="muted"></span>
+  <span class="spacer"></span>
+  <span id="overall" class="muted"></span>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <aside id="setup">
+    <h2>Setup</h2>
+    <label>Microphone <select id="mic"></select></label>
+    <div class="row">
+      <label>Sample rate <select id="rate"><option value="48000">48 kHz</option><option value="44100">44.1 kHz</option></select></label>
+      <label>Bit depth <select id="bits"><option value="24">24-bit</option><option value="16">16-bit</option></select></label>
+    </div>
+    <label>Recording mode
+      <select id="mode">
+        <option value="toggle">Space starts / stops</option>
+        <option value="ptt">Hold Space (push to talk)</option>
+        <option value="auto">Auto-detect (hands free)</option>
+      </select>
+    </label>
+    <div class="row">
+      <label>Countdown <select id="countdown"><option value="0">none</option><option value="1" selected>1 s</option><option value="2">2 s</option><option value="3">3 s</option></select></label>
+      <label>Edge padding <select id="pad"><option value="150">150 ms</option><option value="200" selected>200 ms</option><option value="250">250 ms</option></select></label>
+    </div>
+    <label class="check"><input type="checkbox" id="autoplay" checked /> Play each take back</label>
+    <label class="check"><input type="checkbox" id="autonext" /> Go to the next line after a good take</label>
+    <button id="open">Open microphone</button>
+    <div id="capinfo" class="muted small"></div>
+
+    <h3>Room tone</h3>
+    <p class="small muted">Stay silent for a few seconds. This measures your room's noise floor, which the quality checks and auto-detect use.</p>
+    <div class="row"><label>Seconds <input id="rtsec" type="number" min="1" max="30" value="5" /></label><button id="roomtone" disabled>Capture room tone</button></div>
+    <div id="rtinfo" class="small muted">no room tone yet</div>
+
+    <h3>Save to</h3>
+    <div class="row"><select id="storage"><option value="server">Local folder (via this app)</option></select><button id="pickdir" hidden>Choose folder…</button></div>
+    <p class="small muted" id="dirinfo"></p>
+
+    <h3>Import</h3>
+    <label class="filebtn">Import existing WAV(s)…<input id="import" type="file" accept="audio/*,.wav" multiple hidden /></label>
+    <p class="small muted">Name a file after its line id (e.g. <code>p0012.wav</code>) to match it automatically; otherwise it goes to the current line. You can also drop files on this page.</p>
+
+    <details id="tips" open>
+      <summary>Tips for a great recording</summary>
+      <ul class="small">
+        <li><b>Pop filter</b> (or a sock over the mic) and keep the mic ~10-15 cm from your mouth, slightly off to the side.</li>
+        <li><b>Same spot every session</b>: same mic, position, distance, room, chair. Do not change the gain between sessions.</li>
+        <li><b>Quiet room</b>: soft furnishings help; turn off fans, fridges, and phones. Capture room tone each time.</li>
+        <li>Peaks around <b>-12 to -3 dB</b> on the meter. Never red. Shout the big calls from a little further back.</li>
+        <li>Let the <b>last word finish and die away</b> before stopping; the app adds the quiet padding for you.</li>
+        <li><b>Do the style</b> in the direction line. Stretch the vowels, let the energy rise. Perform it; do not read it.</li>
+        <li><b>Hydrate</b>, take a break every 15-20 minutes, stop when your voice gets tired: the first session sounds different from the fifth.</li>
+        <li>Mistake? Just <b>retake</b> (←). Do not splice or repair, retakes are free.</li>
+      </ul>
+    </details>
+  </aside>
+
+  <section id="stage">
+    <div id="sessions"></div>
+    <div id="progress" class="muted"></div>
+    <div class="card" id="linecard">
+      <div class="tags"><span id="style" class="tag"></span><span id="lineno" class="muted"></span><span id="linekind" class="muted"></span></div>
+      <div id="line-text">Open the microphone to begin</div>
+      <div id="line-orig" class="muted"></div>
+      <div id="direction"></div>
+    </div>
+
+    <div id="countdownbox" hidden></div>
+
+    <div class="meter">
+      <canvas id="meter" width="900" height="64"></canvas>
+      <div class="meterlabels"><span id="peaktxt">peak -∞</span><span id="rmstxt">rms -∞</span><span id="clip" class="clip">CLIP</span><span id="state" class="state">no microphone</span></div>
+    </div>
+
+    <div class="controls">
+      <button id="rec" disabled>● Record <kbd>Space</kbd></button>
+      <button id="play" disabled>▶ Play <kbd>P</kbd></button>
+      <button id="retake" disabled>↺ Retake <kbd>←</kbd></button>
+      <button id="next" disabled>Next <kbd>→</kbd></button>
+      <button id="skip" disabled>Skip <kbd>S</kbd></button>
+      <button id="flag" disabled>⚑ Flag <kbd>F</kbd></button>
+    </div>
+
+    <div class="card" id="review" hidden>
+      <canvas id="wave" width="900" height="110"></canvas>
+      <div id="qc"></div>
+    </div>
+
+    <details id="listwrap"><summary>All lines in this session</summary><div id="list"></div></details>
+  </section>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

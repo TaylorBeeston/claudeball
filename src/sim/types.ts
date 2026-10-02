@@ -59,6 +59,8 @@ export type AnimHint =
   | 'catch_fly_run'
   | 'catch_line_drive'
   | 'catch_comebacker'
+  | 'catch_ready'
+  | 'pitcher_catch_toss'
   | 'catch_throw_low'
   | 'catch_throw_high'
   /** Umpire signals (umpires only). `ump_ready` is the default stance. */
@@ -72,10 +74,45 @@ export type AnimHint =
   | 'ump_foul'
   | 'ump_fair'
   | 'ump_homerun'
-  | 'ump_time';
+  | 'ump_time'
+  /** Dugout and lifecycle: sitting on the bench, on the on-deck circle (loose / a swing with the donut), walking. */
+  | 'bench_sit'
+  | 'ondeck_ready'
+  | 'ondeck_swing'
+  | 'walk'
+  | 'bullpen_throw'
+  /** Base coaches' signals (`coach_ready` is the stance in the box). */
+  | 'coach_ready'
+  | 'coach_stop'
+  | 'coach_go'
+  | 'coach_slide'
+  | 'coach_advance'
+  | 'coach_signs'
+  /** Ball kids / bat boy. */
+  | 'ballkid_idle'
+  | 'ballkid_sit'
+  | 'ballkid_run'
+  | 'ballkid_pickup'
+  | 'ballkid_toss';
 
 /** What the person is doing on the field right now. */
-export type PlayerRole = 'pitcher' | 'catcher' | 'fielder' | 'batter' | 'runner' | 'umpire';
+export type PlayerRole =
+  | 'pitcher'
+  | 'catcher'
+  | 'fielder'
+  | 'batter'
+  | 'runner'
+  | 'umpire'
+  /** (additive) people who are not in the play: seated on the bench or in the bullpen, the next hitter on deck, the base coaches, ball kids and the bat boy. */
+  | 'bench'
+  | 'ondeck'
+  | 'coach1b'
+  | 'coach3b'
+  | 'ballkid'
+  | 'batboy';
+
+/** What a base coach is signalling. */
+export type CoachSignalKind = 'stop' | 'go' | 'slide' | 'advance' | 'signs';
 
 /**
  * Ratings on the 20-80 scouting scale (50 = league average, 10 points = one standard deviation, 80 = elite), except `velocity`
@@ -312,7 +349,7 @@ export interface PlayerSnapshot {
   team: TeamSide;
   role: PlayerRole;
   /** Defensive position (for fielders); 'DH'/bench bats report their lineup position. */
-  position: FieldPosition | 'HP' | '1B-U' | '2B-U' | '3B-U';
+  position: FieldPosition | 'HP' | '1B-U' | '2B-U' | '3B-U' | 'C1B' | 'C3B' | 'BK' | 'BB';
   jersey: number;
   pos: Vec3;
   vel: Vec3;
@@ -365,6 +402,8 @@ export interface BatSnapshot {
   tip: Vec3;
   /** Progress through the swing 0..1, -1 when not swinging. */
   swingT: number;
+  /** (additive) a bat lying on the ground by the plate (the hitter ran with the ball in play) until the bat boy picks it up. */
+  dropped?: Vec3 | null;
 }
 
 export type CallKind =
@@ -418,6 +457,8 @@ export interface GameStateSnapshot {
     zone: { left: number; right: number; bottom: number; top: number; depthZ: number };
   };
   lastPlay: string;
+  /** (additive) a foul ball that is out of play: rolling / lying in foul ground, carried by a ball kid, or tossed to a fan. */
+  deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** (additive) live box-score stats for every player who has appeared, for a HUD. */
   stats?: { home: TeamStatsSnapshot; away: TeamStatsSnapshot };
   gameOver: boolean;
@@ -513,6 +554,11 @@ export type GameEvent =
   | (EBase & { type: 'robbedHomeRun'; fielderId: string; batterId: string; distance: number; heightAboveWall: number; pos: Vec3 })
   /** A fielder returns the ball after a dead ball or a pitch (casual, non-urgent): glove-to-hand transfer is over, the ball leaves his hand. */
   | (EBase & { type: 'ballReturn'; fromId: string; toId: string; mph: number; casual: true })
+  | (EBase & { type: 'onDeck'; playerId: string; team: TeamSide })
+  | (EBase & { type: 'coachSignal'; coachId: string; kind: CoachSignalKind; runnerId?: string; base?: number })
+  | (EBase & { type: 'ballKidRetrieve'; ballKidId: string; pos: Vec3 })
+  | (EBase & { type: 'ballTossedToFan'; ballKidId: string; pos: Vec3 })
+  | (EBase & { type: 'batBoyRetrieve'; batBoyId: string; pos: Vec3 })
   /** A runner touched a base (also for dead-ball trots): `trot` is true when it is not a live-ball touch. */
   | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3 })
   | (EBase & { type: 'substitution'; team: TeamSide; inId: string; outId: string; reason: string })

@@ -9,6 +9,8 @@ import type { DecisionKind, DecisionProvider, DecisionRequest, FullDecisionProvi
 import { snapshot } from './snapshot';
 import { tickBallReturn, tickLeavers } from './handling';
 import { tickUmpires } from './umpires';
+import { initDugouts, tickDugout } from './dugout';
+import { initStaff, tickStaff } from './staff';
 import { TICK } from './world';
 import type { PlayerRT, World } from './world';
 import type {
@@ -33,6 +35,8 @@ export class Game {
 
   constructor(cfg: GameConfig) {
     this.w = createWorld(cfg);
+    initDugouts(this.w);
+    initStaff(this.w);
   }
 
   /** Advance the world by dtSeconds using a fixed internal step (1/240 s). Deterministic regardless of chunking. */
@@ -127,6 +131,8 @@ export class Game {
     }
     if (w.gameOver && w.phase !== 'final') return;
     tickLeavers(w);
+    tickDugout(w);
+    tickStaff(w);
     tickUmpires(w);
     for (const t of [w.teams.home, w.teams.away]) for (const p of t.players.values()) if (p.onField) stepPlayer(p, w);
   }
