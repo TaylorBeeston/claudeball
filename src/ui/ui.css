@@ -271,7 +271,7 @@
 .cb-caps[data-bg='translucent'] .cb-cap { background: rgba(8, 12, 20, 0.64); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
 .cb-caps[data-bg='solid'] .cb-cap { background: rgba(8, 10, 16, 0.97); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 /* phones and short screens: a compact bar in the ticker's place; the HUD lifts its bottom column by the bar's height and the ticker steps aside */
-@media (max-width: 700px) and (orientation: portrait), (max-height: 520px) {
+@media (max-width: 900px), (max-height: 520px) {
   .cb-caps { left: var(--ml, 12px); right: var(--mr, 12px); width: auto; transform: none; align-items: stretch; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--u, 6px) * 0.6); }
   .cb-caps .cb-cap { text-align: left; max-height: calc(2 * 1.3em + 0.75em); overflow: hidden; }
   .cb-caps[data-size='XL'] .cb-cap { max-height: calc(3 * 1.3em + 0.75em); }

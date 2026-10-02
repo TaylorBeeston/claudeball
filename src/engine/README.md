@@ -115,3 +115,9 @@ Tests: `npm test` (headLook maths + mirror-safe rig).
 - `pixelRatioFor` (`quality.ts`): preset DPR cap on desktops; on touch screens up to 1.5 within a per-preset pixel budget (phone: ~0.7 MP on Low).
 - HUD (`hud.ts`): all sizes derive from `--u` (about 1% of the short side, 5.6-14 px), margins include `env(safe-area-inset-*)`; the scorebug, name card and call caption are one bottom-left column (portrait phones: scorebug on top),
   the controls are a ☰ button with a drawer (tap, mouse movement or keyboard focus opens it), the name card collapses on small screens (tap to expand).
+
+## Subtitles and B-roll cards (`src/ui/captions*.ts`, `subjectCard.ts`)
+- **Captions** (`src/ui/captionModel.ts` pure + `captions.ts` DOM): fed by the audio layer's speech events (`{ id, channel, speaker, text, startMs, expectedDurationMs }` at the start of a line, `{ id, truncatedAt? }` at its end). `app.ts` calls
+  `captions.attach(audioController)` for every game; it subscribes through `onSpeech` / `onSpeechEnd` when the controller has them and stays quiet otherwise. `window.__captionsFeed(event)` feeds one event by hand (demos, `scripts/ui-captions.py`).
+  One timer for the next deadline, DOM touched only when a line starts, ends or fades. Phones (and narrow / short screens) get a compact bar in the ticker's place and the HUD lifts its bottom column by its height (`--tick-h`).
+- **B-roll cards**: `CameraDirector.brollShot` exposes the shot on screen; `Engine.tick` compares it with the last one (no DOM unless it changed) and `Hud.subjectShot` shows `cardFor(shot, state)` (`subjectCard.ts`: ON DECK / WALKING UP / AT BAT / PITCHING / CATCHER / MANAGER / NOW WARMING / COMING IN, ratings bars, game line, arsenal) for the length of the hold.

@@ -23,7 +23,7 @@ export class Captions {
   private offs: (() => void)[] = [];
   private host: HTMLElement | null = null;
   private pos: CapSettings['subtitlePos'] = 'bottom';
-  private mq = typeof matchMedia === 'function' ? matchMedia('(max-width: 700px) and (orientation: portrait), (max-height: 520px)') : null;
+  private mq = typeof matchMedia === 'function' ? matchMedia('(max-width: 900px), (max-height: 520px)') : null;
   now = () => performance.now();
 
   constructor() {
@@ -58,7 +58,7 @@ export class Captions {
     if (s.subtitles === 'off') this.reset();
   }
 
-  /** Phones show one entry (the newest) and the HUD makes room for the bar at the bottom. */
+  /** Phones, tablets in portrait and short screens show one entry (the newest) and the HUD makes room for the bar at the bottom. */
   private layout() {
     const phone = !!this.mq?.matches;
     this.model.setMaxLines(phone ? 1 : 2, this.now());
