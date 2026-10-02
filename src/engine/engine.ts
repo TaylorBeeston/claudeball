@@ -329,10 +329,12 @@ export class Engine {
       const vis = this.gbufferHidden.map((o) => o.visible);
       for (const o of this.gbufferHidden) o.visible = false;
       this.players.phase('gbuf');
+      this.stadium.crowdVisible(false);
       try {
         orig(...args);
       } finally {
         this.players.phase('main');
+        this.stadium.crowdVisible(true);
       }
       this.gbufferHidden.forEach((o, i) => (o.visible = vis[i]));
     };
@@ -367,6 +369,7 @@ export class Engine {
     this.post.setQuality(this.quality);
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
+    this.stadium.crowd.setSectors(this.quality.crowdSectors);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);

@@ -54,6 +54,8 @@ const PROXY_SKIP = /^(Gear_Hair|Face_Hair|Gear_Beard|Hair|Eyes_Cornea)/;
 /** one shared material for every proxy: it never draws colour (the proxy is only visible during the shadow and the GTAO depth/normal passes) */
 const proxyMaterial = new MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 proxyMaterial.name = 'shadow_proxy';
+/** parts the GTAO depth/normal prepass skips: details, cards and thin layers (the proxy stands in for none of them: they are simply not part of the occlusion) */
+const GBUF_SKIP = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt|Socks|Gear_Goatee|Gear_Hair|Face_Hair|Hair)/;
 /** puppet level of detail: parts dropped from tier 1 (small on screen) and from tier 2 (tiny), by mesh name; the rest always draws */
 const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_Piping|Gear_BeltBuckle|Gear_Soles|Gear_Spikes|Gear_Wristband|Gear_EyeBlack|Gear_Beard_Stubble|Gear_Mustache|Gear_Glove.*Laces|Gear_CapLogo)/;
 const LOD_TIER2 = /^(Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
@@ -583,12 +585,27 @@ export class GltfPuppet implements PuppetLike {
     this.proxy = px;
   }
 
-  /** the render phase: 'main' (the puppet's own parts), 'shadow' (only the proxy casts), 'gbuf' (the proxy stands in for the whole puppet in the depth/normal prepass) */
+  /** parts hidden during the GTAO prepass (they are visible parts; restored afterwards) */
+  private gbufHidden: Object3D[] = [];
+
+  /**
+   * The render phase: 'main' (everything as usual), 'shadow' (the merged proxy is visible; the parts themselves cast nothing) and 'gbuf' (the GTAO depth /
+   * normal prepass: the body shapes draw, the small details that cannot move an occlusion value are hidden). `visible` is put back by the next 'main'.
+   */
   phase(p: 'main' | 'shadow' | 'gbuf') {
-    const px = this.proxy;
-    if (!px) return;
-    px.visible = p !== 'main';
-    this.model.visible = p !== 'gbuf';
+    if (this.proxy) this.proxy.visible = p === 'shadow';
+    if (p === 'gbuf') {
+      this.gbufHidden.length = 0;
+      for (const m of this.meshes) {
+        if (m.visible && m.layers.mask === 1 && GBUF_SKIP.test(m.name)) {
+          m.visible = false;
+          this.gbufHidden.push(m);
+        }
+      }
+    } else if (this.gbufHidden.length) {
+      for (const m of this.gbufHidden) m.visible = true;
+      this.gbufHidden.length = 0;
+    }
   }
 
   /** parts that drop out at a level of detail (see `LOD_TIER1`) */
