@@ -52,7 +52,11 @@ function saveFlag(enabled: boolean) {
 /** the umpire's calls and the counts the booth folds in: generated ahead so they are instant */
 export const WARM_UMP = ['Ball!', 'Ball four!', 'Strike!', 'Strike three!', 'Foul ball!', 'Foul tip!', 'Safe!', 'Out!', 'Time!', 'Take your base!', 'Infield fly!', 'Balk!'];
 
+export type NeuralModule = typeof import('./neural');
+
 export class HdManager {
+  /** how the heavy module is loaded (a dynamic import; tests inject a fake) */
+  loader: () => Promise<NeuralModule> = () => import('./neural');
   state: HdStatus['state'] = 'off';
   pct = 0;
   message = '';
@@ -89,7 +93,7 @@ export class HdManager {
   async autoStart(): Promise<void> {
     if (!hdSupported()) return;
     try {
-      const { isCached } = await import('./neural');
+      const { isCached } = await this.loader();
       this.cached = await isCached(pickMode());
       this.emit();
       if (loadFlag() && this.cached) await this.enable();
@@ -104,7 +108,7 @@ export class HdManager {
     const n = ++this.checkSeq;
     let c = false;
     try {
-      const { isCached } = await import('./neural');
+      const { isCached } = await this.loader();
       c = await isCached(pickMode());
     } catch {
       c = false;
@@ -124,7 +128,7 @@ export class HdManager {
     this.pct = 0;
     this.emit();
     try {
-      const { NeuralSpeechEngine, WorkerSynth } = await import('./neural');
+      const { NeuralSpeechEngine, WorkerSynth } = await this.loader();
       const engine = new NeuralSpeechEngine(new WorkerSynth(), this.mixer, browserSpeech(), mode) as unknown as HdEngine;
       await engine.init(mode, (l, t) => {
         this.pct = t > 0 ? Math.min(99, Math.round((l / t) * 100)) : 0;
@@ -171,7 +175,7 @@ export class HdManager {
   async remove() {
     this.disable();
     try {
-      const { clearCache } = await import('./neural');
+      const { clearCache } = await this.loader();
       await clearCache();
     } catch {
       /* ignore */

@@ -39,7 +39,7 @@ class FakeEngine {
     engineLog.push('dispose');
   }
 }
-vi.mock('../neural', () => ({
+const fakeModule = {
   NeuralSpeechEngine: FakeEngine,
   WorkerSynth: class {},
   isCached: async () => FakeEngine.cached,
@@ -47,7 +47,7 @@ vi.mock('../neural', () => ({
     engineLog.push('clearCache');
     FakeEngine.cached = false;
   },
-}));
+} as never;
 
 function stubBrowser(gpu: boolean, stored: Record<string, string> = {}) {
   const store: Record<string, string> = { ...stored };
@@ -60,7 +60,9 @@ function stubBrowser(gpu: boolean, stored: Record<string, string> = {}) {
 async function fresh() {
   vi.resetModules();
   const m = await import('../hd');
-  return m.hdManager;
+  const mgr = new m.HdManager();
+  mgr.loader = async () => fakeModule;
+  return mgr;
 }
 
 describe('HD voices manager (outlives games, works without an AudioContext)', () => {
