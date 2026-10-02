@@ -42,22 +42,22 @@ def local_to_world(side):
 
 def build_glove(kind, side="Left"):
     """Returns (glove object, pocket centre in model space). Union of primitives -> voxel remesh -> pocket carved with a sphere -> smoothed and decimated."""
-    K = KINDS[kind]; bm = bmesh.new(); hw = K["half_w"]; z0, z1 = K["heel_z"]; back, pad = K["back"], K["pad"]; L, spread, ft, fr = K["fingers"]
+    K = KINDS[kind]; bm = bmesh.new(); hw = K["half_w"] + .003; z0, z1 = K["heel_z"]; back, pad = K["back"], K["pad"]; L, spread, ft, fr = K["fingers"]; ft += .004; fr += (.004 if fr else 0.0)      # (+3-4 mm: the MPFB hand is a little broader than the old capsule hand)
     xm = (back + pad)/2; xr_ = (pad - back)/2
     _add_ellipsoid(bm, (xm, 0, (z0 + z1)/2 + .02), (xr_, hw, (z1 - z0)/2 + .045))                                     # heel / palm block
     if kind == "catcher":                                                                                          # round mitt: one big disc-like lobe with a thumb lobe
         _add_ellipsoid(bm, (xm, .0, .125), (xr_*1.02, hw, .105), 32, 22)
         _add_ellipsoid(bm, (xm*.9, -.055, .10), (xr_*.75, .050, .085))
-        _add_capsule(bm, (xm*.5, -.078, .03), (xm*.5, -.098, .125), .030, sq=(1.25, 1.0))                              # thumb
+        _add_capsule(bm, (xm*.5 + .006, -.078, .03), (xm*.5 + .006, -.098, .125), .033, sq=(1.25, 1.0))                              # thumb
     elif kind == "firstbase":                                                                                       # long scoop: elongated body, fingers together, thumb apart
         _add_ellipsoid(bm, (xm*.95, .0, .17), (xr_*.95, hw*.86, .115), 30, 22)
-        _add_capsule(bm, (xm*.5, -.048, .03), (xm*.5, -.078, .19), .028, sq=(1.2, 1.0))
+        _add_capsule(bm, (xm*.5 + .006, -.052, .03), (xm*.5 + .006, -.078, .19), .031, sq=(1.2, 1.0))
         _add_ellipsoid(bm, (xm*.85, .006, .215), (xr_*.85, hw*.76, .050))
     else:
         for i, t in enumerate((-1.5, -.5, .5, 1.5)):                                                               # four finger sleeves (index at -y, pinky at +y)
             y = t*spread; ln = L*(0.96 if abs(t) > 1 else 1.0)*(1.03 if i in (1, 2) else 1.0)
             _add_capsule(bm, (xm*.45, y, .07), (xm*.45, y*1.05, ln - fr), fr, sq=(ft/fr*1.0, 1.0))
-        _add_capsule(bm, (xm*.5, -.05, .03), (xm*.5, K["thumb"][0], K["thumb"][1] - .022), .0235, sq=(1.35, 1.0))       # thumb sleeve
+        _add_capsule(bm, (xm*.5 + .006, -.05, .03), (xm*.5 + .006, K["thumb"][0], K["thumb"][1] - .022), .0275, sq=(1.35, 1.0))       # thumb sleeve
         _add_ellipsoid(bm, (xm*.95, -.048, .125), (xr_*.7, .042, .050))                                              # web between thumb and index
     # cuff: opening that clears the forearm (wrist radius ~ .04) and extends a few cm up the forearm
     ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=32, radius1=.066, radius2=.066, depth=.05)
