@@ -169,6 +169,9 @@ export async function runBench(e: Engine): Promise<BenchState> {
         stats,
       });
       if (shots) {
+        // the game stands still while the runner takes the picture, so two builds show the same frame
+        e.sim.paused = true;
+        for (let i = 0; i < 5; i++) await nextFrame();
         state.holding = name;
         state.release = false;
         while (!state.release) {
@@ -176,6 +179,7 @@ export async function runBench(e: Engine): Promise<BenchState> {
           await nextFrame();
         }
         state.holding = null;
+        e.sim.paused = false;
       }
     }
   } catch (err) {

@@ -97,7 +97,33 @@ async function main() {
         });
         perLight[`${li++}:${l.type}`] = counts;
       });
+      // draw calls the main pass submits, by scene group, for the camera as it is now (frustum + layers; an instanced mesh is one call)
+      const mainCalls: Record<string, { calls: number; tris: number }> = {};
+      {
+        const m4 = cam.projectionMatrix.clone().multiply(cam.matrixWorldInverse).elements;
+        const P: number[][] = [];
+        for (const [a, sgn] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]] as const) { const r = [m4[3] + sgn * m4[a], m4[7] + sgn * m4[a + 4], m4[11] + sgn * m4[a + 8], m4[15] + sgn * m4[a + 12]]; const n = Math.hypot(r[0], r[1], r[2]); P.push(r.map((x) => x / n)); }
+        const groupOf2 = (m: Obj) => { let g = m; while (g.parent && g.parent !== e.scene) g = g.parent; return g.name || g.type; };
+        e.scene.traverse((q) => {
+          const m = q as import('three').Mesh;
+          if (!m.isMesh || !visibleChain(m) || !m.layers.test(cam.layers)) return;
+          if (m.frustumCulled) {
+            if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+            const sk = m as import('three').SkinnedMesh;
+            const bs = (sk.isSkinnedMesh && sk.boundingSphere ? sk.boundingSphere : m.geometry.boundingSphere)!;
+            const c = bs.center.clone().applyMatrix4(m.matrixWorld);
+            const r = bs.radius * m.matrixWorld.getMaxScaleOnAxis();
+            for (const pl of P) if (pl[0] * c.x + pl[1] * c.y + pl[2] * c.z + pl[3] < -r) return;
+          }
+          const g = groupOf2(m);
+          if (g === 'stadium') { const k = 'stadium/' + m.name.replace(/[_.]?\d+$/, '').replace(/_chunk.*/, ''); const r2 = (mainCalls[k] ??= { calls: 0, tris: 0 }); r2.calls += 1; r2.tris += triOf(m) * ((m as import('three').InstancedMesh).isInstancedMesh ? (m as import('three').InstancedMesh).count : 1); }
+          const rec = (mainCalls[g] ??= { calls: 0, tris: 0 });
+          rec.calls += 1;
+          rec.tris += triOf(m) * ((m as import('three').InstancedMesh).isInstancedMesh ? (m as import('three').InstancedMesh).count : 1);
+        });
+      }
       return {
+        mainCallsByGroup: mainCalls,
         shadowCastersPerLight: perLight,
         puppets: e.players.puppets.size,
         firstPuppetMeshes: rows,
@@ -113,6 +139,8 @@ async function main() {
     console.table(data.firstPuppetMeshes);
     console.log('\nall puppets, by mesh kind (count / tris / casters / morph / skinned)');
     console.table(Object.fromEntries(Object.entries(data.perKind).sort((a, b) => b[1].meshes - a[1].meshes)));
+    console.log('\nmain pass draw calls by group (current camera)');
+    console.table(data.mainCallsByGroup);
     console.log('\nshadow casters inside each light frustum (by group)');
     console.table(data.shadowCastersPerLight);
     console.log('\nscene groups');
