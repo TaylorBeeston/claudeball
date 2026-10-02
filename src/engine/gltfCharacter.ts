@@ -20,13 +20,14 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { AnimationClip } from 'three';
+import { AnimationClip, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
 import { makeOnDeckBat } from './ondeckProp';
+import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
@@ -35,7 +36,7 @@ import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, 
 const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base', 'bench_sit', 'ondeck_ready', 'ondeck_stretch', 'coach_ready', 'coach_go_loop', 'ballkid_sit', 'catch_ready']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
-export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
+export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
 
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
@@ -80,6 +81,21 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'ballkid_sit': return ['ballkid_sit', 'bench_sit', 'idle'];
     case 'ballkid_run': return ['ballkid_run', 'jog', 'run'];
     case 'ballkid_pickup': return ['ballkid_pickup', 'field_grounder', 'idle'];
+    case 'batter_step_in': return ['batter_step_in', 'walk'];
+    case 'batter_practice_swing': return ['batter_practice_swing', 'ondeck_swing', 'swing'];
+    case 'batter_adjust': return ['batter_adjust', ...idleFor('batter')];
+    case 'batter_step_out': return ['batter_step_out', ...idleFor('batter')];
+    case 'catcher_signs': case 'catcher_signal_infield': return [hint, 'catcher_crouch'];
+    case 'pitcher_shake_off': case 'pitcher_nod': case 'pitcher_step_off': case 'pitcher_rosin': case 'pitcher_adjust': case 'pitcher_look_runner': return [hint, 'pitcher_set', 'idle'];
+    case 'mound_talk': case 'mound_talk_listen': return [hint, 'idle'];
+    case 'manager_walk': return ['manager_walk', 'walk'];
+    case 'manager_signal': return ['manager_signal', 'coach_signs', 'idle'];
+    case 'pitcher_handoff': return ['pitcher_handoff', 'idle'];
+    case 'warmup_pitch': return ['warmup_pitch', 'throw_casual', 'throw'];
+    case 'bullpen_throw': return ['bullpen_throw', 'throw_casual', 'throw'];
+    case 'umpire_brush_plate': return ['umpire_brush_plate', 'ump_set_base', 'idle'];
+    case 'ump_new_ball': return ['ump_new_ball', 'ump_time', 'idle'];
+    case 'ump_huddle': return ['ump_huddle', 'idle'];
     case 'ballkid_toss': return ['ballkid_toss', 'throw_casual', 'throw'];
     default: return idleFor(role);
   }
@@ -105,7 +121,7 @@ export function stanceYaw(hand: 'L' | 'R' | undefined): number {
 export function templateNameFor(snap: PlayerSnap): string {
   switch (snap.role) {
     case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': return 'player_batter';
-    case 'batboy': return 'player_coach';
+    case 'batboy': case 'manager': return 'player_coach';
     case 'ballkid': return 'player_ballkid';
     case 'catcher': return 'player_catcher';
     case 'umpire': return 'player_umpire';
@@ -134,6 +150,8 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
       m = pm;
     } else m = b.clone();
     m.userData = {};
+    if (skin) shadeSkin(m);
+    if (name === 'hair' || name === 'stubble') shadeHair(m);
     m.color = new Color(color);
     reg(m);
     matCache.set(key, m);
@@ -312,6 +330,8 @@ export class GltfPuppet implements PuppetLike {
   private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
+  /** glassy cornea shells over the eyes (visible only in the full tier, near the camera) */
+  private cornea: Object3D[] = [];
   private torso: TorsoVolume = torsoVolume(undefined);
   private headVol: HeadVolume = headVolume(undefined);
   private headVolHelmet: HeadVolume = headVolume(undefined, true);
@@ -348,6 +368,23 @@ export class GltfPuppet implements PuppetLike {
         this.meshes.push(m);
       }
     });
+    // eyes and leather become clear-coated materials; every eye gets a glassy cornea shell (drawn only when the tier and the distance ask for it)
+    for (const m of [...this.meshes]) {
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      const next = mats.map((mat) => {
+        const u = upgradeMaterial(mat);
+        if (u !== mat) reg(u);
+        return u;
+      });
+      m.material = Array.isArray(m.material) ? next : next[0];
+      if (m.name === 'Eyes' && (m as SkinnedMesh).isSkinnedMesh && m.parent) {
+        const shell = makeCorneaShell(m as SkinnedMesh);
+        shell.visible = false;
+        m.parent.add(shell);
+        this.cornea.push(shell);
+        this.meshes.push(shell);
+      }
+    }
     this.rig = new Rig(this.model);
     for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
       const b = this.bones[n];
@@ -356,7 +393,7 @@ export class GltfPuppet implements PuppetLike {
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
       const a = this.mixer.clipAction(clip);
-      a.setLoop(LOOPING.has(name) ? LoopRepeat : LoopOnce, Infinity);
+      a.setLoop(this.isLoop(name) ? LoopRepeat : LoopOnce, Infinity);
       a.clampWhenFinished = true;
       this.actions.set(name, a);
     }
@@ -523,6 +560,12 @@ export class GltfPuppet implements PuppetLike {
   }
 
   /** First candidate clip this GLB actually has (falls back to idle). */
+  /** the manifest says whether a clip loops (the new non-pitch clips are listed there); the built-in set covers older manifests */
+  private isLoop(name: string): boolean {
+    const c = this.manifest?.clips[name];
+    return c && c.loop !== undefined ? !!c.loop : LOOPING.has(name);
+  }
+
   private resolveClip(hint: AnimHint, role: PlayerRole): string {
     if (role === 'umpire' && hint === 'idle') return this.actions.has(this.umpBase ? 'ump_set_base' : 'ump_ready') ? (this.umpBase ? 'ump_set_base' : 'ump_ready') : 'idle';
     for (const n of clipCandidates(hint, role)) if (this.actions.has(n)) return n;
@@ -540,7 +583,7 @@ export class GltfPuppet implements PuppetLike {
     a.play();
     // walking up to / away from the box swings the head from forward to the stance's over-the-shoulder look: blend that slowly
     const stanceBlend = snap.role === 'batter' && (name === 'swing' || name === 'batting_stance' || this.currentName === 'swing' || this.currentName === 'batting_stance');
-    if (this.current) this.current.crossFadeTo(a, stanceBlend ? 0.3 : LOOPING.has(name) ? 0.2 : 0.1, false);
+    if (this.current) this.current.crossFadeTo(a, stanceBlend ? 0.3 : this.isLoop(name) ? 0.2 : 0.1, false);
     this.current = a;
     this.currentName = name;
   }
@@ -924,7 +967,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.lastHint = snap.anim;
     this.lastMoveHint = hint;
-    const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing');
+    const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (pit && pit.time !== null && this.current) {
@@ -943,7 +986,7 @@ export class GltfPuppet implements PuppetLike {
       this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
-    if (!pit && this.current && snap.animProgress !== undefined && !LOOPING.has(this.currentName)) {
+    if (!pit && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
@@ -956,6 +999,11 @@ export class GltfPuppet implements PuppetLike {
     // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
     const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
     this.lod1 = lod1;
+    if (this.cornea.length) {
+      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 24;
+      const vis = shadingTier() === 'full' && !lod1 && near;
+      for (const c of this.cornea) c.visible = vis;
+    }
     if (lod1) {
       this.lodAcc += dt;
       this.lodFlip = !this.lodFlip;
@@ -1326,6 +1374,18 @@ export class GltfPuppet implements PuppetLike {
     if (!this.ballHeld || !this.ballObj) return null;
     this.ballObj.updateWorldMatrix(true, false);
     return out.setFromMatrixPosition(this.ballObj.matrixWorld);
+  }
+
+  faceCenter(out: Vector3): Vector3 | null {
+    const head = this.bones.Head;
+    if (!head) return null;
+    this.root.updateMatrixWorld(true);
+    this.rig.refresh();
+    const p = this.rig.pos(head, new Vector3());
+    const q = this.rig.quat(head, new Quaternion());
+    // the face sits a hand above the head bone and a little forward (head-local +Y up, +Z forward)
+    p.add(new Vector3(0, 0.105, 0.05).applyQuaternion(q));
+    return out.copy(p).applyMatrix4(this.model.matrixWorld);
   }
 
   shoulderCenter(out: Vector3): Vector3 | null {

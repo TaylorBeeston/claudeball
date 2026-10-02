@@ -1,5 +1,6 @@
 import {
   Camera,
+  FramebufferTexture,
   HalfFloatType,
   PerspectiveCamera,
   Scene,
@@ -68,18 +69,20 @@ const GradeShader = {
     time: { value: 0 },
     grain: { value: 0.035 },
     vignette: { value: 0.32 },
-    saturation: { value: 1.0 },
+    saturation: { value: 0.94 },
     contrast: { value: 1.06 },
     aberration: { value: 0.0012 },
     tint: { value: new Vector2(0.0, 0.0) },
     fade: { value: 0 },
     aspect: { value: 1.7 },
     motion: { value: new Vector2(0, 0) },
+    tPrev: { value: null as unknown },
+    dissolve: { value: 0 },
   },
   vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform vec2 motion;
-    uniform sampler2D tDiffuse; uniform float time, grain, vignette, saturation, contrast, aberration, fade, aspect; uniform vec2 tint;
+    uniform sampler2D tDiffuse, tPrev; uniform float time, grain, vignette, saturation, contrast, aberration, fade, aspect, dissolve; uniform vec2 tint;
     varying vec2 vUv;
     float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p + 19.19); return fract(p.x * p.y); }
     void main(){
@@ -107,6 +110,7 @@ const GradeShader = {
       c *= 1.0 - vignette * smoothstep(0.18, 0.95, r2 * 1.7);
       float n = hash(vUv * vec2(1920.0, 1080.0) + fract(time * 7.13) * 91.7) - 0.5;
       c += n * grain * (0.45 + 0.9 * (1.0 - l));
+      if (dissolve > 0.0) c = mix(c, texture2D(tPrev, vUv).rgb, dissolve); // the previous picture melting away (display-referred, like c here)
       c = mix(c, vec3(0.0), fade);
       gl_FragColor = vec4(max(c, 0.0), 1.0);
     }`,
@@ -122,6 +126,13 @@ export class PostFX {
   private grade: ShaderPass;
   private size = new Vector2(1280, 720);
   private aoActive = false;
+  /** the last picture shown, kept while a dissolve might be needed */
+  private prev: FramebufferTexture | null = null;
+  private prevSize = new Vector2();
+  /** copy every drawn frame into `prev` (the director turns this on during lulls, when a dissolve can be asked for) */
+  capture = false;
+  private dissolveT = 0;
+  private dissolveDur = 0;
 
   constructor(
     renderer: WebGLRenderer,
@@ -198,8 +209,41 @@ export class PostFX {
     (this.grade.uniforms as Record<string, { value: number }>).fade.value = f;
   }
 
+  /** melt from the last drawn picture into the new camera over `seconds` (call on the frame of the cut) */
+  startDissolve(seconds: number) {
+    if (!this.prev || seconds <= 0) return;
+    this.dissolveT = 0;
+    this.dissolveDur = seconds;
+  }
+
+  get dissolving() {
+    return this.dissolveDur > 0;
+  }
+
   render(time: number, dt: number) {
-    (this.grade.uniforms as Record<string, { value: number }>).time.value = time;
+    const u = this.grade.uniforms as Record<string, { value: unknown }>;
+    u.time.value = time;
+    if (this.dissolveDur > 0 && this.prev) {
+      this.dissolveT += dt;
+      const k = 1 - this.dissolveT / this.dissolveDur;
+      u.tPrev.value = this.prev;
+      u.dissolve.value = k > 0 ? k * k * (3 - 2 * k) : 0;
+      if (k <= 0) this.dissolveDur = 0;
+    } else u.dissolve.value = 0;
     this.composer.render(dt);
+    if (this.capture || this.dissolveDur > 0) this.grabFrame();
+  }
+
+  private grabFrame() {
+    const r = this.composer.renderer;
+    const w = r.domElement.width, h = r.domElement.height;
+    if (!this.prev || this.prevSize.x !== w || this.prevSize.y !== h) {
+      this.prev?.dispose();
+      this.prev = new FramebufferTexture(w, h);
+      this.prevSize.set(w, h);
+    }
+    // while the dissolve itself is on screen the copy would hold the blend: keep the picture it started from
+    if (this.dissolveDur > 0 && this.dissolveT > 0) return;
+    r.copyFramebufferToTexture(this.prev);
   }
 }

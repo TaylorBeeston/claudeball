@@ -1,5 +1,5 @@
 import {
-  ACESFilmicToneMapping,
+  NeutralToneMapping,
   Object3D,
   PerspectiveCamera,
   Quaternion,
@@ -21,6 +21,8 @@ import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
+import { ContactShadows } from './contactShadows';
+import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
@@ -53,6 +55,7 @@ export class Engine {
   /** pins the number of shadow-casting tower spots (tests / screenshots on a loaded machine); undefined = adaptive */
   lightShadowCap?: number;
   readonly lights: StadiumLights;
+  readonly contact = new ContactShadows();
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
   private tossBall: Object3D | null = null;
@@ -98,7 +101,9 @@ export class Engine {
     this.el = root;
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = SRGBColorSpace;
-    this.renderer.toneMapping = ACESFilmicToneMapping;
+    // Khronos PBR Neutral: keeps the hue and saturation of albedo (ACES pushed lit skin to a pale cream); the contrast comes from the grade pass
+    this.renderer.toneMapping = NeutralToneMapping;
+    installCharacterShading();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
@@ -116,6 +121,8 @@ export class Engine {
     this.lights = new StadiumLights(this.scene);
     this.lights.setTowers(this.stadium.towers);
     this.gbufferHidden.push(this.lights.group);
+    this.scene.add(this.contact.mesh);
+    this.gbufferHidden.push(this.contact.mesh);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
@@ -129,6 +136,7 @@ export class Engine {
     this.hookGBufferVisibility();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
+    this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
 
     this.hud =
       opts.hud === false
@@ -201,6 +209,12 @@ export class Engine {
       };
       const benchBox = boxOf('Dugout_3B_Bench') ?? boxOf('Dugout_1B_Bench');
       this.side.setLayout(makeLayout([boxOf('Dugout_1B'), boxOf('Dugout_3B')], benchBox ? benchBox.max.y : undefined));
+      // B-roll landmarks: the bullpens (away −X, home +X) and the scoreboard
+      const centre = (o: Object3D | undefined | null) => (o ? new Box3().setFromObject(o).getCenter(new Vector3()) : null);
+      const pens = ['Bullpen_L', 'Bullpen_R'].map((n) => centre(a.field!.getObjectByName(n))).filter((v): v is Vector3 => !!v).sort((p, q) => p.x - q.x);
+      if (pens.length === 2) this.director.landmarks.bullpens = [pens[0].setY(0), pens[1].setY(0)];
+      const sb = centre(a.stadium?.getObjectByName('Scoreboard'));
+      if (sb) this.director.landmarks.scoreboard = sb;
       // ground under the stands / beyond the field mesh
       const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
       under.position.y = -0.06;
@@ -219,7 +233,7 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' ? 'player_coach' : null;
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' ? 'player_coach' : null;
         const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
@@ -318,6 +332,7 @@ export class Engine {
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
     this.lights.setQuality(name);
+    setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
     this.resize();
   }
@@ -453,6 +468,8 @@ export class Engine {
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
     this.players.makeBat = () => this.bat.makeHandBat();
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
+    this.contact.visible = this.quality.name !== 'low';
+    if (this.contact.visible) this.contact.update(this.players.feet());
     this.updateTossBall();
     this.updateLoose(rs);
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
@@ -491,6 +508,8 @@ export class Engine {
       } else this.post.setMotion(0, 0);
       this.prevFar = fwd.clone();
     }
+    this.post.capture = out.capture;
+    if (out.dissolve > 0) this.post.startDissolve(out.dissolve);
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
     this.stadium.crowd.update(this.time, dt);
     this.lights.update(this.time);
