@@ -1,5 +1,5 @@
 {
- "version": 7,
+ "version": 8,
  "fps": 24,
  "clips": {
   "idle": {
@@ -1965,6 +1965,20 @@
    "nose_narrow",
    "eyes_deep"
   ],
+  "expressions": [
+   "eyes_blink",
+   "mouth_open",
+   "smile",
+   "brow_raise",
+   "brow_furrow",
+   "mouth_pucker"
+  ],
+  "eyes_only": [
+   "eyes_look_left",
+   "eyes_look_right",
+   "eyes_look_up",
+   "eyes_look_down"
+  ],
   "hair_only": [
    "hair_under_cap"
   ],
@@ -1978,7 +1992,7 @@
    "fingers_3",
    "fingers_4"
   ],
-  "note": "influence 0..1; body keys on every skinned body/clothing mesh, head_narrow/head_wide on head-attached meshes, glove_open/glove_closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap"
+  "note": "influence 0..1. body keys on every skinned body/clothing mesh; head keys on the Head and every head-attached mesh (hair, caps, helmet, mask, beards, brows, lashes, teeth; the key set per node differs: expressions only on Head / Eyebrows / Eyelashes / Teeth / Tongue / beards); eyes_look_* on `Eyes` and `Eyes_Cornea` (both globes turn together, 22 deg left/right, 18 deg up/down); fingers_n on Hand_R (n fingers extended, index first); glove_open/closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap. All head / face keys are MPFB2 (CC0) targets re-fitted to our rig, see CREDITS.md"
  },
  "grips": {
   "Bat_Grip": "RightHand, origin = knob, +Y = barrel",
@@ -1998,10 +2012,24 @@
    "Pants_Long"
   ],
   "hair": [
-   "Gear_Hair (default short)",
+   "Gear_Hair (default short crop)",
    "Gear_Hair_Buzz",
    "Gear_Hair_Curly",
-   "Gear_Hair_Long"
+   "Gear_Hair_Long",
+   "Gear_Hair_SidePart",
+   "Gear_Hair_SlickBack",
+   "Gear_Hair_Bob",
+   "Gear_Hair_Ponytail",
+   "Gear_Hair_Receding",
+   "Gear_Hair_Balding"
+  ],
+  "face_parts": [
+   "Eyes",
+   "Eyes_Cornea",
+   "Gear_Eyebrows",
+   "Gear_Eyelashes",
+   "Gear_Teeth (base only)",
+   "Gear_Tongue (base only)"
   ],
   "facial_hair": [
    "Gear_Beard_Stubble",
@@ -2038,10 +2066,11 @@
    "Elbow_Pole_R"
   ],
   "hand": [
-   "Hand_R (firm grip, bat)",
-   "Hand_R_Ball (claw, ball)",
-   "Hand_L (fist)",
-   "Hand_L_Open (inside the glove)"
+   "Hand_R (fist for the bat in player_batter; claw holding the ball in the glove files; relaxed otherwise)",
+   "Hand_R_Ball (claw, base file)",
+   "Hand_L (fist / relaxed / the open hand inside the glove)",
+   "Hand_L_Open (inside the glove, base file)",
+   "Hand_L_Relaxed / Hand_R_Relaxed (base file)"
   ],
   "note": "every node carries glTF extras {cb_group, cb_default}; cb_default = 1 means visible in that file's pre-configured look. Optional variants exist only in player_base.glb"
  },
@@ -2171,8 +2200,12 @@
  },
  "materials_recolor": [
   "skin",
-  "face",
-  "hair",
+  "face (same atlas as skin: recolour both with the same baseColorFactor)",
+  "hair (+ hair_short01, hair_short03, hair_short04, hair_bob01, hair_afro01, hair_long01, hair_ponytail01: luminance-normalised strand textures, recolour all `hair*`)",
+  "eyebrow",
+  "eyelash",
+  "eye (iris colour is in the texture; alternative iris colours: tex/eyes_<colour>.webp)",
+  "cornea",
   "stubble",
   "uniform_jersey",
   "uniform_undershirt",
