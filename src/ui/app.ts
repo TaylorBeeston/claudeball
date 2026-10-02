@@ -26,6 +26,7 @@ import { settingsScreen, titleScreen, setupScreen, type AppCtx, type AudioBridge
 import { Layer, RotateHint, Toast, gameOverScreen, pauseScreen } from './overlays';
 import { DEFAULT_SETTINGS, clearSaved, resolve, saveSettings, shareQuery, type GameSettings, type MatchSetup, type Resolved } from './settings';
 import { TouchControls } from './touch';
+import { Captions } from './captions';
 
 type Mode = 'boot' | 'menu' | 'playing' | 'paused' | 'over';
 
@@ -85,6 +86,7 @@ class App {
   private warmTimer = 0;
   private overTimer = 0;
   private touch!: TouchControls;
+  private captions = new Captions();
 
   constructor(private root: HTMLElement, private boot_: Boot, private report: BootReport) {
     this.res = resolve(location.search, this.storage, !!navigator.webdriver, CLUB_ABBRS);
@@ -132,6 +134,10 @@ class App {
     e.hud?.setActive(false);
     this.touch = new TouchControls(this.root, e, { onMenu: () => this.pause() });
     this.wireHud();
+    this.captions.mount(e.hud?.root ?? this.root);
+    this.captions.apply(this.settings);
+    // demo / test hook: window.__captionsFeed({ id: 1, speaker: 'play-by-play', text: '…' }) then { type: 'speechEnd', id: 1 }
+    (window as unknown as { __captionsFeed: (ev: unknown) => void }).__captionsFeed = (ev) => this.captions.feed(ev);
 
     const audioWarm = preloadAudioFiles();
     const prepared = await e.prepare({ assets: !flags.noassets, onProgress: (p) => boot.progress(p.frac, p.stage) });
@@ -245,6 +251,7 @@ class App {
     if (s.hud !== prev.hud) e.hud?.setBroadcast(s.hud);
     if (s.box !== prev.box && this.mode !== 'menu') e.hud?.setBox(s.box);
     if (s.chatter !== prev.chatter) this.audioBridge.set({ chatter: s.chatter });
+    this.captions.apply(s);
   }
 
   private resetDefaults() {
@@ -354,9 +361,12 @@ class App {
   private attachSound() {
     this.audio?.dispose();
     this.audio = null;
+    this.captions.detach();
     if (this.res.flags.noaudio) return;
     this.audio = attachAudio(this.engine, this.root, { ui: false });
     if (!this.audio) return;
+    // captions follow the speech events of this audio controller (a new one is made for every game); no-op until the audio layer has `onSpeech`
+    this.captions.attach(this.audio as unknown as Parameters<Captions['attach']>[0]);
     Object.assign(this.audio.settings, this.audioLocal);
     this.audio.onSettings = () => Object.assign(this.audioLocal, this.audio?.settings);
     this.audio.settingsChanged();
@@ -453,6 +463,7 @@ class App {
   }
 
   private attachSoundLater() {
+    this.captions.detach();
     this.audio?.dispose();
     this.audio = null;
   }

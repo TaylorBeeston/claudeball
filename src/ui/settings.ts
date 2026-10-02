@@ -11,6 +11,11 @@ export type TimeOfDay = 'day' | 'dusk' | 'night';
 export type QualityChoice = 'auto' | QualityName;
 export type Chatter = 'low' | 'normal' | 'high';
 /** Pace of play, set when a game is created (the sim's `GameConfig.tempo`). */
+/** Which voices get captions: none, the booth (play-by-play + colour), or every voice (PA and umpire too). */
+export type SubtitleMode = 'off' | 'booth' | 'all';
+export type SubtitleSize = 'S' | 'M' | 'L' | 'XL';
+export type SubtitleBg = 'none' | 'translucent' | 'solid';
+export type SubtitlePos = 'bottom' | 'top';
 export type Tempo = 'broadcast' | 'standard' | 'quick';
 
 export interface GameSettings {
@@ -30,6 +35,13 @@ export interface GameSettings {
   box: boolean;
   /** how much the commentators say */
   chatter: Chatter;
+  /** captions for the announcers (default off) */
+  subtitles: SubtitleMode;
+  subtitleSize: SubtitleSize;
+  subtitleBg: SubtitleBg;
+  /** show who is speaking (PLAY-BY-PLAY, COLOR, PA, UMPIRE) */
+  subtitleLabels: boolean;
+  subtitlePos: SubtitlePos;
 }
 
 export interface MatchSetup {
@@ -61,6 +73,11 @@ export const DEFAULT_SETTINGS: GameSettings = {
   hud: true,
   box: false,
   chatter: 'normal',
+  subtitles: 'off',
+  subtitleSize: 'M',
+  subtitleBg: 'translucent',
+  subtitleLabels: true,
+  subtitlePos: 'bottom',
 };
 
 /** The seed the game has always used when none is given: automation (and tests, other threads' scripts) rely on it being fixed. */
@@ -71,6 +88,10 @@ export const STORAGE_KEY = 'claudeball.settings.v1';
 export const QUALITY_CHOICES: QualityChoice[] = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const TODS: TimeOfDay[] = ['day', 'dusk', 'night'];
 export const GAME_LENGTHS = [9, 3, 1];
+export const SUBTITLE_MODES: SubtitleMode[] = ['off', 'booth', 'all'];
+export const SUBTITLE_SIZES: SubtitleSize[] = ['S', 'M', 'L', 'XL'];
+export const SUBTITLE_BGS: SubtitleBg[] = ['none', 'translucent', 'solid'];
+export const SUBTITLE_POSITIONS: SubtitlePos[] = ['bottom', 'top'];
 export const TEMPOS: Tempo[] = ['broadcast', 'standard', 'quick'];
 
 const oneOf = <T extends string | number>(v: unknown, list: readonly T[]): T | undefined => (list as readonly unknown[]).includes(v) ? (v as T) : undefined;
@@ -87,6 +108,15 @@ export function sanitize(o: unknown): Partial<GameSettings> {
   if (typeof x.innings === 'number' && Number.isInteger(x.innings) && x.innings >= 1 && x.innings <= 9) r.innings = x.innings;
   const tp = oneOf(x.tempo, TEMPOS);
   if (tp) r.tempo = tp;
+  const sm = oneOf(x.subtitles, SUBTITLE_MODES);
+  if (sm) r.subtitles = sm;
+  const ss = oneOf(x.subtitleSize, SUBTITLE_SIZES);
+  if (ss) r.subtitleSize = ss;
+  const sb = oneOf(x.subtitleBg, SUBTITLE_BGS);
+  if (sb) r.subtitleBg = sb;
+  if (typeof x.subtitleLabels === 'boolean') r.subtitleLabels = x.subtitleLabels;
+  const spos = oneOf(x.subtitlePos, SUBTITLE_POSITIONS);
+  if (spos) r.subtitlePos = spos;
   const c = oneOf(x.camera, ['auto', 'free'] as const);
   if (c) r.camera = c;
   if (typeof x.replays === 'boolean') r.replays = x.replays;
@@ -178,6 +208,13 @@ export function parseParams(search: string, abbrs: readonly string[] = []): Pars
     settings.innings = n;
     return true;
   });
+  // ?subtitles=off|booth|all (1 / on / true mean all); size / bg / labels / pos are settings-only, with URL forms for completeness
+  take('subtitles', (v) => {
+    const t = v.toLowerCase();
+    settings.subtitles = t === '' || t === '1' || t === 'on' || t === 'true' ? 'all' : t === '0' || t === 'false' ? 'off' : oneOf(t, SUBTITLE_MODES);
+    return settings.subtitles !== undefined;
+  });
+  take('subtitlesize', (v) => ((settings.subtitleSize = oneOf(v.toUpperCase(), SUBTITLE_SIZES)) !== undefined));
   take('tempo', (v) => ((settings.tempo = oneOf(v.toLowerCase(), TEMPOS)) !== undefined));
   take('camera', (v) => ((settings.camera = oneOf(v.toLowerCase(), ['auto', 'free'] as const)) !== undefined));
   take('replays', (v) => ((settings.replays = !falsy(v)), true));
