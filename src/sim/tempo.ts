@@ -152,7 +152,7 @@ function startRoutine(w: World): Routine {
   // --- the batter: the first pitch of his turn (practice swings on the way in, dig in), or between pitches (sometimes out of the box)
   if (first) {
     const swings = Math.max(1, Math.round(ticCount(B) * (0.5 + 0.5 * show)));
-    if (w.propRng.next() < 0.4 + 0.6 * show) {
+    if (w.propRng.next() < show) {
       for (let i = 0; i < swings; i++) {
         push(R.bat, item(w, B, 'batter_practice_swing', 1.2, 1.5, { goal: null, look: { x: 0, z: MOUND_DIST } }));
       }

@@ -1,6 +1,6 @@
 /**
  * Headless season sim: plays N full games and prints league-wide stats for a realism check.
- *   npm run sim -- [games=20] [seed=1] [pace=0]
+ *   npm run sim -- [games=20] [seed=1] [pace=0] [tempo=quick|standard|broadcast]
  */
 import { createGame } from '../src/sim/game';
 import { generateTeam } from '../src/sim/roster';
@@ -9,6 +9,7 @@ import type { BatterLine, PitcherLine } from '../src/sim/types';
 const N = Number(process.argv[2] ?? 20);
 const seed0 = process.argv[3] ?? '1';
 const pace = Number(process.argv[4] ?? 0);
+const tempo = (process.argv[5] ?? 'quick') as 'quick' | 'standard' | 'broadcast';
 
 const bat: BatterLine = { pa: 0, ab: 0, h: 0, doubles: 0, triples: 0, hr: 0, bb: 0, so: 0, hbp: 0, rbi: 0, r: 0, sb: 0, cs: 0, sf: 0, sh: 0 };
 const pit: PitcherLine = { outs: 0, bf: 0, h: 0, r: 0, er: 0, bb: 0, so: 0, hr: 0, hbp: 0, pitches: 0, strikes: 0, wp: 0 };
@@ -27,7 +28,7 @@ const margins: number[] = [];
 for (let i = 0; i < N; i++) {
   const home = generateTeam(`${seed0}-h${i}`, { side: 'home' });
   const away = generateTeam(`${seed0}-a${i}`, { side: 'away' });
-  const g = createGame({ seed: `${seed0}-g${i}`, homeTeam: home, awayTeam: away, pace });
+  const g = createGame({ seed: `${seed0}-g${i}`, homeTeam: home, awayTeam: away, pace, tempo });
   let cur: { z: boolean; swung: boolean } | null = null;
   let key = '';
   g.on('pitchReleased', () => { cur = { z: g._world.pitch!.inZone, swung: false }; if (cur.z) zoneP++; else oP++; const c = g._world.count; key = c.strikes === 2 ? '2K' : c.balls > c.strikes ? 'behind' : c.balls < c.strikes ? 'ahead' : 'even'; const r = (byCount[key] ??= { p: 0, sw: 0, z: 0, zsw: 0, wh: 0 }); r.p++; if (cur.z) r.z++; });
