@@ -3,7 +3,7 @@
  *
  * This file is the pure part: the compact facts a prompt carries, the prompt itself, and the validator that decides whether a model's
  * line may be spoken. A line is only used when every number and name in it is in the facts, it is not repetitive, and it contains no
- * pronouns for players; anything else falls back instantly to the template grammar (`stories.ts`). See the README for the evaluation.
+ * wrong pronouns (players are he / him / his); anything else falls back instantly to the template grammar (`stories.ts`). See the README for the evaluation.
  */
 import type { BoothCtx } from './ctx';
 import { lastNameOf } from './ctx';
@@ -64,7 +64,8 @@ export function buildPrompt(f: LmFacts): { system: string; user: string } {
 
 const SMALL = ['no', 'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 const ORD = ['zeroth', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
-const PRON = /\b(he|she|his|her|hers|him|himself|herself)\b/i;
+/** players are all he / him / his; any other gendered word for a player is wrong */
+const PRON = /\b(she|her|hers|herself)\b/i;
 const COMMON_CAPS = new Set(['I', 'The', 'A', 'An', 'That', 'This', 'It', 'Strike', 'Ball', 'Fastball', 'Slider', 'Curveball', 'Changeup', 'Cutter', 'Sinker', 'Sweeper', 'Splitter', 'Two', 'One', 'Three', 'Home', 'Run', 'First', 'Second', 'Third', 'Top', 'Bottom', 'Full', 'And', 'But', 'So', 'With', 'On', 'In', 'At', 'No', 'Not', 'Good', 'Great', 'Nice', 'Oh', 'Wow', 'Well', 'Yes', 'Right']);
 
 export interface Verdict {

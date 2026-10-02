@@ -54,7 +54,7 @@ function seasoned(): { log: GameLog; c: BoothCtx } {
   return { log, c };
 }
 
-const PRON = /\b(he|she|his|her|hers|him|himself|herself)\b/i;
+const PRON = /\b(she|her|hers|herself)\b/i; // players are he / him / his; "they" / "them" stay fine for teams and groups
 
 describe('stories are grounded in the game', () => {
   it('finds the true stories in a seasoned game', () => {
@@ -99,7 +99,7 @@ describe('stories are grounded in the game', () => {
 });
 
 describe('topic picker', () => {
-  it('turn structure: 1-4 turns, alternating voices, short lines, no pronouns, nothing unresolved', () => {
+  it('turn structure: 1-4 turns, alternating voices, short lines, no she / her, nothing unresolved', () => {
     const { log, c } = seasoned();
     const seen = new Set<string>();
     for (let seed = 1; seed < 80; seed++) {
@@ -157,11 +157,11 @@ describe('topic picker', () => {
     expect(tense).toBeGreaterThanOrEqual(calm);
   });
 
-  it('neutral lines are claims about nothing', () => {
+  it('neutral lines are claims about nothing (no pronouns at all, there is no one for them to refer to)', () => {
     const c = ctx({ score: { home: 2, away: 2 } });
     for (const s of neutralStories(c)) for (let seed = 0; seed < 10; seed++) {
       const turns = s.build(mulberry32(seed), 'pxp');
-      for (const t of turns ?? []) expect(PRON.test(t.text)).toBe(false);
+      for (const t of turns ?? []) expect(/\b(he|she|his|her|hers|him|himself|herself|they|them|their)\b/i.test(t.text)).toBe(false);
     }
   });
 });

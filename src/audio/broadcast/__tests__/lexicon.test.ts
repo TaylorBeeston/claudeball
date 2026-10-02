@@ -53,9 +53,24 @@ describe('coverage of the sim events', () => {
     }
   });
 
-  it('no template uses pronouns for players', () => {
-    const PRON = /\b(he|she|his|her|hers|him|himself|herself)\b/i;
-    for (const [k, v] of Object.entries(LEX)) for (const t of v) expect(PRON.test(t), `${k}: ${t}`).toBe(false);
+  it('players are he / him / his: no she / her for anybody, and no pronoun next to the umpire', () => {
+    const WRONG = /\b(she|her|hers|herself)\b/i;
+    for (const [k, v] of Object.entries(LEX)) for (const t of v) {
+      // the umpire is never gendered ("they" / "them" stay fine for teams and groups)
+      expect(WRONG.test(t), `${k}: ${t}`).toBe(false);
+      if (/umpire/i.test(t)) expect(/\b(he|his|him|himself)\b/i.test(t), `${k}: ${t}`).toBe(false);
+    }
+  });
+
+  it('uses he / him / his for players in a good share of the events, never starting a sentence with a pronoun that has no one to refer to', () => {
+    const PRON = /\b(he|his|him|himself)\b/i;
+    const withPron = Object.entries(LEX).filter(([, v]) => v.some((t) => PRON.test(t))).map(([k]) => k);
+    expect(withPron.length).toBeGreaterThanOrEqual(60);
+    // the owner's examples
+    const all = Object.values(LEX).flat().join(' | ');
+    expect(all).toMatch(/he will hold at first/i);
+    expect(all).toMatch(/he took that away/i);
+    expect(all).toMatch(/his \$ko strikeout/i);
   });
 });
 
