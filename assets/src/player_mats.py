@@ -97,3 +97,5 @@ MATS["laces"] = flat_mat("laces", (.92, .92, .9, 1), .7)
 MATS["sole"] = pbr("sole", (.04, .04, .045, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.7, nstrength=.2)
 MATS["buckle"] = flat_mat("buckle", (.78, .78, .8, 1), .28, metal=1.0)
 MATS["glove_laces"] = pbr("glove_laces", (.55, .38, .2, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.7, nstrength=.15)
+
+MATS["jacket"] = pbr("jacket", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"], rough=.7)
