@@ -61,7 +61,7 @@ describe('baserunning', () => {
   it('extra-base hits touch each base exactly once, in order, with the run_turn hint at the bags', () => {
     const seen = new Set<string>();
     let doubles = 0;
-    for (const [mph, la, sp] of [[96, 14, 18], [98, 12, -20], [100, 16, 30], [95, 13, -30], [97, 15, 12]] as number[][]) {
+    for (const [mph, la, sp] of [[98, 14, 40], [99, 13, -40], [96, 10, -38], [97, 9, 36], [105, 22, -25]] as number[][]) {
       const { l, id, samples } = track(`xbh-${mph}-${sp}`, mph, la, sp);
       for (const s of samples) seen.add(s.anim);
       const t = ofType(l.events, 'baseTouch').filter((e) => e.playerId === id).map((e) => e.base);
@@ -120,7 +120,7 @@ describe('baserunning', () => {
         t += 60;
         const settled = w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead && r.target === r.base && !r.overrun);
         const bases = settled.map((r) => r.base);
-        if (new Set(bases).size !== bases.length && w.phase === 'playOver') bad++;
+        if (new Set(bases).size !== bases.length && w.phase === 'playOver' && w.outs < 3) bad++; // (on the third out the half is over: the runners' bases no longer matter)
       }
       expect(bad).toBe(0);
     }

@@ -85,7 +85,7 @@ export function stepPlayer(p: PlayerRT, w: World): void {
   p.z += p.vz * TICK;
   // the outfield wall is solid: nobody runs through it
   const rho = Math.hypot(p.x, p.z);
-  if (rho > 15) {
+  if (rho > 15 && p.onField) {
     const lim = fenceAt(w.env.fence, p.x, p.z).distance - WALL_STAND;
     if (rho > lim) {
       const nx = p.x / rho;

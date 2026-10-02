@@ -8,7 +8,9 @@ import { clamp } from './math';
 import { setGoal, stepPlayer } from './movement';
 import { setAnim } from './util';
 import { behindPlate, benchAisle, benchFacing, benchSeat, bullpenSpot, dugDoor, dugStep, onDeckSpot } from './venue';
-import type { PlayerRT, World } from './world';
+import { pitchLimit } from './attributes';
+import type { AnimHint, GameEvent } from './types';
+import type { PlayerRT, TeamRT, World } from './world';
 import { secToTicks } from './world';
 
 /** How fast he walks (m/s): a brisk walk to the plate or the circle. */
@@ -115,7 +117,52 @@ export function routeToBox(b: PlayerRT, boxSide: 1 | -1): { x: number; z: number
  */
 export function tickDugout(w: World): void {
   if (w.cfg.pace === 0) return;
-  for (const t of [w.teams.home, w.teams.away]) for (const p of t.players.values()) tickOne(w, p);
+  for (const t of [w.teams.home, w.teams.away]) {
+    for (const p of t.players.values()) tickOne(w, p);
+    tickBullpen(w, t);
+  }
+}
+
+/** A reliever loosens up in the bullpen when the pitcher in the game is tiring or in trouble (`bullpen_throw`, looping). */
+function tickBullpen(w: World, t: TeamRT): void {
+  if (t !== w.fieldingTeam || w.phase === 'halfBreak') return;
+  const P = t.pitcher;
+  const likely = P.pitchCount >= 0.72 * pitchLimit(P.info.ratings) || P.rattle > 0.55 || P.pit.r >= 3;
+  if (!likely) return;
+  const cand = t.bullpen.find((b) => !b.used && b.dug === 'bullpen');
+  if (!cand || w.tick < cand.animUntil) return;
+  setAnim(w, cand, 'bullpen_throw', 2.6);
+  cand.lookAt = { x: cand.x - 1.5, z: cand.z + 6 };
+}
+
+/** The dugout reacts: the batting side's bench cheers (or stands) for a hit, a run, a homer; the fielding side's for a strikeout. */
+export function benchReact(w: World, e: GameEvent): void {
+  if (w.cfg.pace === 0) return;
+  let team: TeamRT | null = null;
+  let hint: AnimHint = 'bench_cheer';
+  let share = 0.5;
+  if (e.type === 'plateAppearanceEnd') {
+    if (e.result === 'home run') {
+      team = w.battingTeam;
+      hint = 'bench_stand_up';
+      share = 0.9;
+    } else if (/^(single|double|triple)/.test(e.result)) {
+      team = w.battingTeam;
+      share = e.result.startsWith('single') ? 0.35 : 0.6;
+    } else if (/strikeout/.test(e.result)) {
+      team = w.fieldingTeam;
+      share = 0.3;
+    }
+  } else if (e.type === 'runScored') {
+    team = w.battingTeam;
+    hint = 'bench_stand_up';
+    share = 0.6;
+  }
+  if (!team) return;
+  for (const p of team.players.values()) {
+    if (p.dug !== 'bench' || p.route.length || w.propRng.next() > share) continue;
+    setAnim(w, p, hint, hint === 'bench_stand_up' ? 3.0 : 2.2);
+  }
 }
 
 function tickOne(w: World, p: PlayerRT): void {
@@ -123,7 +170,7 @@ function tickOne(w: World, p: PlayerRT): void {
     const next = p.route[0];
     const last = p.route.length === 1;
     setGoal(p, next.x, next.z, last, p.routeMul);
-    p.gait = 'walk';
+    if (p.gait !== 'trot') p.gait = 'walk';
     if (!p.onField) stepPlayer(p, w);
     const d = Math.hypot(p.x - next.x, p.z - next.z);
     if (d < (last ? 0.12 : 0.5)) {

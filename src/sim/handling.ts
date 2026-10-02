@@ -6,6 +6,7 @@
 import { SHOULDER_X } from './batting';
 import { emit } from './events';
 import { toBench } from './dugout';
+import { lullScale } from './tempo';
 import { spawnDeadBall } from './staff';
 import { CATCH_LEAD, catchClipOn } from './fielding';
 import { MOUND_DIST, groundHeight } from './field';
@@ -50,6 +51,12 @@ export function ensureBallReturn(w: World, afterPitch: boolean): void {
   if (!h) {
     // a ball nobody has (over the fence, foul, dead in the dirt): a ball kid fetches a foul one that stopped in foul ground; a fresh one comes from the umpire
     spawnDeadBall(w);
+    const pu = w.umpires.find((u) => u.key === 'plate');
+    if (pu) {
+      pu.anim = 'ump_new_ball'; // the plate umpire takes a new ball out of the bag and hands it to the catcher
+      pu.animStart = w.tick;
+      pu.animUntil = w.tick + secToTicks(1.8);
+    }
     giveBall(w, P);
     w.hornKind = null;
     return;
@@ -62,7 +69,7 @@ export function ensureBallReturn(w: World, afterPitch: boolean): void {
   const runnersOn = w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead);
   // after an out with nobody on the infield may toss it around before it gets back to the pitcher
   const chain: PlayerRT[] = [];
-  const horn = !afterPitch && !runnersOn && w.outs < 3 && ((w.hornKind === 'k' && w.aiRng.next() < 0.5) || (w.hornKind === 'out' && w.aiRng.next() < 0.12));
+  const horn = !afterPitch && !runnersOn && w.outs < 3 && ((w.hornKind === 'k' && w.aiRng.next() < 0.5) || (w.hornKind === 'out' && w.aiRng.next() < 0.12 + 0.2 * lullScale(w)));
   if (horn) {
     for (const pos of ['3B', 'SS', '2B', '1B'] as const) {
       const F = w.fieldingTeam.defense.get(pos);
@@ -89,6 +96,21 @@ function startLeg(w: World, from: PlayerRT, to: PlayerRT, chain: PlayerRT[], aft
   from.goal = null;
   from.lookAt = null;
   setAnim(w, from, 'transfer', T);
+}
+
+/** A return throw from `from` to `to` (transfer, look, a casual toss): used for warm-up throws between innings and in a pitching change. */
+export function returnBallTo(w: World, from: PlayerRT, to: PlayerRT): void {
+  startLeg(w, from, to, [], true, true);
+}
+
+/** A throw that is not physics: an arc from one man's hand to another's glove over `sec` seconds (a warm-up pitch, the catcher's throw down to second). */
+export function lobBall(w: World, from: PlayerRT, to: PlayerRT, sec: number, arc: number, kind: 'pitch' | 'throw'): void {
+  releaseBall(w);
+  w.ball.mode = 'thrown';
+  w.ball.lob = { from, to, start: w.tick, dur: secToTicks(sec), arc, kind };
+  w.ball.throwTo = null;
+  w.ball.throwBase = null;
+  from.hasBall = false;
 }
 
 /** Per-tick: run the transfer / look stages of a return (the flight itself is `tickLob`). */
@@ -186,7 +208,8 @@ export function tickLob(w: World): void {
   // the glove target, and the catch clip started its catch-frame time before the arrival
   to.gloveTarget = g;
   to.gloveAt = l.start + l.dur;
-  const hint = to === w.pitcher || to.fieldPos === 'P' ? 'pitcher_catch_toss' : 'catch_throw';
+  const pitchLike = l.kind === 'pitch';
+  const hint = pitchLike ? 'catch_pitch' : to === w.pitcher || to.fieldPos === 'P' ? 'pitcher_catch_toss' : 'catch_throw';
   if (!catchClipOn(w, to) && (remaining <= CATCH_LEAD[hint] || l.dur * TICK <= CATCH_LEAD[hint])) {
     to.catchArmed = true;
     setAnim(w, to, hint, CATCH_LEAD[hint] * 2);
@@ -195,7 +218,7 @@ export function tickLob(w: World): void {
     b.x = g.x;
     b.y = g.y;
     b.z = g.z;
-    emit(w, { type: 'catch', fielderId: to.info.id, fly: false, pos: { x: g.x, y: g.y, z: g.z }, kind: 'throw', height: 'chest', side: 'glove', firm: true });
+    emit(w, { type: 'catch', fielderId: to.info.id, fly: false, pos: { x: g.x, y: g.y, z: g.z }, kind: pitchLike ? 'pitch' : 'throw', height: 'chest', side: 'glove', firm: true });
     to.gloveTarget = null;
     to.catchArmed = false;
     giveBall(w, to);

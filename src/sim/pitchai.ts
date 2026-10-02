@@ -27,7 +27,7 @@ export function fatigueOf(p: PlayerRT): number {
 }
 
 /** The catcher / pitcher pitch-calling AI: chooses an intent from the count and batter, then a pitch and a target. */
-export function callPitch(w: World): PitchCall {
+export function callPitch(w: World, refused: readonly string[] = []): PitchCall {
   const rng = w.aiRng;
   const P = w.pitcher;
   const B = w.batter!;
@@ -80,6 +80,7 @@ export function callPitch(w: World): PitchCall {
     if (a.type === 'CH') wt *= bHand !== P.info.throws ? 1.5 : 0.55; // change-ups vs opposite hand
     if (isBrk(a.type)) wt *= bHand === P.info.throws ? 1.25 : 0.85;
     if (a.type === w.seq.lastType) wt *= 0.72;
+    if (refused.includes(a.type) && arsenal.some((q) => !refused.includes(q.type))) wt = 0; // he shook that one off
     return wt;
   });
   const tot = weights.reduce((s, x) => s + x, 0);

@@ -16,8 +16,8 @@ import type { SwingObservation } from './batting';
 
 export function createAI(w: World): FullDecisionProvider {
   return {
-    pitch() {
-      const c = callPitch(w);
+    pitch(req) {
+      const c = callPitch(w, req.shookOff ?? []);
       return { pitchType: c.spec.type, targetX: c.x, targetY: c.y, careful: c.intent === 'middle' };
     },
     pickoff(req) {

@@ -1,6 +1,7 @@
 import { groundHeight } from './field';
 import { dugoutFloorY } from './venue';
 import { teamStats } from './stats';
+import { routineDetail, ticOf } from './tempo';
 import type { World, PlayerRT } from './world';
 import { TICK } from './world';
 import type {
@@ -62,8 +63,18 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
     gloveHand: p.info.throws === 'R' ? 'L' : 'R',
+    tic: role === 'batter' || role === 'ondeck' ? ticOf(p) : undefined,
     delivery: p.info.delivery ? { ...p.info.delivery, fromStretch: p === w.pitcher && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead) } : undefined,
   };
+}
+
+/** What the game is doing when it is not a pitch or a play (the camera director's and the announcers' cue). */
+function phaseDetail(w: World): string | null {
+  if (w.change) return 'pitchingChange';
+  if (w.visit) return 'moundVisit';
+  if (w.review) return 'review';
+  if (w.phase === 'halfBreak' && w.breakShow) return 'break';
+  return routineDetail(w);
 }
 
 export function snapshot(w: World): GameStateSnapshot {
@@ -98,7 +109,7 @@ export function snapshot(w: World): GameStateSnapshot {
     for (const p of t.players.values()) {
       if (p.onField || !p.dug || seen.has(p)) continue;
       seen.add(p);
-      players.push(snapPlayer(w, p, p.dug === 'deck' || p.dug === 'toDeck' ? 'ondeck' : 'bench'));
+      players.push(snapPlayer(w, p, p.dug === 'deck' || p.dug === 'toDeck' ? 'ondeck' : p.dug === 'toMound' ? 'pitcher' : 'bench'));
     }
   }
   // base coaches, ball kids, the bat boy
@@ -111,12 +122,12 @@ export function snapshot(w: World): GameStateSnapshot {
       name: s.name,
       team: s.team,
       role: s.role,
-      position: s.role === 'coach1b' ? 'C1B' : s.role === 'coach3b' ? 'C3B' : s.role === 'ballkid' ? 'BK' : 'BB',
+      position: s.role === 'coach1b' ? 'C1B' : s.role === 'coach3b' ? 'C3B' : s.role === 'ballkid' ? 'BK' : s.role === 'manager' ? 'MGR' : s.role === 'pitchcoach' ? 'PCH' : 'BB',
       jersey: s.jersey,
       pos: { x: s.x, y: dugoutFloorY(s.x, s.z) < 0 ? dugoutFloorY(s.x, s.z) : 0, z: s.z },
       vel: { x: s.vx, y: 0, z: s.vz },
       facing: s.facing,
-      anim: doing ? s.anim : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
+      anim: doing ? s.anim : (s.role === 'manager' || s.role === 'pitchcoach') ? (sp > 0.4 ? 'walk' : 'idle') : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
       animT: doing ? Math.min(1, (w.tick - s.animStart) / Math.max(1, s.animUntil - s.animStart)) : 0,
       hasBall: false,
       bats: 'R',
@@ -197,6 +208,12 @@ export function snapshot(w: World): GameStateSnapshot {
     players,
     umpire: { lastCall: w.lastCall, zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top, depthZ: 0.4318 } },
     lastPlay: w.lastPlay,
+    phaseDetail: phaseDetail(w),
+    lull: !!w.lull,
+    lullKind: w.lull?.kind ?? null,
+    lullSec: w.lull?.sec ?? 0,
+    lullRemaining: w.lull ? Math.max(0, w.lull.sec - (w.tick - w.lull.start) * TICK) : 0,
+    extraBalls: w.extraBalls.map((b) => ({ x: b.x, y: b.y, z: b.z })),
     deadBall: w.deadBall ? { pos: { x: w.deadBall.body.x, y: w.deadBall.body.y, z: w.deadBall.body.z }, state: w.deadBall.state } : null,
     stats: { home: teamStats(w, w.teams.home), away: teamStats(w, w.teams.away) },
     pendingDecision: w.dec.waiting > 0 ? (() => { for (const sl of w.dec.slots.values()) if (sl.state === 'wait') return { id: sl.id, decision: sl.kind, side: sl.side }; return null; })() : null,

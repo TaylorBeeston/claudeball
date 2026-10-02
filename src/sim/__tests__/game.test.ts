@@ -71,7 +71,7 @@ describe('full game', () => {
     for (const p of s.players) {
       expect(Number.isFinite(p.pos.x + p.pos.z + p.facing)).toBe(true);
       expect(typeof p.anim).toBe('string');
-      expect(p.anim === 'idle' || /^(windup|pitch|swing|run|field|throw|catch|slide|celebrate|trot|transfer|toss|tag_|dive_back|catcher_block|ump_|bench_|ondeck_|walk|bullpen_|coach_|ballkid_|pitcher_catch)/.test(p.anim)).toBe(true);
+      expect(p.anim === 'idle' || /^(windup|pitch|swing|run|field|throw|catch|slide|celebrate|trot|transfer|toss|tag_|dive_back|catcher_block|ump_|bench_|ondeck_|walk|bullpen_|coach_|ballkid_|pitcher_|batter_|catcher_|mound_|manager_|warmup_|umpire_|catch_)/.test(p.anim)).toBe(true);
     }
     expect(s.pitcher?.info.name).toBeTruthy();
     expect(s.batter?.info.name).toBeTruthy();

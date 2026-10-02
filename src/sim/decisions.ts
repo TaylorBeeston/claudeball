@@ -76,6 +76,8 @@ export interface PitchRequest extends Base<'pitch'> {
   fatigue: number;
   /** Strike zone for this batter (m; x, y at the front of the plate). */
   zone: { left: number; right: number; bottom: number; top: number };
+  /** (additive) Set when the pitcher shook off the first sign: the pitch types he refused (choose another one). */
+  shookOff?: PitchType[];
 }
 export interface PitchDecision {
   /** Must be in the pitcher's arsenal. */
