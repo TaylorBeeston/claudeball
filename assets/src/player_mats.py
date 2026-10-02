@@ -141,7 +141,7 @@ MATS = {
  "uniform_jersey": pbr("uniform_jersey", (.8, .8, .8, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"], nstrength=2.0),
  "uniform_undershirt": pbr("uniform_undershirt", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"], nstrength=2.0),
  "uniform_pants": pbr("uniform_pants", (.75, .75, .75, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=1.6),
- "uniform_socks": pbr("uniform_socks", (.05, .08, .3, 1), I["pants_a"], I["pants_n"], I["pants_o"], nstrength=2.0),
+ "uniform_socks": pbr("uniform_socks", (.05, .08, .3, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=2.0),      # own texture set (not the jersey knit): gltf-transform merges materials with identical textures and colour, and socks / undershirt share a colour
  "cleats": pbr("cleats", (.03, .03, .03, 1), L_BLACK["a"], L_BLACK["n"], L_BLACK["o"], nstrength=.6),
  "cap": pbr("cap", (.05, .08, .3, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=1.6),
  "helmet": pbr("helmet", (.05, .08, .3, 1), PLASTIC["a"], PLASTIC["n"], PLASTIC["o"], rough=.3, nstrength=.5),
