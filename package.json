@@ -22,7 +22,8 @@
     "announcer:test": "tsx tools/announcer/train/web_test.ts ${CB_VOICEPACK:-${CB_DATA_DIR:-${CB_VOICE_DIR:-$HOME/claudeball-voice}}/voicepack}",
     "announcer:pilot": "bash tools/announcer/train/pilot.sh",
     "announcer:clips": "bash tools/announcer/train/run.sh clips",
-    "announcer:test:game": "tsx tools/announcer/train/game_test.ts"
+    "announcer:test:game": "tsx tools/announcer/train/game_test.ts",
+    "audio:music:index": "tsx scripts/music-index.ts"
   },
   "dependencies": {
     "three": "^0.186.1"

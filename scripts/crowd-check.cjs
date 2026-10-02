@@ -22,9 +22,10 @@ const base = process.env.URL || 'http://127.0.0.1:5199/';
     await page.waitForTimeout(500);
     series.push(await page.evaluate(() => { const d = window.__audioDebug; const c = d.controller; return { t: Math.round(performance.now() / 100) / 10, level: +c.crowd.level.toFixed(2), energy: +c.crowd.energy.toFixed(2), ambience: c.ambience.gains, voices: c.mixer.voiceCount, tickMs: +d.controller.debug.tickMs.toFixed(3), rms: +c.mixer.level().rms.toFixed(3) }; }));
   }
-  const out = await page.evaluate(() => { const c = window.__audioDebug.controller; return { played: Object.fromEntries(Object.entries(c.mixer.played).filter(([k]) => k.startsWith('crowd:'))), log: c.crowd.log.slice(-25), lowPower: c.lowPower, ctx: c.mixer.state, ready: c.mixer.ready }; });
+  const out = await page.evaluate(() => { const c = window.__audioDebug.controller; return { music: { tracks: c.music.manifest.tracks.length, stats: c.music.stats, log: c.music.director.log.slice(-20) }, fx: c.fx.played.slice(-10), played: Object.fromEntries(Object.entries(c.mixer.played).filter(([k]) => k.startsWith('crowd:'))), log: c.crowd.log.slice(-25), lowPower: c.lowPower, ctx: c.mixer.state, ready: c.mixer.ready }; });
   const maxLevel = Math.max(...series.map((s) => s.level));
   console.log(JSON.stringify({ lowPower: out.lowPower, ctx: out.ctx, ready: out.ready, maxLevel, minLevel: Math.min(...series.map((s) => s.level)), maxVoices: Math.max(...series.map((s) => s.voices)), tickMsAvg: +(series.reduce((a, s) => a + s.tickMs, 0) / series.length).toFixed(3), played: out.played }, null, 1));
+  console.log('music:', JSON.stringify(out.music), 'fx:', JSON.stringify(out.fx));
   console.log('last reactions:', JSON.stringify(out.log));
   console.log('level timeline:', series.filter((_, i) => i % 6 === 0).map((s) => `${s.t}:${s.level}/${s.ambience.roar.toFixed(2)}`).join(' '));
   console.log('ERRORS', JSON.stringify(errs.slice(0, 10)));

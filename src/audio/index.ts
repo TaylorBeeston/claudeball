@@ -19,6 +19,8 @@ export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { CrowdModel, type CrowdCtx, type CrowdShot } from './crowd';
 import { isLowPower } from './perf';
+import { ParkMusic, WebAudioMusic } from './park/player';
+import { TRIGGERS, TRIGGER_IDS, type Trigger } from './park/manifest';
 import { BroadcastFx, FX_EVENT_TYPES, type CameraEvent, type FxPlan } from './broadcastfx';
 import { Booth } from './broadcast/booth';
 import { BoothSink } from './broadcast/channels';
@@ -96,6 +98,9 @@ export interface DebugCue {
   text?: string;
 }
 
+/** the park-music triggers an organ stinger stands in for */
+const ORGAN_TRIGGERS: Record<string, Trigger[]> = { hr_fanfare: ['homeRun', 'finalWin'], walk_up: ['walkUp'], charge: ['runScored', 'rally'], rally: ['rally', 'runScored'], ditty: ['gameStart', 'inningBreak'], dirge: ['finalLoss'] };
+
 /** events the crowd still reacts to at 2x-4x (everything else only at normal speed) */
 const MAJOR = new Set(['homeRun', 'runScored', 'robbedHomeRun', 'gameEnd', 'gameStart']);
 
@@ -123,6 +128,9 @@ export class AudioController {
   /** phone-class device: lighter everywhere (slower tick, fewer crowd voices and incidental sounds, no footsteps) */
   readonly lowPower = isLowPower();
   private crowdAcc = 0;
+  /** park music: optional tracks from `public/audio/music/`, the organ stingers otherwise */
+  readonly music: ParkMusic;
+  private musicTestList: string[] = [];
   /** camera / graphics stings (broadcastfx.ts) */
   readonly fx = new BroadcastFx();
   private lastShot = '';
@@ -173,6 +181,19 @@ export class AudioController {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
     this.mixer.lowPower = this.lowPower;
+    this.music = new ParkMusic({
+      backend: new WebAudioMusic(this.mixer),
+      base: `${import.meta.env?.BASE_URL ?? '/'}audio/music/`,
+      lowPower: this.lowPower,
+      onFallback: (trig) => this.musicFallback(trig),
+    });
+    void this.music.load();
+    try {
+      const q = new URLSearchParams(location.search).get('musictest');
+      if (q) this.musicTestList = q === 'all' ? TRIGGER_IDS.flatMap((t) => Array(TRIGGERS[t].variants).fill(t)) : q.split(',').filter((t): t is Trigger => t in TRIGGERS);
+    } catch {
+      /* no location */
+    }
     this.crowd = new CrowdModel({ rng: Math.random, lowPower: this.lowPower });
     this.ambience = new Ambience(this.mixer);
     this.organ = new Organ(this.mixer);
@@ -302,6 +323,7 @@ export class AudioController {
       this.ui?.setLocked(false);
       this.mixer.applySettings();
       this.syncSpeech();
+      if (this.musicTestList.length) this.runMusicTest();
     }
     return ok;
   }
@@ -550,8 +572,12 @@ export class AudioController {
         return m.playCrowd(c.id, c.gain ?? 1, c.delay ?? 0);
       case 'excite':
         return true; // the crowd model (crowd.ts) owns the crowd; the mapper's excite cues are switched off in the running game
-      case 'organ':
-        return this.settings.muted || !this.settings.organ ? false : this.organ.play(c.id, c.gain ?? 1, 0);
+      case 'organ': {
+        if (this.settings.muted || !this.settings.organ) return false;
+        // park music (a file) takes the moment; the organ stinger is the fallback when there is none, and never plays over a track
+        if (c.id !== 'stretch' && (this.music.active || this.music.covered(ORGAN_TRIGGERS[c.id] ?? [], performance.now() / 1000, 4))) return false;
+        return this.organ.play(c.id, c.gain ?? 1, 0);
+      }
       case 'speak': {
         if (this.locked || this.settings.muted) return false;
         if (!this.speech.enabled[c.role]) return false;
@@ -616,7 +642,7 @@ export class AudioController {
       if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
       // PA and booth sit under each other (about -5 dB for the PA while the booth talks, -2 dB for the booth under the PA): neither is muted
       if (this.gate.concurrent) this.mixer.setVoiceDuck(this.gate.busy.booth > 0 ? 0.56 : 1, this.gate.busy.field > 0 ? 0.79 : 1);
-      if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
+      if (this.bedWanted && !this.music.active && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
       const stretch = this.organ.playing === 'stretch';
       if (sim.speed > 1.01 && this.lastSpeed <= 1.01) this.speech.clear();
       this.lastSpeed = sim.speed;
@@ -635,6 +661,7 @@ export class AudioController {
           }
           for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
           if (!this.locked && (sim.speed <= 2.01 || MAJOR.has(ev.type))) this.crowd.observe(ev, crowdCtx(st));
+          if (!this.locked && sim.speed <= 1.01 && !sim.skipping) this.music.observe(ev, { inning: st.inning, half: st.half, score: st.score }, now / 1000);
           if (cc && !sim.skipping) this.booth.observe(ev, cc, performance.now() / 1000);
         }
       }
@@ -653,6 +680,11 @@ export class AudioController {
           const bed = this.crowd.update(step, !sim.paused && sim.speed <= 1.51 && !this.settings.muted);
           this.ambience.apply(sim.paused ? { ...bed, murmur: bed.murmur * 0.6, roar: bed.roar * 0.6, clap: bed.clap * 0.5 } : bed);
           this.mixer.setCrowdProximity(this.crowd.proximity.gain);
+          // park music: silent while paused / skipping / fast / muted / off / the stretch; under the booth and the PA, and under big crowd moments
+          const musicOff = sim.paused || sim.skipping || sim.speed > 1.01 || this.settings.muted || !this.settings.music || this.organ.playing === 'stretch';
+          this.music.tick(now / 1000, musicOff);
+          const speech = this.gate.busy.booth > 0 ? 0.5 : this.gate.busy.field > 0 ? 0.62 : 1;
+          this.mixer.setMusicDuck(speech * (1 - 0.4 * Math.min(1, Math.max(0, (this.crowd.energy - 0.5) / 0.5))));
           for (const shot of this.crowd.take()) if (!this.settings.muted && (sim.speed <= 1.01 || shot.gain >= 0.3)) this.playShot(shot);
         }
         this.levelTimer += dt;
@@ -670,7 +702,7 @@ export class AudioController {
         this.boothWasSuppressed = suppressed;
         const cc = this.raw ? this.boothCtx() : null;
         if (cc) {
-          this.booth.setLevel(this.settings.chatter);
+          this.booth.setLevel(this.music.breakPlaying ? 'low' : this.settings.chatter); // calls only while the break music plays
           this.booth.canTalk = this.phase !== null;
           this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed }));
         }
@@ -683,6 +715,28 @@ export class AudioController {
         console.warn('[audio] tick failed', e);
       }
     }
+  }
+
+  /** a park-music file could not be played: the organ stinger of that trigger takes its place */
+  private musicFallback(trig: Trigger) {
+    const id = TRIGGERS[trig].organ;
+    if (!id || this.locked || this.settings.muted || !this.settings.organ || this.host.sim.paused || this.host.sim.skipping) return;
+    this.organ.play(id as never, 0.9, 0);
+  }
+
+  /** `?musictest=homeRun` (or `a,b`, or `all`): play the triggers in turn, every variant, and say what played */
+  private runMusicTest() {
+    const list = [...this.musicTestList];
+    this.musicTestList = [];
+    const next = () => {
+      const trig = list.shift();
+      if (!trig) return;
+      const t = this.music.force(trig as Trigger, performance.now() / 1000);
+      console.info(`[music-test] ${trig}: ${t ? `${t.file} (${(t.durationMs / 1000).toFixed(1)} s)` : 'no file, the organ stinger plays'}`);
+      if (!t) this.musicFallback(trig as Trigger);
+      setTimeout(next, Math.min(100000, (t?.durationMs ?? 6000) + 2500));
+    };
+    void this.music.load().then(next);
   }
 
   private playShot(s: CrowdShot) {
@@ -763,7 +817,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { music: { playing: a.music.playingNow, tracks: a.music.manifest.tracks.length, stats: a.music.stats, log: a.music.director.log.slice(-8) }, fx: a.fx.played.slice(-5), tickMs: +a.debug.tickMs.toFixed(3), ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,
