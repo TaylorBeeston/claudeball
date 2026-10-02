@@ -110,18 +110,19 @@ export function planNext(ctx: PlanContext): BrollShot | null {
   const recentSubjects = ctx.recent.slice(-3).map((r) => r.subject).filter(Boolean);
   const subjectOf = (k: BrollKind) => ctx.subjects?.[k];
   const ok = (k: BrollKind) => ctx.available.has(k) && !recentKinds.includes(k) && !(subjectOf(k) && recentSubjects.includes(subjectOf(k)));
-  const weights = WEIGHTS[ctx.lull.kind];
+  const lullKind: LullKind = ctx.lull.kind in WEIGHTS ? ctx.lull.kind : 'betweenPitches'; // a kind the sim adds later still gets sensible B-roll
+  const weights = WEIGHTS[lullKind];
   let kind: BrollKind | null = null;
   let team: number | undefined;
-  if (ctx.shownThisLull === 0 && ctx.reactionTeam != null && ctx.available.has('dugoutReaction') && ctx.lull.kind !== 'review') {
+  if (ctx.shownThisLull === 0 && ctx.reactionTeam != null && ctx.available.has('dugoutReaction') && lullKind !== 'review') {
     kind = 'dugoutReaction';
     team = ctx.reactionTeam;
   }
   if (!kind) {
     // a lull with a natural order (mound visit: wide, then the huddle) takes its opener first
-    const order = OPENERS[ctx.lull.kind];
+    const order = OPENERS[lullKind];
     const o = order?.find((k) => ctx.available.has(k) && !ctx.recent.slice(-ctx.shownThisLull).some((r) => r.kind === k));
-    if (o && ctx.shownThisLull < (order?.length ?? 0) && (ctx.lull.kind !== 'walkup' && ctx.lull.kind !== 'break' ? true : ctx.shownThisLull === 0 || o === 'batterFace')) kind = o;
+    if (o && ctx.shownThisLull < (order?.length ?? 0) && (lullKind !== 'walkup' && lullKind !== 'break' ? true : ctx.shownThisLull === 0 || o === 'batterFace')) kind = o;
   }
   if (!kind) {
     const pool = (Object.entries(weights) as [BrollKind, number][]).filter(([k]) => ok(k));
