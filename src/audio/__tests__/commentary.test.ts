@@ -273,7 +273,7 @@ describe('grounding and style', () => {
 describe('exchanges in the speech queue', () => {
   function fakeSpeech() {
     const spoken: string[] = [];
-    const engine: SpeechEngine = { voices: () => [{ name: 'A', lang: 'en-US' }, { name: 'B', lang: 'en-US' }], speak: (t) => spoken.push(t), cancel() {}, pause() {}, resume() {} };
+    const engine: SpeechEngine = { voices: () => [{ name: 'A', lang: 'en-US' }, { name: 'B', lang: 'en-US' }], speak: (t) => { spoken.push(t); }, cancel() {}, pause() {}, resume() {} };
     return { engine, spoken };
   }
   it('drops the reply when the first line of its exchange goes stale', () => {

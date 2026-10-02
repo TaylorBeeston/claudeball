@@ -20,6 +20,7 @@ export function loadSettings(): Settings {
       sfx: num(o.sfx, DEFAULT_SETTINGS.sfx),
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
             announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
+      paVolume: num(o.paVolume, DEFAULT_SETTINGS.paVolume),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
@@ -106,7 +107,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -142,6 +143,7 @@ export class AudioUi {
     slider('crowd', 'Crowd');
     slider('organVolume', 'Organ');
     slider('announcer', 'Voices');
+    slider('paVolume', 'PA announcer');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
     {
