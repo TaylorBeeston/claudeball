@@ -17,6 +17,9 @@ import { mulberry32, type Rendered } from './dsp';
 export const MAX_VOICES = 32;
 /** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
 const MAKEUP = 2;
+/** park music at the full slider: sits a little under the crowd bed and the PA */
+const MUSIC_LEVEL = 1.0;
+
 /** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
 const ORGAN_LEVEL = 1.0;
 /** PA bus gain at slider 1 (the default slider 0.55 is about 4-5 dB under the old fixed level) */
@@ -89,6 +92,9 @@ export class Mixer {
   crowdBus!: GainNode;
   /** broadcast stings (camera whooshes, replay sting, graphic blips): their own level, unaffected by the replay filter */
   fxBus!: GainNode;
+  /** park music (`park/player.ts`): the stadium PA layer's music, under the voices */
+  musicBus!: GainNode;
+  private musicDuck = 1;
   /** the bed and the one-shots of the crowd enter here; the camera's distance to the stands sets its gain */
   crowdProx!: GainNode;
   /** phone-class device: fewer simultaneous crowd voices */
@@ -165,6 +171,8 @@ export class Mixer {
     this.crowdBus.connect(this.master);
     this.fxBus = ctx.createGain();
     this.fxBus.connect(this.master);
+    this.musicBus = ctx.createGain();
+    this.musicBus.connect(this.master);
     this.crowdProx = ctx.createGain();
     this.crowdProx.connect(this.crowdBus);
     this.organBus = ctx.createGain();
@@ -187,6 +195,10 @@ export class Mixer {
       conv.connect(ret);
       ret.connect(this.master);
       this.organBus.connect(this.reverbIn);
+      const msend = ctx.createGain();
+      msend.gain.value = 0.12; // a little stadium room on the music
+      this.musicBus.connect(msend);
+      msend.connect(this.reverbIn);
     } catch {
       /* no reverb */
     }
@@ -218,6 +230,7 @@ export class Mixer {
     const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
+    this.musicBus.gain.setTargetAtTime(this.paused || !s.music ? 0 : s.musicVolume * s.musicVolume * MUSIC_LEVEL * this.musicDuck, t, 0.15);
     this.fxBus.gain.setTargetAtTime(this.paused ? 0 : s.fxVolume * s.fxVolume * 1.3, t, 0.05);
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
     this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
@@ -231,6 +244,13 @@ export class Mixer {
   setVoiceDuck(pa: number, booth: number) {
     if (pa === this.duck.pa && booth === this.duck.booth) return;
     this.duck = { pa, booth };
+    this.applySettings();
+  }
+
+  /** the music sits under the booth (-6 dB) and the PA, and under big crowd moments: 0..1 (the controller works it out) */
+  setMusicDuck(d: number) {
+    if (Math.abs(d - this.musicDuck) < 0.01) return;
+    this.musicDuck = d;
     this.applySettings();
   }
 
