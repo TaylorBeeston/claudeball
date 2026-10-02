@@ -39,7 +39,13 @@ export type SfxId =
   | 'firework'
   | 'replay_whoosh'
   | 'pa_click'
-  | 'ump_yell'; // fallback shout when there is no speech synthesis
+  | 'ump_yell' // fallback shout when there is no speech synthesis
+  // broadcast stings (broadcastfx.ts): quiet, on their own bus with its own volume
+  | 'bfx_whoosh' // a soft swish for a dissolve or a wipe
+  | 'bfx_thunk' // a tiny low tick on a hard cut to a close-up
+  | 'bfx_replay' // whoosh + a short rising sting into a replay
+  | 'bfx_blip' // a graphic (lower third) appearing
+  | 'bfx_thump'; // a low thump on a stadium aerial
 
 /** One-shot crowd reactions (stereo, played on the crowd bus, not positional). */
 export type CrowdId =

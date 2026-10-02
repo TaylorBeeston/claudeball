@@ -19,6 +19,7 @@ export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { CrowdModel, type CrowdCtx, type CrowdShot } from './crowd';
 import { isLowPower } from './perf';
+import { BroadcastFx, FX_EVENT_TYPES, type CameraEvent, type FxPlan } from './broadcastfx';
 import { Booth } from './broadcast/booth';
 import { BoothSink } from './broadcast/channels';
 import { SpeechGate } from './broadcast/gate';
@@ -121,7 +122,10 @@ export class AudioController {
   }
   /** phone-class device: lighter everywhere (slower tick, fewer crowd voices and incidental sounds, no footsteps) */
   readonly lowPower = isLowPower();
-  private crowdAcc = 0
+  private crowdAcc = 0;
+  /** camera / graphics stings (broadcastfx.ts) */
+  readonly fx = new BroadcastFx();
+  private lastShot = '';
   /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/); the manager outlives games */
   get voice() {
     return voiceManager.controller;
@@ -185,6 +189,10 @@ export class AudioController {
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw, crowdCues: false }); // the crowd model makes the crowd sounds
+    // the engine's camera / graphics events come through the engine's own stream, whichever source the game events use
+    host.sim.on((te) => {
+      if (FX_EVENT_TYPES.has(te.event.type)) this.cameraEvent(te.event as CameraEvent);
+    });
     if (this.raw) this.raw.on('*', (e) => this.push(e));
     else host.sim.on((te) => {
       const r = engineToRaw(te.event);
@@ -416,8 +424,24 @@ export class AudioController {
   /** organ bed wanted: during the break between half innings, and between batters in some half innings */
   private bedWanted = false;
 
+  /** the engine's camera and graphics events (`cameraCut`, `replayStart`, `replayEnd`, `graphicShown`): they also arrive through the event streams */
+  cameraEvent(ev: CameraEvent) {
+    if (!FX_EVENT_TYPES.has(ev.type)) return;
+    this.playFx(this.fx.event(ev, performance.now() / 1000));
+  }
+
+  private playFx(p: FxPlan | null) {
+    const sim = this.host.sim;
+    if (!p || this.locked || this.settings.muted || sim.paused || sim.skipping || sim.speed > 2.01 || this.settings.fxVolume <= 0.01) return;
+    this.mixer.playSfx({ kind: 'sfx', id: p.id, gain: p.gain, imp: 1 });
+  }
+
   private push(ev: RawEvent) {
     this.debug.events++;
+    if (FX_EVENT_TYPES.has(ev.type)) {
+      this.cameraEvent(ev as CameraEvent);
+      return;
+    }
     if (this.host.sim.skipping) return;
     this.organDirector(ev);
     this.trackPhase(ev);
@@ -563,9 +587,13 @@ export class AudioController {
       this.mixer.setListener(listenerFromMatrix(this.host.camera.matrixWorld.elements));
       // modes: pause, slow-motion replay, speed, fast-forward
       const replay = this.host.director?.shot === 'replay';
+      const shotName = this.host.director?.shot ?? '';
+      if (shotName !== this.lastShot) {
+        this.lastShot = shotName;
+        this.playFx(this.fx.shot(shotName, now / 1000));
+      }
       if (replay !== this.wasReplay) {
         if (replay) {
-          this.mixer.playSfx({ kind: 'sfx', id: 'replay_whoosh', gain: 0.5, imp: 1 });
           const cc = this.raw ? this.boothCtx(true) : null;
           if (cc) this.booth.replay(cc, performance.now() / 1000);
         }
