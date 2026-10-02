@@ -252,7 +252,7 @@ def build_eyes():
             for sx in (1, -1):
                 c = np.array([sx*.032, -.146, 1.732]); m = (np.sign(Pn[:, 0] - 0.0) == sx); R = np.array(Matrix.Rotation(math.radians(ang), 3, axis))
                 out[m] = (Pn[m] - c) @ R.T + c
-            sk = o.shape_key_add(name=key, from_mix=False); sk.slider_min = -1.0 if False else 0.0; sk.slider_max = 1.0; sk.data.foreach_set("co", out.astype(np.float32).ravel())
+            sk = o.shape_key_add(name=key, from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.data.foreach_set("co", out.astype(np.float32).ravel())
     return objs
 
 # ---------------------------------------------------------------- bundled CC0 assets as objects (hair cards, brows, lashes, teeth)

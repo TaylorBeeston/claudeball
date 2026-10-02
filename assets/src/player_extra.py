@@ -184,6 +184,35 @@ def soles(cleats):
         bm.faces.new(top[::-1]); bm.faces.new(bot)
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
     return _obj("Gear_Soles", bm)
+def spikes(soles_obj):
+    """Gear_Spikes: six metal cleats (short cones, 8 mm) under each sole: three rows (toe / ball / heel)."""
+    bm = bmesh.new()
+    for sx in (1, -1):
+        pts = np.array([(v.co.x, v.co.y) for v in soles_obj.data.vertices if abs(v.co.z) < 1e-4 and v.co.x*sx > 0]); x0, x1, y0, y1 = pts[:, 0].min(), pts[:, 0].max(), pts[:, 1].min(), pts[:, 1].max()
+        cx, W, L = (x0 + x1)/2, x1 - x0, y1 - y0
+        for fy, fx in ((.17, .26), (.17, -.26), (.34, .34), (.34, -.34), (.84, .26), (.84, -.26)):
+            c = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=.0045, radius2=.0016, depth=.009)
+            for v in c["verts"]: v.co = Vector((cx + fx*W + v.co.x, y0 + fy*L + v.co.y, -.0045 + v.co.z))
+    return _obj("Gear_Spikes", bm)
+def cap_logo(cap_obj, text="C", w=.075, h=.052):
+    """Gear_CapLogo: a stitched front-panel logo patch following the cap surface (ray-cast grid from the head centre, lifted 1.2 mm); alpha texture is made in player_mats."""
+    from mathutils.bvhtree import BVHTree
+    bvh = bvh_of(cap_obj); bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); nu, nv = 14, 10; grid = []
+    for j in range(nv + 1):
+        row = []
+        for i in range(nu + 1):
+            u = i/nu - .5; v = j/nv - .5; x = u*w; z = 1.815 + v*h
+            loc, n, idx, dist = bvh.ray_cast(Vector((x, -.6, z)), Vector((0, 1, 0)))
+            if loc is None: row.append(None); continue
+            row.append(bm.verts.new(loc + n.normalized()*.0013))
+        grid.append(row)
+    for j in range(nv):
+        for i in range(nu):
+            q = (grid[j][i], grid[j][i+1], grid[j+1][i+1], grid[j+1][i])
+            if None in q: continue
+            f = bm.faces.new(q)
+            for lp, (ii, jj) in zip(f.loops, ((i, j), (i+1, j), (i+1, j+1), (i, j+1))): lp[uvl].uv = (ii/nu, jj/nv)
+    return _obj("Gear_CapLogo", bm)
 def laces(cleats):
     bm = bmesh.new(); bc = bvh_of(cleats)
     for sx in (1, -1):

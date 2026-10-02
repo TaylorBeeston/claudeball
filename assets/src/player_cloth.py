@@ -133,15 +133,21 @@ def chest_prot(bm):
     bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=3, use_grid_fill=True)
     for v in bm.verts:
         v.co.y += -.04*(1 - (v.co.x/.215)**2)*.6 - .012*abs(v.co.z/.25)      # curve around torso
-        v.co = v.co + Vector((0, -.135, 1.29))
+        v.co = v.co + Vector((0, -.188, 1.29))
     for sx in (1, -1):
         s = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=8, radius=.07)
-        for v in s["verts"]: v.co = Vector((v.co.x*1.0 + sx*.20, v.co.y*.9 - .01, v.co.z*.8 + 1.47))
+        for v in s["verts"]: v.co = Vector((v.co.x*1.0 + sx*.215, v.co.y*.9 - .03, v.co.z*.8 + 1.47))
 def shin_guard(bm, sx):
-    for (z0, z1, r, y) in ((.15, .34, .066, -.055), (.34, .48, .072, -.06)):
-        capsule(bm, (sx*.09, y, z0), (sx*.09, y-.004, z1), r, 14)
+    cx = JOINTS["LeftLeg"][1].x                                                          # leg axis (legs are vertical in the rig rest pose)
+    for (z0, z1, r, y) in ((.15, .34, .058, -.036), (.34, .48, .066, -.046)):
+        capsule(bm, (sx*cx, y, z0), (sx*cx, y-.004, z1), r, 14)
     s = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=.075)
-    for v in s["verts"]: v.co = Vector((v.co.x*.9 + sx*.09, v.co.y*.7 - .085, v.co.z*.8 + .53))
+    for v in s["verts"]: v.co = Vector((v.co.x*.9 + sx*cx, v.co.y*.7 - .085, v.co.z*.8 + .53))
+    for z in (.20, .30, .42):                                                              # three buckled straps round the leg (strap + buckle)
+        ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=24, radius1=1.0, radius2=1.0, depth=.022)
+        for v in ring["verts"]: v.co = Vector((sx*cx + v.co.x*.071, -.025 + v.co.y*.068, z + v.co.z))
+        bk = bmesh.ops.create_cube(bm, size=1.0)
+        for v in bk["verts"]: v.co = Vector((v.co.x*.026 + sx*cx, v.co.y*.006 - .095, v.co.z*.016 + z))
 def belt(bm):
     bmesh.ops.create_cone(bm, cap_ends=False, segments=48, radius1=1.0, radius2=1.0, depth=.04)
     for v in bm.verts: v.co = Vector((v.co.x*.246, v.co.y*.170 + .008, v.co.z + .962))
