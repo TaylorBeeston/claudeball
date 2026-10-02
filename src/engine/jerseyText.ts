@@ -105,11 +105,41 @@ export interface TextureKey {
   outline: string;
   w: number;
   h: number;
+  /** drawn flipped, for left-handers (their model is mirrored across X, which would mirror the print) */
+  mirror?: boolean;
 }
 
-export const keyString = (k: TextureKey) => `${k.kind}|${k.text}|${k.fill}|${k.outline}|${k.w}x${k.h}`;
+export const keyString = (k: TextureKey) => `${k.kind}|${k.text}|${k.fill}|${k.outline}|${k.w}x${k.h}|${k.mirror ? 'm' : ''}`;
 
 /** The shared cache. Textures live across games; the least recently used are disposed beyond `limit`. */
+let quality: QualityName = 'high';
+export const setJerseyQuality = (q: QualityName) => (quality = q);
+export const jerseyQuality = () => quality;
+
+/** how far from the camera (m) each decal is drawn: the name and big back number carry far, the small ones only up close; low quality skips the small ones */
+export function decalRange(kind: DecalKind, q: QualityName): number {
+  if (q === 'low' && (kind === 'frontNumber' || kind === 'sleeveNumber')) return 0;
+  switch (kind) {
+    case 'backName': return q === 'low' ? 24 : 42;
+    case 'backNumber': return q === 'low' ? 32 : 55;
+    default: return 24;
+  }
+}
+
+/** the print on one jersey: what to draw for each decal kind (numbers share one texture) */
+export function jerseyPrint(name: string | undefined, number: number | undefined, jersey: string, trim: string, q: QualityName, mirror: boolean): Partial<Record<DecalKind, TextureKey>> {
+  const { fill, outline } = jerseyTextColors(jersey, trim);
+  const out: Partial<Record<DecalKind, TextureKey>> = {};
+  const last = lastNameOf(name);
+  const sz = DECAL_SIZE[q];
+  if (last) out.backName = { kind: 'name', text: last, fill, outline, w: sz.name.w, h: sz.name.h, mirror };
+  if (number !== undefined && number >= 0) {
+    const key: TextureKey = { kind: 'number', text: String(Math.floor(number)), fill, outline, w: sz.number.w, h: sz.number.h, mirror };
+    out.backNumber = out.frontNumber = out.sleeveNumber = key;
+  }
+  return out;
+}
+
 export class JerseyTextures {
   private map = new Map<string, CanvasTexture>();
   constructor(private limit = 160, private anisotropy = 4) {}
@@ -180,7 +210,7 @@ export function drawJerseyText(g: CanvasRenderingContext2D, k: TextureKey) {
   const baseline = h / 2 + size * 0.36;
   g.save();
   g.translate(w / 2, baseline);
-  g.scale(fit.squeeze, 1);
+  g.scale(fit.squeeze * (k.mirror ? -1 : 1), 1);
   const draw = (stroke: boolean) => {
     // letter-spaced text drawn glyph by glyph (canvas letterSpacing is not everywhere)
     const total = measure(size) / 1;

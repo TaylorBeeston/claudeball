@@ -27,6 +27,7 @@ import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
 import { makeOnDeckBat } from './ondeckProp';
+import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
@@ -127,6 +128,32 @@ export function templateNameFor(snap: PlayerSnap): string {
     case 'umpire': return 'player_umpire';
     default: return snap.team === 1 ? 'player_home' : 'player_away';
   }
+}
+
+/** every puppet's name / number textures, shared and kept across games */
+export const jerseyTextures = new JerseyTextures();
+const decalMats = new WeakMap<object, MeshStandardMaterial>();
+function decalMaterial(tpl: Material | undefined, tex: import('three').Texture): MeshStandardMaterial {
+  let m = decalMats.get(tex);
+  if (!m) {
+    const b = tpl as MeshStandardMaterial | undefined;
+    m = b && b.isMeshStandardMaterial ? b.clone() : new MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
+    m.userData = {};
+    m.map = tex;
+    m.color = new Color(0xffffff);
+    m.transparent = true;
+    m.alphaTest = 0.02;
+    m.depthWrite = false;
+    m.polygonOffset = true;
+    m.polygonOffsetFactor = -2;
+    m.polygonOffsetUnits = -2;
+    m.name = 'jersey_decal';
+    reg(m);
+    const mm = m;
+    tex.addEventListener('dispose', () => mm.dispose());
+    decalMats.set(tex, m);
+  }
+  return m;
 }
 
 const matCache = new Map<string, MeshStandardMaterial>();
@@ -330,6 +357,10 @@ export class GltfPuppet implements PuppetLike {
   private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
+  /** the jersey's name / number decal meshes of this file (none until the assets ship them: the digit quads stay) */
+  private decals: Partial<Record<DecalKind, Mesh>> = {};
+  private decalTemplate: Material | undefined;
+  private decalKey = '';
   /** glassy cornea shells over the eyes (visible only in the full tier, near the camera) */
   private cornea: Object3D[] = [];
   private torso: TorsoVolume = torsoVolume(undefined);
@@ -383,6 +414,15 @@ export class GltfPuppet implements PuppetLike {
         m.parent.add(shell);
         this.cornea.push(shell);
         this.meshes.push(shell);
+      }
+    }
+    for (const k of Object.keys(DECAL_NODES) as DecalKind[]) {
+      const n = this.nodes.get(DECAL_NODES[k]) as Mesh | undefined;
+      if (n && n.isMesh) {
+        this.decals[k] = n;
+        this.decalTemplate ??= (Array.isArray(n.material) ? n.material[0] : n.material) as Material;
+        n.visible = false;
+        n.castShadow = false;
       }
     }
     this.rig = new Rig(this.model);
@@ -617,6 +657,7 @@ export class GltfPuppet implements PuppetLike {
     const { tens, ones } = this.numMeshes;
     const apply = (mesh: Mesh | undefined, digit: number, def: number, show: boolean) => {
       if (!mesh) return;
+      mesh.userData.show = show;
       mesh.visible = show;
       if (!show) return;
       const base = mesh.material as MeshStandardMaterial;
@@ -1036,6 +1077,7 @@ export class GltfPuppet implements PuppetLike {
     this.root.rotation.y = this.bodyYaw;
     this.root.updateMatrixWorld(true);
     this.updateProp(snap, env);
+    this.updateDecals(snap, env, lod1);
     if (lod1) {
       this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
       return;
@@ -1084,6 +1126,39 @@ export class GltfPuppet implements PuppetLike {
       this.batGrip.add(this.prop);
     }
     if (this.prop) this.prop.visible = want;
+  }
+
+  /**
+   * Last name and number on the jersey: textures come from the shared cache (a substitution just looks up another), are applied when the player,
+   * his colours, his handedness or the quality change, and the decals are drawn only within their range of the camera (the old digit quads
+   * stand in for the back number whenever the decal is not shown).
+   */
+  private updateDecals(snap: PlayerSnap, env: PuppetEnv, lod1: boolean) {
+    const kinds = Object.keys(this.decals) as DecalKind[];
+    if (!kinds.length) return;
+    const look = this.lastLook?.look;
+    const q = jerseyQuality();
+    const mirror = this.mirrored;
+    const printed = snap.team >= 0 && !!look && (snap.name !== undefined || snap.number !== undefined);
+    const key = printed ? `${snap.name}|${snap.number}|${look!.jersey}|${look!.sock}|${mirror}|${q}` : '';
+    if (key !== this.decalKey) {
+      this.decalKey = key;
+      const print = printed ? jerseyPrint(snap.name, snap.number, look!.jersey, look!.sock, q, mirror) : {};
+      for (const k of kinds) {
+        const mesh = this.decals[k]!;
+        const spec = print[k];
+        mesh.userData.hasPrint = !!spec;
+        if (spec) mesh.material = decalMaterial(this.decalTemplate, jerseyTextures.get(spec));
+      }
+    }
+    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) : 0;
+    for (const k of kinds) {
+      const mesh = this.decals[k]!;
+      mesh.visible = !lod1 && !!mesh.userData.hasPrint && d < decalRange(k, q);
+    }
+    const back = this.decals.backNumber;
+    const digitsOff = !!back && back.visible;
+    for (const m of [this.numMeshes.tens, this.numMeshes.ones]) if (m) m.visible = (m.userData.show ?? true) && !digitsOff;
   }
 
   private wasStance = false;

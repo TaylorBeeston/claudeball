@@ -24,6 +24,7 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
+import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
@@ -344,6 +345,7 @@ export class Engine {
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
+    setJerseyQuality(name);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
     this.resize();
   }
