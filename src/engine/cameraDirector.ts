@@ -14,10 +14,10 @@ import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
 import { isFielderRole } from './roles';
-import { availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
+import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
-import type { GameEvent, GameState, PlayerSnap } from './types';
+import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
 export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss' | 'broll';
@@ -107,6 +107,8 @@ export class CameraDirector {
   /** the interesting play waiting for a lull to be shown again (with the REPLAY tag) */
   private deferred: { t0: number; t1: number; variant: 'infield' | 'outfield' | 'hr'; cam: Vector3 | null; at: number } | null = null;
   private playScore = 0;
+  private fairJudged = false;
+  private coachPending: { coachId: string; runnerId: string | null; until: number } | null = null;
   private playOuts = 0;
   /** B-roll planner state */
   readonly landmarks: Landmarks;
@@ -185,11 +187,52 @@ export class CameraDirector {
       this.legIdx = -1;
       this.legSince = this.clock;
     }
+    const from = this.shot;
+    this.endShotInfo();
     this.shot = s;
     this.sim.hold = s === 'replay'; // the live game waits while a replay plays
     this.shotStart = this.clock;
     this.lastCutFrame = true;
     this.shotSeq++;
+    this.announceCut(from, s);
+  }
+
+  /** every camera transition, replay edge and graphic, for audio and the HUD (see `BroadcastEvent`) */
+  onBroadcast: ((e: BroadcastEvent) => void) | null = null;
+  private shotInfo: { kind: import('./types').ShotLabel; subjectId?: string; role?: string; card: boolean; holdMs: number } | null = null;
+  private simNow = 0;
+
+  private announceCut(from: ShotName, to: ShotName) {
+    const cb = this.onBroadcast;
+    if (!cb || from === to && this.shotSeq <= 1) return;
+    const t = this.simNow;
+    const dissolving = this.dissolveReq > 0;
+    const toBroll = to === 'broll';
+    const kind = to === 'replay' || from === 'replay' ? 'replay' : dissolving ? 'dissolve' : toBroll ? 'broll' : 'cut';
+    cb({ type: 'cameraCut', kind, from, to, durationMs: dissolving ? Math.round(this.dissolveReq * 1000) : 0, toBroll, simTime: t });
+    if (to === 'replay' && this.replay) {
+      const closePlay = this.replay.caption === 'CLOSE PLAY';
+      cb({ type: 'replayStart', variant: this.replay.variant, caption: this.replay.caption, slow: this.replay.speed < 1, simTime: t });
+      cb({ type: 'graphicShown', kind: closePlay ? 'closePlay' : 'replay', simTime: t });
+    } else if (from === 'replay') cb({ type: 'replayEnd', variant: this.lastReplayVariant, simTime: t });
+    if (to === 'replay' && this.replay) this.lastReplayVariant = this.replay.variant;
+  }
+
+  private lastReplayVariant = 'infield';
+
+  private announceShot(kind: import('./types').ShotLabel, subjectId: string | undefined, card: boolean, holdS: number, role?: string) {
+    this.shotInfo = { kind, subjectId, role, card, holdMs: Math.round(holdS * 1000) };
+    const cb = this.onBroadcast;
+    if (!cb) return;
+    cb({ type: 'shot', phase: 'start', kind, subjectId, role, card, holdMs: this.shotInfo.holdMs, simTime: this.simNow });
+    if (card && subjectId) cb({ type: 'graphicShown', kind: 'card', subjectId, simTime: this.simNow });
+  }
+
+  private endShotInfo() {
+    const i = this.shotInfo;
+    if (!i) return;
+    this.shotInfo = null;
+    this.onBroadcast?.({ type: 'shot', phase: 'end', kind: i.kind, subjectId: i.subjectId, role: i.role, card: i.card, holdMs: i.holdMs, simTime: this.simNow });
   }
 
   private handleEvent(te: TimedEvent, live: GameState) {
@@ -204,6 +247,8 @@ export class CameraDirector {
         this.cut('pitch');
         break;
       case 'contact':
+        this.fairJudged = false;
+        this.coachPending = null;
         this.playScore = e.exitVelo >= 45 ? 1 : 0; // 100 mph and up
         this.playOuts = 0;
         this.hr = null;
@@ -240,6 +285,8 @@ export class CameraDirector {
         break;
       }
       case 'foul':
+        this.coachPending = null;
+        this.fairJudged = false;
         this.holdUntil = this.clock + 1.6;
         break;
       case 'signs_given':
@@ -256,13 +303,19 @@ export class CameraDirector {
         this.onDeckPending = this.clock;
         break;
       case 'coach_signal':
-        // the third-base coach waving a runner home during a play
-        if (e.signal === 'go' && e.base === 3 && this.inPlay && !this.hr && this.shot !== 'replay' && this.clock - this.lastCoachCut > 25 && live.players.some((q) => q.id === e.coachId)) {
-          this.crewId = e.coachId;
-          this.crewRunner = e.runnerId ?? null;
-          this.lastCoachCut = this.clock;
-          this.crewUntil = this.clock + 2.4;
-          this.cut('coach');
+        // the third-base coach waving a runner home: remembered, and shown once the umpire has judged the ball fair (a foul cancels it)
+        if (e.signal === 'go' && e.base === 3 && this.inPlay && !this.hr) {
+          this.coachPending = { coachId: e.coachId, runnerId: e.runnerId ?? null, until: this.clock + 8 };
+          if (this.fairJudged) this.fireCoachCut(live);
+        }
+        break;
+      case 'umpire_call':
+        if (e.kind === 'fair' || e.kind === 'homerun') {
+          this.fairJudged = true;
+          if (this.coachPending) this.fireCoachCut(live);
+        } else if (e.kind === 'foul' || e.kind === 'foul_tip') {
+          this.fairJudged = false;
+          this.coachPending = null;
         }
         break;
       case 'ball_tossed_to_fan':
@@ -356,6 +409,8 @@ export class CameraDirector {
 
   update(dt: number, live: GameState, ball: Vector3, players: Map<string, Vector3>): DirectorOutput {
     this.clock += dt;
+    this.simNow = live.time;
+    this.lastLive = live;
     this.lastCutFrame = false;
     for (const te of this.events.splice(0)) {
       if (te.event.type === 'contact') this.thrown = false;
@@ -378,8 +433,9 @@ export class CameraDirector {
     const kidToss = live.players.find((p) => p.role === 'ballkid' && p.anim === 'ballkid_toss');
     if (kidToss && !this.kidTossing && !this.hr && !this.inPlay && this.shot !== 'replay' && this.shot !== 'cutaway' && !this.sim.skipping && pit?.anim !== 'windup' && pit?.anim !== 'pitch') {
       this.crewId = kidToss.id;
-      this.crewUntil = this.clock + 3.2;
+      this.crewUntil = this.clock + 2.6;
       this.cut('toss');
+      this.announceShot('kidToss', kidToss.id, false, 2.6, 'ballkid');
     }
     this.kidTossing = !!kidToss;
     if (!this.brollEnabled && this.clock - this.onDeckPending < 40 && !this.inPlay && !this.hr && this.shot === 'pitch' && !this.sim.hold && !this.sim.skipping && pit?.anim === 'idle' && this.clock - this.lastOnDeckCut > 40) {
@@ -481,7 +537,7 @@ export class CameraDirector {
 
   /** The non-pitch time the game is in, with how many real seconds of it are left (null when pitching is about to happen / going on). */
   private lullNow(live: GameState): { kind: string; remaining: number } | null {
-    let l: { kind: string; sec: number } | null = live.lull && typeof live.lull === 'object' && live.lull.kind ? live.lull : null;
+    let l: { kind: string; sec: number; remaining?: number } | null = live.lull && typeof live.lull === 'object' && live.lull.kind ? live.lull : null;
     let inferred = false;
     if (!l && (live.phase === 'halfInningBreak' || live.phase === 'halfBreak')) {
       l = { kind: 'break', sec: 0 };
@@ -499,6 +555,7 @@ export class CameraDirector {
     if (!tr || tr.kind !== l.kind) tr = this.lullTrack = { kind: l.kind, first: l.sec, mode: 'total', simStart: live.time, clockStart: this.clock, inferred };
     let remaining: number;
     if (inferred) remaining = this.breakUntil > this.clock ? this.breakUntil - this.clock : 6; // the phase ends the break: always room for one more shot
+    else if (l.remaining !== undefined) remaining = l.remaining / Math.max(1, this.sim.speed); // the sim says what is left
     else {
       if (l.sec < tr.first - 0.5) tr.mode = 'remaining';
       remaining = tr.mode === 'remaining' ? l.sec : tr.first - (live.time - tr.simStart);
@@ -565,6 +622,18 @@ export class CameraDirector {
     return shot;
   }
 
+  private fireCoachCut(live: GameState) {
+    const c = this.coachPending;
+    this.coachPending = null;
+    if (!c || this.clock > c.until || this.hr || this.shot === 'replay' || this.clock - this.lastCoachCut < 25 || !live.players.some((q) => q.id === c.coachId)) return;
+    this.crewId = c.coachId;
+    this.crewRunner = c.runnerId;
+    this.lastCoachCut = this.clock;
+    this.crewUntil = this.clock + 2.4;
+    this.cut('coach');
+    this.announceShot('coachSend', c.coachId, false, 2.4, 'coach3b');
+  }
+
   private startBroll(shot: BrollShot) {
     this.broll = { shot, start: this.clock };
     this.brollRecent.push({ kind: shot.kind, subject: shot.subject });
@@ -572,7 +641,12 @@ export class CameraDirector {
     this.shownThisLull++;
     if (shot.transition === 'dissolve') this.dissolveReq = 0.6;
     this.cut('broll');
+    const { kind, card } = shotLabel(shot);
+    const subj = shot.subject ? this.lastLive?.players.find((p) => p.id === shot.subject) : undefined;
+    this.announceShot(kind, shot.subject, card && !!shot.subject, shot.hold, subj?.role);
   }
+
+  private lastLive: GameState | null = null;
 
   private endBroll() {
     const was = this.broll?.shot;

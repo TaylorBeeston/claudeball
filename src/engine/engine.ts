@@ -22,6 +22,7 @@ import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
+import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
@@ -56,6 +57,8 @@ export class Engine {
   lightShadowCap?: number;
   readonly lights: StadiumLights;
   readonly contact = new ContactShadows();
+  /** camera cuts, replays, graphics and featured shots, for audio and the HUD (see README, `BroadcastEvent`) */
+  readonly broadcast = new Broadcast();
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
   private tossBall: Object3D | null = null;
@@ -136,6 +139,10 @@ export class Engine {
     this.hookGBufferVisibility();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
+    this.director.onBroadcast = (e) => {
+      this.broadcast.emit(e);
+      this.sim.emit({ type: 'broadcast', event: e });
+    };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
 
     this.hud =
@@ -234,7 +241,7 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' ? 'player_coach' : null;
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' || snap.role === 'pitchcoach' ? 'player_coach' : null;
         const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);

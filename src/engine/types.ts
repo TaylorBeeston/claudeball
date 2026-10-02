@@ -132,7 +132,8 @@ export type PlayerRole =
   | 'coach3b'
   | 'ballkid'
   | 'batboy'
-  | 'manager';
+  | 'manager'
+  | 'pitchcoach';
 
 export interface PlayerSnap {
   id: string;
@@ -255,6 +256,10 @@ export interface GameState {
   stats?: { away: TeamStatsView; home: TeamStatsView };
   /** pitcher fatigue 0..1 and pitch count, when known */
   pitchCount?: number;
+  /** the sim's finer phase ('batterRoutine', 'pitcherRoutine', 'signs', 'shakeOff', 'moundVisit', 'pitchingChange', 'review', 'break') */
+  phaseDetail?: string | null;
+  /** balls that are only for show (the warm-up between innings, bullpen), scene positions */
+  extraBalls?: Vec3[];
   /** the sim's phase string ('prePitch', 'windup', 'inPlay', 'playOver', 'halfInningBreak', …) when it sends one */
   phase?: string;
   /** non-pitch time: the broadcast may cut away (B-roll) until it ends; absent when the sim has no `tempo` */
@@ -272,6 +277,8 @@ export interface Lull {
   kind: LullKind;
   /** seconds the lull lasts (the sim's `lullSec`: planned length at its start, or what is left; the director works out which) */
   sec: number;
+  /** seconds left, when the sim says (its `lullRemaining`) */
+  remaining?: number;
 }
 
 export interface SidePerson {
@@ -325,7 +332,8 @@ export type GameEvent =
   /** a ball kid tossed a ball to a fan in the stands; `pos` is where the fan sits */
   | { type: 'ball_tossed_to_fan'; kidId: string; pos: Vec3; from?: Vec3 }
   /** non-pitch moments from the sim's `tempo` (payloads as sent: ids, positions) */
-  | { type: 'signs_given' | 'shake_off' | 'time_called' | 'mound_visit' | 'challenge' | 'pitching_change_start'; playerId?: string; pos?: Vec3; data?: Record<string, unknown> }
+  | { type: 'signs_given' | 'shake_off' | 'time_called' | 'mound_visit' | 'challenge' | 'pitching_change_start' | 'mound_visit_end' | 'challenge_result' | 'break_start'; playerId?: string; pos?: Vec3; data?: Record<string, unknown> }
+  | { type: 'broadcast'; event: BroadcastEvent }
   | { type: 'ball' | 'strike' | 'foul' }
   | { type: 'play'; text: string }
   | { type: 'half_inning'; inning: number; half: 'top' | 'bottom' }
@@ -336,3 +344,19 @@ export interface GameLike {
   getState(): GameState;
   on(cb: (e: GameEvent) => void): () => void;
 }
+
+/**
+ * What the broadcast director tells the rest of the app (audio, HUD): camera transitions, replays, graphics and the B-roll shots that
+ * feature a player. Delivered by `Engine.broadcast.on(cb)` and mirrored into the sim event path as `{type: 'broadcast', event}`.
+ */
+export type ShotLabel =
+  | 'walkup' | 'ondeck' | 'faceCloseup' | 'shakeOff' | 'catcherSigns' | 'leadOff' | 'coachSigns' | 'managerWalk' | 'relieverJog' | 'relieverFace'
+  | 'dugout' | 'dugoutReaction' | 'bullpen' | 'bullpenDoor' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'umpires'
+  | 'coachSend' | 'kidToss';
+
+export type BroadcastEvent =
+  | { type: 'cameraCut'; kind: 'cut' | 'dissolve' | 'wipe' | 'replay' | 'broll'; from: string; to: string; durationMs: number; toBroll: boolean; simTime: number }
+  | { type: 'replayStart'; variant: string; caption: string | null; slow: boolean; simTime: number }
+  | { type: 'replayEnd'; variant: string; simTime: number }
+  | { type: 'graphicShown'; kind: 'replay' | 'closePlay' | 'card'; subjectId?: string; simTime: number }
+  | { type: 'shot'; phase: 'start' | 'end'; kind: ShotLabel; subjectId?: string; role?: string; card: boolean; holdMs: number; simTime: number };

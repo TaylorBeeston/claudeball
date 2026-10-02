@@ -97,3 +97,33 @@ describe('availability and rigs', () => {
     expect(f0.distanceTo(cam)).toBeGreaterThan(b.focus.distanceTo(cam) + 2);
   });
 });
+
+import { Broadcast } from '../broadcast';
+import { shotLabel } from '../broll';
+
+describe('broadcast labels and emitter', () => {
+  it('gives the HUD one label per shot and a card only for shots about a person', () => {
+    const s = (kind: BrollKind) => shotLabel({ kind, variant: 0, hold: 3, transition: 'cut' });
+    expect(s('batterFace')).toEqual({ kind: 'faceCloseup', card: true });
+    expect(s('pitcherFace')).toEqual({ kind: 'faceCloseup', card: true });
+    expect(s('onDeck')).toEqual({ kind: 'ondeck', card: true });
+    expect(s('walkup')).toEqual({ kind: 'walkup', card: true });
+    expect(s('crowd')).toEqual({ kind: 'crowd', card: false });
+    expect(s('catcherSigns').card).toBe(false);
+  });
+  it('delivers to every listener, survives one that throws, and unsubscribes', () => {
+    const b = new Broadcast();
+    const got: string[] = [];
+    const off = b.on((e) => got.push(e.type));
+    b.on(() => {
+      throw new Error('boom');
+    });
+    const quiet = console.error;
+    console.error = () => {};
+    b.emit({ type: 'replayEnd', variant: 'infield', simTime: 1 });
+    off();
+    b.emit({ type: 'replayEnd', variant: 'infield', simTime: 2 });
+    console.error = quiet;
+    expect(got).toEqual(['replayEnd']);
+  });
+});

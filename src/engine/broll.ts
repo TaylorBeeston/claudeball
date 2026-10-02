@@ -15,6 +15,16 @@ export type BrollKind =
   | 'coachSigns' | 'bullpen' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'managerWalk' | 'bullpenDoor'
   | 'relieverJog' | 'relieverFace' | 'umpires';
 
+/** the label the HUD / audio see for a B-roll shot, and whether the shot is about a person who gets a name card */
+export function shotLabel(shot: BrollShot): { kind: import('./types').ShotLabel; card: boolean } {
+  switch (shot.kind) {
+    case 'batterFace': case 'pitcherFace': return { kind: 'faceCloseup', card: true };
+    case 'walkup': case 'onDeck': case 'shakeOff': case 'leadOff': case 'relieverJog': case 'relieverFace': case 'catcherSigns':
+      return { kind: shot.kind === 'onDeck' ? 'ondeck' : shot.kind, card: shot.kind !== 'catcherSigns' };
+    default: return { kind: shot.kind as import('./types').ShotLabel, card: false };
+  }
+}
+
 export type Transition = 'cut' | 'dissolve';
 
 export interface BrollShot {
