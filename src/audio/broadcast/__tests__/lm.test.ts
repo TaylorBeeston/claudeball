@@ -34,8 +34,9 @@ describe('LM facts, prompt and validator', () => {
     expect(validateLine('That is the ninth inning feeling already.', f()).reason).toMatch(/ordinal "ninth"/);
   });
 
-  it('rejects pronouns, symbols, meta talk, bad lengths and repetition', () => {
-    expect(validateLine('Vance is hitting the ball well and he looks locked in.', f()).reason).toBe('pronoun');
+  it('rejects feminine pronouns, symbols, meta talk, bad lengths and repetition', () => {
+    expect(validateLine('Vance is hitting the ball well and she looks locked in.', f()).reason).toBe('pronoun');
+    expect(validateLine('Vance is hitting the ball well and he looks locked in.', f()).ok).toBe(true);
     expect(validateLine('Vance looks locked in 🔥 tonight for sure.', f()).reason).toBe('symbols');
     expect(validateLine('As an AI I cannot say how Vance feels about it.', f()).ok).toBe(false);
     expect(validateLine('Good swing.', f()).reason).toBe('too short');
@@ -59,9 +60,9 @@ describe('LmColour (the plumbing, with a fake model)', () => {
     expect(lm.stats.ok).toBe(1);
   });
 
-  it('drops invalid lines (invented numbers, pronouns), counting the reasons', async () => {
+  it('drops invalid lines (invented numbers, wrong pronouns), counting the reasons', async () => {
     let n = 0;
-    const lines = ['Rook is at 112 pitches tonight, which is a lot.', 'Vance looks locked in and he is seeing it well.'];
+    const lines = ['Rook is at 112 pitches tonight, which is a lot.', 'Vance looks locked in and she is seeing it well.'];
     const { lm } = mk(async () => lines[n++]);
     lm.prepare(f());
     await flush();

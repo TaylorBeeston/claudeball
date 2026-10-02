@@ -82,7 +82,7 @@ Two voices, a play-by-play announcer ("pxp") and a colour analyst, behave like a
 | file | what |
 |---|---|
 | `director.ts` | the turn-taking scheduler (see below) |
-| `lexicon.ts` | what the play-by-play says for every sim event: 97 keys, 516 grammar templates, 4-107 variants per event (`call` 96, `out` 107, `contact` 49, `plateAppearanceEnd` 45, `homeRun` 32, `walk` 20 ...), with direction / depth / hit-type words, runner and outs context, close plays, steal numbers, double / triple plays, grand slam / walk-off, robbed home runs; `EVENT_KEYS` + `SILENT_EVENTS` are checked against the sim's `GameEvent` list by a test |
+| `lexicon.ts` | what the play-by-play says for every sim event: 98 keys, 726 grammar templates (204 with he / him / his), 4-107 variants per event (`call` 96, `out` 107, `contact` 49, `plateAppearanceEnd` 45, `homeRun` 32, `walk` 20 ...), with direction / depth / hit-type words, runner and outs context, close plays, steal numbers, double / triple plays, grand slam / walk-off, robbed home runs; `EVENT_KEYS` + `SILENT_EVENTS` are checked against the sim's `GameEvent` list by a test |
 | `grammar.ts` | `{a|b}` choices, `[optional]`, `$slot`; a missing slot yields nothing (never an invented fact) |
 | `gamelog.ts` | the rolling game log: every pitch (type, mph, plate location, result, count), plate appearances, per-pitcher mix and streaks, per-count tendencies, batter vs pitcher, runs per half, steals, comebacks |
 | `stories.ts` | conversation topics: 35 story types (first-pitch breaking ball, sequencing, pitch streaks, "on this count he has thrown the slider 4 of 5 times", times through the order, hot / cold bats, hat trick, pitcher cruising / rattled, velocity trend, pitch count, no-hitter, speed and steal threats, matchups, comebacks, zeroes, crowd ...) each with 2-4 turns (observation, question, answer, quip); `TopicPicker` scores salience, relevance, novelty and tension, never tells a fact twice, caps neutral fillers at 3 in a row |
@@ -96,7 +96,7 @@ Two voices, a play-by-play announcer ("pxp") and a colour analyst, behave like a
 
 ## Conversation and vocabulary
 
-The wording is pronoun-free for players on purpose (names, "the runner", passive): the sim does not say who is whom. The user's own example lines use "he"; that is a decision for the user.
+**Pronouns.** Every player is "he / him / his" (the owner's decision: "baseball is usually males playing"): "he'll hold at first", "he took that away", "his fourth strikeout". Nobody else is gendered: umpires are "the umpire", the crowd and the audience are neutral. A pronoun is only written where it can mean one person (the batter, the runner, the pitcher in a line that names only him; 204 templates in `lexicon.ts` plus pronoun variants in the stories), and tests check that no template says she / her, and none that mentions the umpire says he. The tiny-LM validator now accepts he / him / his and rejects she / her. Per-player gender is not modelled (the sim has none).
 Excited calls (home runs, robbed home runs, walk-offs, double plays, diving catches) use `rate` 1.12 and `pitch` 1.1 for browser voices; for the HD voices the line is generated at speed 1.12/1.06 and played back 6% faster, so the pitch rises while the tempo stays. (Kokoro only takes voice and speed.)
 
 ## HD voices (optional neural speech)
