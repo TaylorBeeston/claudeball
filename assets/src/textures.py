@@ -53,3 +53,16 @@ def vc_material(name, base_img, nrm_img, rough=0.9, nstrength=1.0, ormimg=None, 
     b.inputs["Metallic"].default_value = metal
     if ormimg is not None: add_orm(nt, b, ormimg)
     return m
+
+# ---------------------------------------------------------------- photographic CC0 PBR sets (ambientCG, converted copies in src/pbr, see CREDITS.md)
+def acg(name, tint=(1.0, 1.0, 1.0), gain=1.0, rough_mul=1.0):
+    """(albedo (n,n,3) sRGB, normal (n,n,3) GL, roughness (n,n), ao (n,n)) of an ambientCG material, albedo multiplied by tint * gain; images are returned top-down (flip before upload)."""
+    from PIL import Image
+    d = os.path.join(CB_SRC, "pbr"); ld = lambda k, mode: np.asarray(Image.open(os.path.join(d, f"{name}_{k}.webp")).convert(mode), np.float32)/255.0
+    alb = np.clip(ld("color", "RGB")*np.array(tint, np.float32)*gain, 0, 1); rg = np.clip(ld("rough", "L")*rough_mul, .05, 1)
+    ao = ld("ao", "L") if os.path.exists(os.path.join(d, f"{name}_ao.webp")) else np.ones_like(rg)
+    return alb, ld("normal", "RGB"), rg, ao
+def acg_material(name, set_, rough=0.9, nstrength=1.0, vertex_colors=True):
+    alb, nrm, rg, ao = set_; fl = lambda a: a[::-1].copy()
+    im_a = make_image(name + "_albedo", fl(alb), 'sRGB'); im_n = make_image(name + "_normal", fl(nrm), 'Non-Color'); im_o = make_image(name + "_orm", fl(np.stack([ao, rg, np.zeros_like(rg)], -1)), 'Non-Color')
+    return vc_material(name, im_a, im_n, rough, nstrength, im_o)
