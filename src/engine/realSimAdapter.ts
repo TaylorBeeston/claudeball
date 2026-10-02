@@ -3,7 +3,7 @@
  * to the engine's own `GameLike` contract (`types.ts`). Structural types only, so the engine
  * compiles whether or not `src/sim` exists.
  */
-import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, SideInfo, SidePerson, TeamInfo, TeamStatsView, Vec3 } from './types';
+import type { AnimHint, GameEvent, GameLike, GameState, PersonInfo, PlayerRole, PlayerSnap, SideInfo, LullKind, SidePerson, TeamInfo, TeamStatsView, Vec3 } from './types';
 import { windupSeconds } from './pitchTiming';
 import { BASES } from './dims';
 
@@ -34,6 +34,9 @@ interface RSState {
   pitcher: { info: RSInfo; line: { outs: number; so: number; er: number }; pitchCount: number } | null;
   ball: { pos: V; vel: V; spin: V; mode: string; inPlay: boolean };
   bat: { active: boolean; knob: V; tip: V; swingT: number; dropped?: V | null };
+  lull?: boolean;
+  lullKind?: string | null;
+  lullSec?: number | null;
   deadBall?: { pos: V; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
@@ -224,6 +227,9 @@ export class RealSimAdapter implements GameLike {
       case 'onDeck':
         this.emit({ type: 'on_deck', playerId: String(e.playerId), team: e.team === 'home' ? 1 : 0 });
         break;
+      case 'signsGiven': case 'shakeOff': case 'timeCalled': case 'moundVisit': case 'challenge': case 'pitchingChangeStart':
+        this.emit({ type: e.type === 'signsGiven' ? 'signs_given' : e.type === 'shakeOff' ? 'shake_off' : e.type === 'timeCalled' ? 'time_called' : e.type === 'moundVisit' ? 'mound_visit' : e.type === 'challenge' ? 'challenge' : 'pitching_change_start', playerId: (e.playerId ?? e.pitcherId ?? e.batterId) as string | undefined, pos: e.pos as V | undefined, data: e as Record<string, unknown> });
+        break;
       case 'walk':
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
         break;
@@ -308,6 +314,8 @@ export class RealSimAdapter implements GameLike {
       ball: { pos: s.ball.pos, vel: s.ball.vel, spin: s.ball.spin, visible: s.ball.mode !== 'dead' || s.ball.inPlay },
       bat: { visible: s.bat.active, pos: knob, quat: quatFromTo({ x: 0, y: 1, z: 0 }, { x: dir.x / dl, y: dir.y / dl, z: dir.z / dl }), dropped: s.bat.dropped ?? null },
       deadBall: s.deadBall ?? null,
+      phase: s.phase,
+      lull: s.lull && s.lullKind ? { kind: s.lullKind as LullKind, sec: Number(s.lullSec ?? 0) } : null,
       players,
       umpireCall: { seq: this.callSeq, kind: call ? (CALL_KIND[call.kind] ?? 'none') : 'none' },
       count: { balls: s.balls, strikes: s.strikes },

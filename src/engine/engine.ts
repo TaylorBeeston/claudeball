@@ -219,7 +219,7 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' ? 'player_coach' : null;
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' ? 'player_coach' : null;
         const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);

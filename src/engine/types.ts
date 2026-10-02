@@ -86,7 +86,30 @@ export type AnimHint =
   | 'ballkid_run'
   | 'ballkid_idle'
   | 'ballkid_pickup'
-  | 'ballkid_toss';
+  | 'ballkid_toss'
+  // non-pitch time (the sim's `tempo`): walk-ups, signs, shake-offs, mound visits, pitching changes
+  | 'batter_step_in'
+  | 'batter_practice_swing'
+  | 'batter_adjust'
+  | 'batter_step_out'
+  | 'catcher_signs'
+  | 'catcher_signal_infield'
+  | 'pitcher_shake_off'
+  | 'pitcher_nod'
+  | 'pitcher_step_off'
+  | 'pitcher_rosin'
+  | 'pitcher_adjust'
+  | 'pitcher_look_runner'
+  | 'mound_talk'
+  | 'mound_talk_listen'
+  | 'manager_walk'
+  | 'manager_signal'
+  | 'pitcher_handoff'
+  | 'warmup_pitch'
+  | 'umpire_brush_plate'
+  | 'ump_new_ball'
+  | 'ump_huddle'
+  | 'bullpen_throw';
 
 export type PlayerRole =
   | 'pitcher'
@@ -108,7 +131,8 @@ export type PlayerRole =
   | 'coach1b'
   | 'coach3b'
   | 'ballkid'
-  | 'batboy';
+  | 'batboy'
+  | 'manager';
 
 export interface PlayerSnap {
   id: string;
@@ -231,10 +255,23 @@ export interface GameState {
   stats?: { away: TeamStatsView; home: TeamStatsView };
   /** pitcher fatigue 0..1 and pitch count, when known */
   pitchCount?: number;
+  /** the sim's phase string ('prePitch', 'windup', 'inPlay', 'playOver', 'halfInningBreak', …) when it sends one */
+  phase?: string;
+  /** non-pitch time: the broadcast may cut away (B-roll) until it ends; absent when the sim has no `tempo` */
+  lull?: Lull | null;
   /** a foul ball that nobody holds: flying / rolling / resting on the ground, carried by a ball kid (drawn by his hand), or tossed to a fan */
   deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** who is on deck and on the benches (for the side cast), when the sim knows */
   side?: SideInfo;
+}
+
+/** what kind of non-pitch time the game is in (the sim's `lullKind`) */
+export type LullKind = 'walkup' | 'betweenPitches' | 'moundVisit' | 'pitchingChange' | 'break' | 'review';
+
+export interface Lull {
+  kind: LullKind;
+  /** seconds the lull lasts (the sim's `lullSec`: planned length at its start, or what is left; the director works out which) */
+  sec: number;
 }
 
 export interface SidePerson {
@@ -287,6 +324,8 @@ export type GameEvent =
   | { type: 'on_deck'; playerId: string; team: number }
   /** a ball kid tossed a ball to a fan in the stands; `pos` is where the fan sits */
   | { type: 'ball_tossed_to_fan'; kidId: string; pos: Vec3; from?: Vec3 }
+  /** non-pitch moments from the sim's `tempo` (payloads as sent: ids, positions) */
+  | { type: 'signs_given' | 'shake_off' | 'time_called' | 'mound_visit' | 'challenge' | 'pitching_change_start'; playerId?: string; pos?: Vec3; data?: Record<string, unknown> }
   | { type: 'ball' | 'strike' | 'foul' }
   | { type: 'play'; text: string }
   | { type: 'half_inning'; inning: number; half: 'top' | 'bottom' }
