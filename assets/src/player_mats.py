@@ -114,12 +114,12 @@ def swap_skin(old):
             if nd.type == 'TEX_IMAGE' and nd.image is not None:
                 base_ = nd.image.name.replace('_old', '')
                 if base_ in new: nd.image = new[base_]
-Image.fromarray((np.clip(SKIN["sss"][::-1], 0, 1)*255).astype(np.uint8)).save(ROOT + "/tex/skin_sss.webp", quality=90)      # R = thickness (0..4 cm), G = curvature, atlas layout = the skin atlas
+Image.fromarray((np.clip(SKIN["sss"][::-1], 0, 1)*255).astype(np.uint8)).save(ROOT + "/players/textures/skin_sss.webp", quality=90)      # R = thickness (0..4 cm), G = curvature, atlas layout = the skin atlas
 I["leather_a"] = img("leather_albedo", np.repeat((np.clip(.8 + .3*lh, 0, 1))[..., None], 3, 2)); I["leather_n"] = img("leather_normal", height_to_normal(lh, 5.0), 'Non-Color')
 I["leather_o"] = img("leather_orm", orm(.6 + .4*lh, .5 + .2*lh), 'Non-Color')
 I["face_a"], I["face_n"], I["face_o"] = I["skin_a"], I["skin_n"], I["skin_o"]; I["eye_a"] = make_image("eye_albedo", eye_equirect("brown")[::-1].copy(), 'sRGB', None)
-os.makedirs(ROOT + "/tex", exist_ok=True)
-for _ec in EYE_COLORS: Image.fromarray((eye_equirect(_ec)*255).astype(np.uint8)).save(ROOT + f"/tex/eyes_{_ec}.webp", quality=92)       # equirect iris textures (v = 1 at the gaze pole is the TOP row of the file) for the engine to swap
+os.makedirs(ROOT + "/players/textures", exist_ok=True)
+for _ec in EYE_COLORS: Image.fromarray((eye_equirect(_ec)*255).astype(np.uint8)).save(ROOT + f"/players/textures/eyes_{_ec}.webp", quality=92)       # equirect iris textures (v = 1 at the gaze pole is the TOP row of the file) for the engine to swap
 MATS = {
  "skin": pbr("skin", (.80, .50, .32, 1), I["skin_a"], I["skin_n"], I["skin_o"], nstrength=.5),
  "face": pbr("face", (.80, .50, .32, 1), I["face_a"], I["face_n"], I["face_o"], nstrength=.45),
