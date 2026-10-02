@@ -120,6 +120,14 @@ Shot kinds (`ShotLabel`): `walkup`, `ondeck`, `faceCloseup` (batter or pitcher),
 `crowd`, `scoreboard`, `aerial`, `sky`, `moundWide`, `moundHuddle`, `umpires`, `coachSend`, `kidToss`. `card` is true for `walkup`, `ondeck`, `faceCloseup`, `shakeOff`, `leadOff`, `relieverJog`, `relieverFace`.
 A card is built from `getState().stats` and the player's snapshot (`name`, `number`, `ratings`).
 
+## Jersey names and numbers
+`jerseyText.ts` draws the last name (last token of the snapshot's `name`, upper case, suffixes dropped) and the number for the decal meshes the player files carry (`Jersey_BackNameDecal`, `Jersey_BackNumberDecal`,
+`Jersey_FrontNumberDecal`, `Jersey_SleeveNumberDecal`, UV 0..1 over the whole decal): a block face (Impact / Haettenschweiler / Arial Black), condensed down to 55 % to fit long names then shrunk, numbers all one height,
+fill white or near-black by contrast with the jersey, outline the team trim when it reads else the opposite extreme. Textures are cached by content (`JerseyTextures`, LRU of 160, kept across games; two teams whose text
+colours agree share them), left-handers get flipped print (their model is mirrored), one number texture serves back, front and sleeve. `GltfPuppet.updateDecals` rebinds on a substitution (name / number / colours / hand / quality change)
+and shows each decal only within its range of the camera (`decalRange`: name 42 m, back number 55 m, front and sleeve 24 m; low quality 24 / 32 m and no front or sleeve). Without the decal meshes in a file nothing changes and the
+old digit quads stay; with a back number decal shown the quads hide. Canvas sizes by tier: 256x48 + 128x160 (low) up to 768x144 + 384x480 (ultra); about 35 MB of textures at high for 50 players.
+
 ## Boot, menus and new games (`src/ui`, `warmup.ts`)
 `main.ts` only calls `startApp()` (`src/ui/app.ts`): loading screen (markup + critical CSS in `index.html`) → `Engine.prepare()` → menu or game.
 - `Engine.prepare({assets, onProgress})` (`warmup.ts`): glTF assets (progress weighted by `assets/asset_sizes.json`, written by the Vite plugin), the HDRI sky
