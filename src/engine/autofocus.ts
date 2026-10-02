@@ -77,6 +77,7 @@ export function slabFor(shot: string, ctx: { ballHeight?: number; cutaway?: stri
     case 'umpire': return 2.8;
     case 'cutaway': return ctx.cutaway === 'wide' ? 0 : ctx.cutaway === 'ondeck' ? 4 : 7;
     case 'coach': return 5;
+    case 'broll': return 4; // the planner's own rig sets the real slab
     case 'toss': return 9;
     case 'wide': return 0;
     default: return 12;

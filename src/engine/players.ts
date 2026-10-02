@@ -362,6 +362,20 @@ export class PlayerManager {
     return (b && this.puppets.get(b.id)?.batGrip) || null;
   }
 
+  /** every standing person's feet (scene position, ground height in y), for the contact shadows; runners sliding or players seated on a bench still get one */
+  *feet(): Generator<{ x: number; y: number; z: number; r: number }> {
+    for (const [id, pos] of this.positions) {
+      const pu = this.puppets.get(id);
+      if (!pu || !pu.root.visible) continue;
+      yield { x: pos.x, y: pos.y, z: pos.z, r: 0.5 };
+    }
+  }
+
+  /** Centre of a player's face in scene space (glTF puppets), else null. */
+  faceOf(id: string, out: Vector3): Vector3 | null {
+    return this.puppets.get(id)?.faceCenter?.(out) ?? null;
+  }
+
   /** Midpoint of the current batter's shoulders (scene space), or null for puppets without a skeleton. */
   batterShoulder(state: GameState, out: Vector3): Vector3 | null {
     const b = state.players.find((p) => p.role === 'batter');

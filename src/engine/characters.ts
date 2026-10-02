@@ -326,6 +326,8 @@ export interface PuppetLike {
   batGrip?: Object3D | null;
   /** midpoint of the shoulder joints in scene space (glTF characters only); used to check the sim's bat is within arm's reach */
   shoulderCenter?(out: Vector3): Vector3 | null;
+  /** centre of the face in scene space (glTF characters only): where close-up shots aim */
+  faceCenter?(out: Vector3): Vector3 | null;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
   ballHeld?: boolean;
   /** world position of that ball */
