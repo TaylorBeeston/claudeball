@@ -362,6 +362,11 @@ export class PlayerManager {
     return (b && this.puppets.get(b.id)?.batGrip) || null;
   }
 
+  /** Centre of a player's face in scene space (glTF puppets), else null. */
+  faceOf(id: string, out: Vector3): Vector3 | null {
+    return this.puppets.get(id)?.faceCenter?.(out) ?? null;
+  }
+
   /** Midpoint of the current batter's shoulders (scene space), or null for puppets without a skeleton. */
   batterShoulder(state: GameState, out: Vector3): Vector3 | null {
     const b = state.players.find((p) => p.role === 'batter');

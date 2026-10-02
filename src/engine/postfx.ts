@@ -69,7 +69,7 @@ const GradeShader = {
     time: { value: 0 },
     grain: { value: 0.035 },
     vignette: { value: 0.32 },
-    saturation: { value: 1.0 },
+    saturation: { value: 0.94 },
     contrast: { value: 1.06 },
     aberration: { value: 0.0012 },
     tint: { value: new Vector2(0.0, 0.0) },
