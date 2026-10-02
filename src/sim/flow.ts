@@ -13,6 +13,10 @@ import { pathAt, pitchTouchesZone, strikeZoneFor, throwPitch, timeAtZ, zoneConta
 import { giveBall, placeBallInHand, releaseBall, setAnim } from './util';
 import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
+import type { PitchType } from './types';
+import { routineStage } from './tempo';
+import { visitStage } from './visits';
+import { beginBreak, breakFinished } from './breaks';
 import { DEFAULT_SPOTS } from './setup';
 import { leaveDugout, routeToBox, sendToDeck, toBench } from './dugout';
 import * as rules from './rules';
@@ -115,6 +119,7 @@ export function startHalfInning(w: World): void {
   if (w.cfg.pace > 0) sendToDeck(w, w.battingTeam.lineup[w.battingTeam.batIdx % 9].player);
   w.phase = 'halfBreak';
   w.phaseUntil = w.tick + paced(w, w.tick === 0 ? 3 : 7.5);
+  if (w.cfg.pace > 0) w.phaseUntil = Math.max(w.phaseUntil, w.tick + beginBreak(w)); // the break: warm-ups, tosses, umpires (tempo)
   w.play = null;
   emit(w, { type: 'halfInningStart', inning: w.inning, half: w.half });
 }
@@ -130,6 +135,7 @@ export function fielderSpeed(p: PlayerRT): number {
  */
 export function startPlateAppearance(w: World): void {
   if (w.gameOver) return;
+  if (!breakFinished(w)) return;
   if (w.paStage === 0) {
     if (!manager.stagePitchingChange(w)) return;
     w.paStage = 1;
@@ -235,6 +241,8 @@ export function tickPrePitch(w: World): void {
     if (!w.ret && !w.ball.lob) ensureBallReturn(w, true);
     if (w.ret || w.ball.lob || w.ball.holder !== w.pitcher) return;
   }
+  // a visit to the mound (the catcher, the pitching coach, the manager, the infielders) if the state of the game calls for one
+  if (!visitStage(w)) return;
   // everybody set: fielders at their spots, the pitcher on the rubber with the ball, the catcher behind the plate, the batter in the box,
   // runners on their bases or at their leads; a slow case (a long trot in from the wall, a reliever from the bullpen) is waited for, up to a limit
   if (w.cfg.pace > 0) {
@@ -252,6 +260,8 @@ export function tickPrePitch(w: World): void {
   if (!w.prep.pitch) {
     if (!stagePitch(w)) return;
   }
+  // the batter's routine, the signs, a shake-off, the pitcher's routine (tempo: skipped at pace 0)
+  if (!routineStage(w)) return;
   if (!w.prep.stealsDone) {
     if (!running.stageSteals(w)) return;
     w.prep.stealsDone = true;
@@ -281,10 +291,18 @@ function stageAlignment(w: World): boolean {
 }
 
 function stagePitch(w: World): boolean {
+  const d = askPitch(w, 'pitch');
+  if (d === PENDING) return false;
+  w.prep.pitch = d;
+  return true;
+}
+
+/** The pitch-choice decision (the first one before the signs, a second one when he shook off): `shookOff` lists the pitch types he refused. */
+export function askPitch(w: World, key: string, shookOff?: PitchType[]) {
   const P = w.pitcher;
   const B = w.batter!;
   const z = w.zone;
-  const d = ask(w, 'pitch', 'pitch', w.fieldingTeam.side, () => ({
+  return ask(w, key, 'pitch', w.fieldingTeam.side, () => ({
     situation: situationOf(w),
     pitcher: P.info,
     batter: B.info,
@@ -294,10 +312,8 @@ function stagePitch(w: World): boolean {
     pitchCount: P.pitchCount,
     fatigue: fatigueOf(P),
     zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top },
+    ...(shookOff ? { shookOff } : {}),
   }));
-  if (d === PENDING) return false;
-  w.prep.pitch = d;
-  return true;
 }
 
 export function beginWindup(w: World): void {
@@ -799,7 +815,7 @@ export function resetBatterToBox(w: World): void {
   b.lookAt = { x: 0, z: MOUND_DIST };
   b.anim = 'idle';
   b.animUntil = 0;
-  if (w.cfg.pace > 0 && Math.hypot(b.x - side * BATTER_X, b.z - 0.15) > 1.2) {
+  if (w.cfg.pace > 0 && Math.hypot(b.x - side * BATTER_X, b.z - 0.15) > 0.3) {
     // a foul ball sent him out of the box: he walks back to it
     b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(3.0 / Math.max(1, b.vmax), 0.1, 1) };
     return;
@@ -817,4 +833,4 @@ export function leverage(w: World): number {
   return pressureOf(w.inning, w.cfg.innings, w.outs, w.battingTeam.runs - w.fieldingTeam.runs, bases);
 }
 
-export const freshPrep = (): World['prep'] => ({ alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, readyBy: 0, steal: null });
+export const freshPrep = (): World['prep'] => ({ alignmentDone: false, pickoffDone: false, pitch: null, stealsDone: false, readyBy: 0, steal: null, routine: null, lullDone: false });

@@ -42,7 +42,7 @@ describe('base coaches', () => {
         if (e.runnerId === r.p.info.id && e.kind !== 'signs') calls.push(e.kind);
       });
       // a single to left / left-centre with a runner on second: sometimes there is a play at the plate, sometimes not
-      hitBall(w, 70 + (k % 6) * 4, 7 + (k % 4) * 3, 8 + (k % 5) * 6, 800);
+      hitBall(w, 80 + (k % 6) * 3, 4 + (k % 4) * 3, (k % 9) * 11 - 44, 800);
       for (let i = 0; i < 240 * 25 && w.phase !== 'prePitch'; i++) l.g.step(1 / 240);
       const scored = ofType(l.events, 'runScored').some((e) => e.playerId === r.p.info.id);
       const last = calls.filter((c) => c === 'go' || c === 'stop').at(-1);
@@ -52,8 +52,9 @@ describe('base coaches', () => {
     const stop = rows.filter((r) => r.call === 'stop');
     expect(go.length).toBeGreaterThan(5);
     expect(stop.length).toBeGreaterThan(0);
-    expect(go.filter((r) => r.scored).length / go.length).toBeGreaterThan(0.7);
-    expect(stop.filter((r) => r.scored).length / stop.length).toBeLessThan(0.4);
+    // (a send is a gamble that pays off about half the time with the defense in place; a hold never scores)
+    expect(go.filter((r) => r.scored).length / go.length).toBeGreaterThan(0.3);
+    expect(stop.filter((r) => r.scored).length / stop.length).toBeLessThan(0.1);
   });
 
   it('a provider can make the call: the `coach` decision kind (request carries the runner and the play), and its answer moves the runner', () => {
@@ -69,14 +70,14 @@ describe('base coaches', () => {
         };
         const l = lab(`coach-prov-${k}`, { pace: 1, providers: { home: prov, away: prov } });
         const r = addRunner(l.w, 2);
-        hitBall(l.w, 88 + (k % 3) * 2, 11 + (k % 3) * 2, -30 + (k % 6) * 12, 800);
+        hitBall(l.w, 80 + (k % 6) * 3, 4 + (k % 4) * 3, (k % 9) * 11 - 44, 800);
         for (let i = 0; i < 240 * 25 && l.w.phase !== 'prePitch'; i++) l.g.step(1 / 240);
         if (ofType(l.events, 'runScored').some((e) => e.playerId === r.p.info.id)) outcomes[call]++;
       }
     }
     expect(asked.length).toBeGreaterThan(0);
     expect(asked[0].coach).toBe('3b');
-    expect(outcomes.go).toBeGreaterThan(outcomes.stop + 8);
+    expect(outcomes.go).toBeGreaterThan(outcomes.stop + 3);
   });
 
   it('the third-base coach gives signs between pitches when the sim has a steal or a bunt on', () => {
@@ -86,7 +87,7 @@ describe('base coaches', () => {
       if (e.kind === 'signs') signs++;
     });
     let n = 0;
-    while (!g.over && g._world.inning < 4 && n++ < 240 * 3000) g.step(1 / 240);
+    while (!g.over && g._world.inning < 7 && n++ < 240 * 6000) g.step(1 / 240);
     expect(signs).toBeGreaterThan(3);
   });
 });

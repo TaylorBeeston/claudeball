@@ -11,7 +11,7 @@ import { newFlags, stepBall } from './ball';
 import { BASE_POS, isFairXZ } from './field';
 import { clamp } from './math';
 import type { AnimHint, CoachSignalKind, TeamSide } from './types';
-import { ballKidSpot, batBoySpot, coachBox, dugDoor } from './venue';
+import { ballKidSpot, batBoySpot, coachBox, dugDoor, managerSpot, pitchCoachSpot } from './venue';
 import type { RunnerRT, StaffRT, World } from './world';
 import { TICK, secToTicks } from './world';
 
@@ -19,7 +19,7 @@ const COACH_HINT: Record<'go' | 'stop' | 'advance' | 'slide', AnimHint> = { go: 
 const COACH_KIND: Record<'go' | 'stop' | 'advance' | 'slide', CoachSignalKind> = { go: 'go', stop: 'stop', advance: 'advance', slide: 'slide' };
 
 function mk(id: string, name: string, role: StaffRT['role'], team: TeamSide, x: number, z: number, anim: AnimHint, active: boolean): StaffRT {
-  return { id, name, role, team, jersey: 0, x, z, vx: 0, vz: 0, facing: Math.atan2(-x, 20 - z), goal: null, speed: 4.5, anim, animStart: 0, animUntil: 0, active, task: 'idle', taskUntil: 0, call: null, homeX: x, homeZ: z };
+  return { id, name, role, team, jersey: 0, x, z, vx: 0, vz: 0, facing: Math.atan2(-x, 20 - z), goal: null, path: [], speed: 4.5, anim, animStart: 0, animUntil: 0, active, task: 'idle', taskUntil: 0, call: null, homeX: x, homeZ: z };
 }
 
 /** Both teams' coaches (the batting side's stand in their boxes), two ball kids, a bat boy for each team. */
@@ -32,6 +32,10 @@ export function initStaff(w: World): void {
       const door = dugDoor(side);
       staff.push(mk(`coach-${side}-${base}b`, `${side === 'home' ? 'Home' : 'Visiting'} ${base}B coach`, base === 3 ? 'coach3b' : 'coach1b', side, bat ? box.x : door.x, bat ? box.z : door.z, 'coach_ready', bat));
     }
+    const ms = managerSpot(side);
+    staff.push(mk(`manager-${side}`, `${side === 'home' ? 'Home' : 'Visiting'} manager`, 'manager', side, ms.x, ms.z, 'idle', true));
+    const pc = pitchCoachSpot(side);
+    staff.push(mk(`pitchcoach-${side}`, `${side === 'home' ? 'Home' : 'Visiting'} pitching coach`, 'pitchcoach', side, pc.x, pc.z, 'idle', true));
     const bb = batBoySpot(side);
     staff.push(mk(`batboy-${side}`, `${side === 'home' ? 'Home' : 'Visiting'} bat boy`, 'batboy', side, bb.x, bb.z, 'ballkid_idle', bat));
   }
@@ -202,6 +206,14 @@ export function tickStaff(w: World): void {
       case 'batboy':
         tickBatBoy(w, s, batSide);
         break;
+    }
+    // a walk through way points (the manager out to the mound): the goal is the first of them
+    if (s.path.length) {
+      s.goal = s.path[0];
+      if (near(s, s.path[0].x, s.path[0].z, s.path.length > 1 ? 0.6 : 0.2)) {
+        s.path.shift();
+        if (!s.path.length) s.goal = null;
+      }
     }
     if (s.active || s.vx || s.vz) moveStaff(s);
   }

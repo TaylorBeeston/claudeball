@@ -16,6 +16,7 @@ export interface SimConfig {
   innings?: number;
   homeTeam?: unknown;
   awayTeam?: unknown;
+  tempo?: 'quick' | 'standard' | 'broadcast';
 }
 
 type CreateGame = (opts: { seed: number } & SimConfig) => GameLike;
@@ -26,7 +27,7 @@ const simModules = import.meta.glob('../sim/index.ts', { eager: true }) as Recor
 export function createSimSource(seed: number, forceMock = false, cfg: SimConfig = {}): { game: GameLike; kind: 'sim' | 'mock' } {
   const mod = Object.values(simModules)[0];
   if (!forceMock && mod?.createGame) {
-    const g = mod.createGame({ seed, ...cfg });
+    const g = mod.createGame({ seed, tempo: 'broadcast', ...cfg });
     // the real sim exposes its own snapshot/event shapes; wrap them into the engine contract
     if (looksLikeRealSim(g.getState())) return { game: new RealSimAdapter(g as unknown as RealGame), kind: 'sim' };
     return { game: g, kind: 'sim' };

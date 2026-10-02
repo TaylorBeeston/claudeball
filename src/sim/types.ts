@@ -93,7 +93,35 @@ export type AnimHint =
   | 'ballkid_sit'
   | 'ballkid_run'
   | 'ballkid_pickup'
-  | 'ballkid_toss';
+  | 'ballkid_toss'
+  /** Batter's routine: dig in a foot / tap the plate, a practice swing in the box, fix gloves / helmet, step out of the box. */
+  | 'batter_step_in'
+  | 'batter_practice_swing'
+  | 'batter_adjust'
+  | 'batter_step_out'
+  /** Catcher and pitcher between pitches. */
+  | 'catcher_signs'
+  | 'catcher_signal_infield'
+  | 'pitcher_shake_off'
+  | 'pitcher_nod'
+  | 'pitcher_step_off'
+  | 'pitcher_rosin'
+  | 'pitcher_adjust'
+  | 'pitcher_look_runner'
+  /** Mound conferences, the manager's walk, the hand-over of the ball, warm-up pitches, umpire housekeeping, review. */
+  | 'mound_talk'
+  | 'mound_talk_listen'
+  | 'manager_walk'
+  | 'manager_signal'
+  | 'pitcher_handoff'
+  | 'warmup_pitch'
+  | 'umpire_brush_plate'
+  | 'ump_new_ball'
+  | 'ump_huddle'
+  /** Dugout reactions and the pre-inning catch. */
+  | 'bench_cheer'
+  | 'bench_stand_up'
+  | 'catch_toss';
 
 /** What the person is doing on the field right now. */
 export type PlayerRole =
@@ -109,9 +137,17 @@ export type PlayerRole =
   | 'coach1b'
   | 'coach3b'
   | 'ballkid'
-  | 'batboy';
+  | 'batboy'
+  | 'manager'
+  | 'pitchcoach';
 
 /** What a base coach is signalling. */
+/** Why somebody went to the mound. */
+export type MoundVisitPurpose = 'trouble' | 'rattled' | 'walks' | 'pitchCount' | 'scoringPosition' | 'keyAtBat' | 'newPitcherWarming' | 'routine';
+
+/** What kind of non-pitch time the game is in (see `GameStateSnapshot.lull`). */
+export type LullKind = 'walkup' | 'betweenPitches' | 'moundVisit' | 'pitchingChange' | 'break' | 'review';
+
 export type CoachSignalKind = 'stop' | 'go' | 'slide' | 'advance' | 'signs';
 
 /**
@@ -349,7 +385,7 @@ export interface PlayerSnapshot {
   team: TeamSide;
   role: PlayerRole;
   /** Defensive position (for fielders); 'DH'/bench bats report their lineup position. */
-  position: FieldPosition | 'HP' | '1B-U' | '2B-U' | '3B-U' | 'C1B' | 'C3B' | 'BK' | 'BB';
+  position: FieldPosition | 'HP' | '1B-U' | '2B-U' | '3B-U' | 'C1B' | 'C3B' | 'BK' | 'BB' | 'MGR' | 'PCH';
   jersey: number;
   pos: Vec3;
   vel: Vec3;
@@ -377,6 +413,8 @@ export interface PlayerSnapshot {
   catchIn?: number;
   /** The pitch the pitcher has chosen, from the moment he has (before the windup) until the pitch is released and done — pick the grip from it. */
   pitchType?: PitchType | null;
+  /** (additive) a batter's habit in the box (deterministic per player): what his `batter_adjust` is. */
+  tic?: 'tap_plate' | 'adjust_helmet' | 'rock_bat' | 'stretch';
   /** The hand the glove is on ('L' for a right-handed thrower). */
   gloveHand?: 'L' | 'R';
 }
@@ -457,6 +495,15 @@ export interface GameStateSnapshot {
     zone: { left: number; right: number; bottom: number; top: number; depthZ: number };
   };
   lastPlay: string;
+  /** (additive) what the game is doing right now when it is not a pitch / a play: 'batterRoutine' | 'signs' | 'shakeOff' | 'moundVisit' | 'pitchingChange' | 'review' | 'break' | 'walkup' | null. */
+  phaseDetail?: string | null;
+  /** (additive) a lull in the action (B-roll, announcers): its kind, expected length (s) and how much of it is left (s). */
+  lull?: boolean;
+  lullKind?: LullKind | null;
+  lullSec?: number;
+  lullRemaining?: number;
+  /** (additive) balls that are only for show (infield / outfield warm-up tosses between innings). */
+  extraBalls?: Vec3[];
   /** (additive) a foul ball that is out of play: rolling / lying in foul ground, carried by a ball kid, or tossed to a fan. */
   deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** (additive) live box-score stats for every player who has appeared, for a HUD. */
@@ -555,6 +602,15 @@ export type GameEvent =
   /** A fielder returns the ball after a dead ball or a pitch (casual, non-urgent): glove-to-hand transfer is over, the ball leaves his hand. */
   | (EBase & { type: 'ballReturn'; fromId: string; toId: string; mph: number; casual: true })
   | (EBase & { type: 'onDeck'; playerId: string; team: TeamSide })
+  | (EBase & { type: 'signsGiven'; catcherId: string; pitcherId: string; pitchType: PitchType; complex: boolean; seq: number[]; reshown?: boolean })
+  | (EBase & { type: 'shakeOff'; pitcherId: string; catcherId: string; rejected: PitchType; chosen?: PitchType })
+  | (EBase & { type: 'timeCalled'; by: 'batter' | 'pitcher' | 'catcher' | 'manager'; playerId: string })
+  | (EBase & { type: 'moundVisit'; by: 'catcher' | 'pitchingCoach' | 'manager' | 'infielders'; purpose: MoundVisitPurpose; visitorId: string; team: TeamSide; start: number; end: number })
+  | (EBase & { type: 'moundVisitEnd'; by: 'catcher' | 'pitchingCoach' | 'manager' | 'infielders'; team: TeamSide })
+  | (EBase & { type: 'pitchingChangeStart'; team: TeamSide; outId: string; inId: string; managerId: string })
+  | (EBase & { type: 'challenge'; team: TeamSide; managerId: string; base: number; runnerId: string; call: 'out' | 'safe'; margin: number })
+  | (EBase & { type: 'challengeResult'; team: TeamSide; overturned: boolean; runnerId: string; margin: number })
+  | (EBase & { type: 'breakStart'; inning: number; half: 'top' | 'bottom'; sec: number })
   | (EBase & { type: 'coachSignal'; coachId: string; kind: CoachSignalKind; runnerId?: string; base?: number })
   | (EBase & { type: 'ballKidRetrieve'; ballKidId: string; pos: Vec3 })
   | (EBase & { type: 'ballTossedToFan'; ballKidId: string; pos: Vec3 })
@@ -589,6 +645,12 @@ export interface GameConfig {
   wind?: { x: number; z: number };
   /** Multiplier on the idle time between pitches / plays (default 1). Use 0 to skip dead time entirely. */
   pace?: number;
+  /**
+   * How much real-game non-pitch time is modelled (batter routines, signs, shake-offs, mound visits, pitching-change walks and warm-ups, inning breaks):
+   * `quick` ~ 25 %, `standard` ~ 60 %, `broadcast` 100 % (about 15-22 s between pitches, a 25-60 s break). Ignored with `pace: 0` (all of it is skipped).
+   * Default `quick` in the sim (what it always did); the browser game passes `broadcast`.
+   */
+  tempo?: 'quick' | 'standard' | 'broadcast';
   /** Cumulative stats before this game (see `simulateSeason`); the snapshot's `season` lines add this game to them. */
   priorStats?: PriorStats;
   /** Team-generation seed base if teams are not supplied (default: derived from seed). */

@@ -13,11 +13,15 @@ import type { PlayerRT, RunnerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import * as fielding from './fielding';
 import * as staff from './staff';
+import { noteClose } from './visits';
+const visitsNoteClose = (w: World, id: string, b: number, margin: number, close: boolean) => {
+  if (close) noteClose(w, 'safe', id, b, margin);
+};
 import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
 import { DUGOUT } from './setup';
-import { toBench } from './dugout';
+import { leaveDugout, toBench } from './dugout';
 
 export const bpos = (b: number) => BASE_POS[b % 4];
 
@@ -86,6 +90,7 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
 }
 
 export function placeGhostRunner(w: World, p: PlayerRT): void {
+  const seated = p.dug === 'bench';
   const r = makeRunner(w, p, false);
   r.base = 2;
   r.target = 2;
@@ -93,11 +98,21 @@ export function placeGhostRunner(w: World, p: PlayerRT): void {
   r.ghost = true;
   r.origin = 2;
   r.touched[2] = true;
+  r.reaction = 0;
+  if (w.cfg.pace > 0 && w.tick > 0) {
+    // the extra-innings runner walks out to second: from the bench, or from wherever he is (he may be jogging in from the field), the break gives him time
+    const goal = { x: bpos(2).x, z: bpos(2).z, stop: true, mul: clamp(3.0 / Math.max(1, p.vmax), 0.1, 1) };
+    if (seated) {
+      p.dug = 'bench';
+      p.goal = null;
+      leaveDugout(p, [], goal, 3.0);
+    } else p.goal = goal;
+    return;
+  }
   p.x = bpos(2).x;
   p.z = bpos(2).z;
   p.vx = p.vz = 0;
   p.goal = null;
-  r.reaction = 0;
 }
 
 export const liveRunners = (w: World) => w.runners.filter((r) => r.state === 'live');
@@ -206,7 +221,7 @@ export function snapRunnersToBases(w: World): void {
     if (r.state !== 'live') continue;
     if (r.base >= 1) {
       const b = bpos(r.base);
-      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 1.5 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.4 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
         // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
         setGoal(r.p, b.x, b.z, true, 0.6);
       } else {
@@ -249,6 +264,7 @@ export function stagePickoff(w: World): 'none' | 'wait' | 'thrown' {
   if (d === PENDING) return 'wait';
   if (d.throw && r.state === 'live') {
     inplay.beginPickoff(w, r);
+    w.pickoffTick = w.tick;
     return 'thrown';
   }
   return 'none';
@@ -522,6 +538,7 @@ function touchBase(w: World, r: RunnerRT, b: number): void {
   if (!r.dead && fielding.playNearBase(w, b)) {
     const eta = tagging.fielderETA(w, b);
     emit(w, { type: 'safe', playerId: r.p.info.id, base: b, margin: -eta, closePlay: eta < 0.1 });
+    visitsNoteClose(w, r.p.info.id, b, -eta, eta < 0.1);
     scheduleCall(w, b === 4 ? 'plate' : b === 1 ? 'first' : b === 2 ? 'second' : 'third', 'safe', baseCallDelay(eta < 0.1), { atBase: b, playerId: r.p.info.id });
   }
   if (b === 1 && r.isBatter && r.want === 1) r.overrun = true;
