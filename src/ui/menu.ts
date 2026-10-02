@@ -88,7 +88,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const tod = reg(segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v })), () => ctx.settings.tod);
 
   const a = () => ctx.audio.get();
-  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', hint?: string) => {
+  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', hint?: string) => {
     const s = reg(slider(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
     return field(label, s.el, hint);
   };
@@ -176,7 +176,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('HD voices', hdBox), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('HD voices', hdBox), muteField),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,

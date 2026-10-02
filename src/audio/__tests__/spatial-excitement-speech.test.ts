@@ -65,7 +65,7 @@ function fakeSpeech(voices = [{ name: 'Daniel', lang: 'en-GB' }, { name: 'Samant
   let cancels = 0;
   const engine: SpeechEngine = {
     voices: () => voices,
-    speak: (text, o) => spoken.push({ text, voiceName: o.voiceName, done: o.onend }),
+    speak: (text, o) => { spoken.push({ text, voiceName: o.voiceName, done: o.onend }); },
     cancel: () => {
       cancels++;
     },

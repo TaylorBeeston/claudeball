@@ -27,13 +27,25 @@ export interface SpeakOptions {
   pitch: number;
   rate: number;
   volume: number;
+  /** neural engines: raise (>1) or lower (<1) the pitch by resampling while keeping the tempo of `rate` (excited calls) */
+  shift?: number;
+  /** drop the line if it has not started within this many ms (a queued call that went stale) */
+  maxWaitMs?: number;
   onend: () => void;
   onerror: () => void;
 }
 
+/** returned by engines that can run several lines at once: cancel just this line, or let it finish its current clause and stop */
+export interface SpeakHandle {
+  cancel(): void;
+  cutAtClause?(): void;
+}
+
 export interface SpeechEngine {
   voices(): { name: string; lang: string; default?: boolean }[];
-  speak(text: string, o: SpeakOptions): void;
+  speak(text: string, o: SpeakOptions): void | SpeakHandle;
+  /** true when several lines can be spoken at the same time (Web Audio engines); browser speech is one line at a time */
+  concurrent?: boolean;
   cancel(): void;
   pause(): void;
   resume(): void;
@@ -61,8 +73,11 @@ export class SwitchEngine implements SpeechEngine {
   voices() {
     return this.cur?.voices() ?? [];
   }
+  get concurrent() {
+    return this.usingNeural && !!this.neural!.concurrent;
+  }
   speak(text: string, o: SpeakOptions) {
-    this.cur?.speak(text, o);
+    return this.cur?.speak(text, o);
   }
   cancel() {
     this.neural?.cancel();
