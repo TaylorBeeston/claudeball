@@ -14,6 +14,8 @@ import { lerpAngle } from './dims';
 /** The part of the sim's `GameConfig` the menu sets (teams are the sim's `Team`s; opaque here so the engine does not depend on src/sim). */
 export interface SimConfig {
   innings?: number;
+  /** pace of play: how much dead time and ceremony the sim leaves between pitches and plays (ignored by sims that do not know it yet) */
+  tempo?: 'quick' | 'standard' | 'broadcast';
   homeTeam?: unknown;
   awayTeam?: unknown;
 }
@@ -85,7 +87,7 @@ export class SimDriver {
   private histAcc = 0;
   readonly history: GameState[] = [];
   private historyEvents: TimedEvent[] = [];
-  private skipTarget: { inning: number; half: 'top' | 'bottom' } | null = null;
+  private skipTarget: { inning: number; half: 'top' | 'bottom'; batter?: string | null } | null = null;
   private stepsThisFrame = 0;
   private crossListeners = new Set<(x: number, y: number, inZone: boolean) => void>();
 
@@ -149,6 +151,12 @@ export class SimDriver {
     this.skipping = true;
   }
 
+  /** Fast-forward until the next batter steps in (or the half inning / game ends). */
+  skipToNextBatter() {
+    this.skipTarget = { inning: this.curr.inning, half: this.curr.half, batter: this.curr.batter?.id ?? null };
+    this.skipping = true;
+  }
+
   /** Advance by a real-time delta; returns interpolation alpha for rendering. */
   advance(realDt: number): { state: GameState; alpha: number; steps: number } {
     let steps = 0;
@@ -163,13 +171,13 @@ export class SimDriver {
         if (performance.now() > budgetEnd && !this.skipping) break;
       }
       if (this.skipping) {
-        // fast-forward until the half inning flips (bounded per frame)
+        // fast-forward until the half inning flips or the next batter is up (bounded per frame)
         const t1 = performance.now() + 12;
         while (this.skipping && performance.now() < t1) {
           this.stepOnce();
           steps++;
           const s = this.curr;
-          if (this.skipTarget && (s.inning !== this.skipTarget.inning || s.half !== this.skipTarget.half || s.over)) {
+          if (this.skipTarget && (s.inning !== this.skipTarget.inning || s.half !== this.skipTarget.half || s.over || (this.skipTarget.batter !== undefined && (s.batter?.id ?? null) !== this.skipTarget.batter))) {
             this.skipping = false;
             this.skipTarget = null;
             this.acc = 0;

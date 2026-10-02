@@ -10,12 +10,16 @@ import type { QualityName } from '../engine/quality';
 export type TimeOfDay = 'day' | 'dusk' | 'night';
 export type QualityChoice = 'auto' | QualityName;
 export type Chatter = 'low' | 'normal' | 'high';
+/** Pace of play, set when a game is created (the sim's `GameConfig.tempo`). */
+export type Tempo = 'broadcast' | 'standard' | 'quick';
 
 export interface GameSettings {
   quality: QualityChoice;
   tod: TimeOfDay;
   /** regulation innings (9 / 3 / 1 in the menu, any 1-9 by URL) */
   innings: number;
+  /** pace of play: broadcast (slower, TV-like) / standard / quick; applies to the next game created */
+  tempo: Tempo;
   camera: 'auto' | 'free';
   replays: boolean;
   /** default sim speed */
@@ -50,6 +54,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   quality: 'auto',
   tod: 'day',
   innings: 9,
+  tempo: 'broadcast',
   camera: 'auto',
   replays: true,
   speed: 1,
@@ -66,6 +71,7 @@ export const STORAGE_KEY = 'claudeball.settings.v1';
 export const QUALITY_CHOICES: QualityChoice[] = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const TODS: TimeOfDay[] = ['day', 'dusk', 'night'];
 export const GAME_LENGTHS = [9, 3, 1];
+export const TEMPOS: Tempo[] = ['broadcast', 'standard', 'quick'];
 
 const oneOf = <T extends string | number>(v: unknown, list: readonly T[]): T | undefined => (list as readonly unknown[]).includes(v) ? (v as T) : undefined;
 
@@ -79,6 +85,8 @@ export function sanitize(o: unknown): Partial<GameSettings> {
   const t = oneOf(x.tod, TODS);
   if (t) r.tod = t;
   if (typeof x.innings === 'number' && Number.isInteger(x.innings) && x.innings >= 1 && x.innings <= 9) r.innings = x.innings;
+  const tp = oneOf(x.tempo, TEMPOS);
+  if (tp) r.tempo = tp;
   const c = oneOf(x.camera, ['auto', 'free'] as const);
   if (c) r.camera = c;
   if (typeof x.replays === 'boolean') r.replays = x.replays;
@@ -170,6 +178,7 @@ export function parseParams(search: string, abbrs: readonly string[] = []): Pars
     settings.innings = n;
     return true;
   });
+  take('tempo', (v) => ((settings.tempo = oneOf(v.toLowerCase(), TEMPOS)) !== undefined));
   take('camera', (v) => ((settings.camera = oneOf(v.toLowerCase(), ['auto', 'free'] as const)) !== undefined));
   take('replays', (v) => ((settings.replays = !falsy(v)), true));
   take('speed', (v) => ((settings.speed = oneOf(Number(v), [1, 2, 4] as const)) !== undefined));
@@ -234,6 +243,7 @@ export function shareQuery(match: MatchSetup, s: GameSettings, abbrs: readonly s
   if (h) q.set('home', h);
   if (s.innings !== DEFAULT_SETTINGS.innings) q.set('innings', String(s.innings));
   if (s.tod !== DEFAULT_SETTINGS.tod) q.set('tod', s.tod);
+  if (s.tempo !== DEFAULT_SETTINGS.tempo) q.set('tempo', s.tempo);
   return q.toString();
 }
 
