@@ -71,6 +71,7 @@ const CSS = /* css */ `
 .cb-ctl :focus-visible{outline:3px solid #ffcf4a;outline-offset:1px}
 .cb-toprow{display:flex;gap:calc(var(--u)*.8)}
 .cb-mbtn{width:max(44px,calc(var(--u)*4.8));height:max(44px,calc(var(--u)*4.8));padding:0!important;font-size:max(20px,calc(var(--u)*2.4));display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .2s}
+.cb-mbtn.skip{opacity:.8}
 .cb-ctl.open .cb-mbtn,.cb-ctl:hover .cb-mbtn,.cb-ctl:focus-within .cb-mbtn{opacity:1}
 .cb-drawer{display:none;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:calc(var(--u)*.7);max-width:min(100%,calc(var(--u)*118))}
 .cb-ctl.open .cb-drawer,.cb-ctl.live .cb-drawer,.cb-ctl:focus-within .cb-drawer{display:flex}
@@ -138,6 +139,8 @@ export interface HudActions {
   togglePause(): boolean;
   setSpeed(x: number): void;
   skipHalf(): void;
+  /** the controls drawer opened or closed (the app hides floating hints while it is open) */
+  onControls?(open: boolean): void;
   /** fast-forward to the next batter */
   skipBatter?(): void;
   setAuto(auto: boolean): void;
@@ -420,6 +423,7 @@ export class Hud {
 
   setControlsOpen(open: boolean) {
     this.ctl.classList.toggle('open', open);
+    this.act.onControls?.(open);
     (this.ctl.querySelector('.cb-mbtn.menu') as HTMLElement).setAttribute('aria-expanded', String(open));
     clearTimeout(this.ctlTimer);
     if (open) this.holdControls();

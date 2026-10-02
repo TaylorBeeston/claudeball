@@ -54,7 +54,7 @@ graphics, box score; *Reset to defaults*). The game does not start until *Start 
 persist in `localStorage`. In game, `Esc` / `P` or the ☰ → *Menu* button opens the pause menu (resume, settings, restart this game, quit to menu); at the
 end a *Final* screen with the box score offers *Play again* (new seed, same teams) and *Menu*.
 
-Keys: Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` next half inning · `c` auto/free camera · `b` box score · `q` quality · `t` time of day · `m` sound on/off · `Esc` menu.
+Keys: Space pause · `1`/`2`/`3` speed 1×/2×/4× · `n` next half inning · `.` next batter · `c` auto/free camera · `b` box score · `q` quality · `t` time of day · `m` sound on/off · `Esc` menu.
 Phones and tablets: tap the game to show the controls (☰ at the top right), one finger orbits and two fingers pinch-zoom in the free camera, the fullscreen button
 and a "rotate your device" hint for portrait. The HUD respects notches (`safe-area-inset`), the render resolution is capped per device and quality preset.
 
@@ -62,6 +62,7 @@ and a "rotate your device" hint for portrait. The HUD respects notches (`safe-ar
 |---|---|
 | `?seed=N` | game seed (digits, or any text, which is hashed); with the teams below it reproduces a game exactly |
 | `?away=DEN&home=AUS` | clubs by abbreviation or index 0-29 (default: the teams the seed generates) |
+| `?tempo=broadcast\|standard\|quick` | pace of play (default broadcast = slower, TV-like), passed to the sim when a game is created; 2x/4x speed still work |
 | `?innings=1..9`, `?tod=day\|dusk\|night`, `?quality=auto\|low\|medium\|high\|ultra` | settings (a parameter beats the saved preference) |
 | `?camera=free`, `?replays=0`, `?speed=1\|2\|4`, `?hud=0`, `?box=1`, `?chatter=low\|normal\|high` | more settings |
 | `?menu=1` | show the menu even in an automated browser |

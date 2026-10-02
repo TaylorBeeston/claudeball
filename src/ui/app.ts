@@ -494,6 +494,7 @@ class App {
     const hud = this.engine.hud;
     if (!hud) return;
     hud.act.onMenu = () => this.pause();
+    hud.act.onControls = (open) => this.rotate.setSuppressed(open);
     hud.act.isPaused = () => this.engine.sim.paused;
     hud.act.getState = () => ({ auto: this.engine.director.auto, replays: this.engine.director.replaysEnabled, speed: this.engine.sim.speed });
     hud.act.toggleMute = () => {
