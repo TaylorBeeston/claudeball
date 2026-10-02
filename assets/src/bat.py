@@ -42,6 +42,7 @@ alb = make_image("bat_albedo", col, path=ROOT+"/tex/bat_albedo.png")
 nrm = make_image("bat_normal", height_to_normal(fine*0.6+rings_t*0.2, 2.0), 'Non-Color', ROOT+"/tex/bat_normal.png")
 m = pbr_material("bat_wood", alb, nrm, rough=0.4, nstrength=0.4)
 exec(open(CB_SRC + "/textures.py").read())
+bpy.data.materials.remove(m)
 me.materials.append(acg_pbr("bat_wood", acg("Wood049", gain=1.0), .45, .7))      # CC0 ambientCG wood photo (see CREDITS.md); replaces the procedural grain above
 # axis: knob at origin, barrel toward +Z (Blender) => +Y up in glTF.
 export([bat], ROOT+"/bat.glb", jpg=True)
