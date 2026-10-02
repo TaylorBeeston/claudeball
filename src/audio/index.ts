@@ -11,11 +11,19 @@ import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
-import { HD_MODES, hdSupported, pickMode } from './hdInfo';
-import { CustomVoiceController, loadVoiceSettings } from './voice/controller';
+import { hdManager, type HdStatus } from './hd';
+import { hdSupported } from './hdInfo';
+import { voiceManager } from './voiceManager';
+import { loadVoiceSettings } from './voice/controller';
+export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
-import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
+import { Booth } from './broadcast/booth';
+import { BoothSink } from './broadcast/channels';
+import { SpeechGate } from './broadcast/gate';
+import { ctxFromRaw, type BoothCtx } from './broadcast/ctx';
+
+type Phase = 'prePitch' | 'betweenBatters' | 'break';
 import { listenerFromMatrix } from './spatial';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
 
@@ -66,14 +74,6 @@ export function rawBusOf(game: unknown): RawBus | null {
   return g ?? null;
 }
 
-export interface HdStatus {
-  state: 'off' | 'loading' | 'ready' | 'error' | 'unavailable';
-  pct?: number;
-  text?: string;
-  cached?: boolean;
-  mb?: number;
-}
-
 export interface AudioOptions {
   /** do not create any audio (URL `?noaudio`) */
   off?: boolean;
@@ -98,8 +98,6 @@ const WALL = (x: number, z: number) => {
   return 100.6 + (121.9 - 100.6) * (1 - a * a);
 };
 
-export type VoiceStatus = { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; name: string };
-
 export class AudioController {
   readonly settings: Settings;
   readonly mixer: Mixer;
@@ -108,11 +106,11 @@ export class AudioController {
   readonly speech: SpeechQueue;
   /** browser voices, or the optional neural voices when they are downloaded and switched on */
   readonly sw: SwitchEngine;
-  /** HD voices state (the neural code is loaded lazily, only after the user opts in) */
-  hd: { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; engine: { stats: unknown; busyMs(): number; rtf: number; dispose(): void } | null } = { state: 'off', pct: 0, message: '', engine: null };
   readonly excitement = new Excitement();
-  /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/) */
-  readonly voice: CustomVoiceController;
+  /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/); the manager outlives games */
+  get voice() {
+    return voiceManager.controller;
+  }
   private ui: AudioUi | null = null;
   private mapper: CueMapper;
   private pending: { ev: RawEvent; at: number }[] = [];
@@ -129,10 +127,14 @@ export class AudioController {
   private levelTimer = 0;
   private rawState: Record<string, any> | null = null;
   private raw: RawBus | null;
-  /** the booth: play-by-play + colour chatter, grounded in the sim state */
-  private chatter = new Chatter();
+  /** the broadcast booth (play-by-play + colour, a conversation grounded in the game) and the two independent speech channels */
+  readonly booth: Booth;
+  private sink: BoothSink;
+  readonly gate: SpeechGate;
+  private bctx: BoothCtx | null = null;
+  private bctxAt = 0;
+  private boothWasSuppressed = true;
   private phase: Phase | null = null;
-  private lastPull = 0;
   private lastPlayText = '';
   private offs: (() => void)[] = [];
 
@@ -152,7 +154,15 @@ export class AudioController {
     this.ambience = new Ambience(this.mixer);
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
-    this.speech = new SpeechQueue(this.sw);
+    // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
+    this.gate = new SpeechGate(this.sw);
+    this.speech = new SpeechQueue(this.gate.view('field'));
+    // browser voices have no PA bus: scale the utterance volume instead (the default slider is about 4-5 dB under the old fixed level)
+    this.speech.paScale = () => (this.sw.usingNeural ? 1 : Math.pow(this.settings.paVolume / 0.55, 2) * 0.6);
+    this.booth = new Booth({ rng: Math.random, level: this.settings.chatter });
+    // EXPERIMENT (off by default, URL flag only): a tiny in-browser language model for colour lines, validated; see src/audio/README.md
+    if (new URLSearchParams(location.search).get('lm') === '1' && hdSupported()) void import('./broadcast/lmClient').then((m) => m.startLm()).then((lm) => (this.booth.lm = lm)).catch(() => {});
+    this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw });
@@ -161,28 +171,12 @@ export class AudioController {
       const r = engineToRaw(te.event);
       if (r) this.push(r);
     });
-    this.voice = new CustomVoiceController({
-      mixer: this.mixer,
-      sw: this.sw,
-      browser: browserSpeech,
-      getExcitement: () => this.excitement.level,
-      beforeEnable: () => {
-        void this.enable(); // the click is a user gesture: make sure audio is running too
-        if (this.hd.state !== 'off') this.disableHd();
-      },
-      onChange: (s) => {
-        if (s.state !== 'loading') this.speech.clear();
-        this.ui?.voicePanel?.set(s);
-        this.lastVoice = s;
-        for (const l of this.voiceListeners) l(s);
-      },
-    });
     if (withUi)
       this.ui = new AudioUi(root, this.settings, {
         voice: {
           initialUrl: loadVoiceSettings().url,
-          url: (u) => void this.voice.enableFromUrl(u),
-          files: (f) => void this.voice.enableFromFiles(f),
+          url: (u) => void this.beforeVoice().then(() => this.voice.enableFromUrl(u)),
+          files: (f) => void this.beforeVoice().then(() => this.voice.enableFromFiles(f)),
           off: () => this.voice.disable(),
           forget: () => void this.voice.forget(),
         },
@@ -192,6 +186,7 @@ export class AudioController {
         enable: () => void this.enable(),
         hdToggle: () => void this.hdToggle(),
         hdRemove: () => void this.removeHd(),
+        hdPreview: () => void hdManager.preview(),
       });
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
@@ -210,118 +205,64 @@ export class AudioController {
     };
     window.addEventListener('keydown', key);
     this.offs.push(() => window.removeEventListener('keydown', key));
+    // the HD and custom-voice managers outlive games; this game plays through its mixer and follows whichever engine is on
+    hdManager.bindMixer(this.mixer);
+    voiceManager.bindMixer(this.mixer, () => this.excitement.level);
+    const follow = () => {
+      this.sw.neural = voiceManager.engine ?? hdManager.engine;
+      this.speech.clear();
+      this.sink.stopAll();
+      this.settings.hd = !!hdManager.engine;
+      this.onSettings?.();
+    };
+    this.sw.neural = voiceManager.engine ?? hdManager.engine;
+    hdManager.onEngine = follow;
+    voiceManager.onEngine = follow;
+    this.offs.push(hdManager.subscribe((st) => this.ui?.setHd(st.state === 'unavailable' ? { state: 'off', text: st.text } : (st as Parameters<AudioUi['setHd']>[0]))));
+    this.offs.push(voiceManager.subscribe((s) => this.ui?.voicePanel?.set(s)));
+    this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
+    this.ui?.voicePanel?.set(voiceManager.status());
     this.interval = setInterval(() => this.tick(), 1000 / 30);
-    if (this.settings.hd) void this.autoHd();
-    else void this.voice.resume();
   }
 
-  // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
+  // ---- HD (neural) voices: the manager (`hd.ts`) owns the download and the engine; a game only plugs its mixer in -------------
 
-  private async autoHd() {
-    if (!hdSupported()) {
-      this.settings.hd = false;
-      this.persist();
-      return;
-    }
-    try {
-      const { isCached } = await import('./neural');
-      if (await isCached(pickMode())) await this.enableHd();
-      else {
-        this.settings.hd = false;
-        this.persist();
-        this.setHdUi({ state: 'off' });
-      }
-    } catch {
-      this.setHdUi({ state: 'off' });
-    }
-  }
-
-  /** "My voice (custom announcer)" status for the menu's Voices section */
-  private voiceListeners = new Set<(s: VoiceStatus) => void>();
-  private lastVoice: VoiceStatus = { state: 'off', pct: 0, message: '', name: '' };
-  voiceStatus(): VoiceStatus & { url: string; available: true } {
-    return { ...this.lastVoice, url: this.voice.settings.url, available: true };
-  }
-  subscribeVoice(cb: (s: VoiceStatus) => void): () => void {
-    this.voiceListeners.add(cb);
-    return () => this.voiceListeners.delete(cb);
-  }
-
-  hdToggle() {
-    return this.hd.state === 'ready' ? this.disableHd() : this.enableHd();
-  }
-
-  /** called after the controller itself changes `settings` (HD voices on/off), so the app's copy can follow */
+  /** called after the controller itself changes `settings`, so the app's copy can follow */
   onSettings: (() => void) | null = null;
-  private hdListeners = new Set<(s: HdStatus) => void>();
-  private lastHd: HdStatus = { state: 'off' };
 
+  /** the click that starts the custom voice is a user gesture: make sure audio is running too */
+  private async beforeVoice() {
+    await this.enable();
+  }
+
+  voiceStatus() {
+    return voiceManager.status();
+  }
+  subscribeVoice(cb: Parameters<typeof voiceManager.subscribe>[0]) {
+    return voiceManager.subscribe(cb);
+  }
+
+  get hd() {
+    return { state: hdManager.state === 'unavailable' ? 'off' : hdManager.state, pct: hdManager.pct, message: hdManager.message, engine: hdManager.engine };
+  }
   hdStatus(): HdStatus {
-    if (!hdSupported() && this.lastHd.state !== 'ready') return { state: 'unavailable', mb: HD_MODES[pickMode()].mb, text: 'HD voices need WebGPU, which this browser does not offer: the CPU version is slower than real time, so it is not offered.' };
-    return { ...this.lastHd, mb: HD_MODES[pickMode()].mb };
+    return hdManager.status();
   }
-
   subscribeHd(cb: (s: HdStatus) => void): () => void {
-    this.hdListeners.add(cb);
-    return () => this.hdListeners.delete(cb);
+    return hdManager.subscribe(cb);
   }
-
-  private setHdUi(s: HdStatus) {
-    this.lastHd = s;
-    this.ui?.setHd(s.state === 'unavailable' ? { state: 'off' } : (s as Parameters<AudioUi['setHd']>[0]));
-    for (const l of this.hdListeners) l(this.hdStatus());
-  }
-
-  private persist() {
-    saveSettings(this.settings);
-    this.onSettings?.();
-  }
-
-  async enableHd(): Promise<void> {
-    if (this.hd.state === 'loading' || this.hd.state === 'ready' || !hdSupported()) return;
-    if (this.voice.state !== 'off') this.voice.disable();
-    const mode = pickMode();
-    this.hd = { state: 'loading', pct: 0, message: '', engine: null };
-    this.setHdUi({ state: 'loading', pct: 0 });
+  hdToggle() {
     void this.enable(); // the click is a user gesture: make sure audio is running too
-    try {
-      const { NeuralSpeechEngine, WorkerSynth } = await import('./neural');
-      const engine = new NeuralSpeechEngine(new WorkerSynth(), this.mixer, browserSpeech(), mode);
-      this.hd.engine = engine;
-      await engine.init(mode, (l, t) => {
-        this.hd.pct = t > 0 ? Math.min(99, Math.round((l / t) * 100)) : 0;
-        this.setHdUi({ state: 'loading', pct: this.hd.pct });
-      });
-      this.sw.neural = engine;
-      this.hd.state = 'ready';
-      this.settings.hd = true;
-      this.persist();
-      this.setHdUi({ state: 'ready', text: `Kokoro HD voices on (${HD_MODES[mode].device}). Lines that cannot be generated in time use the browser voice.` });
-    } catch (e) {
-      this.hd.engine?.dispose();
-      this.hd = { state: 'error', pct: 0, message: String((e as Error)?.message ?? e), engine: null };
-      this.sw.neural = null;
-      this.settings.hd = false;
-      this.persist();
-      this.setHdUi({ state: 'error', text: `HD voices could not start (${this.hd.message}). Using the browser voices.` });
-    }
+    return hdManager.toggle();
   }
-
+  enableHd() {
+    return hdManager.enable();
+  }
   disableHd() {
-    this.speech.clear();
-    this.sw.neural = null;
-    this.hd.engine?.dispose();
-    this.hd = { state: 'off', pct: 0, message: '', engine: null };
-    this.settings.hd = false;
-    this.persist();
-    void import('./neural').then(({ isCached }) => isCached(pickMode())).then((cached) => this.setHdUi({ state: 'off', cached }));
+    return hdManager.disable();
   }
-
-  async removeHd() {
-    this.disableHd();
-    const { clearCache } = await import('./neural');
-    await clearCache();
-    this.setHdUi({ state: 'off', cached: false });
+  removeHd() {
+    return hdManager.remove();
   }
 
   // ---- settings / unlock ---------------------------------------------------------------------------------------------
@@ -487,41 +428,15 @@ export class AudioController {
     };
   }
 
-  private chatCtx(st: StateLike): ChatCtx | null {
-    const rs = (this.rawState ??= this.raw?.getState?.() ?? null) as Record<string, any> | null;
+  /** the booth's view of the game: rebuilt from the sim state (at most every 250 ms unless an event just happened) */
+  private boothCtx(force = false): BoothCtx | null {
+    const now = performance.now();
+    if (!force && this.bctx && now - this.bctxAt < 250) return this.bctx;
+    const rs = this.raw?.getState?.();
     if (!rs) return null;
-    const bi = rs.batter?.info;
-    const pi = rs.pitcher?.info;
-    const batter: ChatPerson | undefined = bi && { id: bi.id, name: bi.name, number: bi.jersey, hand: bi.bats, ratings: bi.ratings, bat: rs.batter.line };
-    const pitcher: ChatPerson | undefined = pi && { id: pi.id, name: pi.name, number: pi.jersey, hand: pi.throws, ratings: pi.ratings, pit: { ...rs.pitcher.line, pitches: rs.pitcher.pitchCount ?? rs.pitcher.line?.pitches ?? 0 } };
-    const runners = [rs.runners?.first, rs.runners?.second, rs.runners?.third];
-    const speedOf = (r: any) => (r ? (rs.players as any[] | undefined)?.find((p) => p.id === r.playerId)?.ratings?.speed : undefined);
-    return {
-      inning: st.inning, half: st.half, outs: st.outs, balls: st.count.balls, strikes: st.count.strikes, score: { home: st.score.home, away: st.score.away },
-      runners: st.runners, runnerNames: [runners[0]?.name, runners[1]?.name, runners[2]?.name], runnerSpeed: [speedOf(runners[0]), speedOf(runners[1]), speedOf(runners[2])],
-      teams: { home: st.teams.home.name, away: st.teams.away.name }, batter, pitcher, crowd: this.excitement.level, lastPlay: this.lastPlayText,
-    };
-  }
-
-  /** Queue the booth's lines (delayed ones through timers); only at normal speed and with commentary on. */
-  private say(lines: ChatLine[], speed: number) {
-    if (!lines.length || this.settings.chatter === 'low') return; // Low: only the event-driven big-play calls, no filler or colour
-    for (const l of lines) {
-      const run = () => {
-        const ok = !this.locked && !this.settings.muted && speed <= 1.01 && !this.host.sim.skipping && this.speech.enabled[l.role] && this.speech.available();
-        if (ok) this.speech.enqueue({ role: l.role, text: l.text, pri: l.pri, ttl: l.ttl, group: l.group });
-        this.debug.chat[l.tag] = (this.debug.chat[l.tag] ?? 0) + 1;
-        this.debug.cues.push({ t: Math.round(performance.now()), simInning: '', kind: 'chat', id: l.role, played: ok, text: l.text });
-        if (this.debug.cues.length > 300) this.debug.cues.shift();
-      };
-      if (l.delay > 0) {
-        const t = setTimeout(() => {
-          this.timers.delete(t);
-          run();
-        }, l.delay * 1000);
-        this.timers.add(t);
-      } else run();
-    }
+    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText });
+    this.bctxAt = now;
+    return this.bctx;
   }
 
   private dispatch(c: Cue, st: StateLike, simSpeed: number) {
@@ -578,8 +493,6 @@ export class AudioController {
       case 'speak': {
         if (this.locked || this.settings.muted) return false;
         if (!this.speech.enabled[c.role]) return false;
-        // chatter "low": only the main play-by-play, no colour commentary
-        if (this.settings.chatter === 'low' && (c.role === 'color' || (c.role === 'pbp' && c.pri < PRI.pbp))) return false;
         if (!this.speech.available()) {
           // no voices in this browser: the umpire still gets a shout so the call is audible
           if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2, pos: c.pos ? { x: c.pos.x, y: 1.7, z: c.pos.z } : undefined });
@@ -607,9 +520,8 @@ export class AudioController {
       if (replay !== this.wasReplay) {
         if (replay) {
           this.mixer.playSfx({ kind: 'sfx', id: 'replay_whoosh', gain: 0.5, imp: 1 });
-          this.rawState = null;
-          const cc = this.raw ? this.chatCtx(st) : null;
-          if (cc) this.say(this.chatter.replay(cc), sim.speed);
+          const cc = this.raw ? this.boothCtx(true) : null;
+          if (cc) this.booth.replay(cc, performance.now() / 1000);
         }
         this.wasReplay = replay;
       }
@@ -618,6 +530,7 @@ export class AudioController {
       if (sim.skipping && !this.wasSkipping) {
         this.pending.length = 0;
         this.speech.clear();
+        this.sink.stopAll();
         for (const t of this.timers) clearTimeout(t);
         this.timers.clear();
       }
@@ -625,12 +538,12 @@ export class AudioController {
       // the organ: silent while paused / muted / skipping, a soft bed in the gaps, and the booth waits out the seventh-inning stretch
       if ((sim.paused || sim.skipping || this.settings.muted || !this.settings.organ || this.locked) && this.organ.playing) this.organ.stop(0.25);
       if (sim.skipping) this.bedWanted = false;
-      const speaking = !!this.speech.speaking;
+      const speaking = this.gate.busy.field + this.gate.busy.booth > 0;
       if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
+      // PA and booth sit under each other (about -5 dB for the PA while the booth talks, -2 dB for the booth under the PA): neither is muted
+      if (this.gate.concurrent) this.mixer.setVoiceDuck(this.gate.busy.booth > 0 ? 0.56 : 1, this.gate.busy.field > 0 ? 0.79 : 1);
       if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
       const stretch = this.organ.playing === 'stretch';
-      if (stretch && !this.speech.hold) this.speech.clearRoles(['pbp', 'color']);
-      this.speech.hold = stretch;
       if (sim.speed > 1.01 && this.lastSpeed <= 1.01) this.speech.clear();
       this.lastSpeed = sim.speed;
 
@@ -639,8 +552,7 @@ export class AudioController {
         const ctx = this.buildCtx(st);
         const batch = this.pending;
         this.pending = [];
-        const cc = this.raw ? this.chatCtx(st) : null;
-        const level = this.settings.chatter;
+        const cc = this.raw ? this.boothCtx(true) : null;
         for (const { ev, at } of batch) {
           // a new batter may not be on the field yet: wait a moment for the name
           if (ev.type === 'batterUp' && !ctx.person(ev.batterId) && now - at < 1500) {
@@ -648,10 +560,7 @@ export class AudioController {
             continue;
           }
           for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
-          if (cc) {
-            this.chatter.observe(ev, cc);
-            this.say(this.chatter.react(ev, cc, level), sim.speed);
-          }
+          if (cc && !sim.skipping) this.booth.observe(ev, cc, performance.now() / 1000);
         }
       }
 
@@ -670,14 +579,16 @@ export class AudioController {
           if (this.debug.energy.length > 600) this.debug.energy.shift();
         }
       }
-      // idle chatter: when the booth has been quiet long enough and the game is between pitches
-      if (this.phase && this.raw && sim.speed <= 1.01 && !sim.paused && !sim.skipping && !this.locked && !this.settings.muted && this.settings.commentary && !this.speech.hold && this.speech.available()) {
-        const cfg = LEVELS[this.settings.chatter];
-        if (this.speech.idleMs() >= cfg.quiet * 1000 && now - this.lastPull >= cfg.quiet * 1000) {
-          this.lastPull = now;
-          this.rawState = null;
-          const cc = this.chatCtx(st);
-          if (cc) this.say(this.chatter.pull(cc, this.phase, this.settings.chatter), sim.speed);
+      // the booth: its director decides who speaks when; it is silent at 2x and above, while skipping, paused, muted or switched off, and during the stretch
+      {
+        const suppressed = sim.speed > 1.01 || sim.skipping || sim.paused || this.locked || this.settings.muted || !this.settings.commentary || this.organ.playing === 'stretch' || !this.raw;
+        if (suppressed && !this.boothWasSuppressed) this.sink.stopAll();
+        this.boothWasSuppressed = suppressed;
+        const cc = this.raw ? this.boothCtx() : null;
+        if (cc) {
+          this.booth.setLevel(this.settings.chatter);
+          this.booth.canTalk = this.phase !== null;
+          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed }));
         }
       }
       this.speech.pump();
@@ -729,7 +640,11 @@ export class AudioController {
   }
 
   dispose() {
-    this.voice.disable(false);
+    hdManager.onEngine = null;
+    hdManager.bindMixer(null);
+    voiceManager.onEngine = null;
+    voiceManager.bindMixer(null);
+    this.sw.neural = null;
     if (this.interval) clearInterval(this.interval);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
@@ -754,7 +669,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: a.voice.state, voiceStats: a.voice.engine?.stats }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

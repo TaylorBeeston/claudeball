@@ -13,6 +13,8 @@
 import './ui.css';
 import { Engine } from '../engine/engine';
 import { attachAudio, type AudioController } from '../audio';
+import { hdManager } from '../audio/hd';
+import { voiceManager } from '../audio/voiceManager';
 import { DEFAULT_SETTINGS as AUDIO_DEFAULTS, type Settings as AudioSettings } from '../audio/mixer';
 import { loadSettings as loadAudio, saveSettings as saveAudio } from '../audio/ui';
 import type { QualityName } from '../engine/quality';
@@ -90,6 +92,11 @@ class App {
     this.match = { ...this.res.match };
     this.autoQuality = deviceQuality(this.device);
     this.audioLocal = this.res.flags.noaudio ? { ...AUDIO_DEFAULTS } : loadAudio();
+    // HD voices: switch on silently when the player had them on and the model is still cached; works from the menu, before any game
+    if (!this.res.flags.noaudio) {
+      void hdManager.autoStart();
+      void voiceManager.autoStart();
+    }
     report.autostart = this.res.autostart;
   }
 
@@ -168,28 +175,22 @@ class App {
     },
     reset: () => this.audioBridge.set({ ...AUDIO_DEFAULTS }),
     hd: {
-      status: () => this.audio?.hdStatus() ?? { state: 'unavailable' as const },
-      subscribe: (cb) => {
-        this.hdListeners.add(cb);
-        return () => this.hdListeners.delete(cb);
-      },
-      toggle: () => this.audio?.hdToggle(),
-      remove: () => void this.audio?.removeHd(),
+      status: () => hdManager.status(),
+      subscribe: (cb) => hdManager.subscribe(cb),
+      toggle: () => void hdManager.toggle(),
+      remove: () => void hdManager.remove(),
+      preview: () => void hdManager.preview(),
     },
     voice: {
-      status: () => this.audio?.voiceStatus() ?? { state: 'off' as const, pct: 0, message: '', name: '', url: '', available: false },
-      subscribe: (cb) => {
-        this.voiceListeners.add(cb);
-        return () => this.voiceListeners.delete(cb);
-      },
-      loadUrl: (url) => void this.audio?.voice.enableFromUrl(url),
-      loadFiles: (files) => void this.audio?.voice.enableFromFiles(files),
-      off: () => this.audio?.voice.disable(),
-      forget: () => void this.audio?.voice.forget(),
+      status: () => ({ ...voiceManager.status(), available: true as const }),
+      subscribe: (cb) => voiceManager.subscribe((st) => cb({ ...st, available: true })),
+      loadUrl: (url) => void voiceManager.controller.enableFromUrl(url),
+      loadFiles: (files) => void voiceManager.controller.enableFromFiles(files),
+      off: () => voiceManager.controller.disable(),
+      forget: () => void voiceManager.controller.forget(),
+      preview: () => void voiceManager.preview(),
     },
   };
-  private hdListeners = new Set<(s: import('./menu').HdStatus) => void>();
-  private voiceListeners = new Set<(s: import('./menu').VoiceMenuStatus) => void>();
 
   private ctx: AppCtx = {
     settings: undefined as unknown as GameSettings,
@@ -354,8 +355,6 @@ class App {
     if (!this.audio) return;
     Object.assign(this.audio.settings, this.audioLocal);
     this.audio.onSettings = () => Object.assign(this.audioLocal, this.audio?.settings);
-    this.audio.subscribeHd((s) => this.hdListeners.forEach((l) => l(s)));
-    this.audio.subscribeVoice(() => this.voiceListeners.forEach((l) => l(this.audioBridge.voice!.status())));
     this.audio.settingsChanged();
     void this.audio.unlock(); // unlocks without un-muting: a muted player stays muted
   }

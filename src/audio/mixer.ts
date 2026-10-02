@@ -19,12 +19,16 @@ export const MAX_VOICES = 32;
 const MAKEUP = 2;
 /** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
 const ORGAN_LEVEL = 1.0;
+/** PA bus gain at slider 1 (the default slider 0.55 is about 4-5 dB under the old fixed level) */
+const PA_LEVEL = 2.0;
 
 export interface Settings {
   master: number;
   sfx: number;
   crowd: number;
   announcer: number;
+  /** the stadium PA announcer's own volume (field channel); the umpire shares it */
+  paVolume: number;
   muted: boolean;
   /** PA announcer + umpire calls */
   pa: boolean;
@@ -40,7 +44,7 @@ export interface Settings {
   hd: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -80,6 +84,10 @@ export class Mixer {
   reverbIn!: GainNode;
   /** neural (HD) voices: dry booth voices and the processed PA voice come in here */
   voiceBus!: GainNode;
+  /** the stadium PA and the umpire (field channel) and the broadcast booth, separate so they can overlap and duck each other */
+  paBus!: GainNode;
+  boothBus!: GainNode;
+  private duck = { pa: 1, booth: 1 };
   analyser: AnalyserNode | null = null;
   ready = false;
   prepared = 0;
@@ -145,6 +153,10 @@ export class Mixer {
     this.organBus.connect(this.master);
     this.voiceBus = ctx.createGain();
     this.voiceBus.connect(this.master);
+    this.paBus = ctx.createGain();
+    this.paBus.connect(this.voiceBus);
+    this.boothBus = ctx.createGain();
+    this.boothBus.connect(this.voiceBus);
     // stadium reverb: a synthetic decaying-noise impulse
     this.reverbIn = ctx.createGain();
     this.reverbIn.gain.value = 1;
@@ -192,6 +204,15 @@ export class Mixer {
     this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
     this.voiceBus.gain.setTargetAtTime(s.announcer * 1.6, t, 0.05);
+    this.paBus.gain.setTargetAtTime(s.paVolume * s.paVolume * PA_LEVEL * this.duck.pa, t, 0.12);
+    this.boothBus.gain.setTargetAtTime(this.duck.booth, t, 0.12);
+  }
+
+  /** the PA is ducked (about -5 dB) while the booth talks, the booth a little (about -2 dB) under the PA: neither is muted */
+  setVoiceDuck(pa: number, booth: number) {
+    if (pa === this.duck.pa && booth === this.duck.booth) return;
+    this.duck = { pa, booth };
+    this.applySettings();
   }
 
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */

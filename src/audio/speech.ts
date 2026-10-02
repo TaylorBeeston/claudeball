@@ -27,13 +27,25 @@ export interface SpeakOptions {
   pitch: number;
   rate: number;
   volume: number;
+  /** neural engines: raise (>1) or lower (<1) the pitch by resampling while keeping the tempo of `rate` (excited calls) */
+  shift?: number;
+  /** drop the line if it has not started within this many ms (a queued call that went stale) */
+  maxWaitMs?: number;
   onend: () => void;
   onerror: () => void;
 }
 
+/** returned by engines that can run several lines at once: cancel just this line, or let it finish its current clause and stop */
+export interface SpeakHandle {
+  cancel(): void;
+  cutAtClause?(): void;
+}
+
 export interface SpeechEngine {
   voices(): { name: string; lang: string; default?: boolean }[];
-  speak(text: string, o: SpeakOptions): void;
+  speak(text: string, o: SpeakOptions): void | SpeakHandle;
+  /** true when several lines can be spoken at the same time (Web Audio engines); browser speech is one line at a time */
+  concurrent?: boolean;
   cancel(): void;
   pause(): void;
   resume(): void;
@@ -61,8 +73,11 @@ export class SwitchEngine implements SpeechEngine {
   voices() {
     return this.cur?.voices() ?? [];
   }
+  get concurrent() {
+    return this.usingNeural && !!this.neural!.concurrent;
+  }
   speak(text: string, o: SpeakOptions) {
-    this.cur?.speak(text, o);
+    return this.cur?.speak(text, o);
   }
   cancel() {
     this.neural?.cancel();
@@ -177,6 +192,8 @@ export class SpeechQueue {
   enabled: Record<SpeakRole, boolean> = { pa: true, ump: true, pbp: true, color: true };
   /** 0..1 */
   volume = 0.8;
+  /** extra volume factor for the PA and the umpire on engines that cannot route them to their own bus (browser voices) */
+  paScale: () => number = () => 1;
 
   constructor(
     private engine: SpeechEngine | null,
@@ -353,7 +370,7 @@ export class SpeechQueue {
       }
     };
     try {
-      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume * (item.role === 'pa' || item.role === 'ump' ? this.paScale() : 1)), onend: done, onerror: done });
       this.prefetchNext();
     } catch {
       done();
