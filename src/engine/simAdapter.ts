@@ -18,7 +18,6 @@ export interface SimConfig {
   tempo?: 'quick' | 'standard' | 'broadcast';
   homeTeam?: unknown;
   awayTeam?: unknown;
-  tempo?: 'quick' | 'standard' | 'broadcast';
 }
 
 type CreateGame = (opts: { seed: number } & SimConfig) => GameLike;
