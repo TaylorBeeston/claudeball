@@ -94,6 +94,7 @@ export class Engine {
   /** false while a menu / pause screen has the keyboard */
   keysEnabled = true;
   private attractT = 0;
+  private lastBroll: unknown = null;
   /** touch-first device (phones, tablets): the pixel-ratio policy trades the preset's DPR cap for a pixel budget */
   coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
@@ -491,6 +492,12 @@ export class Engine {
     if ((this.sbTimer -= dt) < 0) {
       this.sbTimer = 0.3;
       this.stadium.updateScoreboard(state);
+    }
+    // a B-roll shot about a person (on deck, pitcher's face, ...) gets a lower-third card; checked per frame, the DOM is touched only when the shot changes
+    const brollNow = this.director.brollShot;
+    if (brollNow !== this.lastBroll) {
+      this.lastBroll = brollNow;
+      this.hud?.subjectShot(brollNow ? { kind: brollNow.kind, subject: brollNow.subject, hold: brollNow.hold } : null, state);
     }
     this.hud?.update(state, dt);
     this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);

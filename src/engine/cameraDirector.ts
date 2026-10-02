@@ -565,6 +565,11 @@ export class CameraDirector {
     return shot;
   }
 
+  /** The B-roll shot on screen right now (the same object for as long as it is held), or null. The HUD shows a card for shots about a person. */
+  get brollShot(): BrollShot | null {
+    return this.shot === 'broll' ? this.broll?.shot ?? null : null;
+  }
+
   private startBroll(shot: BrollShot) {
     this.broll = { shot, start: this.clock };
     this.brollRecent.push({ kind: shot.kind, subject: shot.subject });
