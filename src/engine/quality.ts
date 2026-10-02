@@ -16,13 +16,15 @@ export interface QualitySettings {
   crowdAnimate: boolean;
   /** grass detail (procedural) 0..1 */
   detail: number;
+  /** player level of detail: screen-height fractions below which a player loses his micro details (tier 1) and everything but the body shapes (tier 2) */
+  puppetLod: readonly [number, number];
 }
 
 export const QUALITY: Record<QualityName, QualitySettings> = {
-  low: { name: 'low', maxDpr: 1, msaa: 0, shadowCascades: 2, shadowMapSize: 1024, ao: false, aoHalfRes: true, bloom: false, dof: false, grain: false, crowdDensity: 0.25, crowdAnimate: false, detail: 0.3 },
-  medium: { name: 'medium', maxDpr: 1.25, msaa: 0, shadowCascades: 3, shadowMapSize: 2048, ao: true, aoHalfRes: true, bloom: true, dof: false, grain: true, crowdDensity: 0.55, crowdAnimate: true, detail: 0.6 },
-  high: { name: 'high', maxDpr: 1.5, msaa: 4, shadowCascades: 3, shadowMapSize: 2048, ao: true, aoHalfRes: true, bloom: true, dof: true, grain: true, crowdDensity: 0.85, crowdAnimate: true, detail: 0.85 },
-  ultra: { name: 'ultra', maxDpr: 2, msaa: 4, shadowCascades: 4, shadowMapSize: 4096, ao: true, aoHalfRes: false, bloom: true, dof: true, grain: true, crowdDensity: 1, crowdAnimate: true, detail: 1 },
+  low: { name: 'low', maxDpr: 1, msaa: 0, shadowCascades: 2, shadowMapSize: 1024, ao: false, aoHalfRes: true, bloom: false, dof: false, grain: false, crowdDensity: 0.25, crowdAnimate: false, detail: 0.3, puppetLod: [0.4, 0.2] },
+  medium: { name: 'medium', maxDpr: 1.25, msaa: 0, shadowCascades: 3, shadowMapSize: 2048, ao: true, aoHalfRes: true, bloom: true, dof: false, grain: true, crowdDensity: 0.55, crowdAnimate: true, detail: 0.6, puppetLod: [0.3, 0.12] },
+  high: { name: 'high', maxDpr: 1.5, msaa: 4, shadowCascades: 3, shadowMapSize: 2048, ao: true, aoHalfRes: true, bloom: true, dof: true, grain: true, crowdDensity: 0.85, crowdAnimate: true, detail: 0.85, puppetLod: [0.22, 0.09] },
+  ultra: { name: 'ultra', maxDpr: 2, msaa: 4, shadowCascades: 4, shadowMapSize: 4096, ao: true, aoHalfRes: false, bloom: true, dof: true, grain: true, crowdDensity: 1, crowdAnimate: true, detail: 1, puppetLod: [0.14, 0.05] },
 };
 
 /** Internal pixel budget (megapixels, before the adaptive scale) per preset: phones keep a sharp image at a small cost, big screens stay capped. */

@@ -30,6 +30,7 @@ import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 import { perf } from './perf';
+import { FLAGS } from './flags';
 
 export interface EngineOptions {
   seed?: number;
@@ -129,6 +130,7 @@ export class Engine {
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
+    this.players.lodOff = FLAGS.nolod;
     this.scene.add(this.players.group);
     this.ball = new BallView(this.env);
     this.bat = new BatView(this.env);
@@ -137,6 +139,7 @@ export class Engine {
 
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     this.hookGBufferVisibility();
+    this.hookShadowPhase();
     if (perf.on) this.attachPerf();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
@@ -325,8 +328,27 @@ export class Engine {
     ao._renderOverride = (...args: unknown[]) => {
       const vis = this.gbufferHidden.map((o) => o.visible);
       for (const o of this.gbufferHidden) o.visible = false;
-      orig(...args);
+      this.players.phase('gbuf');
+      try {
+        orig(...args);
+      } finally {
+        this.players.phase('main');
+      }
       this.gbufferHidden.forEach((o, i) => (o.visible = vis[i]));
+    };
+  }
+
+  /** the shadow passes draw each puppet as one merged proxy mesh (visible only while they run; the main pass list is built before they start) */
+  private hookShadowPhase() {
+    const sm = this.renderer.shadowMap;
+    const orig = sm.render.bind(sm);
+    sm.render = (...args: Parameters<typeof orig>) => {
+      this.players.phase('shadow');
+      try {
+        orig(...args);
+      } finally {
+        this.players.phase('main');
+      }
     };
   }
 
@@ -486,6 +508,8 @@ export class Engine {
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
     if (perf.on) perf.lap('bat+side');
     this.players.makeBat = () => this.bat.makeHandBat();
+    this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.players.lodCut = this.quality.puppetLod;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
     if (perf.on) perf.lap('puppets');
     this.contact.visible = this.quality.name !== 'low';
