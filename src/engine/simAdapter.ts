@@ -129,6 +129,12 @@ export class SimDriver {
     return () => this.listeners.delete(cb);
   }
 
+  /** an event made up by the engine (the side cast's coach signals, ball-kid retrievals): reaches the same listeners as the sim's, not the replay history */
+  emit(event: GameEvent) {
+    const te = { simTime: this.curr.time, event };
+    for (const l of this.listeners) l(te);
+  }
+
   /** Fires when a pitched ball crosses the front of the plate (derived from ball state). */
   onPitchCross(cb: (x: number, y: number, inZone: boolean) => void) {
     this.crossListeners.add(cb);

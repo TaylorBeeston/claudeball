@@ -64,6 +64,10 @@ function beginLive(w: World, kind: PlayKind): PlayState {
     if (r.state !== 'live') continue;
     r.origin = r.base;
     r.bias = w.aiRng.normal(0, 0.36 - 0.0016 * r.p.info.ratings.baserunning); // a smart runner reads arrival times better
+    r.coachBias = w.aiRng.normal(0, 0.3); // ... and the base coach has his own error
+    r.coachObey = null;
+    r.coachCall = null;
+    r.coachFresh = null;
   }
   fielding.initFielderPlans(w, kind === 'battedBall' ? 0 : 0.05);
   w.ball.pathDirty = true;
@@ -73,6 +77,11 @@ function beginLive(w: World, kind: PlayKind): PlayState {
 
 export function beginBattedBall(w: World, res: ContactResult): void {
   const b = w.ball.body;
+  if (w.batter) {
+    // the hitter drops the bat by the plate as he runs (a foul ball gives it back to him: `resetBatterToBox`)
+    const side = w.batStance === 'R' ? 1 : -1;
+    w.batDown = { x: w.batter.x - side * 0.35, z: 0.75, by: w.batter.info.id };
+  }
   const bip: BipInfo = {
     startTick: w.tick,
     exitMph: res.exitSpeed / 0.44704,

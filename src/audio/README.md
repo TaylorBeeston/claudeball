@@ -131,6 +131,21 @@ and the mixer against a fake `AudioContext` (voice cap, stealing, node disconnec
 
 Nothing blocking. Nice to have: an event for a batted ball landing, the fence-contact `speed` for foul balls into the stands, and catch events for the casual `ballReturn` legs.
 
+## My voice (custom announcer), `voice/`
+
+An opt-in third speech engine: the owner's own trained voice (recorded and trained with `tools/announcer/`, see `docs/announcer-voice.md`). It reuses the HD-voice plumbing: `voice/packSynth.ts` is a `Synth` that the same `NeuralSpeechEngine` drives (one speech queue, prefetch, PA processing, browser-voice fallback on any failure or slow line), installed in `SwitchEngine.neural` by `voice/controller.ts`; switching it on turns Kokoro off and vice versa. `voiceManager.ts` makes it outlive games like `hd.ts` does for Kokoro: the title menu can load the pack (URL or files), preview it and switch it off before any game; a game's controller just binds its mixer and follows whichever engine is on. Because the engine is the same concurrent `NeuralSpeechEngine`, the custom voice overlaps PA and booth too.
+
+| file | what |
+|---|---|
+| `normalize.ts` | game text -> spoken words ("94" -> "ninety-four", "6-4-3" -> "six-four-three", ".241" -> "two forty-one"); the recording script and the training data use the same function |
+| `phonemize.ts` | words -> Piper phoneme ids through the voice pack's lexicon (no espeak-ng in the browser); twin of `tools/announcer/train/common.py` |
+| `pack.ts` | the `voice.json` manifest (validated), URL / local-file loading, Cache API storage, `chooseStyle` (PA/umpire crisp, colour deadpan, play-by-play follows crowd excitement and the words) and the style -> speaker map |
+| `synthCore.ts`, `worker.ts` | the synthesis (needs only an `ort`-shaped object, so it is unit-tested with a mock) and the module worker; onnxruntime-web is imported at run time from a pinned jsDelivr URL (or `runtime.ortUrl` in `voice.json`), never bundled |
+| `clips.ts`, `clipSynth.ts` | optional bank of the owner's real recordings, stitched for lines it covers exactly; else the model |
+| `controller.ts`, `panel.ts` | state (off/loading/ready/error), persistence (`claudeball.voicepack.v1` in localStorage), and the block in the audio panel (URL box, file picker) |
+
+Nothing is downloaded until the owner switches it on, and the voice pack is never part of the repo or the build. Debug: `__audioDebug.state.speech.voice` (state) and `.voiceStats` (generated / played / fallbacks / failures).
+
 ## Tiny language model for colour lines (experimental, off by default)
 
 `?lm=1` (WebGPU only) loads an in-browser model in a worker (`lmWorker.ts`, transformers.js and weights fetched from jsDelivr / Hugging Face at run time, nothing bundled), prompts it with a compact facts JSON, a style guide and the last lines, validates the answer (every number and name must be in the facts, no pronouns for players, length, no repetition) and uses it for a colour line now and then; late, invalid or failed answers fall back instantly to the grammar. **Evaluation (30 sampled game situations, headless Chrome, RTX GPU, q4, transformers.js 3.8 / 4.3, prompt ~300 tokens):**

@@ -5,6 +5,7 @@
  */
 import { DEFAULT_SETTINGS, type Settings } from './mixer';
 import { HD_MODES, hdSupported, pickMode } from './hdInfo';
+import { mountVoicePanel, type VoicePanel, type VoicePanelHandlers } from './voice/panel';
 
 const KEY = 'claudeball.audio.v1';
 
@@ -74,6 +75,8 @@ export interface UiHandlers {
   hdRemove(): void;
   /** HD voices: play a short sample (PA, play-by-play, colour) */
   hdPreview(): void;
+  /** "My voice (custom announcer)": optional, the audio controller wires it */
+  voice?: VoicePanelHandlers & { initialUrl?: string };
 }
 
 export class AudioUi {
@@ -86,6 +89,7 @@ export class AudioUi {
   private hdNote!: HTMLElement;
   private hdRemove!: HTMLButtonElement;
   private hdPreview!: HTMLButtonElement;
+  voicePanel: VoicePanel | null = null;
 
   constructor(host: HTMLElement, private s: Settings, private h: UiHandlers) {
     const st = document.createElement('style');
@@ -190,6 +194,7 @@ export class AudioUi {
       panel.append(box);
       this.setHd({ state: 'off' });
     }
+    if (h.voice) this.voicePanel = mountVoicePanel(panel, h.voice, h.voice.initialUrl);
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = 'M mutes. Voices use your browser’s speech synthesis.';

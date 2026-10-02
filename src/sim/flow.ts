@@ -13,7 +13,8 @@ import { pathAt, pitchTouchesZone, strikeZoneFor, throwPitch, timeAtZ, zoneConta
 import { giveBall, placeBallInHand, releaseBall, setAnim } from './util';
 import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
-import { DEFAULT_SPOTS, DUGOUT } from './setup';
+import { DEFAULT_SPOTS } from './setup';
+import { leaveDugout, routeToBox, sendToDeck, toBench } from './dugout';
 import * as rules from './rules';
 import * as inplay from './inplay';
 import * as manager from './manager';
@@ -46,9 +47,10 @@ export function startHalfInning(w: World): void {
   w.inningRuns = 0;
   w.halfStartTick = w.tick;
   w.fieldingTeam.pitcher.rattle *= 0.4; // a new half-inning: he shakes off trouble
-  for (const r of w.exiting) r.p.onField = false;
+  // anybody still walking in from the last half goes on to his seat (nobody vanishes)
+  for (const r of w.exiting) toBench(w, r.p);
   w.exiting = [];
-  for (const l of w.leavers) l.p.onField = false;
+  for (const l of w.leavers) toBench(w, l.p);
   w.leavers = [];
   w.ret = null;
   w.hornKind = null;
@@ -59,23 +61,28 @@ export function startHalfInning(w: World): void {
   const f = w.fieldingTeam;
   w.pitcher = f.pitcher;
   w.catcher = f.defense.get('C')!;
-  const dug = DUGOUT[f.side];
   for (const [pos, p] of f.defense) {
     const spot = DEFAULT_SPOTS[pos as keyof typeof DEFAULT_SPOTS];
+    const seated = p.dug === 'bench';
+    const walkingIn = p.dug === 'toBench' || w.leavers.some((l) => l.p === p);
     p.onField = true;
     p.role = pos === 'P' ? 'pitcher' : pos === 'C' ? 'catcher' : 'fielder';
     p.hasBall = false;
     p.fieldPos = pos;
-    p.vx = p.vz = 0;
+    if (!walkingIn) p.vx = p.vz = 0;
     p.vmax = fielderSpeed(p);
+    p.route = [];
     if (w.cfg.pace === 0 || w.tick === 0) {
+      p.dug = null;
       p.x = spot.x;
       p.z = spot.z;
       p.goal = null;
+    } else if (seated) {
+      // they come up the steps from the bench and run out to their positions
+      leaveDugout(p, [], { x: spot.x, z: spot.z, stop: true, mul: 0.85 }, 6.5);
     } else {
-      p.x = dug.x + (p.info.jersey % 5) - 2;
-      p.z = dug.z + (p.info.jersey % 3);
-      p.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.85 }; // they run out to their positions
+      p.dug = null;
+      p.goal = { x: spot.x, z: spot.z, stop: true, mul: 0.85 }; // (from wherever he is: no jump)
     }
     p.home = { x: spot.x, z: spot.z };
     p.facing = Math.atan2(-p.x, -p.z + 0.001);
@@ -104,6 +111,8 @@ export function startHalfInning(w: World): void {
     const slot = w.battingTeam.lineup[(w.battingTeam.batIdx + 8) % 9];
     running.placeGhostRunner(w, slot.player);
   }
+  // the leadoff man goes to the on-deck circle during the break
+  if (w.cfg.pace > 0) sendToDeck(w, w.battingTeam.lineup[w.battingTeam.batIdx % 9].player);
   w.phase = 'halfBreak';
   w.phaseUntil = w.tick + paced(w, w.tick === 0 ? 3 : 7.5);
   w.play = null;
@@ -184,22 +193,24 @@ function stepInBatter(w: World): void {
   const side = w.batStance === 'R' ? 1 : -1;
   const walkingIn = w.leavers.some((l) => l.p === b); // he was still jogging in from the field: he goes on to the box from there
   w.leavers = w.leavers.filter((l) => l.p !== b);
+  b.vmax = sprintOf(b.info.ratings.speed);
+  b.lookAt = { x: 0, z: MOUND_DIST };
   if (w.cfg.pace === 0) {
+    b.dug = null;
+    b.route = [];
     b.vx = b.vz = 0;
     b.x = side * BATTER_X;
     b.z = 0.15;
     b.goal = null;
+    b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
   } else if (walkingIn) {
+    b.dug = null;
     b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: 0.7 };
   } else {
-    b.vx = b.vz = 0;
-    b.x = side * 3.2;
-    b.z = -4.0;
-    b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: 0.5 };
+    // from the on-deck circle (or the bench, for a pinch hitter or the first man up): he walks to the plate, around behind it if his box is on the far side
+    const keep = b.dug === 'toDeck' ? b.route.slice(0, -1) : [];
+    leaveDugout(b, [...keep, ...routeToBox(b, side as 1 | -1)], { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(2.4 / b.vmax, 0.1, 1) }, 2.4);
   }
-  b.lookAt = { x: 0, z: MOUND_DIST };
-  b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
-  b.vmax = sprintOf(b.info.ratings.speed);
   b.anim = 'idle';
   w.pitcher.pit.bf += 1;
   w.pitcher.rattle *= 0.93; // he settles a little between batters
@@ -207,6 +218,8 @@ function stepInBatter(w: World): void {
   w.align = {};
   resetDefense(w);
   emit(w, { type: 'batterUp', batterId: b.info.id, pitcherId: w.pitcher.info.id });
+  // the next man up leaves the bench for the on-deck circle
+  sendToDeck(w, bt.lineup[(bt.batIdx + 1) % 9].player);
 }
 
 export function tickPrePitch(w: World): void {
@@ -782,14 +795,20 @@ export function resetBatterToBox(w: World): void {
   const side = w.batStance === 'R' ? 1 : -1;
   b.role = 'batter';
   b.onField = true;
+  w.batDown = null; // (foul ball: he still has his bat)
+  b.lookAt = { x: 0, z: MOUND_DIST };
+  b.anim = 'idle';
+  b.animUntil = 0;
+  if (w.cfg.pace > 0 && Math.hypot(b.x - side * BATTER_X, b.z - 0.15) > 1.2) {
+    // a foul ball sent him out of the box: he walks back to it
+    b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(3.0 / Math.max(1, b.vmax), 0.1, 1) };
+    return;
+  }
   b.vx = b.vz = 0;
   b.goal = null;
   b.x = side * BATTER_X;
   b.z = 0.15;
-  b.lookAt = { x: 0, z: MOUND_DIST };
   b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
-  b.anim = 'idle';
-  b.animUntil = 0;
 }
 
 /** How much the moment matters (0..1): late, close, runners in scoring position. */
