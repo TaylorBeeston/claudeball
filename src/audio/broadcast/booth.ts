@@ -11,6 +11,7 @@ import { Director, type Action, type Level, type Topic } from './director';
 import { GameLog } from './gamelog';
 import { callsFor, LEX, type Call, type Env } from './lexicon';
 import { TopicPicker } from './stories';
+import { factsFor, type LmSource } from './lm';
 import { say } from './grammar';
 import type { BoothCtx } from './ctx';
 
@@ -26,6 +27,9 @@ export class Booth {
   private ctx: BoothCtx | null = null;
   private rng: () => number;
   private epoch = 0;
+  /** optional tiny language model for colour lines (experimental, off by default): its validated line is used now and then, else the grammar speaks */
+  lm: LmSource | null = null;
+  private recentSaid: string[] = [];
   /** where the game is: topics only start when the game is between pitches */
   canTalk = true;
   private live = { balls: 0, strikes: 0, outs: 0, batterId: '' as string | undefined };
@@ -44,6 +48,11 @@ export class Booth {
     const c = this.ctx;
     if (!c || !this.canTalk) return null;
     const tense = c.inning >= 7 && Math.abs(c.score.home - c.score.away) <= 2 || (c.runners[1] || c.runners[2]) && c.outs === 2;
+    if (this.lm) {
+      const line = this.rng() < 0.5 ? this.lm.take() : null;
+      this.lm.prepare(factsFor(c, this.log, this.recentSaid)); // precompute the next one while the game is busy
+      if (line) return { id: -1, tag: 'lm', turns: [{ speaker: 'color', text: line }] };
+    }
     return this.picker.next(this.log, c, !!tense);
   }
 
@@ -99,6 +108,7 @@ export class Booth {
     this.ctx = c;
     const out: Action[] = this.director.setSuppressed(opts.suppressed, t);
     if (!opts.suppressed) out.push(...this.director.tick(t));
+    for (const a of out) if (a.type === 'start') this.recentSaid = [...this.recentSaid, a.clauses.map((x) => x.text).join(' ')].slice(-4);
     for (const a of out) if (a.type === 'start') this.transcript.push({ t, voice: a.voice, text: a.clauses.map((x) => x.text).join(' '), tag: a.item.tag, imp: a.item.importance });
     if (this.transcript.length > 400) this.transcript.splice(0, this.transcript.length - 400);
     return out;
