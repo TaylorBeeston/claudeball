@@ -14,12 +14,13 @@ import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
 import { isFielderRole } from './roles';
+import { availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
 import type { GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
-export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss';
+export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss' | 'broll';
 
 interface Desired {
   pos: Vector3;
@@ -63,6 +64,10 @@ export interface DirectorOutput {
   replaying: boolean;
   /** playback speed of the replay being shown (animation time scale) */
   replaySpeed: number;
+  /** > 0 on the frame of a cut that should melt in from the previous picture: seconds the dissolve lasts */
+  dissolve: number;
+  /** the last picture should be kept (a dissolve may be asked for soon) */
+  capture: boolean;
 }
 
 export class CameraDirector {
@@ -99,6 +104,24 @@ export class CameraDirector {
   private tossFan = new Vector3();
   private kidTossing = false;
   private lastOnDeckCut = -99;
+  /** B-roll planner state */
+  readonly landmarks: Landmarks;
+  brollEnabled = true;
+  /** hold the current B-roll shot (screenshots / tests) */
+  brollLock = false;
+  private broll: { shot: BrollShot; start: number } | null = null;
+  private brollRig: BrollRig | null = null;
+  private brollRecent: { kind: BrollKind; subject?: string }[] = [];
+  private brollSeq = 0;
+  private shownThisLull = 0;
+  private lullTrack: { kind: string; first: number; mode: 'total' | 'remaining'; simStart: number; clockStart: number; inferred: boolean } | null = null;
+  private breakUntil = 0;
+  private reaction: { team: number; at: number } | null = null;
+  private beat: { kind: BrollKind; until: number } | null = null;
+  private dissolveReq = 0;
+  private wantCapture = false;
+  /** the lull the game is in right now (null: none), for tests and the HUD */
+  lullInfo: { kind: string; remaining: number } | null = null;
   private onDeckPending = -99;
   private replay: Replay | null = null;
   /** a contested play (close play / tag) waiting for its slow-motion replay */
@@ -132,6 +155,7 @@ export class CameraDirector {
     this.orbit.maxDistance = 400;
     this.orbit.maxPolarAngle = Math.PI * 0.495;
     sim.on((e) => this.events.push(e));
+    this.landmarks = { crowdShots: stadium.crowdShots, dugoutShots: this.dugoutShots, scoreboard: null, bullpens: DEFAULT_BULLPENS };
   }
 
   setAuto(auto: boolean) {
@@ -210,6 +234,15 @@ export class CameraDirector {
       case 'foul':
         this.holdUntil = this.clock + 1.6;
         break;
+      case 'signs_given':
+        this.beat = { kind: 'catcherSigns', until: this.clock + 1.2 };
+        break;
+      case 'shake_off':
+        this.beat = { kind: 'shakeOff', until: this.clock + 1.2 };
+        break;
+      case 'time_called':
+        this.beat = { kind: 'batterFace', until: this.clock + 1.2 };
+        break;
       case 'on_deck':
         // the next hitter got up in the dugout: the cutaway waits until he is loose at his circle (see update)
         this.onDeckPending = this.clock;
@@ -280,6 +313,7 @@ export class CameraDirector {
         break;
       case 'out':
       case 'run':
+        if (e.type === 'run') this.reaction = { team: live.half === 'top' ? 0 : 1, at: this.clock };
         if (e.type === 'out' && !this.hr) this.noteClosePlay(e, te.simTime, live);
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
         this.playEnd = te.simTime;
@@ -288,11 +322,18 @@ export class CameraDirector {
       case 'half_inning':
         this.hr = null;
         this.crowdPick = -1;
-        this.cutawayIdx = (this.cutawayIdx + 1) % 3;
-        this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
-        this.cutawayUntil = this.clock + 5.5;
-        this.cut('cutaway');
         this.inPlay = false;
+        this.shownThisLull = 0;
+        if (this.brollEnabled && !this.sim.skipping) {
+          // the break between half-innings is B-roll time; the sim's phase / lull says how long, a mock sim gets a fixed break
+          if (live.phase === undefined && live.lull === undefined) this.breakUntil = this.clock + 7;
+          this.cut('pitch');
+        } else {
+          this.cutawayIdx = (this.cutawayIdx + 1) % 3;
+          this.cutaway = (['crowd', 'dugout', 'wide'] as const)[this.cutawayIdx];
+          this.cutawayUntil = this.clock + 5.5;
+          this.cut('cutaway');
+        }
         break;
       case 'game_end':
         this.cut('wide');
@@ -321,6 +362,7 @@ export class CameraDirector {
         this.cut('pitch');
       }
     }
+    this.updateBroll(live, pit);
     // a ball kid starts to toss a foul ball to the stands while the game is waiting: show it (a pitch coming ends the shot at its windup)
     const kidToss = live.players.find((p) => p.role === 'ballkid' && p.anim === 'ballkid_toss');
     if (kidToss && !this.kidTossing && !this.hr && !this.inPlay && this.shot !== 'replay' && this.shot !== 'cutaway' && !this.sim.skipping && pit?.anim !== 'windup' && pit?.anim !== 'pitch') {
@@ -329,7 +371,7 @@ export class CameraDirector {
       this.cut('toss');
     }
     this.kidTossing = !!kidToss;
-    if (this.clock - this.onDeckPending < 40 && !this.inPlay && !this.hr && this.shot === 'pitch' && !this.sim.hold && !this.sim.skipping && pit?.anim === 'idle' && this.clock - this.lastOnDeckCut > 40) {
+    if (!this.brollEnabled && this.clock - this.onDeckPending < 40 && !this.inPlay && !this.hr && this.shot === 'pitch' && !this.sim.hold && !this.sim.skipping && pit?.anim === 'idle' && this.clock - this.lastOnDeckCut > 40) {
       const od = live.players.find((q) => q.role === 'ondeck');
       // loose at the circle: at field level, standing, a few metres up the line
       if (od && od.pos.y > -0.2 && Math.hypot(od.vel.x, od.vel.z) < 0.3 && Math.abs(od.pos.x) > 6 && Math.abs(od.pos.x) < 14 && od.pos.z < 4) {
@@ -348,7 +390,7 @@ export class CameraDirector {
       this.orbit.update();
       this.tgt.copy(this.orbit.target);
       this.pos.copy(this.camera.position);
-      return { renderState: live, focus: this.pos.distanceTo(this.tgt), aperture: 0, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1 };
+      return { renderState: live, focus: this.pos.distanceTo(this.tgt), aperture: 0, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
     }
 
     // ---- transitions driven by state -----------------------------------------------------
@@ -421,7 +463,105 @@ export class CameraDirector {
     this.applySmoothing(dt);
     const af = this.autofocus(rs, live, dt);
     void ball;
-    return { renderState: rs, focus: af.focus, aperture: af.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: !!label && this.shot === 'replay', replaySpeed: this.shot === 'replay' && this.replay ? this.replay.speed : 1 };
+    const dissolve = this.lastCutFrame ? this.dissolveReq : 0;
+    this.dissolveReq = 0;
+    return { renderState: rs, focus: af.focus, aperture: af.aperture, label, shot: this.shot, cut: this.lastCutFrame, replaying: !!label && this.shot === 'replay', replaySpeed: this.shot === 'replay' && this.replay ? this.replay.speed : 1, dissolve, capture: this.wantCapture };
+  }
+
+  /** The non-pitch time the game is in, with how many real seconds of it are left (null when pitching is about to happen / going on). */
+  private lullNow(live: GameState): { kind: string; remaining: number } | null {
+    let l: { kind: string; sec: number } | null = live.lull ?? null;
+    let inferred = false;
+    if (!l && live.phase === 'halfInningBreak') {
+      l = { kind: 'break', sec: 0 };
+      inferred = true;
+    }
+    if (!l && this.breakUntil > this.clock) {
+      l = { kind: 'break', sec: 0 };
+      inferred = true;
+    }
+    if (!l) {
+      this.lullTrack = null;
+      return null;
+    }
+    let tr = this.lullTrack;
+    if (!tr || tr.kind !== l.kind) tr = this.lullTrack = { kind: l.kind, first: l.sec, mode: 'total', simStart: live.time, clockStart: this.clock, inferred };
+    let remaining: number;
+    if (inferred) remaining = this.breakUntil > this.clock ? this.breakUntil - this.clock : 6; // the phase ends the break: always room for one more shot
+    else {
+      if (l.sec < tr.first - 0.5) tr.mode = 'remaining';
+      remaining = tr.mode === 'remaining' ? l.sec : tr.first - (live.time - tr.simStart);
+      remaining /= Math.max(1, this.sim.speed); // sim seconds -> real seconds when the game runs fast
+    }
+    return { kind: l.kind, remaining };
+  }
+
+  private brollSubjectsKey = 0;
+
+  /** Plan and fly B-roll while the game is in a lull; get back to the pitch camera before the delivery. */
+  private updateBroll(live: GameState, pit: PlayerSnap | undefined) {
+    if (this.brollLock && this.shot === 'broll') return;
+    const lull = this.brollEnabled && this.auto ? this.lullNow(live) : null;
+    this.lullInfo = lull;
+    this.wantCapture = !!lull || this.shot === 'broll';
+    if (!lull) this.shownThisLull = 0;
+    const calm = !this.hr && !this.inPlay && !this.close && !this.replay && !this.sim.skipping && !live.over && pit?.anim !== 'windup' && pit?.anim !== 'pitch';
+    if (this.shot === 'broll') {
+      if (!lull || !calm) return this.endBroll();
+      const cur = this.broll!;
+      const el = this.clock - cur.start;
+      const beat = this.beat && this.beat.until > this.clock && el >= 2.5;
+      if (el >= cur.shot.hold || lull.remaining < 0.8 || beat) {
+        const next = this.planBroll(live, lull);
+        if (next) this.startBroll(next);
+        else this.endBroll();
+      }
+      return;
+    }
+    if (!lull || !calm || this.shot !== 'pitch' || this.clock - this.shotStart < 0.7) return;
+    const next = this.planBroll(live, lull);
+    if (next) this.startBroll(next);
+  }
+
+  private planBroll(live: GameState, lull: { kind: string; remaining: number }): BrollShot | null {
+    const reaction = this.reaction && this.clock - this.reaction.at < 14 ? this.reaction : null;
+    const { available, subjects } = availableKinds(live, this.landmarks, { reaction: !!reaction });
+    const beat = this.beat && this.beat.until > this.clock && available.has(this.beat.kind) ? this.beat.kind : null;
+    const cur = this.broll && this.shot === 'broll' ? this.broll.shot.kind : null;
+    if (beat && beat !== cur && lull.remaining - 0.8 >= 2.5) {
+      this.beat = null;
+      const shot: BrollShot = { kind: beat, subject: subjects[beat], variant: this.brollSeq * 97 + 11, hold: Math.min(3.2, lull.remaining - 0.8), transition: 'cut' };
+      return shot;
+    }
+    const seed = ++this.brollSeq * 1013 + Math.floor(live.time * 10);
+    const shot = planNext({
+      lull: { kind: lull.kind as never, remaining: lull.remaining },
+      available,
+      subjects,
+      recent: this.brollRecent,
+      seed,
+      reactionTeam: reaction ? reaction.team : null,
+      shownThisLull: this.shownThisLull,
+    });
+    if (shot && shot.kind === 'dugoutReaction') this.reaction = null;
+    return shot;
+  }
+
+  private startBroll(shot: BrollShot) {
+    this.broll = { shot, start: this.clock };
+    this.brollRecent.push({ kind: shot.kind, subject: shot.subject });
+    if (this.brollRecent.length > 12) this.brollRecent.shift();
+    this.shownThisLull++;
+    if (shot.transition === 'dissolve') this.dissolveReq = 0.6;
+    this.cut('broll');
+  }
+
+  private endBroll() {
+    const was = this.broll?.shot;
+    this.broll = null;
+    if (this.shot !== 'broll') return;
+    if (was?.transition === 'dissolve') this.dissolveReq = 0.45;
+    this.cut('pitch');
   }
 
   /** Runners / the batter-runner that are actually moving (ball in play). */
@@ -593,7 +733,7 @@ export class CameraDirector {
     }
     const dist = Math.max(1, subj.distanceTo(this.pos));
     const focus = this.lastCutFrame ? (this.rack.snap(dist), dist) : this.rack.step(dist, dt);
-    const slab = slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
+    const slab = this.shot === 'broll' && this.brollRig ? this.brollRig.slab : slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
     // a shot that asks for a shallower look than its slab allows (des.aperture) keeps its own, never deeper focus than the slab needs
     const aperture = slab === 0 ? 0 : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
     return { focus, aperture };
@@ -772,6 +912,19 @@ export class CameraDirector {
         d.aperture = 0.7;
         d.lp = d.lt = d.lf = 20;
         this.focusTarget.copy(d.tgt);
+        break;
+      }
+      case 'broll': {
+        if (!this.broll) break;
+        this.brollRig = computeRig(this.broll.shot, { state: rs, lm: this.landmarks, t: this.clock - this.broll.start, aspect: this.camera.aspect, battingSide: rs.half === 'top' ? 0 : 1 }, this.brollRig ?? undefined);
+        const r = this.brollRig;
+        d.pos.copy(r.pos);
+        d.tgt.copy(r.tgt);
+        d.fov = r.fov;
+        d.focus = d.pos.distanceTo(r.focus);
+        d.aperture = r.slab > 0 ? 1 : 0;
+        d.lp = r.lp; d.lt = r.lt; d.lf = r.lf;
+        this.focusTarget.copy(r.focus);
         break;
       }
       case 'coach': {
@@ -1018,6 +1171,13 @@ export class CameraDirector {
     this.lastCoachCut = -99;
     this.lastOnDeckCut = -99;
     this.onDeckPending = -99;
+    this.broll = null;
+    this.brollRecent = [];
+    this.shownThisLull = 0;
+    this.lullTrack = null;
+    this.breakUntil = 0;
+    this.reaction = null;
+    this.beat = null;
     this.cutawayUntil = 0;
     this.actionQuiet = 0;
     this.lastEventText = '';

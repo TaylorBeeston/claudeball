@@ -201,6 +201,12 @@ export class Engine {
       };
       const benchBox = boxOf('Dugout_3B_Bench') ?? boxOf('Dugout_1B_Bench');
       this.side.setLayout(makeLayout([boxOf('Dugout_1B'), boxOf('Dugout_3B')], benchBox ? benchBox.max.y : undefined));
+      // B-roll landmarks: the bullpens (away −X, home +X) and the scoreboard
+      const centre = (o: Object3D | undefined | null) => (o ? new Box3().setFromObject(o).getCenter(new Vector3()) : null);
+      const pens = ['Bullpen_L', 'Bullpen_R'].map((n) => centre(a.field!.getObjectByName(n))).filter((v): v is Vector3 => !!v).sort((p, q) => p.x - q.x);
+      if (pens.length === 2) this.director.landmarks.bullpens = [pens[0].setY(0), pens[1].setY(0)];
+      const sb = centre(a.stadium?.getObjectByName('Scoreboard'));
+      if (sb) this.director.landmarks.scoreboard = sb;
       // ground under the stands / beyond the field mesh
       const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
       under.position.y = -0.06;
@@ -491,6 +497,8 @@ export class Engine {
       } else this.post.setMotion(0, 0);
       this.prevFar = fwd.clone();
     }
+    this.post.capture = out.capture;
+    if (out.dissolve > 0) this.post.startDissolve(out.dissolve);
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
     this.stadium.crowd.update(this.time, dt);
     this.lights.update(this.time);
