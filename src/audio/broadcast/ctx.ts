@@ -1,4 +1,37 @@
-import type { ChatCtx } from '../commentary';
+export interface ChatPerson {
+  id: string;
+  name: string;
+  number?: number;
+  /** bats (batters) or throws (pitchers) */
+  hand?: 'L' | 'R' | 'S';
+  ratings?: Record<string, number>;
+  /** batter line this game */
+  bat?: { pa: number; ab: number; h: number; hr: number; bb: number; so: number; rbi: number; sb: number; doubles?: number; triples?: number };
+  /** pitcher line this game */
+  pit?: { outs: number; so: number; bb: number; h: number; er: number; r?: number; pitches: number; hr: number };
+}
+
+export interface ChatCtx {
+  inning: number;
+  half: 'top' | 'bottom';
+  outs: number;
+  balls: number;
+  strikes: number;
+  score: { home: number; away: number };
+  runners: [boolean, boolean, boolean];
+  /** names of the runners on first, second, third (when known) and their speed grade */
+  runnerNames?: [string?, string?, string?];
+  runnerSpeed?: [number?, number?, number?];
+  teams: { home: string; away: string };
+  batter?: ChatPerson;
+  pitcher?: ChatPerson;
+  /** crowd excitement 0..1 */
+  crowd?: number;
+  /** the sim's description of the last play, if any */
+  lastPlay?: string;
+}
+
+
 
 /** What the booth knows about the game right now (built from the sim snapshot by the controller; fixtures in tests). */
 export interface BoothCtx extends ChatCtx {

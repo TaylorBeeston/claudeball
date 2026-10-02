@@ -115,9 +115,7 @@ describe('big moments', () => {
     expect(sfx(home, 'seat_thump')).toHaveLength(1);
     expect(sfx(home, 'firework')).toHaveLength(1);
     expect(home.some((c) => c.kind === 'organ' && c.id === 'hr_fanfare')).toBe(true);
-    const line = says(home).find((s) => s.role === 'pbp')!;
-    expect(line.text).toContain('outta here');
-    expect(line.text).toContain('410 feet');
+    expect(says(home).some((s) => s.role === 'pbp' || s.role === 'color')).toBe(false); // the broadcast booth (src/audio/broadcast) calls it, not the cue mapper
     const away = m(ev, ctx({ half: 'top' }));
     expect(away.some((c) => c.kind === 'organ')).toBe(false);
     expect(away.some((c) => c.kind === 'crowd' && c.id === 'boo')).toBe(true);
@@ -130,7 +128,7 @@ describe('big moments', () => {
     const cheer = cues.find((c) => c.kind === 'crowd' && c.id === 'roar_big') as Extract<Cue, { kind: 'crowd' }>;
     expect(gasp).toBeTruthy();
     expect(cheer.delay!).toBeGreaterThan(gasp.delay!);
-    expect(says(cues)[0].text).toContain('Robbed');
+    expect(says(cues)).toHaveLength(0);
   });
 
   it('strikeout cheers for the home pitcher and does not double up the umpire out call', () => {
@@ -175,41 +173,19 @@ describe('throws, wall, errors', () => {
   it('errors groan', () => {
     const cues = m({ type: 'error', fielderId: 'ss', kind: 'throw' });
     expect(cues.some((c) => c.kind === 'crowd' && c.id === 'groan')).toBe(true);
-    expect(says(cues)[0].text).toBe('Pat Short throws it away!');
+    expect(says(cues)).toHaveLength(0);
   });
 });
 
-describe('commentary text', () => {
-  it('reuses the sim play description and appends the score when runs came in', () => {
-    const mapper = new CueMapper();
-    const c = ctx({ score: { home: 3, away: 1 } });
-    const s = says(mapper.map({ type: 'playEnd', description: 'Tyler Vance doubles to left; 2 runs score.' }, c));
-    expect(s[0].role).toBe('pbp');
-    expect(s[0].text).toBe('Tyler Vance doubles to left; 2 runs score. Stars 1, Comets 3.');
-    // no score change: no scoreline; a lower priority
-    const s2 = says(mapper.map({ type: 'playEnd', description: 'Pat Short grounds out.' }, c));
-    expect(s2[0].text).toBe('Pat Short grounds out.');
-    expect(s2[0].pri).toBeLessThan(s[0].pri);
-  });
-
-  it('does not repeat the play line after a home run call', () => {
-    const mapper = new CueMapper();
-    mapper.map({ type: 'homeRun', batterId: 'b1', distance: 120 }, ctx());
-    expect(says(mapper.map({ type: 'playEnd', description: 'Tyler Vance homers to left.' }, ctx()))).toHaveLength(0);
-  });
-
-  it('uses no gendered pronouns', () => {
-    const all: string[] = [];
+describe('speech cues are only the stadium side', () => {
+  it('the mapper speaks the PA and the umpire; play-by-play and colour belong to the booth', () => {
     const mapper = new CueMapper();
     const evs: RawEvent[] = [
-      { type: 'batterUp', batterId: 'b1', pitcherId: 'p1' },
-      { type: 'homeRun', batterId: 'b1', distance: 120 },
-      { type: 'robbedHomeRun', fielderId: 'f1', batterId: 'b1' },
-      { type: 'error', fielderId: 'ss', kind: 'drop' },
-      { type: 'gameEnd', winner: 'home', home: 5, away: 3 },
+      { type: 'batterUp', batterId: 'b1', pitcherId: 'p1' }, { type: 'homeRun', batterId: 'b1', distance: 120 }, { type: 'robbedHomeRun', fielderId: 'f1', batterId: 'b1' },
+      { type: 'error', fielderId: 'ss', kind: 'drop' }, { type: 'gameEnd', winner: 'home', home: 5, away: 3 }, { type: 'playEnd', description: 'Tyler Vance homers to left.' },
+      { type: 'contact', batterId: 'b1', exitMph: 105, launchDeg: 25, sprayDeg: 5 }, { type: 'call', call: { kind: 'strikeLooking', balls: 0, strikes: 2 } },
     ];
-    for (const e of evs) for (const s of says(mapper.map(e, ctx()))) all.push(s.text);
-    expect(all.join(' ')).not.toMatch(/\b(he|his|him|she|her)\b/i);
+    for (const e of evs) for (const s of says(mapper.map(e, ctx()))) expect(['pa', 'ump']).toContain(s.role);
   });
 });
 

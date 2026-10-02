@@ -14,7 +14,12 @@ import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
 import { HD_MODES, hdSupported, pickMode } from './hdInfo';
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
-import { Chatter, LEVELS, type ChatCtx, type ChatLine, type ChatPerson, type Phase } from './commentary';
+import { Booth } from './broadcast/booth';
+import { BoothSink } from './broadcast/channels';
+import { SpeechGate } from './broadcast/gate';
+import { ctxFromRaw, type BoothCtx } from './broadcast/ctx';
+
+type Phase = 'prePitch' | 'betweenBatters' | 'break';
 import { listenerFromMatrix } from './spatial';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
 
@@ -124,10 +129,14 @@ export class AudioController {
   private levelTimer = 0;
   private rawState: Record<string, any> | null = null;
   private raw: RawBus | null;
-  /** the booth: play-by-play + colour chatter, grounded in the sim state */
-  private chatter = new Chatter();
+  /** the broadcast booth (play-by-play + colour, a conversation grounded in the game) and the two independent speech channels */
+  readonly booth: Booth;
+  private sink: BoothSink;
+  readonly gate: SpeechGate;
+  private bctx: BoothCtx | null = null;
+  private bctxAt = 0;
+  private boothWasSuppressed = true;
   private phase: Phase | null = null;
-  private lastPull = 0;
   private lastPlayText = '';
   private offs: (() => void)[] = [];
 
@@ -147,7 +156,11 @@ export class AudioController {
     this.ambience = new Ambience(this.mixer);
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
-    this.speech = new SpeechQueue(this.sw);
+    // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
+    this.gate = new SpeechGate(this.sw);
+    this.speech = new SpeechQueue(this.gate.view('field'));
+    this.booth = new Booth({ rng: Math.random, level: this.settings.chatter });
+    this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw });
@@ -446,41 +459,15 @@ export class AudioController {
     };
   }
 
-  private chatCtx(st: StateLike): ChatCtx | null {
-    const rs = (this.rawState ??= this.raw?.getState?.() ?? null) as Record<string, any> | null;
+  /** the booth's view of the game: rebuilt from the sim state (at most every 250 ms unless an event just happened) */
+  private boothCtx(force = false): BoothCtx | null {
+    const now = performance.now();
+    if (!force && this.bctx && now - this.bctxAt < 250) return this.bctx;
+    const rs = this.raw?.getState?.();
     if (!rs) return null;
-    const bi = rs.batter?.info;
-    const pi = rs.pitcher?.info;
-    const batter: ChatPerson | undefined = bi && { id: bi.id, name: bi.name, number: bi.jersey, hand: bi.bats, ratings: bi.ratings, bat: rs.batter.line };
-    const pitcher: ChatPerson | undefined = pi && { id: pi.id, name: pi.name, number: pi.jersey, hand: pi.throws, ratings: pi.ratings, pit: { ...rs.pitcher.line, pitches: rs.pitcher.pitchCount ?? rs.pitcher.line?.pitches ?? 0 } };
-    const runners = [rs.runners?.first, rs.runners?.second, rs.runners?.third];
-    const speedOf = (r: any) => (r ? (rs.players as any[] | undefined)?.find((p) => p.id === r.playerId)?.ratings?.speed : undefined);
-    return {
-      inning: st.inning, half: st.half, outs: st.outs, balls: st.count.balls, strikes: st.count.strikes, score: { home: st.score.home, away: st.score.away },
-      runners: st.runners, runnerNames: [runners[0]?.name, runners[1]?.name, runners[2]?.name], runnerSpeed: [speedOf(runners[0]), speedOf(runners[1]), speedOf(runners[2])],
-      teams: { home: st.teams.home.name, away: st.teams.away.name }, batter, pitcher, crowd: this.excitement.level, lastPlay: this.lastPlayText,
-    };
-  }
-
-  /** Queue the booth's lines (delayed ones through timers); only at normal speed and with commentary on. */
-  private say(lines: ChatLine[], speed: number) {
-    if (!lines.length || this.settings.chatter === 'low') return; // Low: only the event-driven big-play calls, no filler or colour
-    for (const l of lines) {
-      const run = () => {
-        const ok = !this.locked && !this.settings.muted && speed <= 1.01 && !this.host.sim.skipping && this.speech.enabled[l.role] && this.speech.available();
-        if (ok) this.speech.enqueue({ role: l.role, text: l.text, pri: l.pri, ttl: l.ttl, group: l.group });
-        this.debug.chat[l.tag] = (this.debug.chat[l.tag] ?? 0) + 1;
-        this.debug.cues.push({ t: Math.round(performance.now()), simInning: '', kind: 'chat', id: l.role, played: ok, text: l.text });
-        if (this.debug.cues.length > 300) this.debug.cues.shift();
-      };
-      if (l.delay > 0) {
-        const t = setTimeout(() => {
-          this.timers.delete(t);
-          run();
-        }, l.delay * 1000);
-        this.timers.add(t);
-      } else run();
-    }
+    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText });
+    this.bctxAt = now;
+    return this.bctx;
   }
 
   private dispatch(c: Cue, st: StateLike, simSpeed: number) {
@@ -537,8 +524,6 @@ export class AudioController {
       case 'speak': {
         if (this.locked || this.settings.muted) return false;
         if (!this.speech.enabled[c.role]) return false;
-        // chatter "low": only the main play-by-play, no colour commentary
-        if (this.settings.chatter === 'low' && (c.role === 'color' || (c.role === 'pbp' && c.pri < PRI.pbp))) return false;
         if (!this.speech.available()) {
           // no voices in this browser: the umpire still gets a shout so the call is audible
           if (c.role === 'ump') return m.playSfx({ kind: 'sfx', id: 'ump_yell', gain: 0.7, imp: 2, pos: c.pos ? { x: c.pos.x, y: 1.7, z: c.pos.z } : undefined });
@@ -566,9 +551,8 @@ export class AudioController {
       if (replay !== this.wasReplay) {
         if (replay) {
           this.mixer.playSfx({ kind: 'sfx', id: 'replay_whoosh', gain: 0.5, imp: 1 });
-          this.rawState = null;
-          const cc = this.raw ? this.chatCtx(st) : null;
-          if (cc) this.say(this.chatter.replay(cc), sim.speed);
+          const cc = this.raw ? this.boothCtx(true) : null;
+          if (cc) this.booth.replay(cc, performance.now() / 1000);
         }
         this.wasReplay = replay;
       }
@@ -577,6 +561,7 @@ export class AudioController {
       if (sim.skipping && !this.wasSkipping) {
         this.pending.length = 0;
         this.speech.clear();
+        this.sink.stopAll();
         for (const t of this.timers) clearTimeout(t);
         this.timers.clear();
       }
@@ -584,12 +569,12 @@ export class AudioController {
       // the organ: silent while paused / muted / skipping, a soft bed in the gaps, and the booth waits out the seventh-inning stretch
       if ((sim.paused || sim.skipping || this.settings.muted || !this.settings.organ || this.locked) && this.organ.playing) this.organ.stop(0.25);
       if (sim.skipping) this.bedWanted = false;
-      const speaking = !!this.speech.speaking;
+      const speaking = this.gate.busy.field + this.gate.busy.booth > 0;
       if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
+      // PA and booth sit under each other (about -5 dB for the PA while the booth talks, -2 dB for the booth under the PA): neither is muted
+      if (this.gate.concurrent) this.mixer.setVoiceDuck(this.gate.busy.booth > 0 ? 0.56 : 1, this.gate.busy.field > 0 ? 0.79 : 1);
       if (this.bedWanted && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
       const stretch = this.organ.playing === 'stretch';
-      if (stretch && !this.speech.hold) this.speech.clearRoles(['pbp', 'color']);
-      this.speech.hold = stretch;
       if (sim.speed > 1.01 && this.lastSpeed <= 1.01) this.speech.clear();
       this.lastSpeed = sim.speed;
 
@@ -598,8 +583,7 @@ export class AudioController {
         const ctx = this.buildCtx(st);
         const batch = this.pending;
         this.pending = [];
-        const cc = this.raw ? this.chatCtx(st) : null;
-        const level = this.settings.chatter;
+        const cc = this.raw ? this.boothCtx(true) : null;
         for (const { ev, at } of batch) {
           // a new batter may not be on the field yet: wait a moment for the name
           if (ev.type === 'batterUp' && !ctx.person(ev.batterId) && now - at < 1500) {
@@ -607,10 +591,7 @@ export class AudioController {
             continue;
           }
           for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
-          if (cc) {
-            this.chatter.observe(ev, cc);
-            this.say(this.chatter.react(ev, cc, level), sim.speed);
-          }
+          if (cc && !sim.skipping) this.booth.observe(ev, cc, performance.now() / 1000);
         }
       }
 
@@ -629,14 +610,16 @@ export class AudioController {
           if (this.debug.energy.length > 600) this.debug.energy.shift();
         }
       }
-      // idle chatter: when the booth has been quiet long enough and the game is between pitches
-      if (this.phase && this.raw && sim.speed <= 1.01 && !sim.paused && !sim.skipping && !this.locked && !this.settings.muted && this.settings.commentary && !this.speech.hold && this.speech.available()) {
-        const cfg = LEVELS[this.settings.chatter];
-        if (this.speech.idleMs() >= cfg.quiet * 1000 && now - this.lastPull >= cfg.quiet * 1000) {
-          this.lastPull = now;
-          this.rawState = null;
-          const cc = this.chatCtx(st);
-          if (cc) this.say(this.chatter.pull(cc, this.phase, this.settings.chatter), sim.speed);
+      // the booth: its director decides who speaks when; it is silent at 2x and above, while skipping, paused, muted or switched off, and during the stretch
+      {
+        const suppressed = sim.speed > 1.01 || sim.skipping || sim.paused || this.locked || this.settings.muted || !this.settings.commentary || this.organ.playing === 'stretch' || !this.raw;
+        if (suppressed && !this.boothWasSuppressed) this.sink.stopAll();
+        this.boothWasSuppressed = suppressed;
+        const cc = this.raw ? this.boothCtx() : null;
+        if (cc) {
+          this.booth.setLevel(this.settings.chatter);
+          this.booth.canTalk = this.phase !== null;
+          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed }));
         }
       }
       this.speech.pump();
@@ -712,7 +695,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats }, chat: a.debug.chat, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

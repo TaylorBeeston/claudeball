@@ -155,13 +155,6 @@ describe('catches', () => {
   });
 });
 
-describe('commentary timing', () => {
-  it('waits for the umpire\'s ruling before reading the play when umpire events exist', () => {
-    const line = (m: CueMapper) => says(m.map({ type: 'playEnd', description: 'Cal Mask strikes out swinging.' }, ctx()))[0];
-    expect(line(new CueMapper({ detailed: true })).delay!).toBeGreaterThan(line(new CueMapper()).delay! + 0.5);
-  });
-});
-
 describe('raw bus lookup', () => {
   it('uses the public RealSimAdapter.game getter, falls back to the old private g, else null', () => {
     const bus = { on: () => () => {} };
