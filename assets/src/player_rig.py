@@ -18,8 +18,18 @@ def joints():
         J[side+"UpLeg"] = ("Hips", m(V(.095, 0, .94)), m(V(.09, -.01, .52))); J[side+"Leg"] = (side+"UpLeg", m(V(.09, -.01, .52)), m(V(.09, 0, .085)))
         J[side+"Foot"] = (side+"Leg", m(V(.09, 0, .085)), m(V(.09, -.13, .03))); J[side+"ToeBase"] = (side+"Foot", m(V(.09, -.13, .03)), m(V(.09, -.235, .025)))
     return J
-JOINTS = joints()
+def joints_mpfb():
+    """Joints measured on the fitted MPFB body (src/mpfb/joints.json, written by mpfb_extract.py); the same 22 bones, legs / hips identical to joints() (hip .94, knee .52, ankle .085)."""
+    import json, os
+    here = globals().get("CB_SRC") or os.path.join(os.environ.get("CB_ASSETS", "."), "src")
+    p = os.path.join(here, "mpfb", "joints.json")
+    if not os.path.exists(p): return None
+    d = json.load(open(p)); base = joints(); J = {}
+    for n in base: J[n] = (base[n][0], V(*d[n][0]), V(*d[n][1]))
+    return J
+JOINTS = joints_mpfb() or joints()
 ORDER = list(JOINTS.keys())
+ARM_D = (JOINTS["LeftForeArm"][1] - JOINTS["LeftArm"][1]).normalized(); ARM_SH = JOINTS["LeftArm"][1].copy()      # rest direction of the left arm and its shoulder joint (everything arm-shaped derives from these)
 
 def build_armature():
     arm = bpy.data.armatures.new("Armature"); ob = bpy.data.objects.new("Armature", arm); bpy.context.collection.objects.link(ob)
