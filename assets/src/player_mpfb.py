@@ -7,9 +7,13 @@ from mathutils import Vector
 from mathutils.kdtree import KDTree
 MP = os.path.join(globals().get("CB_SRC") or os.path.join(os.environ.get("CB_ASSETS", "."), "src"), "mpfb")
 _B = None
+FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
 def base():
     global _B
-    if _B is None: _B = dict(np.load(os.path.join(MP, "base_body.npz"), allow_pickle=False))
+    if _B is None:
+        _B = dict(np.load(os.path.join(MP, "base_body.npz"), allow_pickle=False))
+        P = _B["P"].copy(); lo = P[:, 2] < FOOT_ANK; P[lo, 2] = FOOT_ANK - (FOOT_ANK - P[lo, 2])*FOOT_K      # lifts the foot sole by FOOT_LIFT (skinned feet of the straightened legs sank 8-15 mm in the clips): compress the foot below the ankle joint
+        _B["P"] = P
     return _B
 HC = Vector((0, -.065, 1.735))                                   # skull centre (replaces the procedural head's centre for headwear / hair builders)
 LM = dict(eyeL=(.032, -.146, 1.732), eyeR=(-.032, -.146, 1.732), nose=(0, -.185, 1.688), mouth=(0, -.150, 1.640), crown=(0, -.069, 1.85), ear_z=1.727, ear_x=.090)
@@ -145,7 +149,7 @@ def add_hand_finger_keys(obj, vm, side, base_spec="fist"):
     for n in (1, 2, 3, 4):
         cu = list(cu0); cu[0] = max(cu[0], .6)
         for i in range(1, 5): cu[i] = 0.0 if i <= n else 1.0
-        Pp = posed_hand(side, tuple(cu)); sk = obj.shape_key_add(name=f"fingers_{n}", from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0
+        Pp = posed_hand(side, tuple(cu)); sk = obj.shape_key_add(name=f"fingers_{n}", from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.value = 0.0
         sk.data.foreach_set("co", Pp[vm].astype(np.float32).ravel())
 
 def _tip_of(side, fi, c, n, spread=0.0, adduct=0.0):
@@ -168,29 +172,43 @@ def _tip_of(side, fi, c, n, spread=0.0, adduct=0.0):
     for k in range(3):
         pv = (M @ np.append(pivots[k], 1))[:3]; ax = M[:3, :3] @ axis; M = _rot(ax, ang[k]*c, pv) @ M
     return (M @ np.append(tip, 1))[:3]
-def claw_ball_fit(side="Right", r=.0369, pad=.004):
-    """Fit the claw (ball-ready) hand: search ball centre C above the palm, a fan angle and, per finger, the curl that puts its tip pad on the ball surface (|tip - C| = r + pad). Returns (curls, spread, C)."""
+def claw_ball_fit(side="Right", r=.0369, pad=.004, ntop=600):
+    """Fit the claw (ball-ready) hand: search ball centre C above the palm, a fan angle and, per finger, the FIRST curl (coming from the open hand) at which its tip pad reaches the ball surface (|tip - C| = r + pad); candidates are ranked by pad error and the best one whose whole posed hand stays outside the ball (no vertex closer than r - 3 mm) is kept. Returns (curls, spread, C)."""
     n = hand_normal(side); pc = _palm_centre(side, n); b = base(); CH = np.asarray(b["CH_" + side], float)
     d0 = (CH[2][3] - CH[2][0]); zh = d0/np.linalg.norm(d0); yh = np.cross(n, zh); yh /= np.linalg.norm(yh)
-    grid = np.linspace(0, 1.25, 51); R = r + pad; best = None
+    grid = np.linspace(0, 1.25, 126); R = r + pad; cands = []
+    sel = split_parts()["hand_" + ("L" if side == "Left" else "R")]; q, nq, _off = _faces(); used = np.unique(np.concatenate([q[i, :nq[i]] for i in np.where(sel)[0]]))
     for sp in (-6.0, 0.0, 6.0, 12.0):
         tipsg = np.array([[_tip_of(side, fi, c, n, spread=sp) for c in grid] for fi in range(5)])
         for h in np.arange(.032, .090, .004):
             for zo in np.arange(-.02, .09, .01):
                 for yo in np.arange(-.03, .0301, .01):
-                    C = pc + n*h + zh*zo + yh*yo; dist = np.linalg.norm(tipsg - C, axis=2); err = np.abs(dist - R); k = err.argmin(1); e = err[np.arange(5), k]; cost = (e**2).sum()
+                    C = pc + n*h + zh*zo + yh*yo; dist = np.linalg.norm(tipsg - C, axis=2); cu = np.zeros(5); cost = 0.0
+                    for fi in range(5):
+                        hit = np.where(dist[fi] <= R)[0]
+                        if len(hit) and hit[0] > 0:
+                            k = hit[0]; lo, hi = grid[k - 1], grid[k]; cu[fi] = hi; cost += (dist[fi][k] - R)**2
+                        elif len(hit): cu[fi] = 0.0; cost += (dist[fi][0] - R)**2
+                        else: k = dist[fi].argmin(); cu[fi] = grid[k]; cost += (dist[fi][k] - R)**2 + 1e-4
                     if np.linalg.norm(C - (pc - n*.012)) < r + .014: cost += 1.0
-                    if best is None or cost < best[0]: best = (cost, C.copy(), grid[k].copy(), sp)
-    cost, C, cu, sp = best
-    for fi in range(5):
-        lo, hi = max(0, cu[fi] - .03), cu[fi] + .03
-        dl, dh = np.linalg.norm(_tip_of(side, fi, lo, n, spread=sp) - C) - R, np.linalg.norm(_tip_of(side, fi, hi, n, spread=sp) - C) - R
-        if dl*dh < 0:
-            for _b in range(16):
-                mid = (lo + hi)/2; dm = np.linalg.norm(_tip_of(side, fi, mid, n, spread=sp) - C) - R
-                if dm*dl > 0: lo, dl = mid, dm
-                else: hi = mid
-            cu[fi] = (lo + hi)/2
+                    cands.append((cost, C.copy(), cu, sp))
+    cands.sort(key=lambda t: t[0]); best = None; seen = 0
+    for cost, C, cu, sp in cands[:ntop]:
+        cu = cu.copy()
+        for fi in range(5):                                                       # refine the first crossing by bisection
+            hi = cu[fi]; lo = max(0.0, hi - (grid[1] - grid[0]))
+            dl, dh = np.linalg.norm(_tip_of(side, fi, lo, n, spread=sp) - C) - R, np.linalg.norm(_tip_of(side, fi, hi, n, spread=sp) - C) - R
+            if dl*dh < 0:
+                for _b in range(16):
+                    mid = (lo + hi)/2; dm = np.linalg.norm(_tip_of(side, fi, mid, n, spread=sp) - C) - R
+                    if dm*dl > 0: lo, dl = mid, dm
+                    else: hi = mid
+                cu[fi] = (lo + hi)/2
+        Pp = posed_hand(side, tuple(float(x) for x in cu), thumb_adduct=0.0, spread=sp); dmin = np.linalg.norm(Pp[used] - C, axis=1).min()
+        seen += 1
+        if best is None or dmin > best[0]: best = (dmin, C, cu, sp)
+        if dmin >= r - .003: best = (dmin, C, cu, sp); break
+    dmin, C, cu, sp = best
     return tuple(float(x) for x in cu), float(sp), C
 def ball_hand_frame_coords(C, side="Right"):
     """Ball centre in the rig's hand frame (x palm normal, y thumb side, z along the hand) relative to the wrist joint."""
@@ -252,7 +270,7 @@ def build_eyes():
             for sx in (1, -1):
                 c = np.array([sx*.032, -.146, 1.732]); m = (np.sign(Pn[:, 0] - 0.0) == sx); R = np.array(Matrix.Rotation(math.radians(ang), 3, axis))
                 out[m] = (Pn[m] - c) @ R.T + c
-            sk = o.shape_key_add(name=key, from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.data.foreach_set("co", out.astype(np.float32).ravel())
+            sk = o.shape_key_add(name=key, from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.value = 0.0; sk.data.foreach_set("co", out.astype(np.float32).ravel())
     return objs
 
 # ---------------------------------------------------------------- bundled CC0 assets as objects (hair cards, brows, lashes, teeth)
