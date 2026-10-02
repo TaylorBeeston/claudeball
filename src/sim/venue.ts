@@ -54,3 +54,12 @@ export function dugoutFloorY(x: number, z: number): number {
   if (s < 13.4) return DUG_FLOOR + Math.min(1.05, (13.4 - s) * 0.95);
   return DUG_FLOOR;
 }
+
+/** The manager and the pitching coach stand at the dugout rail (front of the dugout, home-plate end), inside the pit. */
+export const managerSpot = (side: TeamSide) => alongLine(15.0, 9.2, side);
+export const pitchCoachSpot = (side: TeamSide) => alongLine(16.8, 9.2, side);
+/** Where a visitor stands at the mound (between the pitcher and the plate), and the ring spots of the infielders who join. */
+export const moundVisitor = { x: 0.7, z: 17.0 };
+export const moundRing: Record<string, { x: number; z: number }> = { '1B': { x: -2.3, z: 17.6 }, '2B': { x: -2.6, z: 19.6 }, SS: { x: 2.6, z: 19.6 }, '3B': { x: 2.3, z: 17.6 } };
+/** Where the umpires gather for a review (a huddle in front of the plate, on the first-base side). */
+export const umpHuddle = (k: number) => ({ x: -1.6 + 1.1 * (k % 2), z: 5.0 + 1.1 * Math.floor(k / 2) });

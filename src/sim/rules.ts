@@ -1,5 +1,6 @@
 import { emit } from './events';
 import { toBench } from './dugout';
+import * as visits from './visits';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import { setGoal } from './movement';
@@ -192,6 +193,7 @@ export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: Pla
   if (r.isBatter && play) play.batterOut = true;
   const margin = info.margin;
   emit(w, { type: 'out', playerId: r.p.info.id, outType, fielders: fielders.map((f) => f.info.id), base, ...(margin !== undefined ? { margin, closePlay: Math.abs(margin) < 0.1 } : {}) });
+  if (margin !== undefined && base !== null && (outType === 'force' || outType === 'tag' || outType === 'caughtStealing' || outType === 'pickoff')) visits.noteClose(w, 'out', r.p.info.id, base, margin);
   // the umpire at that bag (or the nearest one, for a tag in the open) signals it after the play
   if (outType === 'force' || outType === 'tag' || outType === 'pickoff' || outType === 'caughtStealing' || outType === 'tagUp') {
     const b = base ?? (r.target > r.base ? r.target : r.base);
@@ -314,6 +316,7 @@ export function toPlayOver(w: World, seconds = 2.6): void {
 /** Called when the playOver timer elapses. */
 export function afterPlayOver(w: World): void {
   if (w.gameOver) return;
+  if (!visits.reviewStage(w)) return; // a managerial challenge of a close call (tempo)
   if (w.outs >= 3) {
     endHalfInning(w);
     return;

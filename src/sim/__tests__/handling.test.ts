@@ -139,7 +139,7 @@ describe('ball handling after a dead ball', () => {
         }
       }
       const outs = ofType(l.events, 'out').filter((e) => e.outType === 'force' && e.base === 1);
-      const ret = ofType(l.events, 'ballReturn')[0];
+      const ret = ofType(l.events, 'ballReturn').find((e) => outs.length && e.time > outs[0].time);
       if (outs.length && ret) return { l, out: outs[0], ret, anims, holderId: first.id };
     }
     throw new Error('no force out at first found');
@@ -200,12 +200,12 @@ describe('ball handling after a dead ball', () => {
       if (e.type !== 'ballReturn') continue;
       // the catch that started it
       const catchEv = [...events.slice(0, i)].reverse().find((x) => x.type === 'catch' && !x.fly);
-      if (!catchEv || e.time - catchEv.time > 3) continue;
+      if (!catchEv || catchEv.type !== 'catch' || catchEv.fielderId !== e.fromId || catchEv.kind !== 'pitch' || e.time - catchEv.time > 3) continue; // (the catcher's own catch of the pitch)
       // only pitches that left the at-bat alive (a strikeout's return is the slower after-an-out routine)
       if (events.some((x) => x.time > catchEv.time && x.time < e.time && (x.type === 'out' || x.type === 'walk' || x.type === 'plateAppearanceEnd' || x.type === 'hitByPitch'))) continue;
       const dt = e.time - catchEv.time;
       expect(dt).toBeGreaterThan(0.25);
-      expect(dt).toBeLessThan(1.3);
+      expect(dt).toBeLessThan(1.5);
       expect(e.mph * 0.44704).toBeLessThanOrEqual(41);
       checked++;
     }

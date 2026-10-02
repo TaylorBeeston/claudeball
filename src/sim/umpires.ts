@@ -94,6 +94,7 @@ export function tickUmpires(w: World): void {
   for (const u of w.umpires) {
     let goal = restSpot(u);
     for (const b of bases) if (KEY_OF_BASE[b] === u.key) goal = idealSpot(w, b);
+    if (u.hold) goal = u.hold;
     if (Math.abs(goal.x - u.gx) > 0.01 || Math.abs(goal.z - u.gz) > 0.01) {
       u.gx = goal.x;
       u.gz = goal.z;
