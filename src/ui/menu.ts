@@ -19,6 +19,7 @@ export interface HdStatus {
   cached?: boolean;
   /** size of the download for this device, MB */
   mb?: number;
+  previewing?: boolean;
 }
 
 /** "My voice (custom announcer)": the owner's own trained voice, opt-in, from a URL or local files (see docs/announcer-voice.md). */
@@ -29,7 +30,9 @@ export interface VoiceMenuStatus {
   name: string;
   /** last pack URL used */
   url: string;
-  /** false until the audio layer is attached (a game has started) */
+  /** a sample is playing */
+  previewing?: boolean;
+  /** kept for older callers: the voice no longer needs a running game */
   available: boolean;
 }
 
@@ -44,6 +47,7 @@ export interface AudioBridge {
     subscribe(cb: (s: HdStatus) => void): () => void;
     toggle(): void;
     remove(): void;
+    preview(): void;
   };
   /** My voice (custom announcer) */
   voice?: {
@@ -53,6 +57,7 @@ export interface AudioBridge {
     loadFiles(files: File[]): void;
     off(): void;
     forget(): void;
+    preview(): void;
   };
 }
 
@@ -109,7 +114,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const tod = reg(segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v })), () => ctx.settings.tod);
 
   const a = () => ctx.audio.get();
-  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', hint?: string) => {
+  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', hint?: string) => {
     const s = reg(slider(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
     return field(label, s.el, hint);
   };
@@ -135,17 +140,20 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   // optional neural voices: nothing is downloaded until the button is pressed
   const hdNote = h('div', { class: 'cb-hint' });
   const hdBtn = button('', () => ctx.audio.hd?.toggle(), 'ghost');
+  const hdPreview = button('Preview voices', () => ctx.audio.hd?.preview(), 'ghost');
   const hdRemove = button('Remove download', () => ctx.audio.hd?.remove(), 'quiet');
   const paintHd = (st: HdStatus) => {
     hdBtn.disabled = st.state === 'loading' || st.state === 'unavailable';
     hdBtn.textContent = st.state === 'unavailable' ? 'HD voices unavailable' : st.state === 'ready' ? 'HD voices: on (switch off)' : st.state === 'loading' ? `Downloading… ${st.pct ?? 0}%` : st.cached ? 'Use HD voices' : `Download HD voices (~${st.mb ?? 90} MB)`;
-    hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'Available once the game has started (open Settings from the pause menu).' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
+    hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'HD voices are not available here.' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
     hdRemove.style.display = st.cached || st.state === 'ready' ? '' : 'none';
+    hdPreview.style.display = st.state === 'ready' ? '' : 'none';
+    hdPreview.disabled = !!st.previewing;
   };
   paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' });
   ctx.audio.hd?.subscribe(paintHd);
   syncs.push(() => paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' }));
-  const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdNote, hdRemove);
+  const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdPreview, hdNote, hdRemove);
 
   // My voice (custom announcer): nothing is loaded until the owner gives a URL or files
   const myUrl = h('input', { type: 'url', class: 'cb-input', 'aria-label': 'Voice pack URL', placeholder: 'https://huggingface.co/you/claudeball-voice/resolve/main/', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
@@ -156,6 +164,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     myFile.value = '';
   });
   const myPick = button('Choose files… (voice.json + model)', () => myFile.click(), 'ghost');
+  const myPreview = button('Preview my voice', () => ctx.audio.voice?.preview(), 'ghost');
   const myOff = button('Switch off', () => ctx.audio.voice?.off(), 'quiet');
   const myForget = button('Remove saved voice', () => ctx.audio.voice?.forget(), 'quiet');
   const myNote = h('div', { class: 'cb-hint' });
@@ -164,10 +173,11 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     myLoad.disabled = myPick.disabled = busy;
     myLoad.textContent = st.state === 'loading' ? `Loading… ${st.pct}%` : 'Load my voice pack';
     if (st.url && !myUrl.value) myUrl.value = st.url;
-    myOff.style.display = st.state === 'ready' ? '' : 'none';
+    myPreview.style.display = myOff.style.display = st.state === 'ready' ? '' : 'none';
+    myPreview.disabled = !!st.previewing;
+    myPreview.textContent = st.previewing ? 'Playing…' : 'Preview my voice';
     myForget.style.display = st.state === 'ready' || st.state === 'error' ? '' : 'none';
     myNote.textContent =
-      !st.available ? 'Available once the game has started (open Settings from the pause menu).' :
       st.state === 'ready' ? `${st.name} is on. Lines it cannot say use the browser voice.` :
       st.state === 'error' ? `Could not start your voice (${st.message}). Using the browser voices.` :
       st.state === 'loading' ? 'Downloading your voice model (kept in this browser afterwards)…' :
@@ -175,7 +185,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   };
   const voiceStatus = () => ctx.audio.voice?.status() ?? { state: 'off' as const, pct: 0, message: '', name: '', url: '', available: false };
   paintVoice(voiceStatus());
-  const myBox = h('div', { class: 'cb-stack' }, myUrl, myLoad, myPick, myFile, myOff, myForget, myNote);
+  const myBox = h('div', { class: 'cb-stack' }, myUrl, myLoad, myPick, myFile, myPreview, myOff, myForget, myNote);
 
   // one Voices area: which voice is speaking, and the three choices
   const activeNote = h('div', { class: 'cb-hint' });
@@ -254,7 +264,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('Voices', voicesBox), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('Voices', voicesBox), muteField),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,

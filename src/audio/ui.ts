@@ -21,6 +21,7 @@ export function loadSettings(): Settings {
       sfx: num(o.sfx, DEFAULT_SETTINGS.sfx),
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
             announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
+      paVolume: num(o.paVolume, DEFAULT_SETTINGS.paVolume),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
@@ -72,6 +73,8 @@ export interface UiHandlers {
   hdToggle(): void;
   /** HD voices: forget the downloaded model */
   hdRemove(): void;
+  /** HD voices: play a short sample (PA, play-by-play, colour) */
+  hdPreview(): void;
   /** "My voice (custom announcer)": optional, the audio controller wires it */
   voice?: VoicePanelHandlers & { initialUrl?: string };
 }
@@ -85,6 +88,7 @@ export class AudioUi {
   private hdBtn!: HTMLButtonElement;
   private hdNote!: HTMLElement;
   private hdRemove!: HTMLButtonElement;
+  private hdPreview!: HTMLButtonElement;
   voicePanel: VoicePanel | null = null;
 
   constructor(host: HTMLElement, private s: Settings, private h: UiHandlers) {
@@ -110,7 +114,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -146,6 +150,7 @@ export class AudioUi {
     slider('crowd', 'Crowd');
     slider('organVolume', 'Organ');
     slider('announcer', 'Voices');
+    slider('paVolume', 'PA announcer');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
     {
@@ -181,7 +186,11 @@ export class AudioUi {
       this.hdRemove.textContent = 'Remove download';
       this.hdRemove.style.display = 'none';
       this.hdRemove.onclick = () => h.hdRemove();
-      box.append(title, this.hdBtn, this.hdNote, this.hdRemove);
+      this.hdPreview = document.createElement('button');
+      this.hdPreview.textContent = 'Preview voices';
+      this.hdPreview.style.display = 'none';
+      this.hdPreview.onclick = () => h.hdPreview();
+      box.append(title, this.hdBtn, this.hdPreview, this.hdNote, this.hdRemove);
       panel.append(box);
       this.setHd({ state: 'off' });
     }
@@ -200,7 +209,7 @@ export class AudioUi {
   }
 
   /** HD voices status: off (not downloaded / switched off), loading (with progress), ready, error */
-  setHd(o: { state: 'off' | 'loading' | 'ready' | 'error'; pct?: number; text?: string; cached?: boolean }) {
+  setHd(o: { state: 'off' | 'loading' | 'ready' | 'error'; pct?: number; text?: string; cached?: boolean; previewing?: boolean }) {
     const m = HD_MODES[pickMode()];
     const supported = hdSupported();
     this.hdBtn.disabled = o.state === 'loading' || !supported;
@@ -215,6 +224,8 @@ export class AudioUi {
           : 'Neural voices (Kokoro, Apache-2.0) run in your browser. No WebGPU here, so they are slower than real time on the CPU and the booth will talk less. One-time download.'
         : '');
     this.hdRemove.style.display = o.cached || o.state === 'ready' ? '' : 'none';
+    this.hdPreview.style.display = o.state === 'ready' ? '' : 'none';
+    this.hdPreview.disabled = !!o.previewing;
   }
 
   refresh() {

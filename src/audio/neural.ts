@@ -8,7 +8,8 @@
  * worker, one job at a time. If generation fails or is too slow for a line, that line falls back to the browser's voice.
  */
 import type { Mixer } from './mixer';
-import type { SpeakOptions, SpeechEngine } from './speech';
+import type { SpeakHandle, SpeakOptions, SpeechEngine } from './speech';
+import { clauses } from './broadcast/text';
 import type { SpeakRole } from './types';
 import { HD_MODES, type HdMode } from './hdInfo';
 
@@ -109,23 +110,48 @@ interface Gen {
   done: boolean;
 }
 
-const MAX_CACHE = 12;
+interface Job {
+  key: string;
+  text: string;
+  voice: string;
+  speed: number;
+  prio: number;
+  seq: number;
+  est: number;
+  resolve: (b: AudioBuffer) => void;
+  reject: (e: Error) => void;
+}
+
+const MAX_CACHE = 64;
 const WAIT_MS = 20000;
+/** job priorities: a line being spoken now, the next line the queue will speak, background warm-up of fixed phrases */
+export const PRIO = { now: 0, next: 1, warm: 2 } as const;
+
+const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export class NeuralSpeechEngine implements SpeechEngine {
   ready = false;
+  /** Web Audio: any number of lines can play at once (PA over booth, booth over booth) */
+  readonly concurrent = true;
   /** measured generation time / audio time, smoothed (starts from the mode's expectation) */
   rtf: number;
   /** lines that fell back to the browser voice, and failures (debug) */
-  readonly stats = { generated: 0, played: 0, fallbacks: 0, failures: 0, lastRtf: 0 };
+  readonly stats = { generated: 0, played: 0, fallbacks: 0, failures: 0, lastRtf: 0, clauses: 0 };
   private cache = new Map<string, Gen>();
-  private token = 0;
-  private cur: { src: AudioBufferSourceNode; nodes: AudioNode[] } | null = null;
+  private jobs: Job[] = [];
+  private inflight: Job | null = null;
+  private seq = 0;
+  private playing = new Set<{ src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number }>();
+  private lines = new Set<{ stop(): void }>();
   private paused = false;
-  private outstanding = 0;
 
-  constructor(private synth: Synth, private mixer: Mixer, private fallback: SpeechEngine | null, mode: HdMode = 'cpu') {
+  constructor(private synth: Synth, private mixer: Mixer | null, private fallback: SpeechEngine | null, mode: HdMode = 'cpu') {
     this.rtf = mode === 'gpu' ? 0.25 : 3;
+  }
+
+  /** the audio controller of a game (or the preview's own mixer) plays the lines; generation works without one */
+  setMixer(m: Mixer | null) {
+    this.mixer = m;
   }
 
   async init(mode: HdMode, onProgress: (loaded: number, total: number) => void) {
@@ -144,7 +170,8 @@ export class NeuralSpeechEngine implements SpeechEngine {
   /** estimated ms until a line requested now would be ready */
   busyMs() {
     let secs = 0;
-    for (const g of this.cache.values()) if (!g.done) secs += g.est;
+    for (const j of this.jobs) secs += j.est;
+    if (this.inflight) secs += this.inflight.est;
     return secs * this.rtf * 1000;
   }
 
@@ -152,92 +179,222 @@ export class NeuralSpeechEngine implements SpeechEngine {
     return `${voice}|${speed.toFixed(2)}|${text}`;
   }
 
-  private request(text: string, o: { voiceName?: string; role?: SpeakRole; rate: number }): Gen | null {
-    const ctx = this.mixer.ctx;
-    if (!ctx) return null;
-    const voice = o.voiceName ?? HD_VOICES[o.role ?? 'pbp'];
-    const speed = Math.min(1.25, Math.max(0.8, o.rate));
+  /** One generation job at a time, in priority order (a spoken line never waits behind background warm-up). */
+  private request(text: string, voice: string, speed: number, prio: number): Gen | null {
     const k = this.key(text, voice, speed);
     const hit = this.cache.get(k);
-    if (hit) return hit;
-    const est = Math.max(1, text.length / 14);
+    if (hit) {
+      const queued = this.jobs.find((j) => j.key === k);
+      if (queued && prio < queued.prio) queued.prio = prio;
+      return hit;
+    }
+    const est = Math.max(0.6, text.length / 14);
+    let job!: Job;
+    const p = new Promise<AudioBuffer>((resolve, reject) => {
+      job = { key: k, text, voice, speed, prio, seq: this.seq++, est, resolve, reject };
+    });
+    const gen: Gen = { est, done: false, p };
+    const fin = () => {
+      gen.done = true;
+    };
+    p.then(fin, fin);
+    this.jobs.push(job);
+    this.cache.set(k, gen);
+    while (this.cache.size > MAX_CACHE) this.cache.delete(this.cache.keys().next().value as string);
+    this.pump();
+    return gen;
+  }
+
+  private pump() {
+    if (this.inflight || !this.jobs.length) return;
+    this.jobs.sort((a, b) => a.prio - b.prio || a.seq - b.seq);
+    const job = this.jobs.shift()!;
+    this.inflight = job;
     const t0 = performance.now();
-    this.outstanding++;
-    const gen: Gen = {
-      est,
-      done: false,
-      p: this.synth.generate(text, voice, speed).then((r) => {
-        const b = ctx.createBuffer(1, r.samples.length, r.sr);
+    this.synth
+      .generate(job.text, job.voice, job.speed)
+      .then((r) => {
+        const ctx = this.mixer?.ctx;
+        // an AudioBuffer belongs to no context: lines can be generated before any game (or context) exists
+        const b = ctx ? ctx.createBuffer(1, r.samples.length, r.sr) : new AudioBuffer({ numberOfChannels: 1, length: r.samples.length, sampleRate: r.sr });
         b.copyToChannel(r.samples as Float32Array<ArrayBuffer>, 0);
         const secs = r.samples.length / r.sr;
         const ratio = (performance.now() - t0) / 1000 / Math.max(0.3, secs);
         this.stats.lastRtf = ratio;
-        // queued jobs wait for earlier ones, so only believe a ratio measured with nothing ahead of it
-        if (this.outstanding <= 1) this.rtf += (ratio - this.rtf) * 0.4;
+        this.rtf += (ratio - this.rtf) * 0.4; // the worker runs one job at a time: this ratio is never inflated by a queue
         this.stats.generated++;
-        return b;
-      }),
-    };
-    const fin = () => {
-      gen.done = true;
-      this.outstanding = Math.max(0, this.outstanding - 1);
-    };
-    gen.p.then(fin, fin);
-    this.cache.set(k, gen);
-    while (this.cache.size > MAX_CACHE) this.cache.delete(this.cache.keys().next().value as string);
-    return gen;
+        job.resolve(b);
+      })
+      .catch((e) => {
+        this.cache.delete(job.key);
+        job.reject(e instanceof Error ? e : new Error(String(e)));
+      })
+      .finally(() => {
+        this.inflight = null;
+        this.pump();
+      });
   }
 
-  prefetch(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>) {
-    this.request(text, o)?.p.catch(() => this.cache.delete(this.key(text, o.voiceName ?? HD_VOICES[o.role ?? 'pbp'], Math.min(1.25, Math.max(0.8, o.rate)))));
+  private params(o: Pick<SpeakOptions, 'voiceName' | 'role' | 'rate' | 'shift'>) {
+    const voice = o.voiceName ?? HD_VOICES[o.role ?? 'pbp'];
+    const shift = clamp(o.shift ?? 1, 0.9, 1.15);
+    const speed = clamp(o.rate / shift, 0.7, 1.3);
+    return { voice, shift, speed };
   }
 
-  speak(text: string, o: SpeakOptions) {
-    const token = ++this.token;
+  /** the pieces a line is synthesised in: booth lines clause by clause (the first is ready sooner and a cut can happen at a clause), other lines whole */
+  private pieces(text: string, role?: SpeakRole): string[] {
+    if (role !== 'pbp' && role !== 'color') return [text];
+    const c = clauses(text);
+    // very short clauses sound choppy on their own: merge them into the next
+    const out: string[] = [];
+    for (const piece of c) {
+      if (out.length && (out[out.length - 1].split(/\s+/).length < 3)) out[out.length - 1] += ` ${piece}`;
+      else out.push(piece);
+    }
+    return out.length ? out : [text];
+  }
+
+  /** start synthesising a line that will be spoken soon (the queue's next line, or a fixed phrase) */
+  prefetch(text: string, o: Omit<SpeakOptions, 'onend' | 'onerror'>, prio: number = PRIO.next) {
+    const { voice, speed } = this.params(o);
+    for (const piece of this.pieces(text, o.role)) this.request(piece, voice, speed, prio)?.p.catch(() => this.cache.delete(this.key(piece, voice, speed)));
+  }
+
+  /** warm the cache with fixed phrases (umpire calls ...): background priority */
+  warm(texts: string[], role: SpeakRole) {
+    for (const t of texts) this.prefetch(t, { role, rate: 1, pitch: 1, volume: 1 }, PRIO.warm);
+  }
+
+  speak(text: string, o: SpeakOptions): SpeakHandle {
+    const ctx = this.mixer?.ctx;
+    const { voice, speed, shift } = this.params(o);
+    const parts = this.pieces(text, o.role);
+    let alive = true;
+    let stopAfter = false;
+    let index = 0;
+    let cur: { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null = null;
+    let finished = false;
+    const finish = (ok: boolean) => {
+      if (finished) return;
+      finished = true;
+      this.lines.delete(handle);
+      if (alive) (ok ? o.onend : o.onerror)();
+      alive = false;
+    };
+    const handle = {
+      stop: () => {
+        alive = false;
+        finished = true;
+        this.lines.delete(handle);
+        if (cur) this.stopSource(cur);
+        cur = null;
+      },
+      cancel: () => handle.stop(),
+      cutAtClause: () => {
+        stopAfter = true;
+        if (!cur) finish(true);
+      },
+    };
+    this.lines.add(handle);
+    if (!ctx) {
+      queueMicrotask(() => {
+        this.fallbackLine(text, o);
+        finish(true);
+      });
+      return handle;
+    }
     // on a CPU slower than real time a short call would arrive seconds late: the browser voice is immediate
-    if (o.role === 'ump' && this.rtf > 1) return this.fall(text, o);
-    const gen = this.request(text, o);
-    if (!gen) return this.fall(text, o);
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled || token !== this.token) return;
-      settled = true;
-      this.fall(text, o);
-    }, WAIT_MS);
-    gen.p.then(
-      (buf) => {
-        clearTimeout(timer);
-        if (settled || token !== this.token) return;
+    if (o.role === 'ump' && this.rtf > 1) {
+      queueMicrotask(() => {
+        this.fallbackLine(text, o);
+        finish(true);
+      });
+      return handle;
+    }
+    // request every clause now (first one at the highest priority), then play them as they become ready
+    const gens = parts.map((piece, i) => this.request(piece, voice, speed, i === 0 ? PRIO.now : PRIO.now));
+    const playNext = () => {
+      if (!alive) return;
+      if (index >= parts.length) return finish(true);
+      const g = gens[index];
+      if (!g) {
+        this.fallbackLine(parts.slice(index).join(' '), o);
+        return finish(true);
+      }
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled || !alive) return;
         settled = true;
-        this.play(buf, o, token);
-      },
-      () => {
-        clearTimeout(timer);
-        this.stats.failures++;
-        if (settled || token !== this.token) return;
-        settled = true;
-        this.fall(text, o);
-      },
-    );
+        if (index === 0) {
+          this.fallbackLine(text, o);
+          finish(true);
+        } else finish(true);
+      }, WAIT_MS);
+      g.p.then(
+        (buf) => {
+          clearTimeout(timer);
+          if (settled || !alive) return;
+          settled = true;
+          cur = this.play(buf, o, shift, () => {
+            cur = null;
+            index++;
+            this.stats.clauses++;
+            if (stopAfter) return finish(true);
+            playNext();
+          });
+          if (!cur) finish(false);
+        },
+        () => {
+          clearTimeout(timer);
+          this.stats.failures++;
+          if (settled || !alive) return;
+          settled = true;
+          if (index === 0) {
+            this.fallbackLine(text, o);
+          }
+          finish(true);
+        },
+      );
+    };
+    playNext();
+    this.stats.played++;
+    return handle;
   }
 
-  private fall(text: string, o: SpeakOptions) {
+  private fallbackLine(text: string, o: SpeakOptions) {
     this.stats.fallbacks++;
-    if (this.fallback) this.fallback.speak(text, o);
-    else o.onerror();
+    // the browser voice reports its own end; the neural line's callbacks must not fire twice, so give it no-op callbacks
+    this.fallback?.speak(text, { ...o, onend: () => {}, onerror: () => {} });
   }
 
-  private play(buf: AudioBuffer, o: SpeakOptions, token: number) {
-    const ctx = this.mixer.ctx;
-    if (!ctx || ctx.state !== 'running') return o.onerror();
+  private stopSource(c: { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number }) {
+    try {
+      c.src.onended = null;
+      c.src.stop();
+      c.src.disconnect();
+      for (const n of c.nodes) n.disconnect();
+    } catch {
+      /* ignore */
+    }
+    this.playing.delete(c);
+  }
+
+  private play(buf: AudioBuffer, o: SpeakOptions, shift: number, onDone: () => void): { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null {
+    const ctx = this.mixer?.ctx;
+    const mixer = this.mixer;
+    if (!ctx || !mixer || ctx.state !== 'running') {
+      return null;
+    }
     const nodes: AudioNode[] = [];
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    src.playbackRate.value = this.paused ? 0 : shift;
     const level = ctx.createGain();
     level.gain.value = Math.max(0.05, Math.min(1.2, o.volume * 1.15));
     nodes.push(level);
     src.connect(level);
-    let tail: AudioNode = level;
+    const tail: AudioNode = level;
     if (o.role === 'pa') {
       // public-address voice: band-limited horn speaker, a touch of drive, a slap-back off the far stands and the stadium reverb
       const hp = ctx.createBiquadFilter();
@@ -259,7 +416,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
       const dry = ctx.createGain();
       dry.gain.value = 0.85;
       drive.connect(dry);
-      dry.connect(this.mixer.voiceBus);
+      dry.connect(mixer.paBus);
       const slap = ctx.createDelay(0.5);
       slap.delayTime.value = 0.19;
       const fb = ctx.createGain();
@@ -270,12 +427,28 @@ export class NeuralSpeechEngine implements SpeechEngine {
       slap.connect(fb);
       fb.connect(slap);
       slap.connect(wet);
-      wet.connect(this.mixer.voiceBus);
+      wet.connect(mixer.paBus);
       const send = ctx.createGain();
       send.gain.value = 0.7;
       drive.connect(send);
-      send.connect(this.mixer.reverbIn);
+      send.connect(mixer.reverbIn);
       nodes.push(hp, lp, drive, dry, slap, fb, wet, send);
+    } else if (o.role === 'ump') {
+      // the umpire is on the field: part of the stadium, in the room reverb, a little band-limited, no slap-back
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 150;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 6500;
+      tail.connect(hp);
+      hp.connect(lp);
+      lp.connect(mixer.paBus);
+      const send = ctx.createGain();
+      send.gain.value = 0.45;
+      lp.connect(send);
+      send.connect(mixer.reverbIn);
+      nodes.push(hp, lp, send);
     } else {
       // booth voices stay dry and close-miked: roll off the rumble, add a little presence
       const hp = ctx.createBiquadFilter();
@@ -287,12 +460,11 @@ export class NeuralSpeechEngine implements SpeechEngine {
       pres.gain.value = 2;
       tail.connect(hp);
       hp.connect(pres);
-      pres.connect(this.mixer.voiceBus);
+      pres.connect(mixer.boothBus);
       nodes.push(hp, pres);
     }
-    void tail;
-    this.cur = { src, nodes };
-    this.stats.played++;
+    const c = { src, nodes, shift };
+    this.playing.add(c);
     src.onended = () => {
       for (const n of nodes) {
         try {
@@ -301,39 +473,29 @@ export class NeuralSpeechEngine implements SpeechEngine {
           /* ignore */
         }
       }
-      if (this.cur?.src === src) this.cur = null;
-      if (token === this.token) o.onend();
+      this.playing.delete(c);
+      onDone();
     };
-    if (this.paused) src.playbackRate.value = 0;
     src.start();
+    return c;
   }
 
+  /** cancel every line (the SwitchEngine's global cancel; the channels use per-line handles) */
   cancel() {
-    this.token++;
-    const c = this.cur;
-    this.cur = null;
-    if (c) {
-      try {
-        c.src.onended = null;
-        c.src.stop();
-        c.src.disconnect();
-        for (const n of c.nodes) n.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
+    for (const l of [...this.lines]) l.stop();
+    for (const c of [...this.playing]) this.stopSource(c);
     this.fallback?.cancel();
   }
 
   pause() {
     this.paused = true;
-    if (this.cur) this.cur.src.playbackRate.value = 0;
+    for (const c of this.playing) c.src.playbackRate.value = 0;
     this.fallback?.pause();
   }
 
   resume() {
     this.paused = false;
-    if (this.cur) this.cur.src.playbackRate.value = 1;
+    for (const c of this.playing) c.src.playbackRate.value = c.shift;
     this.fallback?.resume();
   }
 
@@ -342,5 +504,6 @@ export class NeuralSpeechEngine implements SpeechEngine {
     this.synth.dispose();
     this.ready = false;
     this.cache.clear();
+    this.jobs = [];
   }
 }

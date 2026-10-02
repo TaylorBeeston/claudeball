@@ -36,7 +36,7 @@
   position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(90deg, rgba(5, 8, 13, 0.95) 0%, rgba(5, 8, 13, 0.82) 34%, rgba(5, 8, 13, 0.25) 70%, rgba(5, 8, 13, 0.05) 100%);
 }
-.cb-ui.modal .cb-scrim { background: rgba(3, 5, 9, 0.62); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+.cb-ui.modal .cb-scrim { background: rgba(2, 4, 8, 0.78); backdrop-filter: blur(10px) brightness(0.8); -webkit-backdrop-filter: blur(10px) brightness(0.8); }
 .cb-ui.modal { align-items: safe center; justify-content: center; }
 .cb-main { position: relative; display: flex; flex: 1; min-width: 0; }
 
@@ -50,7 +50,22 @@
   background: var(--cb-panel); border: 1px solid var(--cb-line); border-radius: var(--cb-radius); box-shadow: var(--cb-shadow);
   backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
-.cb-ui.modal .cb-panel { width: min(460px, 94vw); max-height: min(94vh, 100%); overflow-y: auto; padding: var(--cb-pad); display: flex; flex-direction: column; gap: var(--cb-gap); }
+.cb-ui.modal .cb-panel {
+  width: min(460px, 94vw); max-height: min(92vh, calc(100dvh - 2 * var(--cb-gap))); overflow-y: auto; overscroll-behavior: contain; padding: var(--cb-pad); display: flex; flex-direction: column; gap: var(--cb-gap);
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+/* in-game panels (pause, settings, game over): an opaque dark surface, clearly separated from the 3D view behind (not see-through like the title menu) */
+.cb-ui.modal .cb-panel {
+  background: rgba(15, 22, 32, 0.96); border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(20px) saturate(1.1); -webkit-backdrop-filter: blur(20px) saturate(1.1);
+}
+.cb-ui.modal .cb-hint { color: rgba(244, 246, 248, 0.74); }
+.cb-ui.modal .cb-sep { background: rgba(255, 255, 255, 0.16); }
+.cb-ui.modal .cb-btn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); }
+.cb-ui.modal .cb-btn:hover { background: rgba(255, 255, 255, 0.17); }
+.cb-ui.modal .cb-section { padding-bottom: 6px; }
+.cb-ui.modal .cb-h3 { padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
 .cb-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cb-gold); }
 .cb-title { margin: 0; font: italic 800 clamp(46px, 11vmin, 96px)/0.94 var(--cb-display); letter-spacing: 0.03em; text-transform: uppercase; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }
 .cb-title b { color: var(--cb-gold); font-weight: 800; }

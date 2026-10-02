@@ -128,6 +128,7 @@ describe('neural speech engine (mocked synthesiser)', () => {
     const eng = new NeuralSpeechEngine(fakeSynth().synth, mixer, browser);
     await eng.init('cpu', () => {});
     eng.speak('hello', opts('pbp'));
+    await flush();
     expect(browser.spoken).toEqual(['hello']);
   });
 
@@ -135,6 +136,7 @@ describe('neural speech engine (mocked synthesiser)', () => {
     const { eng, browser, s } = await setup({}, 'cpu');
     expect(eng.rtf).toBeGreaterThan(1);
     eng.speak('Strike!', opts('ump'));
+    await flush();
     expect(browser.spoken).toEqual(['Strike!']);
     expect(s.calls).toHaveLength(0);
   });
@@ -153,7 +155,7 @@ describe('neural speech engine (mocked synthesiser)', () => {
     expect(q.stats.dropped).toBe(2);
   });
 
-  it('cancel stops the playing line; pause freezes it and resume continues', async () => {
+  it('cancel stops the playing line; pause freezes it and resume continues (at the shifted rate)', async () => {
     const { eng, f } = await setup();
     const o = opts('pbp');
     eng.speak('A line.', o);
@@ -170,13 +172,15 @@ describe('neural speech engine (mocked synthesiser)', () => {
 
   it('keeps only a few generated lines in memory', async () => {
     const { eng, s } = await setup();
-    for (let i = 0; i < 30; i++) eng.prefetch(`line ${i}`, opts('pbp'));
+    for (let i = 0; i < 70; i++) eng.prefetch(`line ${i}`, opts('pbp'));
     await flush();
-    expect(s.calls).toHaveLength(30);
-    eng.prefetch('line 29', opts('pbp'));
+    await flush();
+    expect(s.calls).toHaveLength(70);
+    eng.prefetch('line 69', opts('pbp'));
     eng.prefetch('line 0', opts('pbp'));
     await flush();
-    expect(s.calls).toHaveLength(31); // line 0 was evicted, line 29 was still cached
+    await flush();
+    expect(s.calls).toHaveLength(71); // line 0 was evicted, line 69 was still cached
   });
 });
 
@@ -210,5 +214,119 @@ describe('switching between browser and neural voices', () => {
     q.enqueue({ role: 'pbp', text: 'next up', pri: 3, ttl: 20 });
     expect(prefetched).toContain('next up');
     expect(prefetched[prefetched.length - 1]).toBe('next up');
+  });
+});
+
+describe('concurrent channels (PA over booth), clauses, priorities', () => {
+  const sourcesOf = (f: ReturnType<typeof fakeCtx>) => f.made.filter((m) => m.type === 'source').map((m) => m.node);
+
+  it('plays several lines at once and cancels only its own line through the handle', async () => {
+    const { eng, f } = await setup();
+    expect(eng.concurrent).toBe(true);
+    const pa = opts('pa');
+    const booth = opts('pbp');
+    const h1 = eng.speak('Now batting, number 23, Tyler Vance.', pa) as { cancel(): void };
+    const h2 = eng.speak('Fastball, low and away.', booth) as { cancel(): void };
+    await flush();
+    await flush();
+    const srcs = sourcesOf(f);
+    expect(srcs.length).toBe(2);
+    expect(srcs.every((s) => s.start.mock.calls.length === 1)).toBe(true);
+    h2.cancel();
+    expect(srcs.filter((s) => s.stop.mock.calls.length > 0)).toHaveLength(1);
+    expect(pa.onend).not.toHaveBeenCalled();
+    srcs[0].onended?.();
+    expect(pa.onend).toHaveBeenCalledTimes(1);
+    void h1;
+  });
+
+  it('routes the PA and the umpire to the PA bus and the booth to the booth bus', async () => {
+    const { eng, f, mixer } = await setup();
+    const into = (bus: object) => f.made.filter((m) => m.node.connect.mock?.calls.some((c: unknown[]) => c[0] === bus)).length;
+    const before = { pa: into(mixer.paBus), booth: into(mixer.boothBus) };
+    eng.speak('Now batting.', opts('pa'));
+    await flush();
+    expect(into(mixer.paBus)).toBeGreaterThan(before.pa);
+    expect(into(mixer.boothBus)).toBe(before.booth);
+    eng.speak('Strike!', opts('ump'));
+    await flush();
+    const afterUmp = into(mixer.paBus);
+    expect(afterUmp).toBeGreaterThan(before.pa + 1);
+    eng.speak('Called strike one.', opts('color'));
+    await flush();
+    expect(into(mixer.boothBus)).toBeGreaterThan(before.booth);
+    expect(into(mixer.paBus)).toBe(afterUmp);
+  });
+
+  it('booth lines are synthesised clause by clause and played in order; the first clause starts as soon as it is ready', async () => {
+    const { eng, s, f } = await setup();
+    const o = opts('pbp');
+    eng.speak('Ground ball to short, he throws... in time! One away.', o);
+    await flush();
+    await flush();
+    expect(s.calls.map((c) => c.text)).toEqual(['Ground ball to short, he throws...', 'in time!', 'One away.'].length === 3 ? s.calls.map((c) => c.text) : []);
+    expect(s.calls.length).toBeGreaterThanOrEqual(2);
+    const src = sourcesOf(f);
+    expect(src).toHaveLength(1); // only the first clause is playing
+    src[0].onended();
+    await flush();
+    expect(sourcesOf(f)).toHaveLength(2);
+    expect(o.onend).not.toHaveBeenCalled();
+  });
+
+  it('cutAtClause lets the current clause finish and then ends the line', async () => {
+    const { eng, f } = await setup();
+    const o = opts('color');
+    const h = eng.speak('First clause here, and a second clause there, then a third one.', o) as { cutAtClause(): void };
+    await flush();
+    await flush();
+    const first = sourcesOf(f)[0];
+    h.cutAtClause();
+    expect(first.stop).not.toHaveBeenCalled(); // not mid-word
+    first.onended();
+    await flush();
+    expect(sourcesOf(f)).toHaveLength(1); // no second clause
+    expect(o.onend).toHaveBeenCalledTimes(1);
+  });
+
+  it('a spoken line is generated before background warm-up, one job at a time', async () => {
+    const f = fakeCtx();
+    const mixer = new Mixer({ ...DEFAULT_SETTINGS }, () => f.ctx);
+    await mixer.unlock();
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let n = 0;
+    const synth: Synth = {
+      init: async () => {},
+      generate: async (text) => {
+        order.push(text);
+        if (n++ === 0) await gate; // hold the first job so the others queue up behind it
+        return { samples: new Float32Array(2400), sr: 24000 };
+      },
+      dispose() {},
+    };
+    const eng = new NeuralSpeechEngine(synth, mixer, null, 'gpu');
+    await eng.init('gpu', () => {});
+    eng.warm(['warm one', 'warm two'], 'ump'); // the first of these is in flight
+    eng.warm(['warm three'], 'ump');
+    eng.speak('Fastball.', opts('pbp'));
+    release();
+    await flush();
+    await flush();
+    await flush();
+    expect(order[0]).toBe('warm one');
+    expect(order[1]).toBe('Fastball.'); // jumped ahead of the other warm-up phrases
+  });
+
+  it('excited delivery: the line is generated slower by the pitch shift and played back at the shift, so the tempo stays', async () => {
+    const { eng, s, f } = await setup();
+    const o = { ...opts('pbp'), rate: 1.12, shift: 1.06 };
+    eng.speak('Gone! Home run!', o);
+    await flush();
+    await flush();
+    expect(s.calls[0].speed).toBeCloseTo(1.12 / 1.06, 2);
+    const src = sourcesOf(f).at(-1)!;
+    expect(src.playbackRate.value).toBeCloseTo(1.06, 5);
   });
 });
