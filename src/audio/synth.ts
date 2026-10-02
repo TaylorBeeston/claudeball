@@ -278,6 +278,42 @@ function hiss(c: Rendered, r: Rand, env: (t: number) => number, amp: number) {
   }
 }
 
+const TAU_ = Math.PI * 2;
+
+/** a pocket of conversation: a few syllabic voices, formants wandering, shaped by `env` */
+function babble(dur: number, voices: number, env: (t: number) => number, r: Rand): Rendered {
+  const n = Math.floor(dur * CSR);
+  const L = new Float32Array(n);
+  const R = new Float32Array(n);
+  for (let k = 0; k < voices; k++) {
+    const pan = r() * 2 - 1;
+    const gl = Math.cos(((pan + 1) * Math.PI) / 4);
+    const gr = Math.sin(((pan + 1) * Math.PI) / 4);
+    const f = [new Biquad(), new Biquad(), new Biquad()];
+    const V = VOWELS[['a', 'o', 'e', 'u', 'i'][Math.floor(r() * 5)]];
+    const shift = 0.85 + r() * 0.4;
+    const am = new Biquad('lp', 3 + r() * 3, 0.7, CSR);
+    const src = new Biquad('lp', 3500, 0.7, CSR);
+    let ph = r();
+    for (let i = 0; i < n; i++) {
+      const e = env(i / CSR);
+      if (e <= 0) continue;
+      if ((i & 63) === 0) {
+        const wob = 1 + 0.18 * Math.sin((i / CSR) * (1.1 + k * 0.17) + k);
+        for (let j = 0; j < 3; j++) f[j].set('bp', V[j] * shift * wob, 5 + j * 2, CSR);
+      }
+      ph += (115 + 25 * k + 20 * Math.sin(i / CSR * 3 + k)) / CSR;
+      if (ph >= 1) ph -= 1;
+      const x = (2 * ph - 1) * 0.6 + src.tick(r() * 2 - 1) * 0.5;
+      const a = Math.max(0, am.tick(r() * 2 - 1) * 5);
+      const y = (f[0].tick(x) + 0.6 * f[1].tick(x) + 0.3 * f[2].tick(x)) * a * a * e;
+      L[i] += y * gl;
+      R[i] += y * gr;
+    }
+  }
+  return { sr: CSR, ch: [L, R] };
+}
+
 const empty = (dur: number): Rendered => ({ sr: CSR, ch: [new Float32Array(Math.floor(CSR * dur)), new Float32Array(Math.floor(CSR * dur))] });
 
 function crowdBuf(id: CrowdId, r: Rand): Rendered {
@@ -347,6 +383,93 @@ function crowdBuf(id: CrowdId, r: Rand): Rendered {
       hiss(c, r, env, 0.3);
       return finish(c, 0.7, 60);
     }
+    case 'clap_single': {
+      const c = empty(0.16);
+      claps(c.ch, CSR, r, 0.16, (t) => (t < 0.014 ? 700 : 0), 0.45);
+      return finish(c, 0.8, 8);
+    }
+    case 'clap_burst': {
+      const c = empty(0.3);
+      claps(c.ch, CSR, r, 0.3, (t) => (t < 0.1 ? 380 : t < 0.2 ? 60 * (1 - (t - 0.1) / 0.1) : 0), 0.35);
+      hiss(c, r, (t) => (t < 0.12 ? 0.6 : Math.max(0, 0.6 - (t - 0.12) * 4)), 0.08);
+      return finish(c, 0.85, 12);
+    }
+    case 'whistle': {
+      // a two-finger / mouth whistle: a pure bent tone with a little breath
+      const dur = 0.95;
+      const n = Math.floor(dur * CSR);
+      const x = new Float32Array(n);
+      let ph = 0;
+      const lp = new Biquad('lp', 5500, 0.7, CSR);
+      for (let i = 0; i < n; i++) {
+        const t = i / CSR;
+        const bend = t < 0.22 ? Math.pow(t / 0.22, 1.4) : 1 - 0.18 * Math.min(1, (t - 0.22) / 0.5);
+        const f = 2350 + 750 * bend + 25 * Math.sin(t * 38);
+        ph += f / CSR;
+        const env = Math.min(1, t / 0.03) * Math.exp(-Math.max(0, t - 0.55) / 0.13);
+        x[i] = (Math.sin(TAU_ * ph) * 0.9 + lp.tick(r() * 2 - 1) * 0.1) * env;
+      }
+      return finish({ sr: CSR, ch: [x, Float32Array.from(x)] }, 0.4, 20);
+    }
+    case 'shout':
+    case 'shout2': {
+      const a = id === 'shout';
+      const c = choir({ sr: CSR, dur: 0.6, vowel: a ? VOWELS.a : VOWELS.e, voices: 1, f0: (t) => (a ? 185 + 40 * t : 200 + 50 * Math.sin(t * 5)), env: (t) => (t < 0 ? 0 : Math.min(1, t / 0.04) * Math.exp(-Math.max(0, t - 0.25) / 0.12)), breath: 0.25, spread: 0.7, formantScale: (t) => 1 + 0.2 * Math.min(1, t / 0.2) }, r);
+      return finish(c, 0.75, 20);
+    }
+    case 'kid': {
+      const c = choir({ sr: CSR, dur: 0.7, vowel: VOWELS.a, voices: 1, f0: (t) => 470 + 160 * Math.min(1, t / 0.25) - 90 * Math.max(0, t - 0.35), env: (t) => (t < 0 ? 0 : Math.min(1, t / 0.05) * Math.exp(-Math.max(0, t - 0.3) / 0.16)), breath: 0.3, spread: 0.8, formantScale: (t) => 1.25 + 0.1 * t }, r);
+      return finish(c, 0.65, 20);
+    }
+    case 'vendor': {
+      // a long two-syllable call from the aisles, far away: dull, with a slap of room
+      const dur = 1.9;
+      const c = choir({ sr: CSR, dur, vowel: VOWELS.a, voices: 1, f0: (t) => 165 + 35 * Math.sin(Math.min(1, t / 0.7) * Math.PI) - 25 * Math.max(0, t - 1.0), env: (t) => (t < 0 ? 0 : t < 0.8 ? Math.min(1, t / 0.08) * (0.7 + 0.3 * Math.sin((t / 0.8) * Math.PI)) : 0.9 * Math.min(1, (t - 0.85) / 0.06) * Math.exp(-Math.max(0, t - 1.05) / 0.35)), breath: 0.3, spread: 0.3, formantScale: (t) => 0.95 + 0.15 * (t > 0.85 ? 1 : 0) }, r);
+      for (const ch of c.ch) {
+        const lp = new Biquad('lp', 1700, 0.7, CSR);
+        for (let i = 0; i < ch.length; i++) {
+          ch[i] = lp.tick(ch[i]);
+          if (i > 3600) ch[i] += 0.22 * ch[i - 3600]; // an echo off the far stands
+        }
+      }
+      return finish(c, 0.5, 40);
+    }
+    case 'chatter': {
+      const dur = 3.4;
+      const env = (t: number) => (t < 0 ? 0 : Math.min(1, t / 0.7)) * Math.min(1, Math.max(0, dur - t) / 1.1);
+      const c = babble(dur, 5, env, r);
+      return finish(c, 0.5, 60);
+    }
+    case 'chant': {
+      // "LET'S GO!" (clap clap) three times, a few hundred people
+      const dur = 5.4;
+      const beat = (t: number, off: number, len: number) => (t < off || t > off + len ? 0 : Math.min(1, (t - off) / 0.04) * Math.min(1, (off + len - t) / 0.05));
+      const rep = [0.1, 1.85, 3.6];
+      const lets = (t: number) => rep.reduce((a, o) => a + beat(t, o, 0.28), 0);
+      const go = (t: number) => rep.reduce((a, o) => a + beat(t, o + 0.34, 0.42), 0);
+      const A = choir({ sr: CSR, dur, vowel: VOWELS.e, voices: 12, f0: () => 170, env: lets, breath: 0.4, stagger: 0.04 }, r);
+      const B = choir({ sr: CSR, dur, vowel: VOWELS.o, voices: 12, f0: (t) => 150 - 12 * ((t - 0.34) % 1.75), env: go, breath: 0.4, stagger: 0.04 }, r);
+      for (let k = 0; k < 2; k++) for (let i = 0; i < A.ch[k].length; i++) A.ch[k][i] += B.ch[k][i];
+      for (const o of rep) {
+        claps(A.ch, CSR, r, dur, (t) => (t > o + 0.95 && t < o + 1.02) || (t > o + 1.2 && t < o + 1.27) ? 900 : 0, 0.07);
+      }
+      return finish(A, 0.8, 50);
+    }
+    case 'aww': {
+      const dur = 1.5;
+      const c = choir({ sr: CSR, dur, vowel: VOWELS.a, voices: 10, f0: (t) => 235 - 60 * Math.min(1, t / 1.2), env: trap(0.18, 0.3, 0.95), breath: 0.35, stagger: 0.15, formantScale: (t) => 1 - 0.1 * Math.min(1, t / 1.2) }, r);
+      return finish(c, 0.7, 40);
+    }
+    case 'oh_relief': {
+      const dur = 1.2;
+      const c = choir({ sr: CSR, dur, vowel: VOWELS.o, voices: 10, f0: (t) => 225 - 50 * Math.min(1, t / 0.9), env: trap(0.08, 0.2, 0.85), breath: 0.35, stagger: 0.1 }, r);
+      return finish(c, 0.7, 30);
+    }
+    case 'boo_few': {
+      const dur = 1.9;
+      const c = choir({ sr: CSR, dur, vowel: VOWELS.u, voices: 4, f0: (t) => 122 - 8 * t, env: trap(0.25, 0.7, 0.9), breath: 0.2, stagger: 0.3 }, r);
+      return finish(c, 0.6, 40);
+    }
     case 'whoop': {
       const dur = 0.85;
       const c = choir(
@@ -359,10 +482,17 @@ function crowdBuf(id: CrowdId, r: Rand): Rendered {
 }
 
 /** Seamless looping stadium bed: syllabic babble of many voices (murmur) or a sustained wash (roar bed). */
-export function crowdLoop(kind: 'murmur' | 'roar', seed = 7): Rendered {
-  const r = mulberry32(seed + (kind === 'roar' ? 100 : 0));
+export function crowdLoop(kind: 'murmur' | 'roar' | 'claps', seed = 7): Rendered {
+  const r = mulberry32(seed + (kind === 'roar' ? 100 : kind === 'claps' ? 200 : 0));
   const dur = 7;
   const n = Math.floor((dur + 0.6) * CSR);
+  if (kind === 'claps') {
+    // sustained applause: a few hundred hands, slow swirls in density so it breathes
+    const c = empty(dur + 0.6);
+    claps(c.ch, CSR, r, dur + 0.6, (t) => 150 + 55 * Math.sin(t * 1.3) + 30 * Math.sin(t * 3.1 + 1), 0.28);
+    hiss(c, r, () => 1, 0.1);
+    return finish(makeLoop(c, 0.6), 0.6, 1);
+  }
   if (kind === 'roar') {
     const c = choir({ sr: CSR, dur: dur + 0.8, vowel: VOWELS.a, voices: 10, f0: (t) => 140 + 20 * Math.sin(t * 0.7), env: () => 1, breath: 0.6, formantScale: (t) => 1 + 0.06 * Math.sin(t * 1.1) }, r);
     hiss(c, r, () => 1, 0.45);
@@ -428,7 +558,7 @@ export const SFX_DEFS: Record<SfxId, SoundDef> = {
   ump_yell: { buckets: 1, alts: 2, make: umpYell },
 };
 
-export const CROWD_IDS: CrowdId[] = ['roar_big', 'roar_med', 'cheer_short', 'applause', 'applause_small', 'groan', 'gasp', 'ooh', 'boo', 'swell', 'whoop'];
+export const CROWD_IDS: CrowdId[] = ['roar_big', 'roar_med', 'cheer_short', 'applause', 'applause_small', 'groan', 'gasp', 'ooh', 'boo', 'swell', 'whoop', 'clap_single', 'clap_burst', 'whistle', 'shout', 'shout2', 'kid', 'vendor', 'chatter', 'chant', 'aww', 'oh_relief', 'boo_few'];
 
 function hash(s: string) {
   let h = 2166136261;

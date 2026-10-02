@@ -17,7 +17,8 @@ import { voiceManager } from './voiceManager';
 import { loadVoiceSettings } from './voice/controller';
 export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
-import { Excitement, baseline } from './excitement';
+import { CrowdModel, type CrowdCtx, type CrowdShot } from './crowd';
+import { isLowPower } from './perf';
 import { Booth } from './broadcast/booth';
 import { BoothSink } from './broadcast/channels';
 import { SpeechGate } from './broadcast/gate';
@@ -94,6 +95,11 @@ export interface DebugCue {
   text?: string;
 }
 
+/** events the crowd still reacts to at 2x-4x (everything else only at normal speed) */
+const MAJOR = new Set(['homeRun', 'runScored', 'robbedHomeRun', 'gameEnd', 'gameStart']);
+
+const crowdCtx = (st: StateLike): CrowdCtx => ({ inning: st.inning, half: st.half, outs: st.outs, balls: st.count.balls, strikes: st.count.strikes, score: { home: st.score.home, away: st.score.away }, runners: st.runners });
+
 const WALL = (x: number, z: number) => {
   const phi = Math.atan2(x, z);
   const a = Math.min(1, Math.abs(phi) / (Math.PI / 4));
@@ -108,7 +114,14 @@ export class AudioController {
   readonly speech: SpeechQueue;
   /** browser voices, or the optional neural voices when they are downloaded and switched on */
   readonly sw: SwitchEngine;
-  readonly excitement = new Excitement();
+  /** the crowd: reaction model (pure) + the three-loop bed; `excitement` is its smoothed 0..1 level, for the speech delivery */
+  readonly crowd: CrowdModel;
+  get excitement(): { level: number } {
+    return this.crowd;
+  }
+  /** phone-class device: lighter everywhere (slower tick, fewer crowd voices and incidental sounds, no footsteps) */
+  readonly lowPower = isLowPower();
+  private crowdAcc = 0
   /** "My voice (custom announcer)": the owner's own trained voice, opt-in (see voice/); the manager outlives games */
   get voice() {
     return voiceManager.controller;
@@ -148,11 +161,15 @@ export class AudioController {
     chat: {} as Record<string, number>,
     energy: [] as { t: number; rms: number; peak: number }[],
     events: 0,
+    /** moving average of the time one tick takes, ms (the cost of the audio layer on the main thread) */
+    tickMs: 0,
   };
 
   constructor(private host: AudioHost, root: HTMLElement, withUi = true) {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
+    this.mixer.lowPower = this.lowPower;
+    this.crowd = new CrowdModel({ rng: Math.random, lowPower: this.lowPower });
     this.ambience = new Ambience(this.mixer);
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
@@ -167,7 +184,7 @@ export class AudioController {
     this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
-    this.mapper = new CueMapper({ detailed: !!this.raw });
+    this.mapper = new CueMapper({ detailed: !!this.raw, crowdCues: false }); // the crowd model makes the crowd sounds
     if (this.raw) this.raw.on('*', (e) => this.push(e));
     else host.sim.on((te) => {
       const r = engineToRaw(te.event);
@@ -224,7 +241,7 @@ export class AudioController {
     this.offs.push(voiceManager.subscribe((s) => this.ui?.voicePanel?.set(s)));
     this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
     this.ui?.voicePanel?.set(voiceManager.status());
-    this.interval = setInterval(() => this.tick(), 1000 / 30);
+    this.interval = setInterval(() => this.tick(), this.lowPower ? 1000 / 15 : 1000 / 30);
   }
 
   // ---- HD (neural) voices: the manager (`hd.ts`) owns the download and the engine; a game only plugs its mixer in -------------
@@ -508,8 +525,7 @@ export class AudioController {
       case 'crowd':
         return m.playCrowd(c.id, c.gain ?? 1, c.delay ?? 0);
       case 'excite':
-        this.excitement.add(c.amount, c.hold);
-        return true;
+        return true; // the crowd model (crowd.ts) owns the crowd; the mapper's excite cues are switched off in the running game
       case 'organ':
         return this.settings.muted || !this.settings.organ ? false : this.organ.play(c.id, c.gain ?? 1, 0);
       case 'speak': {
@@ -530,6 +546,14 @@ export class AudioController {
 
   private tick() {
     const now = performance.now();
+    try {
+      this.tickInner(now);
+    } finally {
+      this.debug.tickMs += (performance.now() - now - this.debug.tickMs) * 0.05;
+    }
+  }
+
+  private tickInner(now: number) {
     const dt = Math.min(0.25, (now - this.last) / 1000);
     this.last = now;
     const sim = this.host.sim;
@@ -582,17 +606,27 @@ export class AudioController {
             continue;
           }
           for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
+          if (!this.locked && (sim.speed <= 2.01 || MAJOR.has(ev.type))) this.crowd.observe(ev, crowdCtx(st));
           if (cc && !sim.skipping) this.booth.observe(ev, cc, performance.now() / 1000);
         }
       }
 
       if (!this.locked && !sim.paused && !sim.skipping && !replay) this.frameCues(st, sim.speed);
 
-      // crowd
+      // crowd: the reaction model advances ~10 times a second (5 on a phone), the bed loops follow it, its one-shots play on the audio clock
       if (!this.locked) {
         if (!this.ambience.started) this.ambience.start();
-        this.excitement.setBaseline(baseline({ inning: st.inning, outs: st.outs, balls: st.count.balls, strikes: st.count.strikes, score: st.score, runners: st.runners }) * (sim.paused ? 0.6 : 1));
-        this.ambience.update(this.excitement.update(dt), dt);
+        this.crowdAcc += dt;
+        if (this.crowdAcc >= (this.lowPower ? 0.2 : 0.1)) {
+          const step = this.crowdAcc;
+          this.crowdAcc = 0;
+          this.crowd.setContext(crowdCtx(st));
+          this.crowd.setListener(this.mixer.listener.pos);
+          const bed = this.crowd.update(step, !sim.paused && sim.speed <= 1.51 && !this.settings.muted);
+          this.ambience.apply(sim.paused ? { ...bed, murmur: bed.murmur * 0.6, roar: bed.roar * 0.6, clap: bed.clap * 0.5 } : bed);
+          this.mixer.setCrowdProximity(this.crowd.proximity.gain);
+          for (const shot of this.crowd.take()) if (!this.settings.muted && (sim.speed <= 1.01 || shot.gain >= 0.3)) this.playShot(shot);
+        }
         this.levelTimer += dt;
         if (this.levelTimer > 0.1) {
           this.levelTimer = 0;
@@ -623,6 +657,16 @@ export class AudioController {
     }
   }
 
+  private playShot(s: CrowdShot) {
+    if (s.id === 'seat_thump') {
+      // a seat banging shut somewhere in the stands
+      const side = (s.pan ?? 0) * 70;
+      this.mixer.playSfx({ kind: 'sfx', id: 'seat_thump', pos: { x: side, y: 4, z: 40 + Math.abs(side) * 0.6 }, gain: s.gain, imp: 0 });
+      return;
+    }
+    this.mixer.playCrowd(s.id, s.gain, s.delay, { pan: s.pan, rate: s.rate, sweep: s.sweep });
+  }
+
   /** Sounds with no sim event of their own, derived from the snapshot: bounces, slides, cleats. */
   private frameCues(st: StateLike, speed: number) {
     const b = st.ball;
@@ -643,7 +687,7 @@ export class AudioController {
       if (p.anim === 'slide' && was !== 'slide') this.dispatch({ kind: 'sfx', id: 'slide_scuff', pos: { x: p.pos.x, y: 0.2, z: p.pos.z }, gain: 0.55, imp: 1 }, st, speed);
       this.prevAnim.set(p.id, p.anim);
       const v = Math.hypot(p.vel.x, p.vel.z);
-      if (speed <= 1.01 && v > 2.5 && steps < 3 && p.role !== 'umpire' && (p.anim === 'run' || p.anim === 'trot' || p.anim === 'run_turn')) {
+      if (!this.lowPower && speed <= 1.01 && v > 2.5 && steps < 3 && p.role !== 'umpire' && (p.anim === 'run' || p.anim === 'trot' || p.anim === 'run_turn')) {
         const d = Math.hypot(p.pos.x - cam.x, p.pos.z - cam.z);
         if (d < 40) {
           const ph = (this.stepPhase.get(p.id) ?? 0) + (v * 0.4) / 30; // ~one stride per (2.5 m / v) s at 30 Hz

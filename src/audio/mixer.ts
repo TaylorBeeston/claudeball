@@ -67,6 +67,9 @@ const MIN_GAP: Partial<Record<string, number>> = {
   slide_scuff: 0.25,
 };
 
+/** Minimum seconds between two plays of the same crowd sound (a clap pattern needs short gaps; the rest must not stack up). */
+const CROWD_GAP: Partial<Record<string, number>> = { clap_burst: 0.1, clap_single: 0.12, whistle: 1.5, shout: 1.2, shout2: 1.2, kid: 6, vendor: 4, chatter: 2, aww: 0.5, ooh: 0.3, gasp: 0.5, oh_relief: 0.6 };
+
 export class Mixer {
   ctx: AudioContext | null = null;
   settings: Settings;
@@ -79,6 +82,10 @@ export class Mixer {
   master!: GainNode;
   sfxBus!: GainNode;
   crowdBus!: GainNode;
+  /** the bed and the one-shots of the crowd enter here; the camera's distance to the stands sets its gain */
+  crowdProx!: GainNode;
+  /** phone-class device: fewer simultaneous crowd voices */
+  lowPower = false;
   organBus!: GainNode;
   private sfxFilter!: BiquadFilterNode;
   reverbIn!: GainNode;
@@ -149,6 +156,8 @@ export class Mixer {
     this.sfxFilter.connect(this.master);
     this.crowdBus = ctx.createGain();
     this.crowdBus.connect(this.master);
+    this.crowdProx = ctx.createGain();
+    this.crowdProx.connect(this.crowdBus);
     this.organBus = ctx.createGain();
     this.organBus.connect(this.master);
     this.voiceBus = ctx.createGain();
@@ -215,6 +224,12 @@ export class Mixer {
     this.applySettings();
   }
 
+  /** camera closer to the stands = a louder crowd (0.7 .. 1.4, smoothed) */
+  setCrowdProximity(g: number) {
+    if (!this.ctx) return;
+    this.crowdProx.gain.setTargetAtTime(g, this.ctx.currentTime, 0.6);
+  }
+
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */
   setMode(o: { replay?: boolean; paused?: boolean; speaking?: boolean }) {
     if (o.replay !== undefined) this.replay = o.replay;
@@ -255,6 +270,7 @@ export class Mixer {
     for (const id of CROWD_IDS) jobs.push(() => this.buffers.set(`crowd:${id}`, [this.toBuffer(renderCrowd(id))]));
     jobs.push(() => this.buffers.set('loop:murmur', [this.toBuffer(crowdLoop('murmur'))]));
     jobs.push(() => this.buffers.set('loop:roar', [this.toBuffer(crowdLoop('roar'))]));
+    jobs.push(() => this.buffers.set('loop:claps', [this.toBuffer(crowdLoop('claps'))]));
     this.totalToPrepare = jobs.length;
     let i = 0;
     const next = () => {
@@ -399,8 +415,11 @@ export class Mixer {
     return true;
   }
 
-  /** Non-positional crowd reaction (stereo one-shot on the crowd bus). */
-  playCrowd(id: CrowdId, gain = 1, delay = 0): boolean {
+  /**
+   * Non-positional crowd reaction (stereo one-shot on the crowd bus). `o.pan` places it in the stands, `o.sweep` moves it across them
+   * (the wave), `o.rate` changes pitch and length. At the voice cap only louder sounds get through.
+   */
+  playCrowd(id: CrowdId, gain = 1, delay = 0, o: { pan?: number; rate?: number; sweep?: { from: number; to: number; dur: number } } = {}): boolean {
     const ctx = this.ctx;
     if (!ctx || !this.ready || ctx.state !== 'running') return false;
     const list = this.buffers.get(`crowd:${id}`);
@@ -408,22 +427,32 @@ export class Mixer {
     if (!b) return false;
     const now = ctx.currentTime;
     const key = `crowd:${id}`;
-    if (now - (this.last.get(key) ?? -9) < 0.8) return false;
-    if (this.crowdVoices.size >= 4) return false;
+    if (now - (this.last.get(key) ?? -9) < (CROWD_GAP[id] ?? 0.8)) return false;
+    const cap = this.lowPower ? 3 : 6;
+    if (this.crowdVoices.size >= cap && !(gain > 0.6 && this.crowdVoices.size < cap + 2)) return false;
     this.last.set(key, now);
     const src = ctx.createBufferSource();
     src.buffer = b;
-    src.playbackRate.value = 0.97 + this.rnd() * 0.06;
+    src.playbackRate.value = (o.rate ?? 1) * (0.98 + this.rnd() * 0.04);
     const g = ctx.createGain();
     g.gain.value = Math.min(1.4, gain);
     src.connect(g);
-    g.connect(this.crowdBus);
+    let pan: StereoPannerNode | null = null;
+    if ((o.pan !== undefined || o.sweep) && typeof ctx.createStereoPanner === 'function') {
+      pan = ctx.createStereoPanner();
+      const from = o.sweep ? o.sweep.from : o.pan!;
+      pan.pan.setValueAtTime(Math.max(-1, Math.min(1, from)), now + Math.max(0, delay));
+      if (o.sweep) pan.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, o.sweep.to)), now + Math.max(0, delay) + o.sweep.dur);
+      g.connect(pan);
+      pan.connect(this.crowdProx);
+    } else g.connect(this.crowdProx);
     this.crowdVoices.add(src);
     src.onended = () => {
       this.crowdVoices.delete(src);
       try {
         src.disconnect();
         g.disconnect();
+        pan?.disconnect();
       } catch {
         /* ignore */
       }
