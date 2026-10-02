@@ -127,3 +127,19 @@ describe('broadcast labels and emitter', () => {
     expect(got).toEqual(['replayEnd']);
   });
 });
+
+describe('break warm-up shots', () => {
+  it('offers the infield drill and the outfield catch only while show balls are in those places', () => {
+    const st = (xb: { x: number; y: number; z: number }[]) => ({ ...state([]), extraBalls: xb }) as GameState;
+    expect(availableKinds(st([]), lm).available.has('infieldDrill')).toBe(false);
+    expect(availableKinds(st([{ x: 10, y: 1, z: 30 }]), lm).available.has('infieldDrill')).toBe(true);
+    expect(availableKinds(st([{ x: 10, y: 1, z: 30 }]), lm).available.has('outfieldCatch')).toBe(false);
+    expect(availableKinds(st([{ x: 20, y: 3, z: 80 }]), lm).available.has('outfieldCatch')).toBe(true);
+  });
+  it('frames the balls for both', () => {
+    const s = { ...state([]), extraBalls: [{ x: 10, y: 1, z: 30 }, { x: 14, y: 1, z: 32 }] } as GameState;
+    const r = computeRig({ kind: 'infieldDrill', variant: 1, hold: 3, transition: 'cut' }, { state: s, lm, t: 0, aspect: 16 / 9, battingSide: 0 });
+    expect(Math.abs(r.tgt.x - 12)).toBeLessThan(0.01);
+    expect(r.pos.distanceTo(r.tgt)).toBeGreaterThan(8);
+  });
+});

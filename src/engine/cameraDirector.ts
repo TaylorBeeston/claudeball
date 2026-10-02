@@ -122,6 +122,7 @@ export class CameraDirector {
   private brollRecent: { kind: BrollKind; subject?: string }[] = [];
   private brollSeq = 0;
   private shownThisLull = 0;
+  private brollRestUntil = 0;
   private lullTrack: { kind: string; first: number; mode: 'total' | 'remaining'; simStart: number; clockStart: number; inferred: boolean } | null = null;
   private breakUntil = 0;
   private reaction: { team: number; at: number } | null = null;
@@ -580,13 +581,19 @@ export class CameraDirector {
       const el = this.clock - cur.start;
       const beat = this.beat && this.beat.until > this.clock && el >= 2.5;
       if (el >= cur.shot.hold || lull.remaining < 0.8 || beat) {
+        // a long lull gets air: after every third shot the live pitch camera comes back for a few seconds (the pitcher's warm-up, the huddle)
+        if (this.shownThisLull > 0 && this.shownThisLull % 3 === 0 && lull.remaining > 12 && !beat) {
+          this.brollRestUntil = this.clock + 3.5;
+          this.shownThisLull++;
+          return this.endBroll();
+        }
         const next = this.planBroll(live, lull);
         if (next) this.startBroll(next);
         else this.endBroll();
       }
       return;
     }
-    if (!lull || !calm || this.shot !== 'pitch' || this.clock - this.shotStart < 0.7) return;
+    if (!lull || !calm || this.shot !== 'pitch' || this.clock - this.shotStart < 0.7 || this.clock < this.brollRestUntil) return;
     const dr = this.deferred;
     if (dr && this.clock - dr.at > 12) {
       if (this.clock - dr.at > 150 || !this.replaysEnabled) this.deferred = null;
