@@ -88,6 +88,7 @@ export class RotateHint {
   private el: HTMLElement;
   private dismissed = false;
   private enabled = false;
+  private suppressed = false;
   constructor() {
     this.el = h('div', { class: 'cb-rotate', role: 'status' }, h('span', { class: 'ph', 'aria-hidden': 'true' }, '📱'), h('span', {}, 'Rotate your device for a better view'), button('✕', () => this.dismiss(), 'quiet', { 'aria-label': 'Dismiss' }));
     document.body.append(this.el);
@@ -105,6 +106,11 @@ export class RotateHint {
     this.enabled = on;
     this.update();
   }
+  /** Hidden while the controls drawer is open (it covers the same corner). */
+  setSuppressed(on: boolean) {
+    this.suppressed = on;
+    this.update();
+  }
   private dismiss() {
     this.dismissed = true;
     try {
@@ -116,7 +122,7 @@ export class RotateHint {
   }
   private update() {
     const narrow = innerWidth <= 640 && innerHeight > innerWidth;
-    this.el.classList.toggle('show', this.enabled && narrow && !this.dismissed);
+    this.el.classList.toggle('show', this.enabled && narrow && !this.dismissed && !this.suppressed);
   }
 }
 
