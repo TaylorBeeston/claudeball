@@ -36,7 +36,7 @@ import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, 
 const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base', 'bench_sit', 'ondeck_ready', 'ondeck_stretch', 'coach_ready', 'coach_go_loop', 'ballkid_sit', 'catch_ready']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
-export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
+export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'pitchcoach', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
 
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
@@ -121,7 +121,7 @@ export function stanceYaw(hand: 'L' | 'R' | undefined): number {
 export function templateNameFor(snap: PlayerSnap): string {
   switch (snap.role) {
     case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': return 'player_batter';
-    case 'batboy': case 'manager': return 'player_coach';
+    case 'batboy': case 'manager': case 'pitchcoach': return 'player_coach';
     case 'ballkid': return 'player_ballkid';
     case 'catcher': return 'player_catcher';
     case 'umpire': return 'player_umpire';
