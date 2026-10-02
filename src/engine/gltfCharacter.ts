@@ -25,13 +25,19 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
+import { readyGlove, receiveReady } from './receiveReady';
+import { makeOnDeckBat } from './ondeckProp';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { swivelElbow, torsoClearance, torsoVolume, type TorsoVolume, type V3 } from './armClear';
+import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
-const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base']);
+const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base', 'bench_sit', 'ondeck_ready', 'ondeck_stretch', 'coach_ready', 'coach_go_loop', 'ballkid_sit', 'catch_ready']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
+/** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
+export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
+export const LOD1_DISTANCE = 42;
+
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
 /** Preferred clip per hint, then fallbacks for clips that a given GLB may not contain (older exports). */
@@ -59,6 +65,22 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'throw': return ['throw'];
     case 'slide': return ['slide'];
     case 'celebrate': return ['celebrate', 'idle'];
+    // the side cast: each falls back to the nearest existing clip until its own clip is in the files
+    case 'bench_sit': return ['bench_sit', 'idle'];
+    case 'ondeck_ready': return ['ondeck_ready', 'idle'];
+    case 'ondeck_swing': return ['ondeck_swing', 'swing'];
+    case 'coach_ready': case 'coach_signs': return [hint, 'coach_ready', 'idle'];
+    case 'coach_stop': return ['coach_stop', 'ump_time', 'idle'];
+    case 'coach_go': case 'coach_advance': case 'coach_go_loop': return [hint, 'celebrate', 'idle'];
+    case 'bench_cheer': case 'bench_stand_up': return [hint, 'bench_sit', 'idle'];
+    case 'catch_ready': return ['catch_ready', ...idleFor(role)];
+    case 'pitcher_catch_toss': return ['pitcher_catch_toss', 'catch_throw', 'field_catch'];
+    case 'ballkid_idle': return ['ballkid_idle', 'ballkid_sit', 'idle'];
+    case 'coach_slide': return ['coach_slide', 'ump_safe', 'idle'];
+    case 'ballkid_sit': return ['ballkid_sit', 'bench_sit', 'idle'];
+    case 'ballkid_run': return ['ballkid_run', 'jog', 'run'];
+    case 'ballkid_pickup': return ['ballkid_pickup', 'field_grounder', 'idle'];
+    case 'ballkid_toss': return ['ballkid_toss', 'throw_casual', 'throw'];
     default: return idleFor(role);
   }
 }
@@ -82,7 +104,9 @@ export function stanceYaw(hand: 'L' | 'R' | undefined): number {
 
 export function templateNameFor(snap: PlayerSnap): string {
   switch (snap.role) {
-    case 'batter': case 'runner': case 'coach': return 'player_batter';
+    case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': return 'player_batter';
+    case 'batboy': return 'player_coach';
+    case 'ballkid': return 'player_ballkid';
     case 'catcher': return 'player_catcher';
     case 'umpire': return 'player_umpire';
     default: return snap.team === 1 ? 'player_home' : 'player_away';
@@ -218,7 +242,7 @@ export function stanceFootSpeed(scene: Object3D, clip: AnimationClip, fallback: 
 }
 
 type GearKind = 'field' | 'batter' | 'catcher';
-const gearKindOf = (role: PlayerRole): GearKind => (role === 'batter' || role === 'runner' || role === 'coach' ? 'batter' : role === 'catcher' ? 'catcher' : 'field');
+const gearKindOf = (role: PlayerRole): GearKind => (role === 'batter' || role === 'runner' || role === 'coach' || role === 'coach1b' || role === 'coach3b' || role === 'ondeck' ? 'batter' : role === 'catcher' ? 'catcher' : 'field');
 const HAIR_NODES = ['Gear_Hair', 'Gear_Hair_Buzz', 'Gear_Hair_Curly', 'Gear_Hair_Long'];
 const FACIAL_NODES = ['Gear_Beard_Stubble', 'Gear_Beard_Full', 'Gear_Goatee', 'Gear_Mustache'];
 const JERSEY_NODES = ['Jersey', 'Jersey_ShortSleeve', 'Jersey_Sleeveless'];
@@ -233,11 +257,11 @@ const GLOVES: Record<GloveKind, { glove: string; laces: string; pocket: string }
 };
 export function gloveKindFor(role: PlayerRole): GloveKind | null {
   switch (role) {
-    case 'batter': case 'runner': case 'coach': case 'umpire': return null;
     case 'catcher': return 'catcher';
     case 'first': return 'first';
     case 'left': case 'center': case 'right': return 'outfield';
-    default: return 'infield';
+    case 'pitcher': case 'second': case 'third': case 'short': return 'infield';
+    default: return null; // runners, coaches, bench, ball kids, umpires and any role the engine does not know: no glove
   }
 }
 const TRIM_WHITE = '#f2f2ee', TRIM_BLACK = '#17181b';
@@ -289,6 +313,13 @@ export class GltfPuppet implements PuppetLike {
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
   private torso: TorsoVolume = torsoVolume(undefined);
+  private headVol: HeadVolume = headVolume(undefined);
+  private headVolHelmet: HeadVolume = headVolume(undefined, true);
+  private headVolCap: HeadVolume = headVolume(undefined, false);
+  /** smallest arm-to-head clearance (m) over the puppet's life; negative = an elbow or forearm inside the head */
+  headClearWorst = Infinity;
+  headClear = Infinity;
+  private warnedHead = false;
   /** smallest elbow-to-trunk clearance (m) this frame and over the puppet's life; negative = an elbow inside the torso */
   elbowClear = Infinity;
   minElbowClear = Infinity;
@@ -337,12 +368,41 @@ export class GltfPuppet implements PuppetLike {
       this.bodyScale = this.look.scale;
       this.applyMorphs(this.look.morphs);
       this.torso = torsoVolume(this.look.morphs);
+      this.headVolHelmet = headVolume(this.look.morphs, true);
+      this.headVolCap = headVolume(this.look.morphs, false);
+      this.headVol = this.headVolCap;
       this.applyGear(gearKindOf(snap.role), snap.role);
+      this.assertUniformHead(snap.id);
     } else {
-      // fixed-look files (umpires): keep their configuration, hair hidden under caps / helmets
+      // fixed-look files (umpires, coaches, ball kids): show exactly the nodes the file marks as its default look (glTF has no visibility flag,
+      // so optional caps / helmets / lineup cards would all be on), the bat boy wears the coach's file with a cap instead of the helmet
+      if (tpl.defaults.size) {
+        for (const [name, o] of this.nodes) {
+          const grp = o.userData?.cb_group;
+          if (grp === undefined || grp === 'hand') continue;
+          o.visible = tpl.defaults.has(name);
+        }
+      }
+      if (snap.role === 'batboy') {
+        const helmet = this.nodes.get('Gear_Helmet'), cap = this.nodes.get('Gear_Cap');
+        if (helmet) helmet.visible = false;
+        if (cap) cap.visible = true;
+      }
+      // hair hidden under caps / helmets
       const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
       if (hair && (this.nodes.get('Gear_Cap') || this.nodes.get('Gear_Helmet'))) hair.visible = false;
     }
+  }
+
+  /** conehead guard: the head's world scale must be uniform (clips carry unit scale tracks, the body scale is uniform); warns once in dev */
+  private assertUniformHead(id: string) {
+    if (!import.meta.env?.DEV) return;
+    const head = this.bones.Head;
+    if (!head) return;
+    this.model.updateMatrixWorld(true);
+    const s = new Vector3().setFromMatrixScale(head.matrixWorld);
+    const hi = Math.max(s.x, s.y, s.z), lo = Math.min(s.x, s.y, s.z);
+    if (lo <= 0 || hi / lo > 1.02) console.error(`[head-scale] ${id} head bone scale is not uniform (${s.x.toFixed(3)}, ${s.y.toFixed(3)}, ${s.z.toFixed(3)})`);
   }
 
   private applyMorphs(morphs: Record<string, number>) {
@@ -366,7 +426,9 @@ export class GltfPuppet implements PuppetLike {
     if (!this.look || key === this.gearKind) return;
     this.gearKind = key;
     const L = this.look;
-    const defaults = this.gearSets[kind] ?? this.gearSets.field ?? this.tpl.defaults;
+    // the coach and ball-kid files carry their own pre-configured outfits (helmet and uniform, polo and shorts)
+    const own = this.tpl.name === 'player_coach' || this.tpl.name === 'player_ballkid';
+    const defaults = own ? this.tpl.defaults : this.gearSets[kind] ?? this.gearSets.field ?? this.tpl.defaults;
     for (const [name, o] of this.nodes) {
       const grp = o.userData?.cb_group;
       if (grp === undefined || grp === 'hand') continue;
@@ -376,19 +438,26 @@ export class GltfPuppet implements PuppetLike {
       const o = this.nodes.get(name);
       if (o) o.visible = on;
     };
+    // the bat boy: the coach's uniform with a cap instead of the helmet
+    if (role === 'batboy') {
+      show('Gear_Helmet', false);
+      show('Gear_Cap', true);
+    }
     // clothes variants
-    if (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible) {
+    if (!own && (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible)) {
       for (const n of JERSEY_NODES) show(n, n === L.jerseyNode);
     }
-    for (const n of PANTS_NODES) show(n, n === L.pantsNode);
+    if (!own) for (const n of PANTS_NODES) show(n, n === L.pantsNode);
     // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
     const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
     for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
-    for (const n of FACIAL_NODES) show(n, n === L.facialNode);
+    for (const n of FACIAL_NODES) show(n, n === L.facialNode && role !== 'ballkid');
     show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
     // arms
-    show('Gear_Wristband_L', L.wristbands.L);
-    show('Gear_Wristband_R', L.wristbands.R);
+    if (!own) {
+      show('Gear_Wristband_L', L.wristbands.L);
+      show('Gear_Wristband_R', L.wristbands.R);
+    }
     show('Gear_ArmSleeve_L', L.armSleeves.L && kind !== 'batter');
     show('Gear_ArmSleeve_R', L.armSleeves.R && kind !== 'batter');
     // gloves: each role wears its own (infield, outfield, first-base mitt, catcher's mitt), with its own pocket
@@ -766,7 +835,7 @@ export class GltfPuppet implements PuppetLike {
     if (!c || !this.actions.has(name)) return null;
     const p = snap.animProgress;
     if (p === undefined) return null;
-    if (snap.anim.startsWith('catch_') || snap.anim === 'field_grounder') {
+    if ((snap.anim.startsWith('catch_') && snap.anim !== 'catch_ready') || snap.anim === 'field_grounder' || snap.anim === 'pitcher_catch_toss') {
       const tc = c.events_s?.catch;
       if (!tc) return null;
       const t = snap.gloveTarget && snap.catchIn !== undefined && snap.catchIn > 0 ? tc - snap.catchIn : p * 2 * tc;
@@ -884,12 +953,26 @@ export class GltfPuppet implements PuppetLike {
     // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
     // was applied again on top, every frame. Put every bone we modify back to its clip pose before the mixer runs.
     for (const [bone, q] of this.clipPose) bone.quaternion.copy(q);
-    this.mixer.update(dt);
+    // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
+    const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
+    this.lod1 = lod1;
+    if (lod1) {
+      this.lodAcc += dt;
+      this.lodFlip = !this.lodFlip;
+      if (this.lodFlip) {
+        this.mixer.update(this.lodAcc);
+        this.lodAcc = 0;
+      }
+    } else {
+      this.mixer.update(dt + this.lodAcc);
+      this.lodAcc = 0;
+    }
     for (const [bone, q] of this.clipPose) q.copy(bone.quaternion);
 
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : snap.facing;
+    const ready = this.updateReady(snap, env, dt);
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -904,6 +987,11 @@ export class GltfPuppet implements PuppetLike {
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
     this.root.updateMatrixWorld(true);
+    this.updateProp(snap, env);
+    if (lod1) {
+      this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
+      return;
+    }
     this.rig.refresh();
 
     // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
@@ -927,10 +1015,29 @@ export class GltfPuppet implements PuppetLike {
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
       // a fielder who holds the ball has it in the glove pocket; while he throws it stays in his hand until the sim releases it
-      place = snap.anim === 'throw' || snap.anim === 'toss' ? 'hand' : 'glove';
+      place = snap.anim === 'throw' || snap.anim === 'toss' || snap.role === 'ballkid' ? 'hand' : 'glove';
     }
     this.updateHeldBall(snap, env, place, dt);
   }
+  /** distant extra: animates at half rate without look-at / IK (level of detail 1) */
+  lod1 = false;
+  private lodAcc = 0;
+  private lodFlip = false;
+  private prop: Object3D | null = null;
+
+  /** the on-deck batter's bat with a donut: the model's own `Bat_Donut` when it has one, else a plain bat and ring in his hand */
+  private updateProp(snap: PlayerSnap, env: PuppetEnv) {
+    const want = snap.role === 'ondeck';
+    const donut = this.nodes.get('Bat_Donut');
+    if (donut) donut.visible = want;
+    if (!want && !this.prop) return;
+    if (want && !this.prop && this.batGrip) {
+      this.prop = env.makeBat ? env.makeBat() : makeOnDeckBat(!!donut);
+      this.batGrip.add(this.prop);
+    }
+    if (this.prop) this.prop.visible = want;
+  }
+
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
   private ikFade = 1;
@@ -938,8 +1045,39 @@ export class GltfPuppet implements PuppetLike {
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
   private clipPose = new Map<Bone, Quaternion>();
 
-  private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump']);
+  private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump', 'pitcher_catch_toss']);
   private gloveW = 0;
+  private readyW = 0;
+  private readyGlovePos: { x: number; y: number; z: number } | null = null;
+  private readyLook: Vector3 | null = null;
+
+  /** easing for the waiting pose (glove up, turned toward the thrower); returns the yaw to face while it is on */
+  private updateReady(snap: PlayerSnap, env: PuppetEnv, dt: number): { yaw: number } | null {
+    const c = env.carrier && env.carrier.id !== snap.id ? env.carrier : null;
+    const dist = c ? Math.hypot(c.pos.x - snap.pos.x, c.pos.z - snap.pos.z) : 0;
+    const on = receiveReady({
+      hint: snap.anim === 'catch_ready',
+      role: snap.role,
+      anim: snap.anim,
+      hasBall: !!snap.hasBall,
+      carrier: c ? { role: c.role, anim: c.anim, distance: dist } : null,
+      liveBall: (env.ballSpeed ?? 0) > 14,
+      incoming: !!snap.gloveTarget && (snap.catchIn ?? 0) < 1.2,
+    });
+    // up in about a quarter second, down a little slower; a catch clip (own hint) takes over the glove from there
+    this.readyW += ((on ? 1 : 0) - this.readyW) * (1 - Math.exp(-dt * (on ? 9 : 6)));
+    if (this.readyW < 0.01) {
+      this.readyGlovePos = null;
+      this.readyLook = null;
+      return null;
+    }
+    const to = c ? c.pos : env.ball ?? (snap.gloveTarget ? new Vector3(snap.gloveTarget.x, snap.gloveTarget.y, snap.gloveTarget.z) : null);
+    if (!to) return null;
+    if (snap.gloveTarget) this.readyGlovePos = { x: snap.gloveTarget.x, y: snap.gloveTarget.y, z: snap.gloveTarget.z };
+    else this.readyGlovePos = readyGlove(snap.pos, to, snap.hand ?? 'R', this.readyGlovePos ?? undefined);
+    (this.readyLook ??= new Vector3()).set(to.x, to.y + 1.2, to.z);
+    return { yaw: Math.atan2(to.x - snap.pos.x, to.z - snap.pos.z) };
+  }
   private lastGlove: { x: number; y: number; z: number } | null = null;
   private gloveClosed = 0;
 
@@ -965,6 +1103,10 @@ export class GltfPuppet implements PuppetLike {
       target = new Vector3(gt!.x, gt!.y, gt!.z);
       // reach out through the first half of the catch, then hold the pocket on the ball
       w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : p < 0.15 ? p / 0.15 : 1;
+    } else if (this.readyW > 0.02 && this.readyGlovePos) {
+      // glove out for a throw that has not left the thrower's hand yet
+      target = new Vector3(this.readyGlovePos.x, this.readyGlovePos.y, this.readyGlovePos.z);
+      w = this.readyW;
     } else if (tagging && env.positions) {
       // the runner the sim named in the tag event, else the nearest other player within reach
       let rid = env.tagRunner?.(snap.id) ?? null;
@@ -1067,12 +1209,27 @@ export class GltfPuppet implements PuppetLike {
     const Ps = rig.pos(spine, new Vector3());
     const Qi = rig.quat(spine, new Quaternion()).invert();
     let worst = Infinity;
+    // a helmet (batters, runners) is a bigger head than a cap
+    this.headVol = snap.role === 'batter' || snap.role === 'runner' ? this.headVolHelmet : this.headVolCap;
+    // head sphere centre in rig space (the head bone's own axes: +Y up, +Z forward)
+    const headB = this.bones.Head;
+    let hc = Infinity;
+    let headC: V3 | null = null;
+    if (headB) {
+      const hp = rig.pos(headB, new Vector3());
+      const hq = rig.quat(headB, new Quaternion());
+      const off = new Vector3(0, this.headVol.up, this.headVol.fwd).applyQuaternion(hq);
+      headC = [hp.x + off.x, hp.y + off.y, hp.z + off.z];
+    }
     for (const side of ['Left', 'Right'] as const) {
       const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
       if (!arm || !fore || !hand) continue;
       const E = rig.pos(fore, new Vector3());
       const loc = E.clone().sub(Ps).applyQuaternion(Qi);
-      let clear = torsoClearance(loc.x, loc.y, loc.z, this.torso);
+      const Sp = rig.pos(arm, new Vector3());
+      const Hp = rig.pos(hand, new Vector3());
+      const headClear = (e: V3) => (headC ? armHeadClearance([Sp.x, Sp.y, Sp.z], e, [Hp.x, Hp.y, Hp.z], headC, this.headVol) : Infinity);
+      let clear = Math.min(torsoClearance(loc.x, loc.y, loc.z, this.torso), headClear([E.x, E.y, E.z]));
       if (clear < 0.008 && !(globalThis as { __noElbowFix?: boolean }).__noElbowFix) {
         // swivel the elbow around the shoulder→hand axis: the hand stays where the clip / IK put it, only the elbow leaves the trunk
         const S = rig.pos(arm, new Vector3());
@@ -1080,7 +1237,7 @@ export class GltfPuppet implements PuppetLike {
         const tmp = new Vector3();
         const clearAt = (p: V3) => {
           tmp.set(p[0], p[1], p[2]).sub(Ps).applyQuaternion(Qi);
-          return torsoClearance(tmp.x, tmp.y, tmp.z, this.torso);
+          return Math.min(torsoClearance(tmp.x, tmp.y, tmp.z, this.torso), headClear(p));
         };
         const r = swivelElbow([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, 0.02);
         if (r.angle !== 0) {
@@ -1090,8 +1247,19 @@ export class GltfPuppet implements PuppetLike {
         clear = r.clear;
       }
       worst = Math.min(worst, clear);
+      if (headC) {
+        // what is left after the fix, measured from the final bone positions (the number the per-frame assertion watches)
+        const E2 = rig.pos(fore, new Vector3()), H2 = rig.pos(hand, new Vector3());
+        hc = Math.min(hc, armHeadClearance([Sp.x, Sp.y, Sp.z], [E2.x, E2.y, E2.z], [H2.x, H2.y, H2.z], headC, this.headVol));
+      }
     }
     this.elbowClear = worst;
+    this.headClear = hc;
+    this.headClearWorst = Math.min(this.headClearWorst, hc);
+    if (import.meta.env?.DEV && hc < -0.03 && !this.warnedHead) {
+      this.warnedHead = true;
+      console.error(`[head] ${snap.id} arm ${(-hc * 100).toFixed(1)} cm inside the head (${snap.anim})`);
+    }
     this.minElbowClear = Math.min(this.minElbowClear, worst);
     if (import.meta.env?.DEV && worst < -0.04 && !this.warnedElbow) {
       this.warnedElbow = true;
@@ -1204,7 +1372,7 @@ export class GltfPuppet implements PuppetLike {
     // idle players with nothing moving forget the ball and look ahead
     const still = (snap.anim === 'idle' || snap.anim === 'celebrate') && Math.hypot(snap.vel.x, snap.vel.z) < 0.3;
     const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
-    const focus = live ? env.ball : env.mound ?? null;
+    const focus = this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
     let t: LookTarget | null = null;
     if (focus) {
       const hp = rig.pos(head, _a);

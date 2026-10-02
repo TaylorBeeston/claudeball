@@ -306,6 +306,8 @@ export interface Stadium {
   crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; excite(v: number): void; update(t: number, dt: number): void };
   updateScoreboard(s: GameState): void;
   setLightsOn(on: boolean): void;
+  /** where the lamp banks of the light towers are (scene coordinates); replaced when the glTF stadium is adopted */
+  towers: Vector3[];
   /** position for a crowd cutaway camera: [camera position, target] */
   crowdShots: { pos: Vector3; target: Vector3 }[];
 }
@@ -472,6 +474,7 @@ export function buildStadium(env: Environment): Stadium {
   const glow = glowTexture();
   const lampMat = new MeshStandardMaterial({ color: 0x222222, emissive: 0xfff2d8, emissiveIntensity: 0, roughness: 0.4 });
   const glares: Sprite[] = [];
+  const towers: Vector3[] = [];
   {
     const poleMat = env.register(new MeshStandardMaterial({ color: 0x6b7076, roughness: 0.5, metalness: 0.6 }));
     const spots: [number, number][] = [];
@@ -498,6 +501,7 @@ export function buildStadium(env: Environment): Stadium {
       bank.add(frame);
       tw.add(pole, bank);
       tw.position.set(x, 0, z);
+      towers.push(new Vector3(x, 44, z));
       // face the field
       bank.lookAt(0 - x, 30, 30 - z);
       const sp = new Sprite(new SpriteMaterial({ map: glow, color: 0xfff0d8, blending: AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
@@ -656,11 +660,13 @@ export function buildStadium(env: Environment): Stadium {
         crowdShots.push({ pos: p.clone().addScaledVector(fwd, 18).setY(p.y + 1.6), target: p.clone().setY(p.y + 1.3) });
       }
     }
-    // glare sprites on each lamp bank (bloom + lens glare when lit)
+    // glare sprites on each lamp bank (bloom + lens glare when lit), and the lights' positions
+    const gltfTowers: Vector3[] = [];
     root.traverse((o) => {
       if (!(o as Mesh).isMesh || !o.name.endsWith('_Lamps')) return;
       const box = new Box3().setFromObject(o);
       const c = box.getCenter(new Vector3());
+      gltfTowers.push(c.clone());
       const sp = new Sprite(new SpriteMaterial({ map: glow, color: 0xfff0d8, blending: AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, fog: false }));
       sp.scale.setScalar(Math.max(24, box.getSize(new Vector3()).length() * 3));
       sp.position.copy(c);
@@ -668,6 +674,10 @@ export function buildStadium(env: Environment): Stadium {
       gltfGlares.push(sp);
       gbufferHidden.push(sp);
     });
+    if (gltfTowers.length) {
+      towers.length = 0;
+      towers.push(...gltfTowers);
+    }
     gltfLamps = [...lampSet];
     gltfLampBase = gltfLamps.map((m) => m.emissiveIntensity || 1);
     applyLights();
@@ -692,6 +702,7 @@ export function buildStadium(env: Environment): Stadium {
       applyLights();
     },
     adoptGltf,
+    towers,
     crowdShots,
   };
 }

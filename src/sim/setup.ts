@@ -1,6 +1,7 @@
 import { DEFAULT_ENV } from './ball';
 import { DEFAULT_FENCE, MOUND_DIST } from './field';
 import { Rng } from './rng';
+import { dugDoor } from './venue';
 import { newDecState } from './dispatch';
 import { createAI } from './ai';
 import { generateTeam } from './roster';
@@ -25,7 +26,8 @@ export const DEFAULT_SPOTS: Record<Exclude<FieldPosition, 'DH'>, { x: number; z:
   RF: { x: -33, z: 83 },
 };
 
-export const DUGOUT = { home: { x: 30, z: 10 }, away: { x: -30, z: 10 } }; // home dugout on the third-base side
+/** The dugout doors (field level, at the top of the steps): where a man heading for the dugout goes first; the home dugout is on the third-base side. */
+export const DUGOUT = { home: dugDoor('home'), away: dugDoor('away') };
 
 function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
   return {
@@ -65,6 +67,12 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     legs: 0,
     form: 0,
     rattle: 0,
+    dug: null,
+    seat: 0,
+    route: [],
+    routeMul: 0.25,
+    after: null,
+    nextSwing: 0,
     gait: null,
     wallTick: -9999,
     plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, catchZ: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
@@ -243,6 +251,10 @@ export function createWorld(cfg: GameConfig): World {
       ] as const
     ).map(([id, name, position, key, x, z]) => ({ id, name, position, key, x, z, vx: 0, vz: 0, gx: x, gz: z, goalSince: 0, facing: Math.atan2(-x, position === 'HP' ? 20 : 30 - z), anim: 'ump_ready' as const, animStart: 0, animUntil: 0 })),
     umpQueue: [],
+    staff: [],
+    deadBall: null,
+    batDown: null,
+    propRng: new Rng(`${cfg.seed}:props`),
     ballInPlayEver: false,
     jitter: 0,
     passedBallFlag: false,

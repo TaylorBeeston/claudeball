@@ -67,6 +67,35 @@ export function pushOutsideTorso(x: number, y: number, z: number, v: TorsoVolume
 
 export type V3 = [number, number, number];
 
+/** The head (with its cap or helmet) as a sphere: radius and where its centre sits relative to the head bone (head-local axes, m). */
+export interface HeadVolume {
+  radius: number;
+  up: number;
+  fwd: number;
+}
+
+export function headVolume(morphs: Record<string, number> | undefined, helmet = true): HeadVolume {
+  const m = morphs ?? {};
+  const wide = m.head_wide ?? 0, narrow = m.head_narrow ?? 0;
+  // skull ~0.115 m, wider / narrower morphs change it a little; a helmet adds a centimetre or two all round
+  return { radius: 0.115 * (1 + 0.08 * wide - 0.05 * narrow) + (helmet ? 0.025 : 0.012), up: 0.095, fwd: 0.015 };
+}
+
+/** Metres between a point and the head sphere surface (negative: inside). */
+export function headClearance(p: V3, centre: V3, v: HeadVolume): number {
+  return Math.hypot(p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]) - v.radius;
+}
+
+/**
+ * Clearance of the whole arm's elbow end from the head: the elbow itself and the middle of both arm segments (the hand is allowed
+ * near the head: a batter's top hand may be level with his ear).
+ */
+export function armHeadClearance(S: V3, E: V3, H: V3, centre: V3, v: HeadVolume): number {
+  const mid = (a: V3, b: V3): V3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+  return Math.min(headClearance(E, centre, v), headClearance(mid(S, E), centre, v), headClearance(mid(E, H), centre, v));
+}
+
+
 /**
  * Swivel the elbow around the shoulder→hand axis (the hand stays exactly where it is, both bone lengths are kept) to the nearest angle at
  * which `clearance(elbow)` is at least `margin`. If no angle gets there, the best one is returned. Angles are searched outward from the

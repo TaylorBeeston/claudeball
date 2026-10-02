@@ -663,6 +663,7 @@ export const CATCH_LEAD: Record<string, number> = {
   catch_backhand: 8 / 24,
   field_grounder: 11 / 24,
   catch_comebacker: 7 / 24,
+  pitcher_catch_toss: 8 / 24,
 };
 
 /** Which catch clip a catch is, and how far ahead of the arrival it starts. */
@@ -1166,7 +1167,10 @@ export function isAirBall(mode: string, touchedGround: boolean, rolling: boolean
   return !touchedGround && !rolling && (mode === 'batted' || y > 0.5);
 }
 
-const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'catch_throw_low' || hint === 'catch_throw_high' || hint === 'catch_stretch' ? 'throw' : 'air');
+const catchFamily = (hint: string) => (hint === 'field_grounder' || hint === 'catch_comebacker' ? 'ground' : hint === 'catch_throw' || hint === 'pitcher_catch_toss' || hint === 'catch_throw_low' || hint === 'catch_throw_high' || hint === 'catch_stretch' ? 'throw' : 'air');
+
+/** He is the man a casual return (a tossed ball back to the pitcher, around the horn) is on its way to: his glove target is the return's. */
+export const receivingReturn = (w: World, F: PlayerRT) => w.ret?.to === F || w.ball.lob?.to === F;
 
 /** Whether his catch clip is running (armed, not expired, still the catch hint): a stale flag from an earlier play does not count. */
 export function catchClipOn(w: World, F: PlayerRT): boolean {
@@ -1199,7 +1203,7 @@ export function updateGloveTargets(w: World): void {
   const ball = w.ball;
   if (ball.holder || !(ball.mode === 'batted' || ball.mode === 'loose' || ball.mode === 'thrown')) {
     for (const F of fielders(w)) {
-      if (F.gloveTarget && F !== w.catcher) {
+      if (F.gloveTarget && F !== w.catcher && !receivingReturn(w, F)) {
         F.gloveTarget = null;
         F.catchArmed = false;
       }
@@ -1216,7 +1220,7 @@ export function updateGloveTargets(w: World): void {
   const radius = 4 + 0.5 * vh;
   for (const F of fielders(w)) if (F.leap || Math.hypot(bb.x - F.x, bb.z - F.z) < radius) cand.add(F);
   for (const F of fielders(w)) {
-    if (!cand.has(F) && F.gloveTarget && F !== w.catcher) {
+    if (!cand.has(F) && F.gloveTarget && F !== w.catcher && !receivingReturn(w, F)) {
       F.gloveTarget = null;
       F.catchArmed = false;
     }
@@ -1251,7 +1255,7 @@ export function updateGloveTargets(w: World): void {
       ty = Math.max(0.12, bb.y + bb.vy * tArr - 0.5 * 9.81 * tArr * tArr);
       tz = bb.z + bb.vz * tArr;
     } else {
-      if (F.gloveTarget && F !== w.catcher) {
+      if (F.gloveTarget && F !== w.catcher && !receivingReturn(w, F)) {
         F.gloveTarget = null;
         F.catchArmed = false;
       }
