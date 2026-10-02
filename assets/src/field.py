@@ -3,22 +3,18 @@ import json
 reset_scene()
 S2 = math.sqrt(.5)
 # ---------------- materials
-g, gh = grass_tex(); d, dh = dirt_tex(); t, th = dirt_tex(seed=5, base=(0.42, 0.19, 0.11), var=0.3)
-def mk(nm, arr, h, ns, rough=0.95, ao=0.5):
-    hh = (h - h.min())/max(1e-6, h.max()-h.min())
-    orm_ = np.stack([np.clip(1-ao*(1-hh), 0, 1), np.clip(rough - .12*hh, 0, 1), np.zeros_like(hh)], -1)
-    return vc_material(nm, make_image(nm+"_albedo", arr, path=ROOT+f"/tex/{nm}_albedo.png"),
-                       make_image(nm+"_normal", height_to_normal(h, ns), 'Non-Color', ROOT+f"/tex/{nm}_normal.png"), rough, 1.0,
-                       make_image(nm+"_orm", orm_, 'Non-Color', ROOT+f"/tex/{nm}_orm.png"))
-M_GRASS = mk("grass", g, gh, 6.0, .92, .6); M_DIRT = mk("dirt", d, dh, 5.0, .95, .5); M_TRACK = mk("track", t, th, 5.0, .95, .5)
+import os
+M_GRASS = acg_material("grass", acg("Grass005", tint=(.80, .92, .70), gain=.78), .92, 1.0)                                  # lawn (blade-level photo), mowing bands / wear come from the vertex colours
+M_DIRT = acg_material("dirt", acg("Ground080", tint=(.82, .56, .40), gain=.95), .95, .25)                                  # infield clay (beige photo tinted red-brown)
+M_TRACK = acg_material("track", acg("Ground110", tint=(.95, .62, .46), gain=1.05), .95, 1.0)                                # warning track: crushed stone
 def flat(name, col, rough=0.8):
     m = bpy.data.materials.new(name); m.use_nodes = True; b = m.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = col; b.inputs["Roughness"].default_value = rough; return m
 _ch = noise_tex(512, [16, 64, 256], 21); M_CHALK = vc_material("chalk", make_image("chalk_albedo", np.repeat((.82+.18*_ch)[..., None], 3, 2), path=ROOT+"/tex/chalk_albedo.png"),
-    make_image("chalk_normal", height_to_normal(_ch, 4.0), 'Non-Color', ROOT+"/tex/chalk_normal.png"), .95, .8); M_BASE = flat("base_white", (0.85, 0.85, 0.85, 1), 0.6)
-M_YELLOW = flat("pole_yellow", (0.95, 0.75, 0.05, 1), 0.5); M_DUG = flat("dugout_concrete", (0.45, 0.45, 0.45, 1), 0.9)
-M_BENCH = flat("dugout_bench", (0.35, 0.22, 0.12, 1), 0.7); M_RUB = flat("rubber_white", (0.9, 0.9, 0.9, 1), 0.7)
-M_PLATE = flat("plate_white", (0.9, 0.9, 0.9, 1), 0.7)
+    make_image("chalk_normal", height_to_normal(_ch, 4.0), 'Non-Color', ROOT+"/tex/chalk_normal.png"), .95, .8); M_BASE = acg_material("base_white", acg("Fabric036", tint=(.95, .95, .93), gain=1.15, lumnorm=True), .6, .5)
+M_YELLOW = flat("pole_yellow", (0.95, 0.75, 0.05, 1), 0.5); M_DUG = acg_material("dugout_concrete", acg("Concrete034", tint=(.85, .85, .83), gain=.8), .9, .9)
+M_BENCH = flat("dugout_bench", (0.35, 0.22, 0.12, 1), 0.7); M_RUB = acg_material("rubber_white", acg("Rubber004", tint=(.95, .95, .93), gain=1.15, lumnorm=True), .7, .25)
+M_PLATE = acg_material("plate_white", acg("Rubber004", tint=(.95, .95, .93), gain=1.15, lumnorm=True), .7, .25)
 Y_DIRT, Y_G2, Y_CUT, Y_CH = 0.010, 0.020, 0.026, 0.034
 LIGHT, DARK = (1, 1, 1, 1), (0.72, 0.80, 0.70, 1)
 objs = []
@@ -48,7 +44,7 @@ def grass_col(k, dark):
         c = (base*(1-w) + WEAR_T*w*base.mean()) * band_tint[k % 200] * n
         return (min(c[0], 1), min(c[1], 1), min(c[2], 1), 1)
     return f
-mb = MB("Grass_Outfield"); CELL = 4.6/3
+mb = MB("Grass_Outfield", uv_scale=1.6); CELL = 4.6/3
 for i, j, p in grid_cells(outline, CELL, 0.0, (-100.0, -100.0), (200.0, 260.0), clip_fn=carved):
     k = i//3; mb.poly(p, 0.0, grass_col(k, k % 2 == 0))
 objs.append(mb.build(M_GRASS))
@@ -56,13 +52,13 @@ def dirt_col(x, z):
     w = math.exp(-(math.hypot(x-C_MOUND[0], z-C_MOUND[1])/6.0)**2)*.28 + math.exp(-(math.hypot(x, z)/7.0)**2)*.2
     for cx, cz in (b1, b2, b3): w += .22*math.exp(-((x-cx)**2+(z-cz)**2)/(2*3.0**2))
     n = .9+.1*vn(x*.9, z*.9); c = (1-min(w, .4))*n; return (c, c*.97, c*.94, 1)
-mb = MB("Dirt")
+mb = MB("Dirt", uv_scale=0.9)
 cir = circle(*C_MOUND, 95*FT, 160)
 for i, j, p in grid_cells(cir, 2.0, 0.0, (-70.0, -70.0), (140.0, 140.0), clip_fn=carved): mb.poly(p, Y_DIRT, dirt_col)
 ap = clip_poly(outline, 0.0, -1.0, 6.0)
 for i, j, p in grid_cells(ap, 2.0, 0.0, (-70.0, -70.0), (140.0, 140.0), clip_fn=carved): mb.poly(p, Y_DIRT, dirt_col)
 objs.append(mb.build(M_DIRT))
-mb = MB("WarningTrack")
+mb = MB("WarningTrack", uv_scale=1.6)
 outer = fence_pts(); inner = fence_pts(off=15*FT)
 trk = outer + list(reversed(inner))
 def track_col(x, z):
@@ -72,11 +68,11 @@ objs.append(mb.build(M_TRACK))
 # ---------------- infield grass diamond (diagonal mowing) with dirt cutouts on top
 inset = 3*FT*math.sqrt(2)
 diamond = [(0, inset), ((38.795-2*inset)/2, (38.795)/2), (0, 38.795-inset), (-(38.795-2*inset)/2, 38.795/2)]
-mb = MB("Grass_Infield")
+mb = MB("Grass_Infield", uv_scale=1.6)
 for i, j, p in grid_cells(diamond, 1.0, math.pi/4, (-30.0, -30.0), (100.0, 100.0)):
     k = i//3; mb.poly(p, Y_G2, grass_col(k+7, k % 2 == 0))
 objs.append(mb.build(M_GRASS))
-mb = MB("Dirt_Cutouts")
+mb = MB("Dirt_Cutouts", uv_scale=0.9)
 mb.poly(circle(0, 0.2, 13*FT, 72), Y_CUT, dirt_col)                 # home plate circle (13 ft radius)
 for bc in (b1, b2, b3): mb.poly(circle(*bc, 1.6, 40), Y_CUT, dirt_col)
 objs.append(mb.build(M_DIRT))
@@ -84,7 +80,7 @@ objs.append(mb.build(M_DIRT))
 # 18 ft diameter circle centred 59 ft from the plate apex; 10 in above the plate; level area 5 ft wide x 34 in long whose front edge is 6 in in front of the
 # rubber's front edge (rubber front edge 60 ft 6 in from the apex, rubber 24 x 6 in, i.e. spanning z = 60.5..61 ft); from the level area the surface falls
 # 1 in per foot in every direction (measured from the level rectangle), eased to the field over the last 1.5 ft of the circle.
-mb = MB("Mound"); H = 10*IN; RO = 9*FT; NR, NS = 72, 128
+mb = MB("Mound", uv_scale=0.9); H = 10*IN; RO = 9*FT; NR, NS = 72, 128
 LV_X, LV_Z0, LV_Z1 = 2.5*FT, 60.0*FT, 60.0*FT + 34*IN
 def _sm(e): e = min(1.0, max(0.0, e)); return e*e*(3 - 2*e)
 def mound_h(x, z):
@@ -108,10 +104,10 @@ for i in range(NR):
         a, b_, c, d_ = rings[i][k], rings[i][(k+1) % NS], rings[i+1][(k+1) % NS], rings[i+1][k]
         mb.tri(a, b_, c); mb.tri(a, c, d_)
 objs.append(mb.build(M_DIRT, smooth=True))
-rub = MB("PitchersRubber"); rub.box(0, 60.5*FT+3*IN, 24*IN, 6*IN, H-0.03, H+0.008)
+rub = MB("PitchersRubber", uv_scale=.5); rub.box(0, 60.5*FT+3*IN, 24*IN, 6*IN, H-0.03, H+0.008)
 objs.append(rub.build(M_RUB))
 # ---------------- home plate (17 in front edge, 8.5 in sides, 12 in slanted; apex at origin)
-hp = MB("HomePlate"); w = 8.5*IN; sd = 8.5*IN + math.sqrt((12*IN)**2 - w*w)
+hp = MB("HomePlate", uv_scale=.5); w = 8.5*IN; sd = 8.5*IN + math.sqrt((12*IN)**2 - w*w)
 pl = [(0, 0), (w, sd-8.5*IN), (w, sd), (-w, sd), (-w, sd-8.5*IN)]
 hp.poly(pl, Y_CUT+0.012); 
 for i in range(5):
@@ -121,7 +117,7 @@ for i in range(5):
 objs.append(hp.build(M_PLATE))
 # ---------------- bases: 15 in square, 3 in high
 for n, (cx, cz) in ((1, b1), (2, b2), (3, b3)):
-    bb = MB(f"Base_{n}B"); bb.box(cx, cz, 15*IN, 15*IN, Y_CUT, Y_CUT+3*IN, rot=math.pi/4)
+    bb = MB(f"Base_{n}B", uv_scale=.5); bb.box(cx, cz, 15*IN, 15*IN, Y_CUT, Y_CUT+3*IN, rot=math.pi/4)
     objs.append(bb.build(M_BASE))
 # ---------------- chalk: foul lines, batter's boxes, catcher's box, coach boxes, lane, on-deck circles
 ch = MB("Chalk"); LW = 3*IN
@@ -148,14 +144,14 @@ for nm, (px, pz) in (("FoulPole_R", POLE_R), ("FoulPole_L", POLE_L)):
     fp = MB(nm); fp.box(px, pz, 0.15, 0.15, 0.0, 14.0)
     objs.append(fp.build(M_YELLOW))
 # ---------------- dugouts (concrete shells; roofs are in stadium.glb) and bullpens
-M_PADN = flat("dugout_padding", (0.02, 0.05, 0.16, 1), 0.8); M_WOOD = flat("dugout_wood", (0.45, 0.3, 0.16, 1), 0.65); M_RAIL = flat("dugout_steel", (0.6, 0.62, 0.65, 1), 0.4)
+M_PADN = acg_material("dugout_padding", acg("Leather026", tint=(.12, .2, .55), gain=.7, lumnorm=True), .8, .6); M_WOOD = acg_material("dugout_wood", acg("Wood066", gain=1.0), .65, .8); M_RAIL = acg_material("dugout_steel", acg("Metal032"), .4, .7, metal=1.0)
 M_DARK = flat("dugout_interior", (0.06, 0.06, 0.07, 1), 0.9); M_FLOOR = flat("dugout_floor", (0.28, 0.28, 0.29, 1), 0.85)
 for nm, side in (("Dugout_1B", 1), ("Dugout_3B", -1)):
     s0, s1 = DUG_S; o0, o1 = DUG_O; rot = -side*math.pi/4; fl = DUG_FLOOR; ln = s1-s0
     def P(s, o): return dug_xy(s, o, side)
     def BX(mb_, s_lo, s_hi, o_lo, o_hi, y0, y1):
         cx, cz = P((s_lo+s_hi)/2, (o_lo+o_hi)/2); mb_.box(cx, cz, o_hi-o_lo, s_hi-s_lo, y0, y1, rot=rot)
-    conc, pad, wood, rail, dark = MB(nm), MB(nm+"_Padding"), MB(nm+"_Bench"), MB(nm+"_Rail"), MB(nm+"_Interior")
+    conc, pad, wood, rail, dark = MB(nm, uv_scale=1.6), MB(nm+"_Padding", uv_scale=.6), MB(nm+"_Bench", uv_scale=.6), MB(nm+"_Rail", uv_scale=.5), MB(nm+"_Interior")
     BX(conc, s0, s1, o0, o1, fl-.3, fl)                                         # floor slab (top at fl)
     BX(conc, s0, s1, o0, o0+.30, fl, .55)                                       # front wall (field side), lip 0.55 m above the field
     BX(conc, s0, s1, o1-.30, o1, fl, 2.55)                                      # back wall
@@ -174,7 +170,7 @@ for nm, side in (("Dugout_1B", 1), ("Dugout_3B", -1)):
     BX(dark, s0+.25, s1-.25, o0+.30, o1-.30, fl-.01, fl+.001)                   # (kept for tri budget: dark interior floor shadow plane)
     for mbx, mat_ in ((conc, M_DUG), (pad, M_PADN), (wood, M_WOOD), (rail, M_RAIL), (dark, M_DARK)): objs.append(mbx.build(mat_))
 for nm, side in (("Bullpen_R", 1), ("Bullpen_L", -1)):
-    bp = MB(nm); m0 = along(62, 8, side); p0 = along(80.4, 8, side)
+    bp = MB(nm, uv_scale=0.9); m0 = along(62, 8, side); p0 = along(80.4, 8, side)
     bp.poly(circle(*m0, 2.0, 32), Y_CUT); bp.poly(circle(*p0, 1.6, 32), Y_CUT)
     bp.box(*m0, 0.6, 0.15, Y_CUT, Y_CUT+0.20)
     objs.append(bp.build(M_DIRT))
@@ -189,5 +185,9 @@ layout = {"units": "meters", "axes": "Y up, +Z center field, +X THIRD base (firs
           "fence": [[round(-x, 3), round(z, 3)] for x, z in fence_pts(91)],
           "ground_outline": [[round(-x, 3), round(z, 3)] for x, z in outline], "backstop_z": BACKSTOP_Z}
 json.dump(layout, open(ROOT+"/field_layout.json", "w"), indent=1)
+_BOXT = {"_Padding": .6, "_Bench": .8, "_Rail": .5}
+for o_ in objs:                                    # box-projected UVs where the planar xz UVs would streak on vertical faces
+    if o_.name.startswith("Dugout") and not o_.name.endswith("_Interior"): box_uv_obj(o_, next((v for k, v in _BOXT.items() if o_.name.endswith(k)), 1.2))
+    elif o_.name in ("PitchersRubber", "HomePlate") or o_.name.startswith("Base_"): box_uv_obj(o_, .5)
 export(objs, ROOT+"/field.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
 result = {"objs": [o.name for o in objs], "tris": sum(len(o.data.polygons) for o in objs)}

@@ -1,5 +1,5 @@
 {
- "version": 6,
+ "version": 8,
  "fps": 24,
  "clips": {
   "idle": {
@@ -1349,6 +1349,586 @@
     "wave_start": 0.1667,
     "wave_end": 1.3333
    }
+  },
+  "batter_step_in": {
+   "frames": 38,
+   "first_key_frame": 0,
+   "duration_s": 1.5833,
+   "loop": false,
+   "events_frame": {
+    "dig_start": 8,
+    "dig_end": 16,
+    "tap_1": 18,
+    "tap_2": 22,
+    "settled": 38
+   },
+   "events_s": {
+    "dig_start": 0.3333,
+    "dig_end": 0.6667,
+    "tap_1": 0.75,
+    "tap_2": 0.9167,
+    "settled": 1.5833
+   }
+  },
+  "batter_practice_swing": {
+   "frames": 31,
+   "first_key_frame": 0,
+   "duration_s": 1.2917,
+   "loop": false,
+   "events_frame": {
+    "load": 7,
+    "contact": 14,
+    "finish": 20,
+    "back_in_stance": 31
+   },
+   "events_s": {
+    "load": 0.2917,
+    "contact": 0.5833,
+    "finish": 0.8333,
+    "back_in_stance": 1.2917
+   }
+  },
+  "batter_adjust": {
+   "frames": 48,
+   "first_key_frame": 0,
+   "duration_s": 2.0,
+   "loop": false,
+   "events_frame": {
+    "strap_tug": [
+     10,
+     18
+    ],
+    "helmet_touch": [
+     28,
+     32,
+     36
+    ]
+   },
+   "events_s": {
+    "strap_tug": [
+     0.4167,
+     0.75
+    ],
+    "helmet_touch": [
+     1.1667,
+     1.3333,
+     1.5
+    ]
+   }
+  },
+  "batter_step_out": {
+   "frames": 34,
+   "first_key_frame": 0,
+   "duration_s": 1.4167,
+   "loop": false,
+   "events_frame": {
+    "foot_out": 13,
+    "tap_cleats": [
+     21,
+     25,
+     29
+    ]
+   },
+   "events_s": {
+    "foot_out": 0.5417,
+    "tap_cleats": [
+     0.875,
+     1.0417,
+     1.2083
+    ]
+   }
+  },
+  "catcher_signs": {
+   "frames": 53,
+   "first_key_frame": 0,
+   "duration_s": 2.2083,
+   "loop": false,
+   "events_frame": {
+    "flash": [
+     9,
+     20
+    ]
+   },
+   "events_s": {
+    "flash": [
+     0.375,
+     0.8333
+    ]
+   },
+   "finger_keys": [
+    [
+     8,
+     0
+    ],
+    [
+     9,
+     1
+    ],
+    [
+     16,
+     1
+    ],
+    [
+     17,
+     0
+    ],
+    [
+     19,
+     0
+    ],
+    [
+     20,
+     2
+    ],
+    [
+     27,
+     2
+    ],
+    [
+     28,
+     0
+    ]
+   ],
+   "finger_keys_note": "[frame, n]: morph fingers_n = 1 (n fingers extended), 0 = fist, from that frame on (linear blend over 1 frame)"
+  },
+  "catcher_signs_runner_on": {
+   "frames": 60,
+   "first_key_frame": 0,
+   "duration_s": 2.5,
+   "loop": false,
+   "events_frame": {
+    "flash": [
+     9,
+     20,
+     31,
+     42
+    ]
+   },
+   "events_s": {
+    "flash": [
+     0.375,
+     0.8333,
+     1.2917,
+     1.75
+    ]
+   },
+   "finger_keys": [
+    [
+     8,
+     0
+    ],
+    [
+     9,
+     1
+    ],
+    [
+     16,
+     1
+    ],
+    [
+     17,
+     0
+    ],
+    [
+     19,
+     0
+    ],
+    [
+     20,
+     3
+    ],
+    [
+     27,
+     3
+    ],
+    [
+     28,
+     0
+    ],
+    [
+     30,
+     0
+    ],
+    [
+     31,
+     2
+    ],
+    [
+     38,
+     2
+    ],
+    [
+     39,
+     0
+    ],
+    [
+     41,
+     0
+    ],
+    [
+     42,
+     1
+    ],
+    [
+     49,
+     1
+    ],
+    [
+     50,
+     0
+    ]
+   ],
+   "finger_keys_note": "[frame, n]: morph fingers_n = 1 (n fingers extended), 0 = fist, from that frame on (linear blend over 1 frame)"
+  },
+  "catcher_signal_infield": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "gesture": [
+     12,
+     20,
+     24
+    ]
+   },
+   "events_s": {
+    "gesture": [
+     0.5,
+     0.8333,
+     1.0
+    ]
+   },
+   "finger_keys": [
+    [
+     0,
+     0
+    ],
+    [
+     11,
+     0
+    ],
+    [
+     12,
+     2
+    ],
+    [
+     20,
+     2
+    ],
+    [
+     21,
+     1
+    ],
+    [
+     25,
+     1
+    ],
+    [
+     26,
+     0
+    ]
+   ],
+   "finger_keys_note": "[frame, n]: morph fingers_n = 1 (n fingers extended), 0 = fist, from that frame on (linear blend over 1 frame)"
+  },
+  "bullpen_catcher_ready": {
+   "frames": 48,
+   "first_key_frame": 0,
+   "duration_s": 2.0,
+   "loop": true
+  },
+  "pitcher_shake_off": {
+   "frames": 24,
+   "first_key_frame": 0,
+   "duration_s": 1.0,
+   "loop": false,
+   "events_frame": {
+    "shake": [
+     4,
+     8,
+     12,
+     16
+    ]
+   },
+   "events_s": {
+    "shake": [
+     0.1667,
+     0.3333,
+     0.5,
+     0.6667
+    ]
+   }
+  },
+  "pitcher_nod": {
+   "frames": 19,
+   "first_key_frame": 0,
+   "duration_s": 0.7917,
+   "loop": false,
+   "events_frame": {
+    "nod": [
+     4,
+     12
+    ]
+   },
+   "events_s": {
+    "nod": [
+     0.1667,
+     0.5
+    ]
+   }
+  },
+  "pitcher_step_off": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "back_foot_off": 8,
+    "stepped_off": 26
+   },
+   "events_s": {
+    "back_foot_off": 0.3333,
+    "stepped_off": 1.0833
+   }
+  },
+  "pitcher_step_on": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "stepping_on": 10,
+    "on_rubber": 36
+   },
+   "events_s": {
+    "stepping_on": 0.4167,
+    "on_rubber": 1.5
+   }
+  },
+  "pitcher_rosin": {
+   "frames": 43,
+   "first_key_frame": 0,
+   "duration_s": 1.7917,
+   "loop": false,
+   "events_frame": {
+    "rosin_touch": [
+     9,
+     16
+    ],
+    "clap": [
+     23,
+     29
+    ]
+   },
+   "events_s": {
+    "rosin_touch": [
+     0.375,
+     0.6667
+    ],
+    "clap": [
+     0.9583,
+     1.2083
+    ]
+   }
+  },
+  "pitcher_adjust": {
+   "frames": 38,
+   "first_key_frame": 0,
+   "duration_s": 1.5833,
+   "loop": false,
+   "events_frame": {
+    "cap_touch": [
+     8,
+     12
+    ],
+    "rub_ball": [
+     20,
+     26
+    ]
+   },
+   "events_s": {
+    "cap_touch": [
+     0.3333,
+     0.5
+    ],
+    "rub_ball": [
+     0.8333,
+     1.0833
+    ]
+   }
+  },
+  "pitcher_look_runner": {
+   "frames": 24,
+   "first_key_frame": 0,
+   "duration_s": 1.0,
+   "loop": false,
+   "events_frame": {
+    "look_peak": 8,
+    "look_end": 15
+   },
+   "events_s": {
+    "look_peak": 0.3333,
+    "look_end": 0.625
+   }
+  },
+  "pitcher_handoff": {
+   "frames": 30,
+   "first_key_frame": 0,
+   "duration_s": 1.25,
+   "loop": false,
+   "events_frame": {
+    "handoff": 13
+   },
+   "events_s": {
+    "handoff": 0.5417
+   }
+  },
+  "warmup_pitch": {
+   "frames": 29,
+   "first_key_frame": 0,
+   "duration_s": 1.2083,
+   "loop": false,
+   "events_frame": {
+    "hand_break": 7,
+    "plant": 10,
+    "release": 13
+   },
+   "events_s": {
+    "hand_break": 0.2917,
+    "plant": 0.4167,
+    "release": 0.5417
+   },
+   "pairs_with": "catch_pitch (catch f7 = ball arrival ~0.4 s after release)"
+  },
+  "bullpen_throw": {
+   "frames": 34,
+   "first_key_frame": 0,
+   "duration_s": 1.4167,
+   "loop": false,
+   "events_frame": {
+    "release": 14
+   },
+   "events_s": {
+    "release": 0.5833
+   }
+  },
+  "mound_talk": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
+  },
+  "mound_talk_listen": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
+  },
+  "mound_talk_cover": {
+   "frames": 60,
+   "first_key_frame": 0,
+   "duration_s": 2.5,
+   "loop": true
+  },
+  "manager_walk": {
+   "frames": 20,
+   "first_key_frame": 0,
+   "duration_s": 0.8333,
+   "loop": true,
+   "footSpeed": 1.2,
+   "cycle_s": 0.8333,
+   "distance_per_cycle_m": 1.0,
+   "playbackRate_rule": "rate = groundSpeed / footSpeed (the stance foot then stays planted)"
+  },
+  "manager_signal": {
+   "frames": 43,
+   "first_key_frame": 0,
+   "duration_s": 1.7917,
+   "loop": false,
+   "events_frame": {
+    "arm_up": 11,
+    "point_start": 20,
+    "point_hold": [
+     24,
+     32
+    ]
+   },
+   "events_s": {
+    "arm_up": 0.4583,
+    "point_start": 0.8333,
+    "point_hold": [
+     1.0,
+     1.3333
+    ]
+   }
+  },
+  "manager_challenge": {
+   "frames": 29,
+   "first_key_frame": 0,
+   "duration_s": 1.2083,
+   "loop": false,
+   "events_frame": {
+    "tap": [
+     9,
+     13,
+     17
+    ]
+   },
+   "events_s": {
+    "tap": [
+     0.375,
+     0.5417,
+     0.7083
+    ]
+   }
+  },
+  "ump_brush_plate": {
+   "frames": 60,
+   "first_key_frame": 0,
+   "duration_s": 2.5,
+   "loop": false,
+   "events_frame": {
+    "bend_done": 8,
+    "strokes": [
+     16,
+     24,
+     32,
+     40
+    ],
+    "upright": 50
+   },
+   "events_s": {
+    "bend_done": 0.3333,
+    "strokes": [
+     0.6667,
+     1.0,
+     1.3333,
+     1.6667
+    ],
+    "upright": 2.0833
+   }
+  },
+  "ump_new_ball": {
+   "frames": 36,
+   "first_key_frame": 0,
+   "duration_s": 1.5,
+   "loop": false,
+   "events_frame": {
+    "ball_taken": 13,
+    "release": 21,
+    "tossed": 24
+   },
+   "events_s": {
+    "ball_taken": 0.5417,
+    "release": 0.875,
+    "tossed": 1.0
+   }
+  },
+  "ump_huddle": {
+   "frames": 72,
+   "first_key_frame": 0,
+   "duration_s": 3.0,
+   "loop": true
   }
  },
  "files": {
@@ -1359,6 +1939,7 @@
   "player_catcher": "catcher, big round mitt + gear",
   "player_batter": "batter (helmet, batting gloves, fist hands)",
   "player_coach": "base coach (1B/3B): uniform, helmet visible by default (Gear_Cap and Gear_LineupCard optional), wristbands, no glove",
+  "player_manager": "manager: older face (default morphs build_stocky .55, cheeks_full .6, brow_heavy .5, eyes_deep .5, jaw_square .3, nose_large .3), gray hair, team jacket `Gear_Jacket` over the uniform, `Gear_Beard_Stubble` (gray) visible, optional `Gear_Beard_Full` / `Gear_Mustache` / `Gear_Hair_Buzz`",
   "player_ballkid": "ball kid: polo, shorts, cap, 1.55 m (Armature node scale 0.838, extras cb_height_m), slimmer build default (build_lean 0.55), no glove; `bat_donut.glb`: weighted warm-up donut `Bat_Donut` (bat frame, sits at 0.50 m from the knob)",
   "player_umpire": "plate umpire (navy, mask, chest protector, shin guards)",
   "player_umpire_base": "base umpire (navy uniform and cap only)",
@@ -1384,6 +1965,20 @@
    "nose_narrow",
    "eyes_deep"
   ],
+  "expressions": [
+   "eyes_blink",
+   "mouth_open",
+   "smile",
+   "brow_raise",
+   "brow_furrow",
+   "mouth_pucker"
+  ],
+  "eyes_only": [
+   "eyes_look_left",
+   "eyes_look_right",
+   "eyes_look_up",
+   "eyes_look_down"
+  ],
   "hair_only": [
    "hair_under_cap"
   ],
@@ -1391,7 +1986,13 @@
    "glove_open",
    "glove_closed"
   ],
-  "note": "influence 0..1; body keys on every skinned body/clothing mesh, head_narrow/head_wide on head-attached meshes, glove_open/glove_closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap"
+  "hand": [
+   "fingers_1",
+   "fingers_2",
+   "fingers_3",
+   "fingers_4"
+  ],
+  "note": "influence 0..1 (mouth_open: 1 = a natural talking / shouting opening, larger openings would expose the jagged MPFB mouth interior). body keys on every skinned body/clothing mesh; head keys on the Head and every head-attached mesh (hair, caps, helmet, mask, beards, brows, lashes, teeth; the key set per node differs: expressions only on Head / Eyebrows / Eyelashes / Teeth / Tongue / beards); eyes_look_* on `Eyes` and `Eyes_Cornea` (both globes turn together, 22 deg left/right, 18 deg up/down); fingers_n on Hand_R (n fingers extended, index first); glove_open/closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap. All head / face keys are MPFB2 (CC0) targets re-fitted to our rig, see CREDITS.md"
  },
  "grips": {
   "Bat_Grip": "RightHand, origin = knob, +Y = barrel",
@@ -1411,10 +2012,24 @@
    "Pants_Long"
   ],
   "hair": [
-   "Gear_Hair (default short)",
+   "Gear_Hair (default short crop)",
    "Gear_Hair_Buzz",
    "Gear_Hair_Curly",
-   "Gear_Hair_Long"
+   "Gear_Hair_Long",
+   "Gear_Hair_SidePart",
+   "Gear_Hair_SlickBack",
+   "Gear_Hair_Bob",
+   "Gear_Hair_Ponytail",
+   "Gear_Hair_Receding",
+   "Gear_Hair_Balding"
+  ],
+  "face_parts": [
+   "Eyes",
+   "Eyes_Cornea",
+   "Gear_Eyebrows",
+   "Gear_Eyelashes",
+   "Gear_Teeth (base only)",
+   "Gear_Tongue (base only)"
   ],
   "facial_hair": [
    "Gear_Beard_Stubble",
@@ -1424,6 +2039,7 @@
   ],
   "headwear": [
    "Gear_Cap",
+   "Gear_CapLogo (stitched logo on the cap front, own material cap_logo)",
    "Gear_Helmet"
   ],
   "accessory": [
@@ -1444,6 +2060,7 @@
   "shoe": [
    "Cleats",
    "Gear_Soles",
+   "Gear_Spikes (metal cleat spikes, material spikes)",
    "Gear_Laces"
   ],
   "guide": [
@@ -1451,10 +2068,11 @@
    "Elbow_Pole_R"
   ],
   "hand": [
-   "Hand_R (firm grip, bat)",
-   "Hand_R_Ball (claw, ball)",
-   "Hand_L (fist)",
-   "Hand_L_Open (inside the glove)"
+   "Hand_R (fist for the bat in player_batter; claw holding the ball in the glove files; relaxed otherwise)",
+   "Hand_R_Ball (claw, base file)",
+   "Hand_L (fist / relaxed / the open hand inside the glove)",
+   "Hand_L_Open (inside the glove, base file)",
+   "Hand_L_Relaxed / Hand_R_Relaxed (base file)"
   ],
   "note": "every node carries glTF extras {cb_group, cb_default}; cb_default = 1 means visible in that file's pre-configured look. Optional variants exist only in player_base.glb"
  },
@@ -1584,8 +2202,12 @@
  },
  "materials_recolor": [
   "skin",
-  "face",
-  "hair",
+  "face (same atlas as skin: recolour both with the same baseColorFactor)",
+  "hair (+ hair_short01, hair_short03, hair_short04, hair_bob01, hair_afro01, hair_long01, hair_ponytail01: luminance-normalised strand textures, recolour all `hair*`; `hair_beard` = opaque fibre texture of Gear_Beard_Full / Gear_Mustache / Gear_Goatee)",
+  "eyebrow",
+  "eyelash",
+  "eye (iris colour is in the texture; alternative iris colours: players/textures/eyes_<colour>.webp)",
+  "cornea",
   "stubble",
   "uniform_jersey",
   "uniform_undershirt",
@@ -1604,10 +2226,17 @@
   "cleats",
   "laces",
   "sole",
+  "spikes",
+  "cap_logo (own colours; do not recolour)",
+  "jersey_number",
   "eyeblack",
   "button",
   "catcher_gear"
  ],
+ "extra_textures": {
+  "eyes_<colour>.webp": "optimized/players/textures/eyes_brown|hazel|green|blue|gray.webp: equirect iris textures to swap onto material `eye`",
+  "skin_sss.webp": "optimized/players/textures/skin_sss.webp: R = skin thickness (0..4 cm), G = curvature, same UV layout as the skin atlas (materials skin / face)"
+ },
  "elbow_guides": {
   "file": "players/elbow_guides.json",
   "node": "Elbow_Pole_L / Elbow_Pole_R (children of Spine1: elbow position in the batting stance)",
@@ -1622,6 +2251,7 @@
   "note": "Bat_Grip of `swing` per frame in sim world coordinates (right-handed batter)"
  },
  "locomotion_footSpeed_mps": {
+  "manager_walk": 1.2,
   "walk": 1.42,
   "trot": 2.2,
   "jog": 3.5,

@@ -11,11 +11,14 @@ def _fib(n):
         z = 1 - 2*(i+.5)/n; r = math.sqrt(max(0, 1 - z*z)); out.append(Vector((r*math.cos(ga*i), r*math.sin(ga*i), z)))
     return out
 CAND = _fib(200)
-_ZR = [.94, 1.00, 1.13, 1.27, 1.39, 1.49, 1.56]
-_HX = [.213, .213, .179, .213, .237, .13, .06]; _HY = [.146, .146, .125, .151, .151, .106, .07]     # skin radii x 1.12 (body_skin) at those heights
+_ZR = [.94, 1.00, 1.05, 1.13, 1.20, 1.27, 1.33, 1.39, 1.45, 1.50, 1.55, 1.60]
+_HX = [.180, .168, .159, .149, .144, .152, .175, .178, .165, .150, .105, .07]            # torso half widths of the MPFB body at those heights (arms excluded)
+_HY = [.1125, .1115, .106, .097, .104, .1125, .1185, .119, .106, .0845, .0715, .06]     # half depths
+_YC = [.016, .030, .035, .045, .041, .035, .037, .032, .018, .012, .020, .02]           # torso centre in front of the spine axis (spine-frame z)
 BUILDS = ((1, 1), (1.13, 1.16), (1.11, 1.05), (.9, .92))                                               # (kx, ky): rest, build_stocky, build_muscular chest, build_lean
 BONUS = (0.0, .035, .02, 0.0); BONUS_SCALE = [1.0]                                                                          # the wide builds may press the arm a little into the body (their clearance requirement is eased by this much)
 def torso_dims(zr, b): return (np.interp(zr, _ZR, _HX) + .017)*b[0], (np.interp(zr, _ZR, _HY) + .017)*b[1]      # + jersey offset and folds
+def torso_centre(zr): return float(np.interp(zr, _ZR, _YC))
 
 def arm_metrics(M, side):
     """(cc, dz, abd): cc = smallest distance of the arm's centre line samples outside the (build-inflated) torso surface, over all builds; dz = elbow height
@@ -23,15 +26,16 @@ def arm_metrics(M, side):
     S = M['Spine1'].inverted(); sh = M[side+'Arm'].translation; el = M[side+'ForeArm'].translation; wr = M[side+'Hand'].translation
     pts = [el, el + (wr-el)*.5, el + (wr-el)*.8, sh + (el-sh)*.85]; cc = 9.0          # (the upper arm near the shoulder merges with the torso by design)
     for p in pts:
-        lp = S @ p; zr = 1.17 + lp.y
-        if .94 <= zr <= 1.56:
+        lp = S @ p; zr = SPINE1_Z + lp.y
+        if .94 <= zr <= 1.60:
             for b, bonus in zip(BUILDS, BONUS):
-                hx, hy = torso_dims(zr, b); cc = min(cc, (math.hypot(lp.x/hx, lp.z/hy) - 1)*min(hx, hy) + bonus*BONUS_SCALE[0])
+                hx, hy = torso_dims(zr, b); cc = min(cc, (math.hypot(lp.x/hx, (lp.z - torso_centre(zr))/hy) - 1)*min(hx, hy) + bonus*BONUS_SCALE[0])
     le, ls = S @ el, S @ sh
     return cc, le.y - ls.y, abs(le.x) - abs(ls.x)
 
-HEAD_CTR = Vector((0, -.004, 1.725))
-HEAD_AX = (.105 + .02, .122 + .02, .137 + .02)          # head + helmet (+ head_wide / ears_large morphs) semi-axes, plus a 2 cm margin (so hc >= 0 means >= 2 cm from the helmet)
+HEAD_CTR = Vector((0, -.065, 1.735))
+SPINE1_Z = float(JOINTS['Spine1'][1].z)
+HEAD_AX = (.098 + .02, .125 + .02, .135 + .02)          # head + helmet (+ head_wide / ears_large morphs) semi-axes, plus a 2 cm margin (so hc >= 0 means >= 2 cm from the helmet)
 def head_metric(M, rest, side):
     """hc: smallest distance (m, approx.) of the arm samples (upper arm and forearm) outside the head+helmet ellipsoid and the neck cylinder; negative = inside (arm through the head)."""
     Hi = M['Head'].inverted(); R = rest['Head']; sh = M[side+'Arm'].translation; el = M[side+'ForeArm'].translation; wr = M[side+'Hand'].translation
@@ -40,11 +44,11 @@ def head_metric(M, rest, side):
         q = R @ (Hi @ p) - HEAD_CTR                                                         # the point in the head's rest frame (the head turns with the head bone)
         if q.z > -.07:
             n = math.sqrt((q.x/HEAD_AX[0])**2 + (q.y/HEAD_AX[1])**2 + (q.z/HEAD_AX[2])**2); hc = min(hc, (n - 1)*.12)
-    # neck: cylinder (radius 6.5 cm + 1.5 cm) around the neck axis in the spine frame, between trapezius base and skull
-    Sp = M['Spine2'].inverted()
+    # neck: cylinder (radius 7.5 cm + 1.5 cm) around the neck axis in the Spine2 frame (centre (0, -.03, 1.60) at rest)
+    Sp = M['Spine2'].inverted(); cr = rest['Spine2'].inverted() @ Vector((0, -.03, 1.60))
     for p in pts:
         lp = Sp @ p
-        if -.02 < lp.y < .22: hc = min(hc, math.hypot(lp.x, lp.z + .02) - .095)
+        if cr.y - .07 < lp.y < cr.y + .10: hc = min(hc, math.hypot(lp.x - cr.x, lp.z - cr.z) - .09)
     return hc
 
 def _ang(a, b): return math.acos(max(-1.0, min(1.0, a.normalized().dot(b.normalized()))))
@@ -89,6 +93,12 @@ for _n in ("catch_throw", "catch_throw_high", "catch_throw_low", "catch_stretch"
 for _n in ("ondeck_ready", "bench_sit", "ballkid_sit", "coach_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
 OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BAT, False)
 for _n in ("bench_stand_up", "bench_cheer", "coach_stop", "coach_go", "coach_advance", "coach_slide", "coach_signs", "ballkid_pickup", "ballkid_toss", "ballkid_wave"): OPT_CLIPS[_n] = (CATCHCFG, False)
+RIT_BAT = ("batter_step_in", "batter_practice_swing", "batter_step_out")
+for _n in RIT_BAT: OPT_CLIPS[_n] = (BAT, False)
+for _n in ("batter_adjust", "catcher_signs", "catcher_signs_runner_on", "catcher_signal_infield", "pitcher_shake_off", "pitcher_nod", "pitcher_step_off", "pitcher_step_on", "pitcher_rosin", "pitcher_adjust",
+           "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw"): OPT_CLIPS[_n] = (CATCHCFG, False)
+for _n in ("mound_talk", "mound_talk_listen", "mound_talk_cover", "ump_huddle", "bullpen_catcher_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
+OPT_CLIPS["manager_walk"] = (LOCO, True)
 ARM_REPORT = {}
 def run_optimiser():
     init = None

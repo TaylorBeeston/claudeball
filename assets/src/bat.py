@@ -21,7 +21,7 @@ for i in range(len(rings)-1):
     for k in range(S):
         f = bm.faces.new((rings[i][k], rings[i][(k+1)%S], rings[i+1][(k+1)%S], rings[i+1][k]))
         for lp, (kk, ii) in zip(f.loops, ((k,i),((k+1),i),((k+1),i+1),(k,i+1))):
-            lp[uv].uv = (kk/S, ds[ii]/L)
+            lp[uv].uv = (ds[ii]/0.25, kk/S)      # grain (texture u) runs along the bat; one texture turn round the circumference
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 me = bpy.data.meshes.new("bat_mesh"); bm.to_mesh(me); bm.free()
 for p in me.polygons: p.use_smooth = True
@@ -41,7 +41,9 @@ col = dark[None, None, :]*(1-wood[..., None]) + base[None, None, :]*wood[..., No
 alb = make_image("bat_albedo", col, path=ROOT+"/tex/bat_albedo.png")
 nrm = make_image("bat_normal", height_to_normal(fine*0.6+rings_t*0.2, 2.0), 'Non-Color', ROOT+"/tex/bat_normal.png")
 m = pbr_material("bat_wood", alb, nrm, rough=0.4, nstrength=0.4)
-me.materials.append(m)
+exec(open(CB_SRC + "/textures.py").read())
+bpy.data.materials.remove(m)
+me.materials.append(acg_pbr("bat_wood", acg("Wood049", gain=1.0), .45, .7))      # CC0 ambientCG wood photo (see CREDITS.md); replaces the procedural grain above
 # axis: knob at origin, barrel toward +Z (Blender) => +Y up in glTF.
 export([bat], ROOT+"/bat.glb", jpg=True)
 result = {"len": L, "tris": len(me.polygons)*2}
