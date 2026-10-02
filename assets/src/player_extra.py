@@ -155,7 +155,7 @@ def make_cleats(body, off=.0085, ztop=.128):
         tmp.normal_update()
         for v in tmp.verts:
             v.co = v.co + v.normal*off
-            if v.co.z < .004: v.co.z = 0.0
+            if v.co.z < .004 + FOOT_LIFT: v.co.z = FOOT_LIFT
         for _ in range(3):
             for v in tmp.verts:
                 loc, n, i, d = bvh_b.find_nearest(v.co)
@@ -177,8 +177,8 @@ def soles(cleats):
             m = (ang >= -math.pi + 2*math.pi*k/nb) & (ang < -math.pi + 2*math.pi*(k + 1)/nb); edge[k] = rad[m].max() if m.any() else 0.0
         for _ in range(3): edge = (np.roll(edge, 1) + 2*edge + np.roll(edge, -1))/4
         edge = np.maximum(edge, .02) + .004
-        top = [bm.verts.new((c[0] + edge[k]*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + edge[k]*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), .019)) for k in range(nb)]
-        bot = [bm.verts.new((c[0] + (edge[k] + .0015)*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + (edge[k] + .0015)*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), 0.0)) for k in range(nb)]
+        top = [bm.verts.new((c[0] + edge[k]*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + edge[k]*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), .019 + FOOT_LIFT)) for k in range(nb)]
+        bot = [bm.verts.new((c[0] + (edge[k] + .0015)*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + (edge[k] + .0015)*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), FOOT_LIFT)) for k in range(nb)]
         for k in range(nb):
             k2 = (k + 1) % nb; bm.faces.new((top[k], top[k2], bot[k2], bot[k])); 
         bm.faces.new(top[::-1]); bm.faces.new(bot)
@@ -188,11 +188,11 @@ def spikes(soles_obj):
     """Gear_Spikes: six metal cleats (short cones, 8 mm) under each sole: three rows (toe / ball / heel)."""
     bm = bmesh.new()
     for sx in (1, -1):
-        pts = np.array([(v.co.x, v.co.y) for v in soles_obj.data.vertices if abs(v.co.z) < 1e-4 and v.co.x*sx > 0]); x0, x1, y0, y1 = pts[:, 0].min(), pts[:, 0].max(), pts[:, 1].min(), pts[:, 1].max()
+        pts = np.array([(v.co.x, v.co.y) for v in soles_obj.data.vertices if abs(v.co.z - FOOT_LIFT) < 1e-4 and v.co.x*sx > 0]); x0, x1, y0, y1 = pts[:, 0].min(), pts[:, 0].max(), pts[:, 1].min(), pts[:, 1].max()
         cx, W, L = (x0 + x1)/2, x1 - x0, y1 - y0
         for fy, fx in ((.17, .26), (.17, -.26), (.34, .34), (.34, -.34), (.84, .26), (.84, -.26)):
             c = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=.0045, radius2=.0016, depth=.009)
-            for v in c["verts"]: v.co = Vector((cx + fx*W + v.co.x, y0 + fy*L + v.co.y, -.0045 + v.co.z))
+            for v in c["verts"]: v.co = Vector((cx + fx*W + v.co.x, y0 + fy*L + v.co.y, FOOT_LIFT - .0005 + v.co.z))
     return _obj("Gear_Spikes", bm)
 def cap_logo(cap_obj, text="C", w=.075, h=.052):
     """Gear_CapLogo: a stitched front-panel logo patch following the cap surface (ray-cast grid from the head centre, lifted 1.2 mm); alpha texture is made in player_mats."""
