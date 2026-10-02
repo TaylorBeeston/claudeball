@@ -72,7 +72,8 @@ describe('stories are grounded in the game', () => {
     expect(ids).toContain('perfectNight');
     expect(ids).toContain('noHitter');
     expect(ids).toContain('pitchCount');
-    expect(ids).toContain('comeback');
+    expect(collectStories(log, { ...c, score: { home: 4, away: 4 } }).map((x) => x.id)).toContain('comeback');
+    expect(ids).not.toContain('comeback'); // still trailing 3-4: not a comeback yet
     expect(ids).toContain('crowd');
     expect(ids).toContain('powerGrade');
   });
