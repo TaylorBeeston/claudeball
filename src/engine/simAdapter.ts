@@ -10,6 +10,7 @@ import type { GameEvent, GameLike, GameState, PlayerSnap, Vec3 } from './types';
 import { MockGame } from './mockSim';
 import { RealSimAdapter, looksLikeRealSim, type RealGame } from './realSimAdapter';
 import { lerpAngle } from './dims';
+import { perf } from './perf';
 
 /** The part of the sim's `GameConfig` the menu sets (teams are the sim's `Team`s; opaque here so the engine does not depend on src/sim). */
 export interface SimConfig {
@@ -160,6 +161,7 @@ export class SimDriver {
   /** Advance by a real-time delta; returns interpolation alpha for rendering. */
   advance(realDt: number): { state: GameState; alpha: number; steps: number } {
     let steps = 0;
+    const t0adv = perf.t();
     const budgetEnd = performance.now() + 10;
     if (!this.paused && !this.hold) {
       this.acc += Math.min(realDt, 0.1) * this.speed;
@@ -187,13 +189,18 @@ export class SimDriver {
       if (this.acc > SIM_DT * 4) this.acc = 0; // fell behind: drop time rather than spiral
     }
     this.stepsThisFrame = steps;
+    if (perf.on) perf.sub('sim.steps', t0adv);
     return { state: interpolateState(this.prev, this.curr, this.acc / SIM_DT), alpha: this.acc / SIM_DT, steps };
   }
 
   private stepOnce() {
+    const t0 = perf.t();
     this.game.step(SIM_DT);
+    if (perf.on) perf.sub('sim.step', t0);
+    const t1 = perf.t();
     this.prev = this.curr;
     this.curr = this.game.getState();
+    if (perf.on) perf.sub('sim.getState', t1);
     const a = this.prev.ball, b = this.curr.ball;
     if (b.visible && a.visible && a.pos.z > 0 && b.pos.z <= 0 && b.vel.z < -5 && !this.skipping) {
       const f = a.pos.z / (a.pos.z - b.pos.z);
