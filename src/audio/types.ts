@@ -53,7 +53,20 @@ export type CrowdId =
   | 'ooh'
   | 'boo'
   | 'swell'
-  | 'whoop';
+  | 'whoop'
+  // crowd life and finer reactions (crowd.ts)
+  | 'clap_single' // one hand-clap, a handful of hands close together
+  | 'clap_burst' // one beat of a rhythmic clap (many hands within ~90 ms)
+  | 'whistle'
+  | 'shout' // a lone "hey!"
+  | 'shout2' // a lone "yeah!"
+  | 'kid' // a child's squeal
+  | 'vendor' // a far-off long call from the aisles (no words)
+  | 'chatter' // a pocket of conversation
+  | 'chant' // "let's go!" clap clap, three times
+  | 'aww' // a soft disappointed "awww"
+  | 'oh_relief' // "ohh" falling: the ball is caught
+  | 'boo_few'; // a handful of boos
 
 import type { OrganId } from './music';
 export type { OrganId };

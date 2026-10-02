@@ -1,22 +1,22 @@
 /**
- * Continuous stadium bed: two looping crowd buffers (murmur, roar wash) whose gains and brightness follow the crowd's
- * excitement level, plus sparse random one-shots (a whoop, a burst of claps) so it never sounds like a loop.
+ * Continuous stadium bed: three looping crowd buffers (murmur, roar wash, applause) whose gains and brightness follow the crowd
+ * reaction model (`crowd.ts`). Everything that happens at a moment (a pop, a groan, a lone whoop) is a one-shot made by the model; this
+ * only holds the loops, so the whole bed is three sources and four automated parameters.
  */
 import type { Mixer } from './mixer';
+import type { CrowdBed } from './crowd';
 
 export class Ambience {
-  private murmur: AudioBufferSourceNode | null = null;
-  private roar: AudioBufferSourceNode | null = null;
+  private sources: AudioBufferSourceNode[] = [];
   private gMurmur: GainNode | null = null;
   private gRoar: GainNode | null = null;
+  private gClap: GainNode | null = null;
   private lp: BiquadFilterNode | null = null;
-  private nextOneShot = 4;
-  private clock = 0;
   started = false;
   /** last applied gains (debug) */
-  gains = { murmur: 0, roar: 0 };
+  gains = { murmur: 0, roar: 0, clap: 0 };
 
-  constructor(private mixer: Mixer, private rnd: () => number = Math.random) {}
+  constructor(private mixer: Mixer) {}
 
   /** Start the loops once their buffers exist. Safe to call repeatedly. */
   start(): boolean {
@@ -24,59 +24,51 @@ export class Ambience {
     if (this.started || !ctx || !this.mixer.ready || ctx.state !== 'running') return this.started;
     const bm = this.mixer.buffers.get('loop:murmur')?.[0];
     const br = this.mixer.buffers.get('loop:roar')?.[0];
+    const bc = this.mixer.buffers.get('loop:claps')?.[0];
     if (!bm || !br) return false;
     this.lp = ctx.createBiquadFilter();
     this.lp.type = 'lowpass';
     this.lp.frequency.value = 2400;
-    this.lp.connect(this.mixer.crowdBus);
-    this.gMurmur = ctx.createGain();
-    this.gRoar = ctx.createGain();
-    this.gMurmur.gain.value = 0;
-    this.gRoar.gain.value = 0;
-    this.murmur = ctx.createBufferSource();
-    this.roar = ctx.createBufferSource();
-    this.murmur.buffer = bm;
-    this.roar.buffer = br;
-    this.murmur.loop = this.roar.loop = true;
-    this.roar.loopStart = 0;
-    this.murmur.connect(this.gMurmur).connect(this.lp);
-    this.roar.connect(this.gRoar).connect(this.lp);
-    this.murmur.start();
-    this.roar.start(0, 2.5); // decorrelate the two loops
+    this.lp.connect(this.mixer.crowdProx);
+    const loop = (buf: AudioBuffer, offset: number) => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(g).connect(this.lp!);
+      src.start(0, offset); // decorrelate the loops
+      this.sources.push(src);
+      return g;
+    };
+    this.gMurmur = loop(bm, 0);
+    this.gRoar = loop(br, 2.5);
+    if (bc) this.gClap = loop(bc, 1.7);
     this.started = true;
     return true;
   }
 
-  /** excitement 0..1 (see `excitement.ts`); call ~10-30 times a second */
-  update(level: number, dt: number) {
+  /** apply the model's bed (call ~10 times a second) */
+  apply(bed: CrowdBed) {
     if (!this.started || !this.mixer.ctx) return;
     const t = this.mixer.ctx.currentTime;
-    const gm = 0.55 + 0.35 * level;
-    const gr = Math.pow(level, 1.6) * 1.25;
-    this.gains = { murmur: gm, roar: gr };
-    this.gMurmur!.gain.setTargetAtTime(gm, t, 0.35);
-    this.gRoar!.gain.setTargetAtTime(gr, t, 0.35);
-    this.lp!.frequency.setTargetAtTime(1600 + 4400 * level, t, 0.4);
-    this.clock += dt;
-    if (this.clock >= this.nextOneShot) {
-      this.clock = 0;
-      // busier crowds make more incidental noise: a lone whoop, a ripple of applause
-      this.nextOneShot = 5 + this.rnd() * 9 - level * 4;
-      if (this.rnd() < 0.5) this.mixer.playCrowd('whoop', 0.12 + 0.2 * level);
-      else if (level > 0.4) this.mixer.playCrowd('applause_small', 0.14 + 0.25 * level);
-    }
+    this.gains = { murmur: bed.murmur, roar: bed.roar, clap: bed.clap };
+    this.gMurmur!.gain.setTargetAtTime(bed.murmur, t, 0.35);
+    this.gRoar!.gain.setTargetAtTime(bed.roar, t, 0.3);
+    this.gClap?.gain.setTargetAtTime(bed.clap, t, 0.3);
+    this.lp!.frequency.setTargetAtTime(bed.cutoff, t, 0.4);
   }
 
   stop() {
-    for (const s of [this.murmur, this.roar]) {
+    for (const s of this.sources) {
       try {
-        s?.stop();
-        s?.disconnect();
+        s.stop();
+        s.disconnect();
       } catch {
         /* ignore */
       }
     }
+    this.sources = [];
     this.started = false;
-    this.murmur = this.roar = null;
   }
 }

@@ -87,7 +87,7 @@ describe('speech captions (speechStart / speechEnd from the gate)', () => {
     const e = engine({ concurrent: true, emitsStart: true });
     const { g, ev, clock } = setup(e);
     const text = 'Deep drive to left field, back, back, and it is gone.';
-    const h = g.view('booth').speak(text, opt('pbp'));
+    const h = g.view('booth').speak(text, opt('pbp')) as SpeakHandle;
     e.calls[0].o.onstart!();
     clock.t += (ev[0] as { expectedDurationMs: number }).expectedDurationMs / 2;
     h.cancel();
@@ -99,7 +99,7 @@ describe('speech captions (speechStart / speechEnd from the gate)', () => {
 
     const e2 = engine({ concurrent: true, emitsStart: true, exact: true });
     const s2 = setup(e2);
-    const h2 = s2.g.view('booth').speak(text, opt('color'));
+    const h2 = s2.g.view('booth').speak(text, opt('color')) as SpeakHandle;
     e2.calls[0].o.onstart!();
     e2.calls[0].spoken = 22;
     h2.cancel();
@@ -110,7 +110,7 @@ describe('speech captions (speechStart / speechEnd from the gate)', () => {
     const e = engine({ concurrent: true, emitsStart: true });
     const { g, ev, clock } = setup(e);
     const text = 'Ground ball to short, he fields it, throws to first, and he is out.';
-    const h = g.view('booth').speak(text, opt('pbp'));
+    const h = g.view('booth').speak(text, opt('pbp')) as SpeakHandle;
     e.calls[0].o.onstart!();
     clock.t += 700;
     h.cutAtClause!();
@@ -124,7 +124,7 @@ describe('speech captions (speechStart / speechEnd from the gate)', () => {
 
     const e2 = engine({ concurrent: true, emitsStart: false });
     const { g: g2, ev: ev2 } = setup(e2);
-    g2.view('booth').speak('Strike two.', opt('pbp')).cutAtClause!(); // one clause: the cut comes at its end, everything was said
+    (g2.view('booth').speak('Strike two.', opt('pbp')) as SpeakHandle).cutAtClause!(); // one clause: the cut comes at its end, everything was said
     e2.calls[0].o.onend();
     expect(ev2.map((x) => x.type)).toEqual(['speechStart', 'speechEnd']);
     expect(ev2[1]).toMatchObject({ reason: 'cut' });
