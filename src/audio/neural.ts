@@ -130,6 +130,7 @@ export const PRIO = { now: 0, next: 1, warm: 2 } as const;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export class NeuralSpeechEngine implements SpeechEngine {
+  readonly emitsStart = true;
   ready = false;
   /** Web Audio: any number of lines can play at once (PA over booth, booth over booth) */
   readonly concurrent = true;
@@ -275,6 +276,25 @@ export class NeuralSpeechEngine implements SpeechEngine {
     let index = 0;
     let cur: { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null = null;
     let finished = false;
+    let startedSaid = false;
+    const said = () => {
+      if (startedSaid) return;
+      startedSaid = true;
+      o.onstart?.();
+    };
+    // where each clause ends in `text` (for captions of a cut line) and when the current one started sounding
+    const ends: number[] = [];
+    {
+      let pos = 0;
+      for (const piece of parts) {
+        const at = text.indexOf(piece.slice(0, Math.min(piece.length, 12)), pos);
+        const from = at < 0 ? pos : at;
+        pos = Math.min(text.length, from + piece.length);
+        ends.push(pos);
+      }
+    }
+    let curT0 = 0;
+    let curDur = 0;
     const finish = (ok: boolean) => {
       if (finished) return;
       finished = true;
@@ -295,10 +315,17 @@ export class NeuralSpeechEngine implements SpeechEngine {
         stopAfter = true;
         if (!cur) finish(true);
       },
+      spokenChars: () => {
+        const done = index > 0 ? ends[Math.min(index, ends.length) - 1] : 0;
+        if (!cur || !ctx || index >= ends.length) return done;
+        const f = curDur > 0 ? Math.max(0, Math.min(1, (ctx.currentTime - curT0) / curDur)) : 0;
+        return Math.round(done + (ends[index] - done) * f);
+      },
     };
     this.lines.add(handle);
     if (!ctx) {
       queueMicrotask(() => {
+        said();
         this.fallbackLine(text, o);
         finish(true);
       });
@@ -307,6 +334,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
     // on a CPU slower than real time a short call would arrive seconds late: the browser voice is immediate
     if (o.role === 'ump' && this.rtf > 1) {
       queueMicrotask(() => {
+        said();
         this.fallbackLine(text, o);
         finish(true);
       });
@@ -319,6 +347,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
       if (index >= parts.length) return finish(true);
       const g = gens[index];
       if (!g) {
+        said();
         this.fallbackLine(parts.slice(index).join(' '), o);
         return finish(true);
       }
@@ -327,6 +356,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
         if (settled || !alive) return;
         settled = true;
         if (index === 0) {
+          said();
           this.fallbackLine(text, o);
           finish(true);
         } else finish(true);
@@ -344,6 +374,11 @@ export class NeuralSpeechEngine implements SpeechEngine {
             playNext();
           });
           if (!cur) finish(false);
+          else {
+            curT0 = ctx?.currentTime ?? 0;
+            curDur = buf.duration / Math.max(0.5, shift);
+            said();
+          }
         },
         () => {
           clearTimeout(timer);
@@ -351,6 +386,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
           if (settled || !alive) return;
           settled = true;
           if (index === 0) {
+            said();
             this.fallbackLine(text, o);
           }
           finish(true);

@@ -31,6 +31,8 @@ export interface SpeakOptions {
   shift?: number;
   /** drop the line if it has not started within this many ms (a queued call that went stale) */
   maxWaitMs?: number;
+  /** the line really started to sound (engines that report it set `emitsStart`); `expectedMs` when the engine knows the length */
+  onstart?: (info?: { expectedMs?: number }) => void;
   onend: () => void;
   onerror: () => void;
 }
@@ -39,6 +41,8 @@ export interface SpeakOptions {
 export interface SpeakHandle {
   cancel(): void;
   cutAtClause?(): void;
+  /** characters of the line's text that have been spoken so far (captions for a line that was cut) */
+  spokenChars?(): number;
 }
 
 export interface SpeechEngine {
@@ -46,6 +50,8 @@ export interface SpeechEngine {
   speak(text: string, o: SpeakOptions): void | SpeakHandle;
   /** true when several lines can be spoken at the same time (Web Audio engines); browser speech is one line at a time */
   concurrent?: boolean;
+  /** true when `SpeakOptions.onstart` is called when the line really starts (else the caller assumes it starts at once) */
+  emitsStart?: boolean;
   cancel(): void;
   pause(): void;
   resume(): void;
@@ -75,6 +81,9 @@ export class SwitchEngine implements SpeechEngine {
   }
   get concurrent() {
     return this.usingNeural && !!this.neural!.concurrent;
+  }
+  get emitsStart() {
+    return !!this.cur?.emitsStart;
   }
   speak(text: string, o: SpeakOptions) {
     return this.cur?.speak(text, o);
@@ -118,10 +127,12 @@ export function browserSpeech(): SpeechEngine | null {
         u.pitch = o.pitch;
         u.rate = o.rate;
         u.volume = o.volume;
+        u.onstart = () => o.onstart?.();
         u.onend = o.onend;
         u.onerror = o.onerror;
         synth.speak(u);
       },
+      emitsStart: true,
       cancel: () => synth.cancel(),
       pause: () => synth.pause(),
       resume: () => synth.resume(),

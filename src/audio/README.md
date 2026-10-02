@@ -146,6 +146,23 @@ An opt-in third speech engine: the owner's own trained voice (recorded and train
 
 Nothing is downloaded until the owner switches it on, and the voice pack is never part of the repo or the build. Debug: `__audioDebug.state.speech.voice` (state) and `.voiceStats` (generated / played / fallbacks / failures).
 
+## Captions API (`captions.ts`, for the UI)
+
+```ts
+const off = audio.onSpeech((e) => {
+  if (e.type === 'speechStart') show(e.id, e.channel, e.speaker, e.text);          // a line starts to sound
+  else if (e.truncatedAt !== undefined) trim(e.id, e.truncatedAt);                  // it was cut / cancelled: the caption ends here
+  else done(e.id);                                                                  // it was said to the end
+});
+audio.speakingNow();  // lines sounding right now: a caption UI that subscribes late
+audio.clockMs();      // the clock of startMs / endMs (AudioContext time in ms)
+```
+
+* `speechStart { id, channel: 'booth' | 'pa' | 'umpire', speaker: 'pbp' | 'color' | 'pa' | 'ump', text, startMs, expectedDurationMs, excited }`. `text` is exactly what the voice is given (no markup; a booth line that had the live count folded in already contains it, "(Now one and one.)": folds are resolved when the line is spoken, so there is no later text edit). `startMs` is when the line really started to sound (the engine's start callback: browser `onstart`, or the first clause of an HD / custom-voice line), on the audio clock. `expectedDurationMs` is an estimate from the words (a real end comes with `speechEnd`).
+* `speechEnd { id, endMs, reason: 'finished' | 'cut' | 'cancelled' | 'error', truncatedAt? }`. `truncatedAt` is the number of characters of `text` that were spoken: a booth line cut by the director ends at a clause (`reason: 'cut'`); a more important line, pause, skip or mute cancels (`'cancelled'`). The HD voices report the exact count (completed clauses plus the fraction of the current one), other engines get an estimate from the elapsed time. Absent when the whole line was said.
+* A line that never sounds (dropped as stale while waiting for a one-line-at-a-time browser voice, a failed voice, muted roles, speed above 1x) produces no events. Listeners that throw are ignored. PA, umpire and booth lines can overlap with the HD voices, so several lines can be started at the same time; use `id`.
+* Implementation: `SpeechGate` (`broadcast/gate.ts`) wraps every line of both channels; engines say they report starts with `emitsStart` and `SpeakOptions.onstart`, and optionally give `SpeakHandle.spokenChars()`. Tests: `broadcast/__tests__/captions.test.ts`.
+
 ## Tiny language model for colour lines (experimental, off by default)
 
 `?lm=1` (WebGPU only) loads an in-browser model in a worker (`lmWorker.ts`, transformers.js and weights fetched from jsDelivr / Hugging Face at run time, nothing bundled), prompts it with a compact facts JSON, a style guide and the last lines, validates the answer (every number and name must be in the facts, no pronouns for players, length, no repetition) and uses it for a colour line now and then; late, invalid or failed answers fall back instantly to the grammar. **Evaluation (30 sampled game situations, headless Chrome, RTX GPU, q4, transformers.js 3.8 / 4.3, prompt ~300 tokens):**

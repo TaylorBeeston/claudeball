@@ -21,6 +21,8 @@ import { Excitement, baseline } from './excitement';
 import { Booth } from './broadcast/booth';
 import { BoothSink } from './broadcast/channels';
 import { SpeechGate } from './broadcast/gate';
+import type { SpeechEvent } from './captions';
+export type { SpeechEvent, SpeechStartEvent, SpeechEndEvent, SpeechChannel, SpeechSpeaker } from './captions';
 import { ctxFromRaw, type BoothCtx } from './broadcast/ctx';
 
 type Phase = 'prePitch' | 'betweenBatters' | 'break';
@@ -155,7 +157,7 @@ export class AudioController {
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
     // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
-    this.gate = new SpeechGate(this.sw);
+    this.gate = new SpeechGate(this.sw, undefined, () => this.clockMs());
     this.speech = new SpeechQueue(this.gate.view('field'));
     // browser voices have no PA bus: scale the utterance volume instead (the default slider is about 4-5 dB under the old fixed level)
     this.speech.paScale = () => (this.sw.usingNeural ? 1 : Math.pow(this.settings.paVolume / 0.55, 2) * 0.6);
@@ -295,6 +297,26 @@ export class AudioController {
     }
     this.settings.muted = !this.settings.muted;
     this.settingsChanged();
+  }
+
+  // ---- captions API (for the UI) ---------------------------------------------------------------------------------------------
+
+  /**
+   * Subscribe to what the booth, the PA and the umpire say (captions). `speechStart` is sent when a line really starts to sound,
+   * with the exact text given to the voice; `speechEnd` when it ends, with `truncatedAt` (characters spoken) for a line that was cut
+   * or cancelled. Lines that never sound (dropped, muted) produce no events. Returns the unsubscribe function. See captions.ts.
+   */
+  onSpeech(cb: (e: SpeechEvent) => void): () => void {
+    return this.gate.onSpeech(cb);
+  }
+  /** the lines sounding right now (a caption UI that subscribes late, or after a pause) */
+  speakingNow() {
+    return this.gate.speakingNow();
+  }
+  /** the clock of `startMs` / `endMs` in speech events, in ms: the AudioContext time (performance.now() before audio exists) */
+  clockMs(): number {
+    const c = this.mixer.ctx;
+    return c ? c.currentTime * 1000 : performance.now();
   }
 
   /** true until the browser has let the AudioContext run (needs a click / key press) */
