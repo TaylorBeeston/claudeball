@@ -21,6 +21,7 @@ import { Puppet } from './characters';
 import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
+import { ContactShadows } from './contactShadows';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, type Assets, type LoadProgress } from './assets';
@@ -54,6 +55,7 @@ export class Engine {
   /** pins the number of shadow-casting tower spots (tests / screenshots on a loaded machine); undefined = adaptive */
   lightShadowCap?: number;
   readonly lights: StadiumLights;
+  readonly contact = new ContactShadows();
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
   private tossBall: Object3D | null = null;
@@ -119,6 +121,8 @@ export class Engine {
     this.lights = new StadiumLights(this.scene);
     this.lights.setTowers(this.stadium.towers);
     this.gbufferHidden.push(this.lights.group);
+    this.scene.add(this.contact.mesh);
+    this.gbufferHidden.push(this.contact.mesh);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
@@ -464,6 +468,8 @@ export class Engine {
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
     this.players.makeBat = () => this.bat.makeHandBat();
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
+    this.contact.visible = this.quality.name !== 'low';
+    if (this.contact.visible) this.contact.update(this.players.feet());
     this.updateTossBall();
     this.updateLoose(rs);
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
