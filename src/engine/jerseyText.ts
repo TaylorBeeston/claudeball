@@ -203,7 +203,9 @@ export function drawJerseyText(g: CanvasRenderingContext2D, k: TextureKey) {
     g.font = font(size);
     return g.measureText(k.text).width + spacing * size * Math.max(0, k.text.length - 1);
   };
-  const fit = fitText(measure, maxW, maxH / 0.74, k.kind === 'name' ? 0.55 : 0.8);
+  // numbers are all the same height whatever their digits: the size comes from the widest two-digit number, so a 1 is as tall as an 88
+  const sizing = k.kind === 'number' ? (size: number) => { g.font = font(size); return g.measureText('88').width; } : measure;
+  const fit = fitText(sizing, maxW, maxH / 0.74, k.kind === 'name' ? 0.55 : 0.8);
   const size = Math.min(fit.size, maxH / 0.74);
   g.font = font(size);
   const outlinePx = Math.max(2, size * 0.075);
