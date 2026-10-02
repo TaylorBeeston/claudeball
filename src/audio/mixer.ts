@@ -29,6 +29,11 @@ export interface Settings {
   announcer: number;
   /** the stadium PA announcer's own volume (field channel); the umpire shares it */
   paVolume: number;
+  /** camera-transition whooshes, replay stings and graphic blips (`broadcastfx.ts`) */
+  fxVolume: number;
+  /** park music (`parkmusic.ts`): the level and the on / off switch */
+  musicVolume: number;
+  music: boolean;
   muted: boolean;
   /** PA announcer + umpire calls */
   pa: boolean;
@@ -44,7 +49,7 @@ export interface Settings {
   hd: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, fxVolume: 0.5, musicVolume: 0.5, music: true, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -82,6 +87,8 @@ export class Mixer {
   master!: GainNode;
   sfxBus!: GainNode;
   crowdBus!: GainNode;
+  /** broadcast stings (camera whooshes, replay sting, graphic blips): their own level, unaffected by the replay filter */
+  fxBus!: GainNode;
   /** the bed and the one-shots of the crowd enter here; the camera's distance to the stands sets its gain */
   crowdProx!: GainNode;
   /** phone-class device: fewer simultaneous crowd voices */
@@ -156,6 +163,8 @@ export class Mixer {
     this.sfxFilter.connect(this.master);
     this.crowdBus = ctx.createGain();
     this.crowdBus.connect(this.master);
+    this.fxBus = ctx.createGain();
+    this.fxBus.connect(this.master);
     this.crowdProx = ctx.createGain();
     this.crowdProx.connect(this.crowdBus);
     this.organBus = ctx.createGain();
@@ -209,6 +218,7 @@ export class Mixer {
     const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
+    this.fxBus.gain.setTargetAtTime(this.paused ? 0 : s.fxVolume * s.fxVolume * 1.3, t, 0.05);
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
     this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
@@ -355,7 +365,8 @@ export class Mixer {
     const sp = c.pos ? spatialize(this.listener, c.pos as Vec3) : { gain: 1, pan: 0, cutoff: 20000, dist: 0 };
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    const slow = this.replay ? 0.6 : 1;
+    const fx = c.id.startsWith('bfx_');
+    const slow = this.replay && !fx ? 0.6 : 1;
     src.playbackRate.value = (c.rate ?? 1) * (0.96 + this.rnd() * 0.08) * slow;
     const gain = ctx.createGain();
     gain.gain.value = Math.min(1.5, (c.gain ?? 1) * sp.gain);
@@ -377,7 +388,7 @@ export class Mixer {
       tail = p;
       nodes.push(p);
     }
-    tail.connect(this.sfxBus);
+    tail.connect(fx ? this.fxBus : this.sfxBus);
     const v: Voice = { src, nodes, id: c.id, imp: c.imp, start: now };
     this.voices.add(v);
     src.onended = () => {

@@ -243,6 +243,54 @@ function paClick(_b: number, _a: number, r: Rand): Rendered {
   return finish(mono(SR, o), 0.5);
 }
 
+// ---- broadcast stings (tasteful: air, wood and a little tone, nothing cheesy) ------------------------------------------------
+
+function bfxWhoosh(_b: number, _a: number, r: Rand): Rendered {
+  const dur = 0.55;
+  const x = sweepNoise(SR, dur, r, (t) => 650 + 1900 * Math.sin(Math.PI * clamp(t / dur, 0, 1)) , (t) => Math.pow(Math.sin(Math.PI * clamp(t / dur, 0, 1)), 2), 0.7, 5200);
+  return finish(mono(SR, x), 0.55, 40);
+}
+
+function bfxThunk(_b: number, _a: number, r: Rand): Rendered {
+  const o = buf(0.16);
+  addThump(o, SR, { f0: 130, f1: 62, pitchTau: 0.025, tau: 0.045, amp: 0.8 });
+  addNoise(o, SR, r, { tau: 0.004, amp: 0.25, hp: 1800, lp: 6000 });
+  return finish(mono(SR, o), 0.5, 6);
+}
+
+function bfxReplay(_b: number, _a: number, r: Rand): Rendered {
+  const dur = 0.95;
+  const o = buf(dur);
+  const sw = sweepNoise(SR, 0.62, r, (t) => 280 + 5200 * Math.pow(t / 0.62, 2), (t) => Math.pow(Math.sin(Math.PI * clamp(t / 0.62, 0, 1)), 1.4), 0.9, 8000);
+  for (let i = 0; i < sw.length; i++) o[i] += sw[i] * 0.8;
+  // a short rising tone under the whoosh: two stacked sines (octave) with a swelling envelope
+  let ph1 = 0;
+  let ph2 = 0;
+  for (let i = 0; i < Math.floor(0.62 * SR); i++) {
+    const t = i / SR;
+    const f = 330 * Math.pow(2.2, t / 0.62);
+    ph1 += (2 * Math.PI * f) / SR;
+    ph2 += (2 * Math.PI * f * 2) / SR;
+    const e = Math.pow(Math.sin(Math.PI * clamp(t / 0.62, 0, 1) * 0.9), 2);
+    o[i] += (Math.sin(ph1) * 0.22 + Math.sin(ph2) * 0.08) * e;
+  }
+  addModes(o, SR, [[784, 0.22, 0.09], [1568, 0.08, 0.06]], 0.6);
+  return finish(mono(SR, o), 0.6, 30);
+}
+
+function bfxBlip(_b: number, _a: number, _r: Rand): Rendered {
+  const o = buf(0.2);
+  addModes(o, SR, [[1480, 0.55, 0.03], [2960, 0.12, 0.02], [4440, 0.04, 0.015]], 0);
+  return finish(mono(SR, o), 0.4, 6);
+}
+
+function bfxThump(_b: number, _a: number, r: Rand): Rendered {
+  const o = buf(0.9);
+  addThump(o, SR, { f0: 78, f1: 38, pitchTau: 0.12, tau: 0.22, amp: 0.9 });
+  addNoise(o, SR, r, { tau: 0.25, amp: 0.25, lp: 420, hp: 40 });
+  return finish(mono(SR, o), 0.6, 60);
+}
+
 /** Fallback shout ("HEY!" / "Aah!") for when the browser has no speech synthesis: one voice, open vowel, falling pitch. */
 function umpYell(_b: number, _a: number, r: Rand): Rendered {
   const sr = 22050;
@@ -556,6 +604,11 @@ export const SFX_DEFS: Record<SfxId, SoundDef> = {
   replay_whoosh: { buckets: 1, alts: 1, make: replayWhoosh },
   pa_click: { buckets: 1, alts: 1, make: paClick },
   ump_yell: { buckets: 1, alts: 2, make: umpYell },
+  bfx_whoosh: { buckets: 1, alts: 2, make: bfxWhoosh },
+  bfx_thunk: { buckets: 1, alts: 2, make: bfxThunk },
+  bfx_replay: { buckets: 1, alts: 1, make: bfxReplay },
+  bfx_blip: { buckets: 1, alts: 1, make: bfxBlip },
+  bfx_thump: { buckets: 1, alts: 1, make: bfxThump },
 };
 
 export const CROWD_IDS: CrowdId[] = ['roar_big', 'roar_med', 'cheer_short', 'applause', 'applause_small', 'groan', 'gasp', 'ooh', 'boo', 'swell', 'whoop', 'clap_single', 'clap_burst', 'whistle', 'shout', 'shout2', 'kid', 'vendor', 'chatter', 'chant', 'aww', 'oh_relief', 'boo_few'];
