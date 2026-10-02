@@ -118,6 +118,40 @@ describe('URL parameters', () => {
   });
 });
 
+describe('tempo (pace of play)', () => {
+  it('defaults to broadcast', () => {
+    expect(DEFAULT_SETTINGS.tempo).toBe('broadcast');
+    expect(resolve('', null, false, ABBRS).settings.tempo).toBe('broadcast');
+    expect(resolve('', null, true, ABBRS).settings.tempo).toBe('broadcast');
+  });
+
+  it('persists and restores; a bad saved value falls back to the default', () => {
+    const st = mem();
+    saveSettings(st, { ...DEFAULT_SETTINGS, tempo: 'quick' });
+    expect(resolve('', st, false, ABBRS).settings.tempo).toBe('quick');
+    st.setItem(STORAGE_KEY, JSON.stringify({ tempo: 'ludicrous', tod: 'dusk' }));
+    expect(loadSaved(st)).toEqual({ tod: 'dusk' });
+    expect(resolve('', st, false, ABBRS).settings.tempo).toBe('broadcast');
+    expect(sanitize({ tempo: 'standard' })).toEqual({ tempo: 'standard' });
+  });
+
+  it('?tempo= parses (any case), beats the saved value, and invalid values are ignored', () => {
+    expect(parseParams('?tempo=Standard').settings).toEqual({ tempo: 'standard' });
+    expect(parseParams('?tempo=quick').fromUrl.has('tempo')).toBe(true);
+    expect(parseParams('?tempo=warp').settings).toEqual({});
+    expect(parseParams('?tempo=warp').fromUrl.size).toBe(0);
+    const st = mem({ [STORAGE_KEY]: JSON.stringify({ tempo: 'quick' }) });
+    expect(resolve('?tempo=standard', st, false, ABBRS).settings.tempo).toBe('standard');
+  });
+
+  it('is in the share link only when it is not the default', () => {
+    expect(shareQuery({ seed: 1, away: -1, home: -1 }, DEFAULT_SETTINGS, ABBRS)).toBe('seed=1');
+    const q = shareQuery({ seed: 1, away: -1, home: -1 }, { ...DEFAULT_SETTINGS, tempo: 'quick' }, ABBRS);
+    expect(q).toBe('seed=1&tempo=quick');
+    expect(resolve(`?${q}`, null, false, ABBRS).settings.tempo).toBe('quick');
+  });
+});
+
 describe('device quality and pixel ratio', () => {
   const d = (o: Partial<DeviceInfo>): DeviceInfo => ({ coarse: false, shortSide: 1080, ...o });
   it('picks a starting preset per device class', () => {

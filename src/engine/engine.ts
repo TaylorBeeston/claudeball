@@ -145,6 +145,7 @@ export class Engine {
             togglePause: () => (this.sim.paused = !this.sim.paused),
             setSpeed: (x) => (this.sim.speed = x),
             skipHalf: () => this.sim.skipToNextHalfInning(),
+            skipBatter: () => this.sim.skipToNextBatter(),
             setAuto: (a) => this.director.setAuto(a),
             setQuality: (q) => this.setQuality(q as QualityName),
             setTimeOfDay: (t) => this.setTimeOfDay(t as TimeOfDay),
@@ -301,6 +302,7 @@ export class Engine {
       case '2': this.sim.speed = 2; break;
       case '3': this.sim.speed = 4; break;
       case 'n': this.sim.skipToNextHalfInning(); break;
+      case '.': this.sim.skipToNextBatter(); break;
       case 'c': this.director.setAuto(!this.director.auto); break;
       case 'b': this.hud?.toggleBox(); break;
       case 'q': this.setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(this.qualityName) + 1) % 4]); break;
