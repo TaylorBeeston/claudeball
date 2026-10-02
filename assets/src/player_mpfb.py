@@ -7,13 +7,14 @@ from mathutils import Vector
 from mathutils.kdtree import KDTree
 MP = os.path.join(globals().get("CB_SRC") or os.path.join(os.environ.get("CB_ASSETS", "."), "src"), "mpfb")
 _B = None
-FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
+MOUTH_OPEN_SCALE = .3; FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
 def base():
     global _B
     if _B is None:
         _B = dict(np.load(os.path.join(MP, "base_body.npz"), allow_pickle=False))
         P = _B["P"].copy(); lo = P[:, 2] < FOOT_ANK; P[lo, 2] = FOOT_ANK - (FOOT_ANK - P[lo, 2])*FOOT_K      # lifts the foot sole by FOOT_LIFT (skinned feet of the straightened legs sank 8-15 mm in the clips): compress the foot below the ankle joint
         _B["P"] = P
+        _B["D_mouth_open"] = _B["D_mouth_open"]*MOUTH_OPEN_SCALE                                         # the MPFB mouth interior (stretched inner-lip faces) turns into jagged spikes beyond ~30 % of the original opening: weight 1 = that usable opening
     return _B
 HC = Vector((0, -.065, 1.735))                                   # skull centre (replaces the procedural head's centre for headwear / hair builders)
 LM = dict(eyeL=(.032, -.146, 1.732), eyeR=(-.032, -.146, 1.732), nose=(0, -.185, 1.688), mouth=(0, -.150, 1.640), crown=(0, -.069, 1.85), ear_z=1.727, ear_x=.090)
@@ -94,6 +95,15 @@ def _neigh(P):
 HEAD_KEYS = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large", "brow_heavy", "chin_strong", "cheeks_full", "nose_narrow", "eyes_deep", "eyes_blink", "mouth_open", "smile", "brow_raise", "brow_furrow", "mouth_pucker")
 def head_morph(P, kind):
     b = base(); idx, w = _neigh(P); D = b["D_" + kind]; return P + (D[idx]*w[:, :, None]).sum(1)
+def teeth_morph(P, kind, tongue=False):
+    """Morph for teeth / tongue: the nearest-surface field tears the tooth rows apart when the mouth opens (spikes), so `mouth_open` moves the upper teeth with the upper lip and the lower teeth (and tongue) rigidly with the lower lip; smile / pucker leave them alone; the head-shape keys use the normal field."""
+    if kind in ("smile", "mouth_pucker"): return P.copy()
+    if kind != "mouth_open": return head_morph(P, kind)
+    b = base(); BP = b["P"]; D = b["D_mouth_open"]; x = np.abs(BP[:, 0]) < .02
+    up = D[x & (BP[:, 2] > 1.655) & (BP[:, 2] < 1.675) & (BP[:, 1] < -.14)].mean(0); lo = D[x & (BP[:, 2] > 1.635) & (BP[:, 2] < 1.652) & (BP[:, 1] < -.14)].mean(0)
+    out = P.copy(); low = P[:, 2] < 1.656
+    out[low] += lo*(.75 if tongue else 1.0); out[~low] += up
+    return out
 
 # ---------------------------------------------------------------- hands: finger-posed variants of the MPFB hand (no finger bones in the rig; the clips pick a variant / morph)
 FULL = ((78, 95, 62), (42, 50, 55))        # full-curl joint angles (deg): fingers MCP / PIP / DIP, thumb CMC / MCP / IP
@@ -216,6 +226,7 @@ def ball_hand_frame_coords(C, side="Right"):
 
 # ---------------------------------------------------------------- eyes: eyeball sphere + cornea shell, equirect texture from the MPFB iris crops, look shape keys
 EYE_R = .0123
+EYE_Y = -.138                                                     # globe centre y: the globes sat 1-7 mm in front of the lid surface (startled look, blink could not cover them); moved 8 mm back
 EYE_COLORS = dict(brown=((.20, .095, .035), (.43, .24, .10)), hazel=((.26, .17, .06), (.45, .36, .13)), green=((.12, .20, .09), (.30, .46, .22)), blue=((.12, .22, .38), (.38, .58, .78)), gray=((.20, .23, .26), (.52, .56, .60)))
 def _noise2(w, h, scales, seed):
     rng = np.random.default_rng(seed); out = np.zeros((h, w), np.float32)
@@ -246,7 +257,7 @@ def build_eyes():
     for nm, rad, seg, ring in (("Eyes", EYE_R, 40, 24), ("Eyes_Cornea", EYE_R*1.012, 36, 12)):
         bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); verts = {}
         for sx in (1, -1):
-            c = Vector((sx*.032, -.146, 1.732)); rings = []
+            c = Vector((sx*.032, EYE_Y, 1.732)); rings = []
             nr = ring if nm == "Eyes" else ring; th_max = math.pi if nm == "Eyes" else math.radians(41)
             for i in range(nr + 1):
                 th = th_max*i/nr; row = []
@@ -268,7 +279,7 @@ def build_eyes():
         for key, (axis, ang) in dict(eyes_look_left=((0, 0, 1), 22), eyes_look_right=((0, 0, 1), -22), eyes_look_up=((1, 0, 0), 18), eyes_look_down=((1, 0, 0), -18)).items():
             out = Pn.copy()
             for sx in (1, -1):
-                c = np.array([sx*.032, -.146, 1.732]); m = (np.sign(Pn[:, 0] - 0.0) == sx); R = np.array(Matrix.Rotation(math.radians(ang), 3, axis))
+                c = np.array([sx*.032, EYE_Y, 1.732]); m = (np.sign(Pn[:, 0] - 0.0) == sx); R = np.array(Matrix.Rotation(math.radians(ang), 3, axis))
                 out[m] = (Pn[m] - c) @ R.T + c
             sk = o.shape_key_add(name=key, from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.value = 0.0; sk.data.foreach_set("co", out.astype(np.float32).ravel())
     return objs

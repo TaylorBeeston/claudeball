@@ -1992,7 +1992,7 @@
    "fingers_3",
    "fingers_4"
   ],
-  "note": "influence 0..1. body keys on every skinned body/clothing mesh; head keys on the Head and every head-attached mesh (hair, caps, helmet, mask, beards, brows, lashes, teeth; the key set per node differs: expressions only on Head / Eyebrows / Eyelashes / Teeth / Tongue / beards); eyes_look_* on `Eyes` and `Eyes_Cornea` (both globes turn together, 22 deg left/right, 18 deg up/down); fingers_n on Hand_R (n fingers extended, index first); glove_open/closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap. All head / face keys are MPFB2 (CC0) targets re-fitted to our rig, see CREDITS.md"
+  "note": "influence 0..1 (mouth_open: 1 = a natural talking / shouting opening, larger openings would expose the jagged MPFB mouth interior). body keys on every skinned body/clothing mesh; head keys on the Head and every head-attached mesh (hair, caps, helmet, mask, beards, brows, lashes, teeth; the key set per node differs: expressions only on Head / Eyebrows / Eyelashes / Teeth / Tongue / beards); eyes_look_* on `Eyes` and `Eyes_Cornea` (both globes turn together, 22 deg left/right, 18 deg up/down); fingers_n on Hand_R (n fingers extended, index first); glove_open/closed on the glove, its laces and the hand inside; hair_under_cap squashes hair under a cap. All head / face keys are MPFB2 (CC0) targets re-fitted to our rig, see CREDITS.md"
  },
  "grips": {
   "Bat_Grip": "RightHand, origin = knob, +Y = barrel",
@@ -2203,7 +2203,7 @@
  "materials_recolor": [
   "skin",
   "face (same atlas as skin: recolour both with the same baseColorFactor)",
-  "hair (+ hair_short01, hair_short03, hair_short04, hair_bob01, hair_afro01, hair_long01, hair_ponytail01: luminance-normalised strand textures, recolour all `hair*`)",
+  "hair (+ hair_short01, hair_short03, hair_short04, hair_bob01, hair_afro01, hair_long01, hair_ponytail01: luminance-normalised strand textures, recolour all `hair*`; `hair_beard` = opaque fibre texture of Gear_Beard_Full / Gear_Mustache / Gear_Goatee)",
   "eyebrow",
   "eyelash",
   "eye (iris colour is in the texture; alternative iris colours: players/textures/eyes_<colour>.webp)",
