@@ -5,7 +5,7 @@
 import { h } from './dom';
 import { button, field, segmented, slider, toggle, type Control } from './widgets';
 import { CLUBS, clubColors, randomClubs, seedTeams, type Club } from './clubs';
-import { GAME_LENGTHS, inningsLabel, seedFromText, type Chatter, type GameSettings, type MatchSetup, type QualityChoice, type TimeOfDay } from './settings';
+import { GAME_LENGTHS, inningsLabel, seedFromText, type Tempo, type Chatter, type GameSettings, type MatchSetup, type QualityChoice, type TimeOfDay } from './settings';
 import { QUALITY_BLURB, type DeviceInfo } from './device';
 import type { QualityName } from '../engine/quality';
 import type { Settings as AudioSettings } from '../audio/mixer';
@@ -85,6 +85,13 @@ const TOD_ITEMS = [
   { value: 'dusk' as TimeOfDay, label: '🌇 Dusk' },
   { value: 'night' as TimeOfDay, label: '🌙 Night' },
 ];
+
+const TEMPO_ITEMS = [
+  { value: 'broadcast' as Tempo, label: 'Broadcast', hint: 'Slower and more TV-like: full wind-ups, walk-ups and pauses between pitches, as on a broadcast.' },
+  { value: 'standard' as Tempo, label: 'Standard', hint: 'A natural pace between pitches and plays.' },
+  { value: 'quick' as Tempo, label: 'Quick', hint: 'Little dead time: the game moves along fast.' },
+];
+const TEMPO_NOTE = 'Applies to the next game you start. 2× and 4× speed still work with any tempo, and Next batter (.) skips ahead.';
 
 const LENGTH_ITEMS = GAME_LENGTHS.map((n) => ({ value: n, label: n === 9 ? '9 · Full' : n === 3 ? '3 · Short' : '1 · Demo', hint: n === 9 ? 'A regulation game, about 20 minutes at normal speed.' : n === 3 ? 'Three innings: a quick game.' : 'One inning: a quick look at everything.' }));
 
@@ -217,6 +224,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const muteField = field('Mute everything', mute.el);
   muteField.classList.add('inline');
 
+  const tempo = reg(segmented<Tempo>('Pace of play', TEMPO_ITEMS, ctx.settings.tempo, (v) => ctx.update({ tempo: v })), () => ctx.settings.tempo);
   const camera = reg(
     segmented<'auto' | 'free'>('Camera', [
       { value: 'auto', label: 'Broadcast', hint: 'A director cuts between TV-style shots and replays.' },
@@ -265,7 +273,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
     section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('Voices', voicesBox), muteField),
-    section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
+    section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Pace of play', tempo.el, TEMPO_NOTE), tempo.hintEl, field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,
   );
@@ -370,6 +378,7 @@ export function setupScreen(ctx: AppCtx, back: () => void): HTMLElement {
 
   const length = segmented<number>('Game length', LENGTH_ITEMS, ctx.settings.innings, (v) => ctx.update({ innings: v }));
   const tod = segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v }));
+  const tempo = segmented<Tempo>('Pace of play', TEMPO_ITEMS, ctx.settings.tempo, (v) => ctx.update({ tempo: v }));
 
   const randomTeams = button('🎲 Randomize teams', () => {
     ctx.updateMatch(randomClubs());
@@ -407,6 +416,8 @@ export function setupScreen(ctx: AppCtx, back: () => void): HTMLElement {
         field('Seed', h('div', { class: 'cb-seedrow' }, seedInput, randomSeed, copy), 'The same seed and teams always play the same game. Share the link to replay it.'),
         field('Game length', length.el, undefined),
         length.hintEl,
+        field('Pace of play', tempo.el, TEMPO_NOTE),
+        tempo.hintEl,
         field('Time of day', tod.el),
         button('Start Game', () => ctx.start(), 'primary'),
       ),

@@ -69,7 +69,9 @@ const CSS = /* css */ `
 .cb-ctl button,.cb-ctl select{font:inherit;font-weight:700;color:#fff;background:rgba(14,18,26,.88);border:1px solid rgba(255,255,255,.18);border-radius:calc(var(--u)*.8);padding:0 calc(var(--u)*1.3);min-height:max(34px,calc(var(--u)*4));cursor:pointer;touch-action:manipulation;text-shadow:none;white-space:nowrap}
 .cb-ctl button:hover,.cb-ctl select:hover{background:rgba(40,50,70,.95)}.cb-ctl button.on{background:#ffcf4a;color:#111}
 .cb-ctl :focus-visible{outline:3px solid #ffcf4a;outline-offset:1px}
+.cb-toprow{display:flex;gap:calc(var(--u)*.8)}
 .cb-mbtn{width:max(44px,calc(var(--u)*4.8));height:max(44px,calc(var(--u)*4.8));padding:0!important;font-size:max(20px,calc(var(--u)*2.4));display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .2s}
+.cb-mbtn.skip{opacity:.8}
 .cb-ctl.open .cb-mbtn,.cb-ctl:hover .cb-mbtn,.cb-ctl:focus-within .cb-mbtn{opacity:1}
 .cb-drawer{display:none;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:calc(var(--u)*.7);max-width:min(100%,calc(var(--u)*118))}
 .cb-ctl.open .cb-drawer,.cb-ctl.live .cb-drawer,.cb-ctl:focus-within .cb-drawer{display:flex}
@@ -97,6 +99,7 @@ const CSS = /* css */ `
 .cb-final{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,6,10,.55);font-size:max(26px,calc(var(--u)*8));font-weight:900;letter-spacing:.1em;text-align:center;padding:0 var(--ml)}
 /* phone portrait: scorebug moves to the top, tracker and card shrink, controls become a drawer card */
 @media (max-width:700px) and (orientation:portrait){
+  .cb-toprow{flex-direction:column;align-items:flex-end}
   .cb-bug{position:fixed;left:var(--ml);top:var(--mt);max-width:calc(100% - var(--ml) - var(--mr) - 56px)}
   .cb-bl{bottom:calc(var(--mb) + var(--tick-h) + var(--u)*1)}
   .cb-call{position:fixed;left:var(--ml);bottom:auto;top:calc(var(--mt) + var(--bug-h) + var(--u)*13)}
@@ -136,6 +139,10 @@ export interface HudActions {
   togglePause(): boolean;
   setSpeed(x: number): void;
   skipHalf(): void;
+  /** the controls drawer opened or closed (the app hides floating hints while it is open) */
+  onControls?(open: boolean): void;
+  /** fast-forward to the next batter */
+  skipBatter?(): void;
   setAuto(auto: boolean): void;
   setQuality(q: string): void;
   setTimeOfDay(t: string): void;
@@ -278,13 +285,21 @@ export class Hud {
 
   private buildControls(): HTMLElement {
     const c = this.ctl;
-    const menu = el('button', 'cb-mbtn', '☰');
+    const menu = el('button', 'cb-mbtn menu', '☰');
     menu.type = 'button';
     menu.title = 'Controls';
     menu.setAttribute('aria-label', 'Controls');
     menu.setAttribute('aria-expanded', 'false');
     menu.onclick = () => this.toggleControls();
-    c.append(this.drawer, menu);
+    // always-visible row: skip to the next batter (the pace is slower, so this is on screen, not only in the drawer) and the drawer button
+    const skip = el('button', 'cb-mbtn skip', '⏭');
+    skip.type = 'button';
+    skip.title = 'Skip to the next batter (.)';
+    skip.setAttribute('aria-label', 'Skip to the next batter');
+    skip.onclick = () => this.act.skipBatter?.();
+    const top = el('div', 'cb-toprow');
+    top.append(skip, menu);
+    c.append(this.drawer, top);
     // the drawer is on top of the button in the DOM (column-reverse feel) but below it on screen: order it with CSS
     c.style.flexDirection = 'column-reverse';
     c.style.alignItems = 'flex-end';
@@ -315,7 +330,8 @@ export class Hud {
       this.speedBtns.push(b);
     }
     d.appendChild(speeds);
-    btn('⏭ Next half', () => this.act.skipHalf(), d, 'Skip to the next half inning (N)');
+    btn('⏭ Next batter', () => this.act.skipBatter?.(), d, 'Skip to the next batter (.)');
+    btn('⏭⏭ Next half', () => this.act.skipHalf(), d, 'Skip to the next half inning (N)');
     btn('Box score', () => this.toggleBox(), d, 'Box score (B)');
     this.camBtn = btn('Camera: Auto', () => {
       this.act.setAuto(!(this.act.getState?.().auto ?? this.camBtn.classList.contains('on')));
@@ -407,7 +423,8 @@ export class Hud {
 
   setControlsOpen(open: boolean) {
     this.ctl.classList.toggle('open', open);
-    (this.ctl.querySelector('.cb-mbtn') as HTMLElement).setAttribute('aria-expanded', String(open));
+    this.act.onControls?.(open);
+    (this.ctl.querySelector('.cb-mbtn.menu') as HTMLElement).setAttribute('aria-expanded', String(open));
     clearTimeout(this.ctlTimer);
     if (open) this.holdControls();
   }

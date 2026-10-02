@@ -105,7 +105,7 @@ class App {
   }
 
   private simConfig() {
-    return { innings: this.settings.innings, ...simTeams(this.match) };
+    return { innings: this.settings.innings, tempo: this.settings.tempo, ...simTeams(this.match) };
   }
 
   // ---- boot --------------------------------------------------------------------------------------------------------------
@@ -234,7 +234,11 @@ class App {
       void e.setTimeOfDay(s.tod);
       this.scheduleWarm();
     }
-    if (s.innings !== prev.innings) this.scheduleNewGame();
+    if (s.innings !== prev.innings || s.tempo !== prev.tempo) {
+      // in the menu the frozen game behind it is rebuilt; during a game the change waits for the next one (never a silent restart)
+      if (this.mode === 'menu') this.scheduleNewGame();
+      else this.toastUi.show('Applies to the next game');
+    }
     if (s.replays !== prev.replays) e.director.replaysEnabled = s.replays;
     if (s.camera !== prev.camera && this.mode !== 'menu') e.director.setAuto(s.camera === 'auto');
     if (s.speed !== prev.speed && this.mode !== 'menu') e.sim.speed = s.speed;
@@ -395,6 +399,7 @@ class App {
     this.engine.sim.paused = true;
     this.engine.keysEnabled = false;
     this.touch.setPlaying(false);
+    this.rotate.setEnabled(false); // the hint would sit on top of the panel
     this.showPauseScreen();
   }
 
@@ -421,11 +426,13 @@ class App {
     this.engine.sim.paused = false;
     this.engine.keysEnabled = true;
     this.touch.setPlaying(true);
+    this.rotate.setEnabled(true);
   }
 
   private showGameOver() {
     if (this.mode !== 'playing') return;
     this.mode = 'over';
+    this.rotate.setEnabled(false);
     this.engine.keysEnabled = false;
     this.touch.setPlaying(false);
     this.modal.onEscape = null;
@@ -487,6 +494,7 @@ class App {
     const hud = this.engine.hud;
     if (!hud) return;
     hud.act.onMenu = () => this.pause();
+    hud.act.onControls = (open) => this.rotate.setSuppressed(open);
     hud.act.isPaused = () => this.engine.sim.paused;
     hud.act.getState = () => ({ auto: this.engine.director.auto, replays: this.engine.director.replaysEnabled, speed: this.engine.sim.speed });
     hud.act.toggleMute = () => {
