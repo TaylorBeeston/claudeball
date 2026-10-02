@@ -33,3 +33,10 @@ All sets are **CC0 1.0** (https://docs.ambientcg.com/license/, downloaded withou
 | Ground080 | `dirt` infield clay (field.glb) |
 | Ground110 | `track` warning track (field.glb) |
 | Concrete034 | `concrete` (stadium.glb) and dugout concrete (field.glb) |
+| Wood049 | `bat.glb` (bat wood) |
+| Wood066 | dugout bench wood (field.glb) |
+| Metal032 | steel: light towers, net / roof posts (stadium.glb), dugout rail (field.glb) |
+| Plastic010 | stadium seats |
+| Leather026 (also) | `wall_padding` (stadium.glb), dugout padding (field.glb) |
+| Rubber004 (also) | home plate and pitcher's rubber (field.glb) |
+| Fabric036 (also) | bases (field.glb) |

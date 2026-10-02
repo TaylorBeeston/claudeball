@@ -14,8 +14,8 @@ def emissive(n, c, strength):
     b.inputs["Emission Color"].default_value = c; b.inputs["Emission Strength"].default_value = strength; return mm
 M_CONC = acg_material("concrete", acg("Concrete034", tint=(.93, .93, .91), gain=.88), .85, .9)                       # poured concrete (CC0 photo set), tinted per tread through the vertex colours
 M_FASC = mat("fascia_dark", (0.05, 0.06, 0.08, 1), 0.5, 0.2)
-M_PAD = mat("wall_padding", (0.02, 0.10, 0.05, 1), 0.85); M_YEL = mat("wall_yellow_line", (0.95, 0.72, 0.03, 1), 0.5)
-M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = mat("steel", (0.55, 0.57, 0.6, 1), 0.38, 1.0)
+M_PAD = acg_pbr("wall_padding", acg("Leather026", tint=(.10, .32, .18), gain=.85, lumnorm=True), .85, .6); M_YEL = mat("wall_yellow_line", (0.95, 0.72, 0.03, 1), 0.5)
+M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = acg_material("steel", acg("Metal032", gain=1.0), .38, .6, metal=1.0)
 M_DUGR = mat("dugout_roof", (0.15, 0.16, 0.18, 1), 0.7); M_EYE = mat("batters_eye", (0.01, 0.03, 0.02, 1), 0.95)
 M_LAMP = emissive("stadium_light", (1.0, 0.97, 0.88, 1), 40.0)
 SEATC = [(0.02, 0.06, 0.30, 1), (0.03, 0.10, 0.28, 1), (0.05, 0.08, 0.20, 1)]
@@ -72,7 +72,9 @@ def add_ribbon(name, o, y0, y1, mat_, samples=None, flip_=None):
     v0, v1, v2 = [np.array(vs[i]) for i in fs[0][:3]]; nn = np.cross(v1-v0, v2-v0)
     ref = -np.array([N_[0 if samples is None else samples[0]][0], 0, N_[0 if samples is None else samples[0]][1]])
     if nn.dot(ref) < 0: fs = [f[::-1] for f in fs]
-    return make_mesh(name, vs, fs, [mat_])
+    arc = np.zeros(len(vs)); pts = np.array(vs)[::2]; step = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts[:, [0, 2]], axis=0), axis=1))]
+    uvs = [((step[i//2] if i//2 < len(step) else step[-1])/1.2, vs[i][1]/1.2) for i in range(len(vs))]
+    return make_mesh(name, vs, fs, [mat_], uv=uvs)
 add_ribbon("Wall_Padding", 0.0, 0.0, hw-0.15, M_PAD)
 add_ribbon("Wall_YellowLine", 0.0, hw-0.15, hw, M_YEL)
 # batter's eye: dark wall 12 m high behind center field
@@ -95,7 +97,7 @@ L = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P[nets], axis=0), axis=0 if False 
 vuv = []
 for i in range(len(nets)): vuv += [(L[i]/2.0, 0.0), (L[i]/2.0, 4.0)]
 li = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", li); u.data.foreach_set("uv", np.asarray(vuv, np.float32)[li].ravel())
-mb = MB("NetPosts")
+mb = MB("NetPosts", uv_scale=1.5)
 for j in nets[::12]:
     p = P[j]+N_[j]*0.5; mb.box(p[0], p[1], 0.12, 0.12, 0.0, 9.6)
 objs.append(mb.build(M_STEEL))
@@ -157,7 +159,7 @@ for nm, side in (("DugoutRoof_1B", 1), ("DugoutRoof_3B", -1)):
     s0, s1 = DUG_S; o0, o1 = DUG_O; rot = -side*math.pi/4
     def BXr(mb_, s_lo, s_hi, o_lo, o_hi, y0, y1):
         cx, cz = dug_xy((s_lo+s_hi)/2, (o_lo+o_hi)/2, side); mb_.box(cx, cz, o_hi-o_lo, s_hi-s_lo, y0, y1, rot=rot)
-    slab, fas, post = MB(nm), MB(nm+"_Fascia"), MB(nm+"_Posts")
+    slab, fas, post = MB(nm), MB(nm+"_Fascia"), MB(nm+"_Posts", uv_scale=1.5)
     BXr(slab, s0-.3, s1+.3, o0-.5, o1+.3, 2.72, 2.95)                             # roof slab, overhangs the field side
     BXr(fas, s0-.3, s1+.3, o0-.55, o0-.45, 2.45, 2.98)                            # fascia board along the opening
     for k in range(int((s1-s0)//4.5)+2): BXr(post, s0+k*4.5-.06, s0+k*4.5+.06, o0-.25, o0-.13, .55, 2.72)   # front posts
@@ -165,7 +167,7 @@ for nm, side in (("DugoutRoof_1B", 1), ("DugoutRoof_3B", -1)):
 
 # ---------------- light towers (steel mast + emissive lamp banks)
 def tower(name, px, pz, h=46.0):
-    mb = MB(name); face = np.array([0.0-px, 60.0-pz]); face /= np.linalg.norm(face); rot = math.atan2(face[1], face[0]) - math.pi/2
+    mb = MB(name, uv_scale=1.5); face = np.array([0.0-px, 60.0-pz]); face /= np.linalg.norm(face); rot = math.atan2(face[1], face[0]) - math.pi/2
     mb.box(px, pz, 1.4, 1.4, 0.0, h*0.55, rot=rot); mb.box(px, pz, 0.9, 0.9, h*0.55, h, rot=rot)
     lamps = MB(name+"_Lamps")
     for r_ in range(5):
@@ -278,7 +280,7 @@ np.savez_compressed(ROOT+"/src/crowd.npz", **{f"pos{i}": np.concatenate(CROWD[i]
 
 # ---------------- seat templates (instanced in post-processing): 10 tris, facing +Z (center field)
 def seat_template(name, col):
-    mb = MB(name); w = 0.46
+    mb = MB(name, uv_scale=.5); w = 0.46
     def Q(pts, ref):
         v = [mb.vert(*p) for p in pts]; mb.quad_out(*v, ref)
     Q([(-w/2, 0.42, -0.25), (w/2, 0.42, -0.25), (w/2, 0.42, 0.22), (-w/2, 0.42, 0.22)], (0, 0.2, 0))        # cushion top
@@ -286,7 +288,7 @@ def seat_template(name, col):
     Q([(-w/2, 0.42, -0.25), (w/2, 0.42, -0.25), (w/2, 0.95, -0.30), (-w/2, 0.95, -0.30)], (0, 0.6, -1.0))   # backrest front
     Q([(-w/2, 0.95, -0.30), (w/2, 0.95, -0.30), (w/2, 0.95, -0.36), (-w/2, 0.95, -0.36)], (0, 0.5, -0.3))   # backrest top
     Q([(-w/2, 0.42, -0.30), (w/2, 0.42, -0.30), (w/2, 0.95, -0.36), (-w/2, 0.95, -0.36)], (0, 0.6, 0.5))    # backrest back
-    return mb.build(mat(name+"_mat", col, 0.6))
+    return mb.build(acg_material(name+"_mat", acg("Plastic010", tint=tuple(float(c)**(1/2.2) for c in col[:3]), gain=1.0, lumnorm=True), .6, .5))
 for t in range(3):
     o = seat_template(f"Seats_T{t+1}", SEATC[t]); objs.append(o)
 np.savez_compressed(ROOT+"/src/seats.npz", **{f"pos{t}": G['seats'][t][0] for t in range(3)}, **{f"yaw{t}": G['seats'][t][1] for t in range(3)})
@@ -306,6 +308,8 @@ try:
     bowl.data.color_attributes.remove(ca); bowl.data.color_attributes.active_color = base; AO_OK = True
 except Exception as e:
     AO_ERR = str(e)[:300]
+for o_ in objs:
+    if o_.name.startswith(("LightTower_", "NetPosts")) and not o_.name.endswith("_Lamps") or o_.name.endswith("_Posts"): box_uv_obj(o_, 1.5)
 export(objs, ROOT+"/stadium.glb", mirror=True, jpg=True, export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True)
 exec(open(CB_SRC + "/inject_instances.py").read())
 _d = np.load(ROOT+"/src/seats.npz")

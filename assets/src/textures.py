@@ -55,14 +55,31 @@ def vc_material(name, base_img, nrm_img, rough=0.9, nstrength=1.0, ormimg=None, 
     return m
 
 # ---------------------------------------------------------------- photographic CC0 PBR sets (ambientCG, converted copies in src/pbr, see CREDITS.md)
-def acg(name, tint=(1.0, 1.0, 1.0), gain=1.0, rough_mul=1.0):
+def acg(name, tint=(1.0, 1.0, 1.0), gain=1.0, rough_mul=1.0, lumnorm=False):
     """(albedo (n,n,3) sRGB, normal (n,n,3) GL, roughness (n,n), ao (n,n)) of an ambientCG material, albedo multiplied by tint * gain; images are returned top-down (flip before upload)."""
     from PIL import Image
     d = os.path.join(CB_SRC, "pbr"); ld = lambda k, mode: np.asarray(Image.open(os.path.join(d, f"{name}_{k}.webp")).convert(mode), np.float32)/255.0
-    alb = np.clip(ld("color", "RGB")*np.array(tint, np.float32)*gain, 0, 1); rg = np.clip(ld("rough", "L")*rough_mul, .05, 1)
+    col = ld("color", "RGB")
+    if lumnorm: lum = (col*np.array([.3, .55, .15], np.float32)).sum(2); col = np.repeat((lum/np.percentile(lum, 85))[..., None], 3, 2)      # grey albedo, so `tint` becomes the colour
+    alb = np.clip(col*np.array(tint, np.float32)*gain, 0, 1); rg = np.clip(ld("rough", "L")*rough_mul, .05, 1)
     ao = ld("ao", "L") if os.path.exists(os.path.join(d, f"{name}_ao.webp")) else np.ones_like(rg)
     return alb, ld("normal", "RGB"), rg, ao
-def acg_material(name, set_, rough=0.9, nstrength=1.0, vertex_colors=True):
+def acg_material(name, set_, rough=0.9, nstrength=1.0, metal=0.0):
     alb, nrm, rg, ao = set_; fl = lambda a: a[::-1].copy()
-    im_a = make_image(name + "_albedo", fl(alb), 'sRGB'); im_n = make_image(name + "_normal", fl(nrm), 'Non-Color'); im_o = make_image(name + "_orm", fl(np.stack([ao, rg, np.zeros_like(rg)], -1)), 'Non-Color')
-    return vc_material(name, im_a, im_n, rough, nstrength, im_o)
+    im_a = make_image(name + "_albedo", fl(alb), 'sRGB'); im_n = make_image(name + "_normal", fl(nrm), 'Non-Color'); im_o = make_image(name + "_orm", fl(np.stack([ao, rg, np.full_like(rg, float(metal))], -1)), 'Non-Color')
+    return vc_material(name, im_a, im_n, rough, nstrength, im_o, metal)
+
+def acg_pbr(name, set_, rough=0.9, nstrength=1.0, metal=0.0):
+    """Like acg_material but without the vertex-colour multiply (for meshes that have no COLOR_0)."""
+    alb, nrm, rg, ao = set_; fl = lambda a: a[::-1].copy()
+    im_a = make_image(name + "_albedo", fl(alb), 'sRGB'); im_n = make_image(name + "_normal", fl(nrm), 'Non-Color'); im_o = make_image(name + "_orm", fl(np.stack([ao, rg, np.full_like(rg, float(metal))], -1)), 'Non-Color')
+    m = pbr_material(name, im_a, im_n, rough, metal, None, nstrength); add_orm(m.node_tree, m.node_tree.nodes["Principled BSDF"], im_o); return m
+def box_uv_obj(o, tile_m=1.0):
+    """Box-projected UVs (one repeat = tile_m metres) from the object's world positions; Blender axes (z up)."""
+    me = o.data; uvl = me.uv_layers.get("UVMap") or me.uv_layers.new(name="UVMap"); M = o.matrix_world
+    for p in me.polygons:
+        n = p.normal; ax = max(range(3), key=lambda i: abs(n[i]))
+        for li in p.loop_indices:
+            c = M @ me.vertices[me.loops[li].vertex_index].co
+            u, v = (c.y, c.z) if ax == 0 else (c.x, c.z) if ax == 1 else (c.x, c.y)
+            uvl.data[li].uv = (u/tile_m, v/tile_m)
