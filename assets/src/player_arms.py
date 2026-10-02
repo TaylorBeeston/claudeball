@@ -89,6 +89,12 @@ for _n in ("catch_throw", "catch_throw_high", "catch_throw_low", "catch_stretch"
 for _n in ("ondeck_ready", "bench_sit", "ballkid_sit", "coach_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
 OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BAT, False)
 for _n in ("bench_stand_up", "bench_cheer", "coach_stop", "coach_go", "coach_advance", "coach_slide", "coach_signs", "ballkid_pickup", "ballkid_toss", "ballkid_wave"): OPT_CLIPS[_n] = (CATCHCFG, False)
+RIT_BAT = ("batter_step_in", "batter_practice_swing", "batter_step_out")
+for _n in RIT_BAT: OPT_CLIPS[_n] = (BAT, False)
+for _n in ("batter_adjust", "catcher_signs", "catcher_signs_runner_on", "catcher_signal_infield", "pitcher_shake_off", "pitcher_nod", "pitcher_step_off", "pitcher_step_on", "pitcher_rosin", "pitcher_adjust",
+           "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw"): OPT_CLIPS[_n] = (CATCHCFG, False)
+for _n in ("mound_talk", "mound_talk_listen", "mound_talk_cover", "ump_huddle", "bullpen_catcher_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
+OPT_CLIPS["manager_walk"] = (LOCO, True)
 ARM_REPORT = {}
 def run_optimiser():
     init = None
