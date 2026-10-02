@@ -103,6 +103,23 @@ HUD: name cards show 20-80 rating bars, today's line and the pitch arsenal; `B` 
 Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).
 
+## B-roll, broadcast events and cards
+During the sim's lulls (`lull` / `lullKind` / `lullRemaining`) the director (`broll.ts`) plans B-roll: walk-up, face close-up (rack focus), on-deck, dugout, pitcher's face, catcher's signs, shake-off,
+lead-off, base coaches, bullpen, crowd, scoreboard, aerial, sky, mound wide / huddle, manager walking, bullpen door, reliever jogging, umpire huddle. Holds are 2.5-6 s, a kind never repeats within 4 shots,
+nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag).
+
+**`Engine.broadcast.on(cb)`** (also mirrored into the sim event path as `{type: 'broadcast', event}`, for hosts that only read `sim.on`; a game with a raw sim bus must subscribe to `engine.broadcast`) delivers:
+| event | fields |
+|---|---|
+| `cameraCut` | `kind: 'cut' \| 'dissolve' \| 'wipe' \| 'replay' \| 'broll'` (a cut into or out of a replay is `replay`; a dissolve wins over `broll`; `wipe` is reserved, nothing sends it yet), `from`, `to` (shot names), `durationMs` (the dissolve length, else 0), `toBroll`, `simTime` |
+| `replayStart` / `replayEnd` | `variant` ('infield' \| 'outfield' \| 'hr' \| 'close'), `caption` ('CLOSE PLAY' or null), `slow` |
+| `graphicShown` | `kind: 'replay' \| 'closePlay' \| 'card'`, `subjectId` for a card |
+| `shot` | `phase: 'start' \| 'end'`, `kind`, `subjectId` (a sim player id), `role`, `card` (true: show a lower-third card for `subjectId`), `holdMs`; every `start` gets its `end`, so a card shows and hides with the shot |
+
+Shot kinds (`ShotLabel`): `walkup`, `ondeck`, `faceCloseup` (batter or pitcher), `shakeOff`, `catcherSigns`, `leadOff`, `coachSigns`, `managerWalk`, `relieverJog`, `relieverFace`, `dugout`, `dugoutReaction`, `bullpen`, `bullpenDoor`,
+`crowd`, `scoreboard`, `aerial`, `sky`, `moundWide`, `moundHuddle`, `umpires`, `coachSend`, `kidToss`. `card` is true for `walkup`, `ondeck`, `faceCloseup`, `shakeOff`, `leadOff`, `relieverJog`, `relieverFace`.
+A card is built from `getState().stats` and the player's snapshot (`name`, `number`, `ratings`).
+
 ## Boot, menus and new games (`src/ui`, `warmup.ts`)
 `main.ts` only calls `startApp()` (`src/ui/app.ts`): loading screen (markup + critical CSS in `index.html`) → `Engine.prepare()` → menu or game.
 - `Engine.prepare({assets, onProgress})` (`warmup.ts`): glTF assets (progress weighted by `assets/asset_sizes.json`, written by the Vite plugin), the HDRI sky
