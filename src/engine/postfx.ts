@@ -35,7 +35,8 @@ const DofShader = {
     uniform float near, far, focus, aperture, maxBlur, aspect;
     varying vec2 vUv;
     float viewZ(vec2 uv){ float d = texture2D(tDepth, uv).x; return -perspectiveDepthToViewZ(d, near, far); }
-    float coc(float z){ return clamp(aperture * abs(1.0 / focus - 1.0 / max(z, 0.05)), 0.0, maxBlur); }
+    // foreground (nearer than the focus) is softened less than the background: an over-the-shoulder subject stays only slightly soft
+    float coc(float z){ float c = aperture * abs(1.0 / focus - 1.0 / max(z, 0.05)); if (z < focus) c *= 0.45; return clamp(c, 0.0, maxBlur); }
     void main(){
       vec4 base = texture2D(tDiffuse, vUv);
       float dz = viewZ(vUv);

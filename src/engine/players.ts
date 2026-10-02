@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   SRGBColorSpace,
   Vector3,
+  TorusGeometry,
 } from 'three';
 import { DIM, quatToScene, toScene } from './dims';
 import type { Environment } from './environment';
@@ -115,6 +116,7 @@ export class BallView {
   useModel(model: Object3D, env: Environment) {
     this.model = model;
     this.mesh.visible = false;
+    this.model = model;
     const m = model.clone(true);
     m.traverse((o) => {
       const mm = o as Mesh;
@@ -255,6 +257,34 @@ export class BatView {
     this.obj.add(m);
   }
 
+  private donut: Object3D | null = null;
+  private model: Object3D | null = null;
+
+  /** the weighted donut (`bat_donut.glb`): in the bat's frame, so it is added to a bat's group with an identity transform */
+  useDonut(d: Object3D | null) {
+    this.donut = d;
+  }
+
+  /** A practice bat with its donut for the on-deck batter's hand (knob at the origin, barrel along +Y): the bat model (or the procedural bat) and the donut. */
+  makeHandBat(withDonut = true): Object3D {
+    const g = new Group();
+    g.name = 'OnDeck_Bat';
+    const src = this.model ?? null;
+    const m = src ? src.clone(true) : new Mesh(this.mesh.geometry, this.mesh.material);
+    m.traverse((o) => {
+      if ((o as Mesh).isMesh) (o as Mesh).castShadow = true;
+    });
+    g.add(m);
+    if (!withDonut) return g;
+    if (this.donut) g.add(this.donut.clone(true));
+    else {
+      const ring = new Mesh(new TorusGeometry(0.056, 0.02, 8, 18).rotateX(Math.PI / 2), new MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
+      ring.position.y = 0.5;
+      g.add(ring);
+    }
+    return g;
+  }
+
   /** Attach to a hand grip (bat held in stance) or release back to the scene. */
   hold(grip: Object3D | null, scene: Object3D) {
     const target = grip ?? scene;
@@ -308,6 +338,8 @@ export class PlayerManager {
   private puppets = new Map<string, PuppetLike>();
   private used = new Set<string>();
   private penv: PuppetEnv = { ball: null, batGrip: null, time: 0, ballSpeed: 0, mound: new Vector3(0, 1.5, DIM.moundDist) };
+  /** makes the on-deck batter's bat with donut (set by the engine) */
+  makeBat?: () => Object3D;
   /** override factory to swap in glTF characters */
   makePuppet: (snap: PlayerSnap) => PuppetLike = (s) => new Puppet(s.id);
   readonly positions = new Map<string, Vector3>();
@@ -347,8 +379,10 @@ export class PlayerManager {
   readonly heldPos = new Vector3();
   private heldTmp = new Vector3();
 
-  update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D) {
+  update(state: GameState, dt: number, ball: Vector3, bat: BatView, makeBall?: () => Object3D, cameraPos?: Vector3) {
     this.penv.makeBall = makeBall;
+    this.penv.cameraPos = cameraPos;
+    this.penv.makeBat = this.makeBat;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;
@@ -362,6 +396,16 @@ export class PlayerManager {
     this.penv.time = state.time;
     (this.penv.ballVel ??= new Vector3()).set(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z);
     this.penv.ballSpeed = state.ball.visible ? Math.hypot(state.ball.vel.x, state.ball.vel.y, state.ball.vel.z) : 0;
+    // the catcher counts as the carrier from the moment his mitt closes on the pitch (the sim hands him the ball a frame or two later)
+    const holder =
+      state.players.find((q) => q.hasBall && q.role !== 'batter' && q.role !== 'runner' && q.role !== 'umpire') ?? state.players.find((q) => q.role === 'catcher' && q.anim === 'catch_pitch');
+    if (holder) {
+      const c = (this.penv.carrier ??= { id: '', role: '', anim: '', pos: new Vector3() });
+      c.id = holder.id;
+      c.role = holder.role;
+      c.anim = holder.anim;
+      c.pos.set(holder.pos.x, holder.pos.y, holder.pos.z);
+    } else this.penv.carrier = null;
     this.used.clear();
     for (const snap of state.players) {
       this.used.add(snap.id);
