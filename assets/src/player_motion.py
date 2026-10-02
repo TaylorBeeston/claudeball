@@ -45,7 +45,7 @@ def throw_v2():
                lpole=(.7, .3, -.3), rpole=(0, .6, .3), head_pitch=-26)),
      (22, dict(K, hips=(0, -.30, -.14), lean=40, yaw=14, hyaw=18, lfoot=(.16, -.70, .085), rfoot=(-.20, -.55, .085), lhand=(.30, -.30, .95), rhand_rel=(.02, -.24, -.46),
                lpole=(.6, .3, -.3), rpole=(-.6, .3, -.3), head_pitch=-20)),
-     (30, dict(K, hips=(0, -.30, -.10), lean=24, yaw=2, hyaw=2, lfoot=(.16, -.70, .085), rfoot=(-.18, -.52, .085), lhand=(.08, -.34, 1.20), rhand=(-.08, -.32, 1.18), lpole=(.7, 0, -.7), rpole=(-.7, 0, -.7), head_pitch=-12)),
+     (30, dict(K, hips=(0, -.30, -.10), lean=24, yaw=2, hyaw=2, lfoot=(.16, -.70, .085), rfoot=(-.18, -.52, .085), lhand=(.10, -.50, 1.14), rhand=(-.10, -.50, 1.12), lpole=(.7, 0, -.7), rpole=(-.7, 0, -.7), head_pitch=-12)),
     ]
 
 # ---------------------------------------------------------------- ready positions (loops) with micro movement

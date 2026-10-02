@@ -96,8 +96,9 @@ def dome(bm, R, cz, sq=1.0, seam=0.0, zmin=None, seg=64, ring=40, cx=0, cy=0, ed
     if thick: bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=-thick)
 def brow_edge(front, side, back):
     def f(x, y):
-        ph = math.atan2(x, -y); w = max(0.0, math.cos(ph))**3
-        base = side + (back-side)*_sm(-.01, .085, y)                       # eased from the temples to the nape (no step)
+        yy = y - (HC.y + .004)                                               # relative to the skull centre (the edge shape was tuned for a head centred at y = -.004)
+        ph = math.atan2(x, -yy); w = max(0.0, math.cos(ph))**3
+        base = side + (back-side)*_sm(-.01, .085, yy)                       # eased from the temples to the nape (no step)
         return base + (front-base)*w
     return f
 def brim(bm, cz, length=.085, width=.16, thick=.006, droop=.03, ycenter=-.098):
@@ -117,7 +118,7 @@ def brim(bm, cz, length=.085, width=.16, thick=.006, droop=.03, ycenter=-.098):
 def tube(bm, pts, r, seg=6):
     for a, b in zip(pts, pts[1:]): capsule(bm, a, b, r, seg)
 def cage_mask(bm, catcher=True):
-    cz = 1.72; zf = -.115
+    cz = 1.72; zf = -.200
     ring = [(.075*math.sin(a), zf-.02*abs(math.sin(a)), cz+.02+.095*math.cos(a)) for a in np.linspace(-math.pi*.9, math.pi*.9, 20)]
     tube(bm, ring, .0035)
     for zz in (cz-.05, cz-.02, cz+.01, cz+.045, cz+.08):
@@ -132,15 +133,21 @@ def chest_prot(bm):
     bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=3, use_grid_fill=True)
     for v in bm.verts:
         v.co.y += -.04*(1 - (v.co.x/.215)**2)*.6 - .012*abs(v.co.z/.25)      # curve around torso
-        v.co = v.co + Vector((0, -.135, 1.29))
+        v.co = v.co + Vector((0, -.188, 1.29))
     for sx in (1, -1):
         s = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=8, radius=.07)
-        for v in s["verts"]: v.co = Vector((v.co.x*1.0 + sx*.20, v.co.y*.9 - .01, v.co.z*.8 + 1.47))
+        for v in s["verts"]: v.co = Vector((v.co.x*1.0 + sx*.215, v.co.y*.9 - .03, v.co.z*.8 + 1.47))
 def shin_guard(bm, sx):
-    for (z0, z1, r, y) in ((.15, .34, .066, -.055), (.34, .48, .072, -.06)):
-        capsule(bm, (sx*.09, y, z0), (sx*.09, y-.004, z1), r, 14)
+    cx = JOINTS["LeftLeg"][1].x                                                          # leg axis (legs are vertical in the rig rest pose)
+    for (z0, z1, r, y) in ((.15, .34, .058, -.036), (.34, .48, .066, -.046)):
+        capsule(bm, (sx*cx, y, z0), (sx*cx, y-.004, z1), r, 14)
     s = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=.075)
-    for v in s["verts"]: v.co = Vector((v.co.x*.9 + sx*.09, v.co.y*.7 - .085, v.co.z*.8 + .53))
+    for v in s["verts"]: v.co = Vector((v.co.x*.9 + sx*cx, v.co.y*.7 - .085, v.co.z*.8 + .53))
+    for z in (.20, .30, .42):                                                              # three buckled straps round the leg (strap + buckle)
+        ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=24, radius1=1.0, radius2=1.0, depth=.022)
+        for v in ring["verts"]: v.co = Vector((sx*cx + v.co.x*.071, -.025 + v.co.y*.068, z + v.co.z))
+        bk = bmesh.ops.create_cube(bm, size=1.0)
+        for v in bk["verts"]: v.co = Vector((v.co.x*.026 + sx*cx, v.co.y*.006 - .095, v.co.z*.016 + z))
 def belt(bm):
     bmesh.ops.create_cone(bm, cap_ends=False, segments=48, radius1=1.0, radius2=1.0, depth=.04)
     for v in bm.verts: v.co = Vector((v.co.x*.246, v.co.y*.170 + .008, v.co.z + .962))
@@ -203,13 +210,13 @@ def cut_bm(bm, fn):
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
 
 def _sm(a, b, x): t = min(1.0, max(0.0, (x-a)/(b-a))); return t*t*(3-2*t)
-NECK_C = (0.0, -.006); NECK_R = (.098, .084)
-def neck_z0(y): return 1.50 + .03*max(-1.0, min(1.0, (y-NECK_C[1])/.08))       # crew-neck scoop: lower in front (-Y), higher at the back
+NECK_C = (0.0, -.030); NECK_R = (.088, .082)
+def neck_z0(y): return 1.525 + .03*max(-1.0, min(1.0, (y-NECK_C[1])/.08))       # crew-neck scoop: lower in front (-Y), higher at the back
 def neck_f(p, r=1.0, dz=0.0):
     """> 0 outside the neck opening (or below its scoop), < 0 inside it."""
     e = math.hypot((p[0]-NECK_C[0])/(NECK_R[0]*r), (p[1]-NECK_C[1])/(NECK_R[1]*r)) - 1.0
     return min(max(e, (neck_z0(p[1]) + dz - p[2])*8.0), 1.0)
-D_ARM_ = Vector((.766, 0, -.643)); SH_ = Vector((.21, 0, 1.50))
+D_ARM_ = ARM_D.copy(); SH_ = ARM_SH.copy()
 def arm_t(p):
     """(t, rho): position along the left-arm axis from the shoulder joint, and distance from that axis (x is mirrored for the right arm)."""
     q = Vector((abs(p[0]), p[1], p[2])) - SH_; t = q.dot(D_ARM_); return t, (q - D_ARM_*t).length
@@ -219,11 +226,11 @@ def f_jersey(Ls):
     def f(p):
         hem = .968                                                                # tucked in: the hem ends under the belt band (z .955-.995)
         t, rho = arm_t(p); fs = (Ls - t) if in_arm(p, t, rho) else 1.0
-        return min(p[2] - hem, neck_f(p), fs)
+        return min(p[2] - hem, neck_f(p), fs, 1.575 - p[2])
     return f
 def f_undershirt(p):
     t, rho = arm_t(p); fw = (.545 - t) if in_arm(p, t, rho) else 1.0
-    return min(p[2] - .94, neck_f(p, .93, .012), fw)
+    return min(p[2] - .94, neck_f(p, .93, .012), fw, 1.575 - p[2])
 def f_pants(zh):
     def f(p): return min(1.015 - p[2], p[2] - zh, .30 - abs(p[0]))
     return f

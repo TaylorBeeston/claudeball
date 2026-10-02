@@ -69,30 +69,30 @@ def hair_long(bm):
     bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=.004)
 
 # ---------------------------------------------------------------- facial hair (shells of the head mesh; mouth left open so the lips show)
-def _mouth(q, rx=.031, rz=.017, zc=-.056):
+def _mouth(q, rx=.031, rz=.017, zc=-.092):
     return math.hypot(q.x/rx, (q.z-zc)/rz) - 1.0 if q.y < -.05 else 1.0
-def beard_keep(top=-.030):
+def beard_keep(top=-.052):
     def f(q):
         edge = top + .050*max(0.0, min(1.0, (abs(q.x)-.040)/.038))              # sideburns rise toward the ear
-        return min(edge - q.z, .048 - q.y, .076 - abs(q.x), _mouth(q)*.2)
+        return min(edge - q.z, .060 - q.y, .090 - abs(q.x), _mouth(q)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
     return f
 def stubble_keep(q):
-    edge = -.006 + .020*max(0.0, min(1.0, (abs(q.x)-.045)/.03))
-    return min(edge - q.z, .045 - q.y, .078 - abs(q.x), _mouth(q, .028, .012, -.052)*.2)
+    edge = -.040 + .020*max(0.0, min(1.0, (abs(q.x)-.045)/.03))
+    return min(edge - q.z, .060 - q.y, .088 - abs(q.x), _mouth(q, .028, .012, -.090)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
 def _taper(v, k=.014): return max(0.0, min(1.0, v/k))
 def beard_full(head):
-    f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0018 + .0065*_taper(f(q))*(1 + .35*max(0.0, -q.z-.07)/.05))
+    f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0018 + .0065*_taper(f(q))*(1 + .35*max(0.0, -q.z-.10)/.05))
 def beard_stubble(head):
     return head_copy(head, "Gear_Beard_Stubble", stubble_keep, lambda q: .0007*_taper(stubble_keep(q), .008))
 def mustache(head):
-    def f(q): return min(.030 - abs(q.x), q.z + .048, -.030 - q.z, -q.y + .060)
+    def f(q): return min(.030 - abs(q.x), q.z + .080, -.061 - q.z, -q.y + .070)
     return head_copy(head, "Gear_Mustache", f, lambda q: .0012 + .0052*_taper(f(q), .006))
 def goatee(head):
-    def f(q): return min(.021 - abs(q.x), q.z + .108, -.072 - q.z, -q.y + .055)
+    def f(q): return min(.021 - abs(q.x), q.z + .138, -.104 - q.z, -q.y + .070)
     return head_copy(head, "Gear_Goatee", f, lambda q: .0015 + .0065*_taper(f(q), .008))
 def eye_black(head):
     def f(q):
-        e = min(math.hypot((q.x-.037)/.014, (q.z+.006)/.0042), math.hypot((q.x+.037)/.014, (q.z+.006)/.0042))
+        e = min(math.hypot((q.x-.036)/.014, (q.z+.019)/.0042), math.hypot((q.x+.036)/.014, (q.z+.019)/.0042))
         return (1.0 - e) if q.y < -.05 else -1.0
     return head_copy(head, "Gear_EyeBlack", f, lambda q: .0009)
 
@@ -108,7 +108,8 @@ def piping(jersey, pants, socks):
             c = sh + d*tt; surface_strip(bm, bj, ring_samples(c, d, (0, -1, 0), .09, 36), .012, .0022, closed=True)
         surface_strip(bm, bp, [(Vector((sx*1.0, .004, z)), Vector((-sx, 0, 0))) for z in np.linspace(1.0, .53, 24)], .016, .0022)     # pants side stripe
         for z in (.36, .395, .43):                                                          # stirrup / sock stripes
-            surface_strip(bm, bs, ring_samples((sx*.09, .012, z), (0, 0, 1), (0, -1, 0), .07, 32), .012, .0018, closed=True)
+            sv = [v.co for v in socks.data.vertices if abs(v.co.z - z) < .012 and v.co.x*sx > 0]; cx, cy = (sum(v.x for v in sv)/len(sv), sum(v.y for v in sv)/len(sv)) if sv else (sx*.1, 0.0)
+            surface_strip(bm, bs, ring_samples((cx, cy, z), (0, 0, 1), (0, -1, 0), .07, 32), .012, .0018, closed=True)
     surface_strip(bm, bj, [(Vector((0, -1.0, z)), Vector((0, 1, 0))) for z in np.linspace(1.455, .995, 28)], .020, .0024)        # front placket
     return _obj("Gear_Piping", bm)
 def buttons(jersey):
@@ -141,22 +142,77 @@ def f_armsleeve(sx, t0=.10, t1=.56):
     return f
 
 # ---------------------------------------------------------------- shoes: soles and laces
-def _sole_half_width(y):
-    return np.interp(y, [.06, .03, -.02, -.08, -.14, -.20, -.245, -.262], [.020, .046, .046, .040, .049, .047, .034, .012])
-def soles(cleats):
-    """Gear_Soles: a dark rubber slab under each foot following the foot outline (0-15 mm thick)."""
-    bm = bmesh.new(); ys = np.linspace(.050, -.246, 33); ws = [float(_sole_half_width(y)) for y in ys]
+def make_cleats(body, off=.0085, ztop=.128):
+    """Baseball cleat from the foot: convex hull of the foot vertices below `ztop` (closes the toe gaps), subdivided, smoothed, pushed >= 4 mm clear of the skin, cut open at the ankle."""
+    bmb = bmesh.new(); bmb.from_mesh(body.data); bvh_b = BVHTree.FromBMesh(bmb); bmb.free()
+    bm = bmesh.new()
     for sx in (1, -1):
-        top, bot = [], []
-        for y, w in zip(ys, ws): top += [bm.verts.new((sx*.09 - w, y, .015)), bm.verts.new((sx*.09 + w, y, .015))]
-        for y, w in zip(ys, ws): bot += [bm.verts.new((sx*.09 - w*1.01, y, 0.0)), bm.verts.new((sx*.09 + w*1.01, y, 0.0))]
-        for i in range(len(ys)-1):
-            a, b = 2*i, 2*(i+1)
-            bm.faces.new((top[a], top[a+1], top[b+1], top[b])); bm.faces.new((bot[a], bot[b], bot[b+1], bot[a+1]))
-            bm.faces.new((top[a], top[b], bot[b], bot[a])); bm.faces.new((top[a+1], bot[a+1], bot[b+1], top[b+1]))
-        bm.faces.new((top[0], bot[0], bot[1], top[1])); bm.faces.new((top[-2], top[-1], bot[-1], bot[-2]))
+        pts = [v.co.copy() for v in body.data.vertices if v.co.z < ztop + .02 and v.co.x*sx > .02 and v.co.y < .10]
+        tmp = bmesh.new(); vs = [tmp.verts.new(p) for p in pts]; res = bmesh.ops.convex_hull(tmp, input=vs, use_existing_faces=False)
+        dv = {g for g in list(res["geom_interior"]) + list(res["geom_unused"]) if isinstance(g, bmesh.types.BMVert)}; bmesh.ops.delete(tmp, geom=list(dv), context='VERTS')
+        bmesh.ops.subdivide_edges(tmp, edges=list(tmp.edges), cuts=2, use_grid_fill=True)
+        for _ in range(10): bmesh.ops.smooth_vert(tmp, verts=list(tmp.verts), factor=.45, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        tmp.normal_update()
+        for v in tmp.verts:
+            v.co = v.co + v.normal*off
+            if v.co.z < .004 + FOOT_LIFT: v.co.z = FOOT_LIFT
+        for _ in range(3):
+            for v in tmp.verts:
+                loc, n, i, d = bvh_b.find_nearest(v.co)
+                if loc is not None and (v.co - loc).dot(n) < .004 and d < .02: v.co = loc + n*.004
+        cut_bm(tmp, lambda co: ztop - co.z)
+        mp = {}; 
+        for v in tmp.verts: mp[v] = bm.verts.new(v.co)
+        for f in tmp.faces: bm.faces.new([mp[v] for v in f.verts])
+        tmp.free()
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    o = _obj("Cleats", bm); copy_weights(o, [body]); return o
+def soles(cleats):
+    """Gear_Soles: a dark rubber slab under each shoe (outline = the shoe's footprint from 72 angular bins, 0-18 mm thick, slightly larger than the shoe)."""
+    bm = bmesh.new()
+    for sx in (1, -1):
+        pts = np.array([(v.co.x, v.co.y) for v in cleats.data.vertices if v.co.z < .035 and v.co.x*sx > 0]); c = pts.mean(0); ang = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0]); rad = np.hypot(pts[:, 0] - c[0], pts[:, 1] - c[1])
+        nb = 72; edge = np.zeros(nb)
+        for k in range(nb):
+            m = (ang >= -math.pi + 2*math.pi*k/nb) & (ang < -math.pi + 2*math.pi*(k + 1)/nb); edge[k] = rad[m].max() if m.any() else 0.0
+        for _ in range(3): edge = (np.roll(edge, 1) + 2*edge + np.roll(edge, -1))/4
+        edge = np.maximum(edge, .02) + .004
+        top = [bm.verts.new((c[0] + edge[k]*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + edge[k]*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), .019 + FOOT_LIFT)) for k in range(nb)]
+        bot = [bm.verts.new((c[0] + (edge[k] + .0015)*math.cos(-math.pi + 2*math.pi*(k + .5)/nb), c[1] + (edge[k] + .0015)*math.sin(-math.pi + 2*math.pi*(k + .5)/nb), FOOT_LIFT)) for k in range(nb)]
+        for k in range(nb):
+            k2 = (k + 1) % nb; bm.faces.new((top[k], top[k2], bot[k2], bot[k])); 
+        bm.faces.new(top[::-1]); bm.faces.new(bot)
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
     return _obj("Gear_Soles", bm)
+def spikes(soles_obj):
+    """Gear_Spikes: six metal cleats (short cones, 8 mm) under each sole: three rows (toe / ball / heel)."""
+    bm = bmesh.new()
+    for sx in (1, -1):
+        pts = np.array([(v.co.x, v.co.y) for v in soles_obj.data.vertices if abs(v.co.z - FOOT_LIFT) < 1e-4 and v.co.x*sx > 0]); x0, x1, y0, y1 = pts[:, 0].min(), pts[:, 0].max(), pts[:, 1].min(), pts[:, 1].max()
+        cx, W, L = (x0 + x1)/2, x1 - x0, y1 - y0
+        for fy, fx in ((.17, .26), (.17, -.26), (.34, .34), (.34, -.34), (.84, .26), (.84, -.26)):
+            c = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=.0045, radius2=.0016, depth=.009)
+            for v in c["verts"]: v.co = Vector((cx + fx*W + v.co.x, y0 + fy*L + v.co.y, FOOT_LIFT - .0005 + v.co.z))
+    return _obj("Gear_Spikes", bm)
+def cap_logo(cap_obj, text="C", w=.075, h=.052):
+    """Gear_CapLogo: a stitched front-panel logo patch following the cap surface (ray-cast grid from the head centre, lifted 1.2 mm); alpha texture is made in player_mats."""
+    from mathutils.bvhtree import BVHTree
+    bvh = bvh_of(cap_obj); bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); nu, nv = 14, 10; grid = []
+    for j in range(nv + 1):
+        row = []
+        for i in range(nu + 1):
+            u = i/nu - .5; v = j/nv - .5; x = u*w; z = 1.815 + v*h
+            loc, n, idx, dist = bvh.ray_cast(Vector((x, -.6, z)), Vector((0, 1, 0)))
+            if loc is None: row.append(None); continue
+            row.append(bm.verts.new(loc + n.normalized()*.0013))
+        grid.append(row)
+    for j in range(nv):
+        for i in range(nu):
+            q = (grid[j][i], grid[j][i+1], grid[j+1][i+1], grid[j+1][i])
+            if None in q: continue
+            f = bm.faces.new(q)
+            for lp, (ii, jj) in zip(f.loops, ((i, j), (i+1, j), (i+1, j+1), (i, j+1))): lp[uvl].uv = (ii/nu, jj/nv)
+    return _obj("Gear_CapLogo", bm)
 def laces(cleats):
     bm = bmesh.new(); bc = bvh_of(cleats)
     for sx in (1, -1):

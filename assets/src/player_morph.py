@@ -7,7 +7,7 @@ from mathutils import Vector
 
 def _sm(a, b, x): t = np.clip((x-a)/(b-a), 0, 1); return t*t*(3-2*t)
 def _g(x, c, s): return np.exp(-((x-c)/s)**2)
-_D = np.array([.766, 0, -.643]); _SH = np.array([.21, 0, 1.50])
+_D = np.array(ARM_D[:]); _SH = np.array(ARM_SH[:])
 HEAD_C = np.array([0, -.004, 1.725])
 
 def body_morph(P, kind):

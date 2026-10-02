@@ -113,9 +113,9 @@ def build_cap(head):
 
 # ---------------------------------------------------------------- batting helmet (ear flap on the left for a right-handed batter)
 def build_helmet(head, flap=1):
-    ear = Vector((.083*flap, .006, 1.722))
+    ear = Vector((.092*flap, -.040, 1.716))
     def edge(x, y):
-        base = _crown_edge(1.762, 1.676, 1.655)(x, y); dip = .085*math.exp(-(((x-.09*flap)/.05)**2 + ((y-.022)/.040)**2)) if x*flap > 0 else 0.0
+        base = _crown_edge(1.762, 1.676, 1.655)(x, y); dip = .085*math.exp(-(((x-.095*flap)/.05)**2 + ((y+.025)/.045)**2)) if x*flap > 0 else 0.0
         return base - dip
     def decorate(bm, inner):
         edge_verts = [v for v in bm.verts if v.is_boundary]

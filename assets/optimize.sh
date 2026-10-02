@@ -11,6 +11,8 @@ for f in ball bat field stadium players/*; do
   case "$f" in players/*) PRUNE="--prune false" ;; *) PRUNE="" ;; esac
   $GT optimize "$f.glb" "optimized/$f.glb" --compress meshopt --texture-compress webp --simplify false --palette false --join false --flatten false $PRUNE
 done
+# iris variants + SSS map live next to the players (not referenced by the GLBs: the engine loads them by name)
+mkdir -p optimized/players/textures; cp players/textures/*.webp optimized/players/textures/
 # ---- LODs
 mkdir -p optimized/lod1
 python3 src/make_lods.py stadium.glb /tmp/stadium_lod1_raw.glb

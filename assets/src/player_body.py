@@ -1,7 +1,7 @@
 # Athletic body via Skin modifier + hand-modelled head/hands. Requires common.py + player_rig.py exec'd.
 import bpy, bmesh, math, numpy as np
 from mathutils import Vector, Matrix
-D_ARM = Vector((.766, 0, -.643))
+D_ARM = ARM_D.copy()
 
 def body_skin(level=2, SC=1.12):
     verts, radii, edges = [], [], []
