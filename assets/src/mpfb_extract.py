@@ -74,6 +74,15 @@ for sd, sx in (("Left", 1), ("Right", -1)):
     for ln in LA: chain.append(chain[-1] + d*ln)
     for i, n in enumerate((sd + "Arm", sd + "ForeArm", sd + "Hand")): Mx[n] = seg_matrix(Jm[n][0], Jm[n][1], chain[i], chain[i + 1])
     arm_chain[sd] = chain
+# legs: the MPFB mesh stands with the legs splayed (~6.5 deg each); straighten them (vertical thigh / shin, feet translated inward and kept flat) so that our straight-leg joints are the real pivots
+leg_c = {}
+for sd, sx in (("Left", 1), ("Right", -1)):
+    wl = Wo[:, oidx[sd + "UpLeg"]] + Wo[:, oidx[sd + "Leg"]] + Wo[:, oidx[sd + "Foot"]] + Wo[:, oidx[sd + "ToeBase"]]
+    def sect(z): m = (wl > .5) & (np.abs(P0[:, 2] - z) < .014) & (P0[:, 0]*sx > 0); return P0[m].mean(0)
+    Ch, Ck, Ca = sect(.91), sect(.488), sect(.068); Th = np.array([Ch[0], Ch[1], Ch[2]]); Tk = np.array([Ch[0], Ck[1], Ck[2]]); Ta = np.array([Ch[0], Ca[1], Ca[2]])
+    Mx[sd + "UpLeg"] = seg_matrix(Ch, Ck, Th, Tk); Mx[sd + "Leg"] = seg_matrix(Ck, Ca, Tk, Ta)
+    T = np.eye(4); T[:3, 3] = Ta - Ca; Mx[sd + "Foot"] = T; Mx[sd + "ToeBase"] = T
+    leg_c[sd] = (Ch, Ck, Ca, Th, Tk, Ta)
 def lbs(P):
     H = np.concatenate([P, np.ones((len(P), 1))], 1); out = np.zeros_like(P); wsum = Wo.sum(1)
     for n in OUR: out += Wo[:, oidx[n]][:, None]*(H @ Mx[n].T)[:, :3]
@@ -87,7 +96,8 @@ Pfit = fit(P0)
 G = lambda p: glob(np.array(p, float)[None])[0]
 J = {}
 for sd, sx in (("Left", 1), ("Right", -1)):
-    for n in ("UpLeg", "Leg", "Foot", "ToeBase"): J[sd + n] = (G(mb[sd + n][0]), G(mb[sd + n][1]))
+    Ch_, Ck_, Ca_, Th_, Tk_, Ta_ = leg_c[sd]; sh = Ta_ - Ca_
+    J[sd + "UpLeg"] = (G(Th_), G(Tk_)); J[sd + "Leg"] = (G(Tk_), G(Ta_)); J[sd + "Foot"] = (G(Ta_), G(mb[sd + "Foot"][1] + sh)); J[sd + "ToeBase"] = (G(mb[sd + "ToeBase"][0] + sh), G(mb[sd + "ToeBase"][1] + sh))
     ch = [G(c) for c in arm_chain[sd]]
     sh0, sh1 = G(mb[sd + "Shoulder"][0]), G(mb[sd + "Shoulder"][1]); J[sd + "Shoulder"] = (sh0, ch[0]); J[sd + "Arm"] = (ch[0], ch[1]); J[sd + "ForeArm"] = (ch[1], ch[2]); J[sd + "Hand"] = (ch[2], ch[3])
 nk = G(mb["Neck"][0]); hd = G(mb["Head"][0]); J["Hips"] = (np.array([0, 0, .96]), np.array([0, 0, 1.03]))

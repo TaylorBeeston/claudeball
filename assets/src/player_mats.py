@@ -117,6 +117,19 @@ def swap_skin(old):
 Image.fromarray((np.clip(SKIN["sss"][::-1], 0, 1)*255).astype(np.uint8)).save(ROOT + "/players/textures/skin_sss.webp", quality=90)      # R = thickness (0..4 cm), G = curvature, atlas layout = the skin atlas
 I["leather_a"] = img("leather_albedo", np.repeat((np.clip(.8 + .3*lh, 0, 1))[..., None], 3, 2)); I["leather_n"] = img("leather_normal", height_to_normal(lh, 5.0), 'Non-Color')
 I["leather_o"] = img("leather_orm", orm(.6 + .4*lh, .5 + .2*lh), 'Non-Color')
+
+# ---- photographic CC0 PBR sets (ambientCG, 1K copies in src/pbr; see CREDITS.md): luminance-normalised albedo (so baseColorFactor tints), GL normal, ORM = (AO, roughness, 0)
+def pbr_set(name, gain=.92, rough_mul=1.0, tag=None, contrast=1.0):
+    d = os.path.join(CB_SRC, "pbr"); ld = lambda k, mode: np.asarray(Image.open(os.path.join(d, f"{name}_{k}.webp")).convert(mode), np.float32)/255.0
+    col = ld("color", "RGB"); lum = (col*np.array([.3, .55, .15], np.float32)).sum(2); alb = np.repeat((1 - (1 - np.clip(lum/np.percentile(lum, 85)*gain, 0, 1))*contrast)[..., None], 3, 2)      # contrast < 1 flattens high-contrast scuffed sets
+    nrm = ld("normal", "RGB"); rg = np.clip(ld("rough", "L")*rough_mul, .05, 1)
+    ao = ld("ao", "L") if os.path.exists(os.path.join(d, f"{name}_ao.webp")) else np.ones_like(rg)
+    t = tag or name; flip = lambda a: a[::-1].copy()
+    return dict(a=make_image(t + "_albedo", flip(alb), 'sRGB', None), n=make_image(t + "_normal", flip(nrm), 'Non-Color', None), o=make_image(t + "_orm", flip(np.stack([ao, rg, np.zeros_like(rg)], -1)), 'Non-Color', None))
+KNIT = pbr_set("Fabric019", tag="knit"); WOVEN = pbr_set("Fabric036", tag="woven"); L_GLOVE = pbr_set("Leather033A", tag="leather_glove"); L_BELT = pbr_set("Leather037", tag="leather_belt")
+L_BLACK = pbr_set("Leather026", tag="leather_black"); RUBBER = pbr_set("Rubber004", tag="rubber"); PLASTIC = pbr_set("Plastic006", tag="plastic", contrast=.3)
+I["jersey_a"], I["jersey_n"], I["jersey_o"] = KNIT["a"], KNIT["n"], KNIT["o"]
+I["pants_a"], I["pants_n"], I["pants_o"] = KNIT["a"], KNIT["n"], KNIT["o"]
 I["face_a"], I["face_n"], I["face_o"] = I["skin_a"], I["skin_n"], I["skin_o"]; I["eye_a"] = make_image("eye_albedo", eye_equirect("brown")[::-1].copy(), 'sRGB', None)
 os.makedirs(ROOT + "/players/textures", exist_ok=True)
 for _ec in EYE_COLORS: Image.fromarray((eye_equirect(_ec)*255).astype(np.uint8)).save(ROOT + f"/players/textures/eyes_{_ec}.webp", quality=92)       # equirect iris textures (v = 1 at the gaze pole is the TOP row of the file) for the engine to swap
@@ -127,14 +140,14 @@ MATS = {
  "hair": pbr("hair", (.09, .06, .035, 1), None, I["leather_n"], None, rough=.6, nstrength=.25),
  "uniform_jersey": pbr("uniform_jersey", (.8, .8, .8, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
  "uniform_undershirt": pbr("uniform_undershirt", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
- "uniform_pants": pbr("uniform_pants", (.75, .75, .75, 1), I["pants_a"], I["pants_n"], I["pants_o"]),
+ "uniform_pants": pbr("uniform_pants", (.75, .75, .75, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=.8),
  "uniform_socks": pbr("uniform_socks", (.05, .08, .3, 1), I["pants_a"], I["pants_n"], I["pants_o"]),
- "cleats": pbr("cleats", (.03, .03, .03, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
- "cap": pbr("cap", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"]),
- "helmet": pbr("helmet", (.05, .08, .3, 1), None, None, None, rough=.3),
- "glove": pbr("glove", (.28, .14, .07, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
- "catcher_gear": pbr("catcher_gear", (.03, .03, .04, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.45, nstrength=.2),
- "belt": pbr("belt", (.02, .02, .02, 1), I["leather_a"], I["leather_n"], I["leather_o"], nstrength=.2),
+ "cleats": pbr("cleats", (.03, .03, .03, 1), L_BLACK["a"], L_BLACK["n"], L_BLACK["o"], nstrength=.6),
+ "cap": pbr("cap", (.05, .08, .3, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=.8),
+ "helmet": pbr("helmet", (.05, .08, .3, 1), PLASTIC["a"], PLASTIC["n"], PLASTIC["o"], rough=.3, nstrength=.5),
+ "glove": pbr("glove", (.28, .14, .07, 1), L_GLOVE["a"], L_GLOVE["n"], L_GLOVE["o"], nstrength=.8),
+ "catcher_gear": pbr("catcher_gear", (.03, .03, .04, 1), PLASTIC["a"], PLASTIC["n"], PLASTIC["o"], rough=.45, nstrength=.5),
+ "belt": pbr("belt", (.02, .02, .02, 1), L_BELT["a"], L_BELT["n"], L_BELT["o"], nstrength=.6),
 }
 
 # ---- third-pass materials (recolour via baseColorFactor like the others)
@@ -145,15 +158,15 @@ def flat_mat(name, color, rough=.7, metal=0.0, alpha=None):
     return m
 MATS["piping"] = pbr("piping", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"])                       # contrast trim (sleeve bands, placket, pants stripe, sock stripes)
 MATS["button"] = flat_mat("button", (.85, .85, .82, 1), .35)
-MATS["batting_glove"] = pbr("batting_glove", (.03, .03, .035, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.55, nstrength=.2)
-MATS["wristband"] = pbr("wristband", (.9, .9, .9, 1), I["pants_a"], I["pants_n"], I["pants_o"])
-MATS["arm_sleeve"] = pbr("arm_sleeve", (.03, .03, .04, 1), I["pants_a"], I["pants_n"], I["pants_o"], rough=.6)
+MATS["batting_glove"] = pbr("batting_glove", (.03, .03, .035, 1), L_BLACK["a"], L_BLACK["n"], L_BLACK["o"], rough=.55, nstrength=.6)
+MATS["wristband"] = pbr("wristband", (.9, .9, .9, 1), KNIT["a"], KNIT["n"], KNIT["o"])
+MATS["arm_sleeve"] = pbr("arm_sleeve", (.03, .03, .04, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], rough=.6)
 MATS["eyeblack"] = flat_mat("eyeblack", (.015, .015, .015, 1), .85)
 MATS["stubble"] = flat_mat("stubble", (.06, .045, .035, 1), .9, alpha=.42)
 MATS["laces"] = flat_mat("laces", (.92, .92, .9, 1), .7)
-MATS["sole"] = pbr("sole", (.04, .04, .045, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.7, nstrength=.2)
+MATS["sole"] = pbr("sole", (.04, .04, .045, 1), RUBBER["a"], RUBBER["n"], RUBBER["o"], rough=.7, nstrength=.6)
 MATS["buckle"] = flat_mat("buckle", (.78, .78, .8, 1), .28, metal=1.0)
-MATS["glove_laces"] = pbr("glove_laces", (.55, .38, .2, 1), I["leather_a"], I["leather_n"], I["leather_o"], rough=.7, nstrength=.15)
+MATS["glove_laces"] = pbr("glove_laces", (.55, .38, .2, 1), L_BELT["a"], L_BELT["n"], L_BELT["o"], rough=.7, nstrength=.4)
 
 MATS["jacket"] = pbr("jacket", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"], rough=.7)
 
@@ -172,7 +185,7 @@ def card_image(name, fname, lum=True, size=1024):
     if lum:
         l = (a[..., :3]*np.array([.3, .55, .15], np.float32)).sum(2); m = a[..., 3] > .5; ref = np.percentile(l[m], 85) if m.any() else 1.0
         a[..., :3] = np.clip((l/ref)[..., None]*.92, 0, 1)
-    return make_image(name, a, 'sRGB', None) if False else _rgba_image(name, a)
+    return _rgba_image(name, a)
 def _rgba_image(name, a):
     h, w = a.shape[:2]; img_ = bpy.data.images.new(name, w, h, alpha=True); img_.colorspace_settings.name = 'sRGB'; img_.alpha_mode = 'STRAIGHT'
     img_.pixels.foreach_set(np.clip(a[::-1], 0, 1).astype(np.float32).ravel()); img_.pack(); return img_       # (Blender images are bottom-up)
@@ -187,3 +200,16 @@ _cm = bpy.data.materials.new("cornea"); _cm.use_nodes = True; _cb = _cm.node_tre
 try: _cb.inputs["IOR"].default_value = 1.38
 except Exception: pass
 MATS["cornea"] = _cm
+
+def _blur(a, k=3):
+    for _ in range(k): a = (a + np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1))/5
+    return a
+def emboss_normal(name, alpha, strength=8.0, blur=3):
+    """Normal map of a raised (embroidered / printed) patch: height = blurred alpha. `alpha` is top-down (PIL order); the image is uploaded bottom-up."""
+    h = _blur(alpha.astype(np.float32), blur)[::-1].copy(); return make_image(name, height_to_normal(h, strength), 'Non-Color', None)
+def add_normal(mat, nimg, strength=1.0):
+    nt = mat.node_tree; b = nt.nodes["Principled BSDF"]; t = nt.nodes.new("ShaderNodeTexImage"); t.image = nimg; nm = nt.nodes.new("ShaderNodeNormalMap"); nm.inputs["Strength"].default_value = strength
+    nt.links.new(t.outputs["Color"], nm.inputs["Color"]); nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+_lg = np.asarray(Image.open(os.path.join(CB_SRC, "pbr", "cap_logo.png")).convert("RGBA"), np.float32)/255.0
+MATS["cap_logo"] = _alpha_mat("cap_logo", (.96, .96, .96, 1), _rgba_image("cap_logo_a", _lg), .7, clip=True); add_normal(MATS["cap_logo"], emboss_normal("cap_logo_n", _lg[..., 3], 10.0, 2), 1.0)
+MATS["spikes"] = flat_mat("spikes", (.62, .62, .65, 1), .3, metal=1.0)
