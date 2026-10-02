@@ -159,6 +159,8 @@ export class AudioController {
     // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
     this.gate = new SpeechGate(this.sw);
     this.speech = new SpeechQueue(this.gate.view('field'));
+    // browser voices have no PA bus: scale the utterance volume instead (the default slider is about 4-5 dB under the old fixed level)
+    this.speech.paScale = () => (this.sw.usingNeural ? 1 : Math.pow(this.settings.paVolume / 0.55, 2) * 0.6);
     this.booth = new Booth({ rng: Math.random, level: this.settings.chatter });
     this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
     this.syncSpeech();

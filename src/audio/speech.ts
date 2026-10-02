@@ -192,6 +192,8 @@ export class SpeechQueue {
   enabled: Record<SpeakRole, boolean> = { pa: true, ump: true, pbp: true, color: true };
   /** 0..1 */
   volume = 0.8;
+  /** extra volume factor for the PA and the umpire on engines that cannot route them to their own bus (browser voices) */
+  paScale: () => number = () => 1;
 
   constructor(
     private engine: SpeechEngine | null,
@@ -368,7 +370,7 @@ export class SpeechQueue {
       }
     };
     try {
-      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume), onend: done, onerror: done });
+      this.engine.speak(item.text, { voiceName: this.engine.voiceFor?.(item.role) ?? this.voiceChoice[item.role], role: item.role, pitch: p.pitch, rate: p.rate, volume: Math.min(1, p.vol * this.volume * (item.role === 'pa' || item.role === 'ump' ? this.paScale() : 1)), onend: done, onerror: done });
       this.prefetchNext();
     } catch {
       done();
