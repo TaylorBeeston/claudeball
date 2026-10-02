@@ -141,13 +141,19 @@ async function main() {
     if (stayOn.prev !== '7' && stayOn.prev !== '3') adb('-s', phoneSerial, 'shell', 'svc', 'power', 'stayon', 'usb');
     adb('-s', phoneSerial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP');
     const cport = 9333;
-    adb('-s', phoneSerial, 'forward', `tcp:${cport}`, 'localabstract:chrome_devtools_remote');
     // Chrome must be running to expose the socket: start it on about:blank (does not touch other apps or settings)
     adb('-s', phoneSerial, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'about:blank', '-p', 'com.android.chrome');
+    await sleep(1500);
+    // the generic `chrome_devtools_remote` socket is shared by every Chromium-based app / WebView on the phone and may answer from the wrong one (or hang):
+    // Chrome's own, pid-specific socket is the reliable one
+    const pid = adb('-s', phoneSerial, 'shell', 'pidof', 'com.android.chrome').split(/\s+/)[0];
+    const sock = /^\d+$/.test(pid) ? `chrome_devtools_remote_${pid}` : 'chrome_devtools_remote';
+    adb('-s', phoneSerial, 'forward', `tcp:${cport}`, `localabstract:${sock}`);
+    meta.devtoolsSocket = sock;
     let b: Browser | null = null;
-    for (let i = 0; i < 30 && !b; i++) {
-      await sleep(1000);
-      b = await chromium.connectOverCDP(`http://127.0.0.1:${cport}`).catch(() => null);
+    for (let i = 0; i < 15 && !b; i++) {
+      b = await chromium.connectOverCDP(`http://127.0.0.1:${cport}`, { timeout: 8000 }).catch(() => null);
+      if (!b) await sleep(1000);
     }
     if (!b) {
       console.error('Could not reach Chrome for Android over CDP. Is the screen unlocked and com.android.chrome the browser opening the URL?');
@@ -178,7 +184,8 @@ async function main() {
       for (const tod of tods) {
         for (const preset of presets) {
           const ctx = browser.contexts()[0];
-          const page = target === 'phone' ? (ctx.pages()[0] ?? (await ctx.newPage())) : await ctx.newPage();
+          // a fresh tab each time (on the phone too: the user's own tabs are never touched), closed afterwards
+          const page = await ctx.newPage();
           const cdp = await ctx.newCDPSession(page);
           if (target === 'laptop') await applyDesktopViewport(cdp, ...(str('size', '1920x1080').split('x').map(Number) as [number, number]));
           if (target === 'emu') {
@@ -201,7 +208,7 @@ async function main() {
           }
           if (r.logs.length) console.log('  page logs:', r.logs.slice(0, 6));
           if (r.traceFile) files.push(r.traceFile);
-          if (target !== 'phone') await page.close();
+          await page.close().catch(() => {});
         }
       }
     }

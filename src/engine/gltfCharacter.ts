@@ -18,6 +18,7 @@ import {
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
+  Sphere,
   Vector3,
 } from 'three';
 import { AnimationClip, SkinnedMesh } from 'three';
@@ -38,6 +39,9 @@ const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
 export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
+/** the culling sphere of a puppet (see `setCullBounds`): centre height and radius, metres */
+const CULL_CENTER_Y = 0.95;
+const CULL_RADIUS = 2.1;
 
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
@@ -364,7 +368,6 @@ export class GltfPuppet implements PuppetLike {
         // tiny details add draw calls to every shadow cascade and cast no visible shadow of their own
         m.castShadow = !/^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache)/.test(m.name);
         m.receiveShadow = true;
-        m.frustumCulled = false;
         this.meshes.push(m);
       }
     });
@@ -385,6 +388,7 @@ export class GltfPuppet implements PuppetLike {
         this.meshes.push(shell);
       }
     }
+    this.setCullBounds();
     this.rig = new Rig(this.model);
     for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
       const b = this.bones[n];
@@ -428,6 +432,23 @@ export class GltfPuppet implements PuppetLike {
       // hair hidden under caps / helmets
       const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
       if (hair && (this.nodes.get('Gear_Cap') || this.nodes.get('Gear_Helmet'))) hair.visible = false;
+    }
+  }
+
+  /**
+   * Skinned meshes are culled by a fixed sphere around the standing body instead of the bind-pose bounds (which the animation leaves behind), so the
+   * main pass, the GTAO prepass and every shadow cascade skip a puppet that is out of view; an unculled puppet costs ~25 draw calls in each of them.
+   * The sphere is in the mesh's local space (the same as the model's at rest, where the skeleton root is the origin) and reaches an extended arm or a slide.
+   */
+  private setCullBounds() {
+    this.model.updateMatrixWorld(true);
+    for (const m of this.meshes) {
+      m.frustumCulled = true;
+      const sk = m as SkinnedMesh;
+      if (!sk.isSkinnedMesh) continue;
+      const k = Math.max(1e-3, m.matrixWorld.getMaxScaleOnAxis());
+      const c = new Vector3(0, CULL_CENTER_Y, 0).applyMatrix4(new Matrix4().copy(m.matrixWorld).invert());
+      sk.boundingSphere = new Sphere(c, CULL_RADIUS / k);
     }
   }
 
