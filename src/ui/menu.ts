@@ -21,6 +21,18 @@ export interface HdStatus {
   mb?: number;
 }
 
+/** "My voice (custom announcer)": the owner's own trained voice, opt-in, from a URL or local files (see docs/announcer-voice.md). */
+export interface VoiceMenuStatus {
+  state: 'off' | 'loading' | 'ready' | 'error';
+  pct: number;
+  message: string;
+  name: string;
+  /** last pack URL used */
+  url: string;
+  /** false until the audio layer is attached (a game has started) */
+  available: boolean;
+}
+
 export interface AudioBridge {
   get(): AudioSettings;
   set(patch: Partial<AudioSettings>): void;
@@ -32,6 +44,15 @@ export interface AudioBridge {
     subscribe(cb: (s: HdStatus) => void): () => void;
     toggle(): void;
     remove(): void;
+  };
+  /** My voice (custom announcer) */
+  voice?: {
+    status(): VoiceMenuStatus;
+    subscribe(cb: (s: VoiceMenuStatus) => void): () => void;
+    loadUrl(url: string): void;
+    loadFiles(files: File[]): void;
+    off(): void;
+    forget(): void;
   };
 }
 
@@ -125,6 +146,63 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   ctx.audio.hd?.subscribe(paintHd);
   syncs.push(() => paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' }));
   const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdNote, hdRemove);
+
+  // My voice (custom announcer): nothing is loaded until the owner gives a URL or files
+  const myUrl = h('input', { type: 'url', class: 'cb-input', 'aria-label': 'Voice pack URL', placeholder: 'https://huggingface.co/you/claudeball-voice/resolve/main/', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
+  const myLoad = button('Load my voice pack', () => myUrl.value.trim() && ctx.audio.voice?.loadUrl(myUrl.value.trim()), 'ghost');
+  const myFile = h('input', { type: 'file', multiple: true, accept: '.json,.onnx', hidden: true }) as HTMLInputElement;
+  myFile.addEventListener('change', () => {
+    if (myFile.files?.length) ctx.audio.voice?.loadFiles([...myFile.files]);
+    myFile.value = '';
+  });
+  const myPick = button('Choose files… (voice.json + model)', () => myFile.click(), 'ghost');
+  const myOff = button('Switch off', () => ctx.audio.voice?.off(), 'quiet');
+  const myForget = button('Remove saved voice', () => ctx.audio.voice?.forget(), 'quiet');
+  const myNote = h('div', { class: 'cb-hint' });
+  const paintVoice = (st: VoiceMenuStatus) => {
+    const busy = st.state === 'loading' || !st.available;
+    myLoad.disabled = myPick.disabled = busy;
+    myLoad.textContent = st.state === 'loading' ? `Loading… ${st.pct}%` : 'Load my voice pack';
+    if (st.url && !myUrl.value) myUrl.value = st.url;
+    myOff.style.display = st.state === 'ready' ? '' : 'none';
+    myForget.style.display = st.state === 'ready' || st.state === 'error' ? '' : 'none';
+    myNote.textContent =
+      !st.available ? 'Available once the game has started (open Settings from the pause menu).' :
+      st.state === 'ready' ? `${st.name} is on. Lines it cannot say use the browser voice.` :
+      st.state === 'error' ? `Could not start your voice (${st.message}). Using the browser voices.` :
+      st.state === 'loading' ? 'Downloading your voice model (kept in this browser afterwards)…' :
+      'Your own trained voice (npm run announcer:export, see docs/announcer-voice.md). Nothing is uploaded: the model comes from the URL or the files you pick.';
+  };
+  const voiceStatus = () => ctx.audio.voice?.status() ?? { state: 'off' as const, pct: 0, message: '', name: '', url: '', available: false };
+  paintVoice(voiceStatus());
+  const myBox = h('div', { class: 'cb-stack' }, myUrl, myLoad, myPick, myFile, myOff, myForget, myNote);
+
+  // one Voices area: which voice is speaking, and the three choices
+  const activeNote = h('div', { class: 'cb-hint' });
+  const paintActive = () => {
+    const v = voiceStatus().state === 'ready' ? 'My voice' : ctx.audio.hd?.status().state === 'ready' ? 'HD voices (Kokoro)' : 'Browser voices';
+    activeNote.textContent = `Speaking now: ${v}. Turning one on turns the others off.`;
+  };
+  paintActive();
+  ctx.audio.voice?.subscribe((st) => {
+    paintVoice(st);
+    paintActive();
+  });
+  ctx.audio.hd?.subscribe(() => paintActive());
+  syncs.push(() => {
+    paintVoice(voiceStatus());
+    paintActive();
+  });
+  const voicesBox = h(
+    'div',
+    { class: 'cb-stack' },
+    activeNote,
+    h('div', { class: 'cb-hint' }, h('b', {}, 'Browser voices'), ': your browser\'s speech synthesis. Always available, used whenever a neural voice cannot say a line.'),
+    h('div', { class: 'cb-hint' }, h('b', {}, 'HD voices (Kokoro, WebGPU only)')),
+    hdBox,
+    h('div', { class: 'cb-hint' }, h('b', {}, 'My voice (custom announcer)')),
+    myBox,
+  );
   const mute = reg(toggle('Sound off', a().muted, (v) => ctx.audio.set({ muted: v })), () => a().muted);
   const muteField = field('Mute everything', mute.el);
   muteField.classList.add('inline');
@@ -176,7 +254,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('HD voices', hdBox), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'PA announcer, umpires and commentary voices.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('Voices', voicesBox), muteField),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,

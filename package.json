@@ -10,7 +10,19 @@
     "preview": "vite preview",
     "hdri": "node scripts/fetch-hdri.mjs",
     "test": "vitest run",
-    "sim": "tsx scripts/simulate.ts"
+    "sim": "tsx scripts/simulate.ts",
+    "announcer:script": "tsx tools/announcer/script/generate.ts",
+    "announcer:record": "vite --config tools/announcer/recorder/vite.config.ts",
+    "announcer:record:e2e": "tsx tools/announcer/recorder/e2e/recorder.e2e.ts",
+    "announcer:vocab": "tsx tools/announcer/script/words.ts",
+    "announcer:setup": "bash tools/announcer/train/setup.sh",
+    "announcer:prep": "bash tools/announcer/train/run.sh prep",
+    "announcer:train": "bash tools/announcer/train/run.sh train",
+    "announcer:export": "bash tools/announcer/train/run.sh export",
+    "announcer:test": "tsx tools/announcer/train/web_test.ts ${CB_VOICEPACK:-${CB_DATA_DIR:-${CB_VOICE_DIR:-$HOME/claudeball-voice}}/voicepack}",
+    "announcer:pilot": "bash tools/announcer/train/pilot.sh",
+    "announcer:clips": "bash tools/announcer/train/run.sh clips",
+    "announcer:test:game": "tsx tools/announcer/train/game_test.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
@@ -18,6 +30,8 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
+    "onnxruntime-web": "^1.30.0",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
