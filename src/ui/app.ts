@@ -160,6 +160,8 @@ class App {
     console.info(`[boot] interactive in ${this.report.tti} ms (${this.res.autostart ? 'autostart' : 'menu'})`);
     // the sky for the other times of day, downloaded while the menu is up so changing it later does not stall
     void e.env.preloadSky(['day', 'dusk']);
+    // benchmark runner (tools/perf): `?bench=1&autostart` plays scripted scenes at fixed settings and reports to window.__bench
+    if (this.res.autostart && new URLSearchParams(location.search).has('bench')) void import('../engine/bench').then((m) => m.runBench(e));
   }
 
   // ---- context for the menu screens ----------------------------------------------------------------------------------------
