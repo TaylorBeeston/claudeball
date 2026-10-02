@@ -19,6 +19,7 @@ export interface HdStatus {
   cached?: boolean;
   /** size of the download for this device, MB */
   mb?: number;
+  previewing?: boolean;
 }
 
 export interface AudioBridge {
@@ -32,6 +33,7 @@ export interface AudioBridge {
     subscribe(cb: (s: HdStatus) => void): () => void;
     toggle(): void;
     remove(): void;
+    preview(): void;
   };
 }
 
@@ -114,17 +116,20 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   // optional neural voices: nothing is downloaded until the button is pressed
   const hdNote = h('div', { class: 'cb-hint' });
   const hdBtn = button('', () => ctx.audio.hd?.toggle(), 'ghost');
+  const hdPreview = button('Preview voices', () => ctx.audio.hd?.preview(), 'ghost');
   const hdRemove = button('Remove download', () => ctx.audio.hd?.remove(), 'quiet');
   const paintHd = (st: HdStatus) => {
     hdBtn.disabled = st.state === 'loading' || st.state === 'unavailable';
     hdBtn.textContent = st.state === 'unavailable' ? 'HD voices unavailable' : st.state === 'ready' ? 'HD voices: on (switch off)' : st.state === 'loading' ? `Downloading… ${st.pct ?? 0}%` : st.cached ? 'Use HD voices' : `Download HD voices (~${st.mb ?? 90} MB)`;
-    hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'Available once the game has started (open Settings from the pause menu).' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
+    hdNote.textContent = st.text ?? (st.state === 'unavailable' ? 'HD voices are not available here.' : 'Optional neural voices (Kokoro, Apache-2.0) that run in your browser. One-time download from Hugging Face; without WebGPU they are slower than real time, so the booth talks less.');
     hdRemove.style.display = st.cached || st.state === 'ready' ? '' : 'none';
+    hdPreview.style.display = st.state === 'ready' ? '' : 'none';
+    hdPreview.disabled = !!st.previewing;
   };
   paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' });
   ctx.audio.hd?.subscribe(paintHd);
   syncs.push(() => paintHd(ctx.audio.hd?.status() ?? { state: 'unavailable' }));
-  const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdNote, hdRemove);
+  const hdBox = h('div', { class: 'cb-stack' }, hdBtn, hdPreview, hdNote, hdRemove);
   const mute = reg(toggle('Sound off', a().muted, (v) => ctx.audio.set({ muted: v })), () => a().muted);
   const muteField = field('Mute everything', mute.el);
   muteField.classList.add('inline');

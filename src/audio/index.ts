@@ -11,7 +11,8 @@ import { Mixer, type Settings } from './mixer';
 import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
-import { HD_MODES, hdSupported, pickMode } from './hdInfo';
+import { hdManager, type HdStatus } from './hd';
+export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
 import { Booth } from './broadcast/booth';
@@ -70,14 +71,6 @@ export function rawBusOf(game: unknown): RawBus | null {
   return g ?? null;
 }
 
-export interface HdStatus {
-  state: 'off' | 'loading' | 'ready' | 'error' | 'unavailable';
-  pct?: number;
-  text?: string;
-  cached?: boolean;
-  mb?: number;
-}
-
 export interface AudioOptions {
   /** do not create any audio (URL `?noaudio`) */
   off?: boolean;
@@ -110,8 +103,6 @@ export class AudioController {
   readonly speech: SpeechQueue;
   /** browser voices, or the optional neural voices when they are downloaded and switched on */
   readonly sw: SwitchEngine;
-  /** HD voices state (the neural code is loaded lazily, only after the user opts in) */
-  hd: { state: 'off' | 'loading' | 'ready' | 'error'; pct: number; message: string; engine: { stats: unknown; busyMs(): number; rtf: number; dispose(): void } | null } = { state: 'off', pct: 0, message: '', engine: null };
   readonly excitement = new Excitement();
   private ui: AudioUi | null = null;
   private mapper: CueMapper;
@@ -179,6 +170,7 @@ export class AudioController {
         enable: () => void this.enable(),
         hdToggle: () => void this.hdToggle(),
         hdRemove: () => void this.removeHd(),
+        hdPreview: () => void hdManager.preview(),
       });
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
@@ -197,105 +189,47 @@ export class AudioController {
     };
     window.addEventListener('keydown', key);
     this.offs.push(() => window.removeEventListener('keydown', key));
+    // HD voices: the manager outlives games; this game plays through its mixer
+    hdManager.bindMixer(this.mixer);
+    this.sw.neural = hdManager.engine;
+    hdManager.onEngine = (e) => {
+      this.sw.neural = e;
+      this.speech.clear();
+      this.sink.stopAll();
+      this.settings.hd = !!e;
+      this.onSettings?.();
+    };
+    this.offs.push(hdManager.subscribe((st) => this.ui?.setHd(st.state === 'unavailable' ? { state: 'off', text: st.text } : (st as Parameters<AudioUi['setHd']>[0]))));
+    this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
     this.interval = setInterval(() => this.tick(), 1000 / 30);
-    if (this.settings.hd) void this.autoHd();
   }
 
-  // ---- HD (neural) voices: opt-in, lazily imported -------------------------------------------------------------------------
+  // ---- HD (neural) voices: the manager (`hd.ts`) owns the download and the engine; a game only plugs its mixer in -------------
 
-  private async autoHd() {
-    if (!hdSupported()) {
-      this.settings.hd = false;
-      this.persist();
-      return;
-    }
-    try {
-      const { isCached } = await import('./neural');
-      if (await isCached(pickMode())) await this.enableHd();
-      else {
-        this.settings.hd = false;
-        this.persist();
-        this.setHdUi({ state: 'off' });
-      }
-    } catch {
-      this.setHdUi({ state: 'off' });
-    }
-  }
-
-  hdToggle() {
-    return this.hd.state === 'ready' ? this.disableHd() : this.enableHd();
-  }
-
-  /** called after the controller itself changes `settings` (HD voices on/off), so the app's copy can follow */
+  /** called after the controller itself changes `settings`, so the app's copy can follow */
   onSettings: (() => void) | null = null;
-  private hdListeners = new Set<(s: HdStatus) => void>();
-  private lastHd: HdStatus = { state: 'off' };
 
+  get hd() {
+    return { state: hdManager.state === 'unavailable' ? 'off' : hdManager.state, pct: hdManager.pct, message: hdManager.message, engine: hdManager.engine };
+  }
   hdStatus(): HdStatus {
-    if (!hdSupported() && this.lastHd.state !== 'ready') return { state: 'unavailable', mb: HD_MODES[pickMode()].mb, text: 'HD voices need WebGPU, which this browser does not offer: the CPU version is slower than real time, so it is not offered.' };
-    return { ...this.lastHd, mb: HD_MODES[pickMode()].mb };
+    return hdManager.status();
   }
-
   subscribeHd(cb: (s: HdStatus) => void): () => void {
-    this.hdListeners.add(cb);
-    return () => this.hdListeners.delete(cb);
+    return hdManager.subscribe(cb);
   }
-
-  private setHdUi(s: HdStatus) {
-    this.lastHd = s;
-    this.ui?.setHd(s.state === 'unavailable' ? { state: 'off' } : (s as Parameters<AudioUi['setHd']>[0]));
-    for (const l of this.hdListeners) l(this.hdStatus());
-  }
-
-  private persist() {
-    saveSettings(this.settings);
-    this.onSettings?.();
-  }
-
-  async enableHd(): Promise<void> {
-    if (this.hd.state === 'loading' || this.hd.state === 'ready' || !hdSupported()) return;
-    const mode = pickMode();
-    this.hd = { state: 'loading', pct: 0, message: '', engine: null };
-    this.setHdUi({ state: 'loading', pct: 0 });
+  hdToggle() {
     void this.enable(); // the click is a user gesture: make sure audio is running too
-    try {
-      const { NeuralSpeechEngine, WorkerSynth } = await import('./neural');
-      const engine = new NeuralSpeechEngine(new WorkerSynth(), this.mixer, browserSpeech(), mode);
-      this.hd.engine = engine;
-      await engine.init(mode, (l, t) => {
-        this.hd.pct = t > 0 ? Math.min(99, Math.round((l / t) * 100)) : 0;
-        this.setHdUi({ state: 'loading', pct: this.hd.pct });
-      });
-      this.sw.neural = engine;
-      this.hd.state = 'ready';
-      this.settings.hd = true;
-      this.persist();
-      this.setHdUi({ state: 'ready', text: `Kokoro HD voices on (${HD_MODES[mode].device}). Lines that cannot be generated in time use the browser voice.` });
-    } catch (e) {
-      this.hd.engine?.dispose();
-      this.hd = { state: 'error', pct: 0, message: String((e as Error)?.message ?? e), engine: null };
-      this.sw.neural = null;
-      this.settings.hd = false;
-      this.persist();
-      this.setHdUi({ state: 'error', text: `HD voices could not start (${this.hd.message}). Using the browser voices.` });
-    }
+    return hdManager.toggle();
   }
-
+  enableHd() {
+    return hdManager.enable();
+  }
   disableHd() {
-    this.speech.clear();
-    this.sw.neural = null;
-    this.hd.engine?.dispose();
-    this.hd = { state: 'off', pct: 0, message: '', engine: null };
-    this.settings.hd = false;
-    this.persist();
-    void import('./neural').then(({ isCached }) => isCached(pickMode())).then((cached) => this.setHdUi({ state: 'off', cached }));
+    return hdManager.disable();
   }
-
-  async removeHd() {
-    this.disableHd();
-    const { clearCache } = await import('./neural');
-    await clearCache();
-    this.setHdUi({ state: 'off', cached: false });
+  removeHd() {
+    return hdManager.remove();
   }
 
   // ---- settings / unlock ---------------------------------------------------------------------------------------------
@@ -673,6 +607,9 @@ export class AudioController {
   }
 
   dispose() {
+    hdManager.onEngine = null;
+    hdManager.bindMixer(null);
+    this.sw.neural = null;
     if (this.interval) clearInterval(this.interval);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
