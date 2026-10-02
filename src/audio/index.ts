@@ -12,6 +12,7 @@ import { Ambience } from './ambience';
 import { Organ } from './organ';
 import { SpeechQueue, SwitchEngine, browserSpeech } from './speech';
 import { hdManager, type HdStatus } from './hd';
+import { hdSupported } from './hdInfo';
 export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { Excitement, baseline } from './excitement';
@@ -153,6 +154,8 @@ export class AudioController {
     // browser voices have no PA bus: scale the utterance volume instead (the default slider is about 4-5 dB under the old fixed level)
     this.speech.paScale = () => (this.sw.usingNeural ? 1 : Math.pow(this.settings.paVolume / 0.55, 2) * 0.6);
     this.booth = new Booth({ rng: Math.random, level: this.settings.chatter });
+    // EXPERIMENT (off by default, URL flag only): a tiny in-browser language model for colour lines, validated; see src/audio/README.md
+    if (new URLSearchParams(location.search).get('lm') === '1' && hdSupported()) void import('./broadcast/lmClient').then((m) => m.startLm()).then((lm) => (this.booth.lm = lm)).catch(() => {});
     this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);

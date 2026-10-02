@@ -40,3 +40,5 @@ ctx.onmessage = async (e: MessageEvent) => {
     }
   }
 };
+
+export {};
