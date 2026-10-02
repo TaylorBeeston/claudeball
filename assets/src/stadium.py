@@ -12,11 +12,7 @@ def mat(n, c, r=0.8, m=0.0):
 def emissive(n, c, strength):
     mm = mat(n, c, 0.4); b = mm.node_tree.nodes["Principled BSDF"]
     b.inputs["Emission Color"].default_value = c; b.inputs["Emission Strength"].default_value = strength; return mm
-cd, chn = dirt_tex(seed=9, base=(0.42, 0.42, 0.41), var=0.22)
-_hh = (chn-chn.min())/(chn.max()-chn.min())
-M_CONC = vc_material("concrete", make_image("concrete_albedo", cd, path=ROOT+"/tex/concrete_albedo.png"),
-                     make_image("concrete_normal", height_to_normal(chn, 2.0), 'Non-Color', ROOT+"/tex/concrete_normal.png"), 0.85, 0.7,
-                     make_image("concrete_orm", np.stack([.55+.45*_hh, .92-.15*_hh, np.zeros_like(_hh)], -1), 'Non-Color', ROOT+"/tex/concrete_orm.png"))
+M_CONC = acg_material("concrete", acg("Concrete034", tint=(.93, .93, .91), gain=.88), .85, .9)                       # poured concrete (CC0 photo set), tinted per tread through the vertex colours
 M_FASC = mat("fascia_dark", (0.05, 0.06, 0.08, 1), 0.5, 0.2)
 M_PAD = mat("wall_padding", (0.02, 0.10, 0.05, 1), 0.85); M_YEL = mat("wall_yellow_line", (0.95, 0.72, 0.03, 1), 0.5)
 M_GLASS = mat("press_glass", (0.05, 0.10, 0.14, 1), 0.08, 0.6); M_STEEL = mat("steel", (0.55, 0.57, 0.6, 1), 0.38, 1.0)
