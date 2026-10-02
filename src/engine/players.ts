@@ -356,6 +356,14 @@ export class PlayerManager {
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
   }
 
+  /** puppet level of detail (see `GltfPuppet.updateLod`): set by the engine from the camera's field of view and the quality preset */
+  lodK = 1;
+  lodCut: readonly [number, number] = [0.2, 0.08];
+  /** false while the warm-up draws every variant at full detail */
+  lodEnabled = true;
+  /** `?nolod` */
+  lodOff = false;
+
   /** Bat grip empty of the current batter's glTF puppet, if any. */
   batterGrip(state: GameState): Object3D | null {
     const b = state.players.find((p) => p.role === 'batter');
@@ -382,6 +390,15 @@ export class PlayerManager {
     return (b && this.puppets.get(b.id)?.shoulderCenter?.(out)) || null;
   }
 
+  /** switch every puppet between its normal parts and the shadow / depth proxy (see `GltfPuppet.phase`) */
+  phase(p: 'main' | 'shadow' | 'gbuf') {
+    for (const pu of this.puppets.values()) pu.phase?.(p);
+  }
+
+  allPuppets(): IterableIterator<PuppetLike> {
+    return this.puppets.values();
+  }
+
   /** Drop all puppets (they are recreated with the current factory on the next update). */
   reset() {
     for (const p of this.puppets.values()) p.dispose();
@@ -397,6 +414,8 @@ export class PlayerManager {
     this.penv.makeBall = makeBall;
     this.penv.cameraPos = cameraPos;
     this.penv.makeBat = this.makeBat;
+    this.penv.lodK = this.lodEnabled && !this.lodOff ? this.lodK : undefined;
+    this.penv.lodCut = this.lodCut;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;

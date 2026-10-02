@@ -20,6 +20,8 @@
  *   --shots                           save a PNG of every scene to results/shots/
  *   --angle gl|vulkan                 ANGLE backend (desktop)
  *   --label name                      prefix of the output files
+ *   --out path/base                   write path/base.json|.md instead of results/<label>-<target>-<time>
+ *   --quiet                           do not print the tables
  *   --extra "a=b&c=d"                 extra query params for the page
  */
 import fs from 'node:fs';
@@ -91,7 +93,7 @@ async function runOne(page: Page, cdp: CDPSession, url: string, preset: string, 
     if (st?.holding && args.shots) {
       fs.mkdirSync(path.join(outDir, 'shots'), { recursive: true });
       const file = path.join(outDir, 'shots', `${label}-${target}-${preset}-${tod}-${st.holding}.png`);
-      fs.writeFileSync(file, await page.screenshot());
+      fs.writeFileSync(file, Buffer.from(((await cdp.send('Page.captureScreenshot', { format: 'png' })) as { data: string }).data, 'base64'));
       await page.evaluate(() => ((window as unknown as { __bench: { release: boolean } }).__bench.release = true));
       await sleep(200);
     }
@@ -225,10 +227,10 @@ async function main() {
     stopServer();
   }
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
-  const base2 = path.join(outDir, `${label}-${target}-${stamp}`);
+  const base2 = typeof args.out === 'string' ? (args.out as string) : path.join(outDir, `${label}-${target}-${stamp}`);
   fs.writeFileSync(`${base2}.json`, JSON.stringify(run));
   fs.writeFileSync(`${base2}.md`, markdown(run));
-  console.log(markdown(run));
+  if (!args.quiet) console.log(markdown(run));
   console.log(`\n[perf] wrote ${base2}.json / .md${files.length ? ` and ${files.length} trace(s)` : ''}`);
   process.exit(0);
 }

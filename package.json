@@ -27,7 +27,8 @@
     "perf:gpu": "tsx tools/perf/run.ts --uncapped",
     "perf:emu": "tsx tools/perf/run.ts --target emu",
     "perf:phone": "tsx tools/perf/run.ts --target phone",
-    "perf:report": "tsx tools/perf/report.ts"
+    "perf:report": "tsx tools/perf/report.ts",
+    "perf:check": "tsx tools/perf/check.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
