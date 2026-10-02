@@ -241,7 +241,6 @@ export class CueMapper {
           out.push(cue.excite(hang ? 0.25 + 0.5 * k.power : 0.1 + 0.2 * k.power, hang ? 4 : 1.5, 1));
           if (hang && mph >= 88) out.push(cue.crowd('swell', 1, 0.5 + 0.5 * k.power, 0.25));
         }
-        if (mph >= 100) out.push(cue.speak('pbp', 'Hit hard!', PRI.pbp, 2, 0.3, 1));
         break;
       }
       case 'call': {
@@ -279,7 +278,6 @@ export class CueMapper {
         out.push(cue.crowd('groan', 2, hb ? 0.5 : 1, 0.1), cue.excite(0.15, 2, 1));
         const f = c.person(ev.fielderId);
         const how = ev.kind === 'throw' ? 'throws it away' : ev.kind === 'drop' ? 'drops it' : 'bobbles it';
-        if (f) out.push(cue.speak('pbp', `${trimName(f.name)} ${how}!`, PRI.pbp, 3, 0.3, 2));
         break;
       }
       case 'throw':
@@ -386,7 +384,6 @@ export class CueMapper {
         out.push(cue.crowd('gasp', 3, 1, 0.05), cue.crowd(fieldingHome ? 'roar_big' : 'groan', 3, fieldingHome ? 0.9 : 0.8, 0.9), cue.excite(0.9, 6, 3, 0.9));
         const f = c.person(ev.fielderId), b = c.person(ev.batterId);
         this.spokenPlay = true;
-        if (f) out.push(cue.speak('pbp', `Robbed! ${trimName(f.name)} takes a home run away${b ? ` from ${trimName(b.name)}` : ''}!`, PRI.big, 5, 0.6, 3));
         break;
       }
       case 'homeRun': {
@@ -405,8 +402,6 @@ export class CueMapper {
         } else out.push(cue.crowd('boo', 2, 0.35, 0.6));
         this.spokenPlay = true;
         const who = b ? trimName(b.name) : 'The batter';
-        out.push(cue.speak('pbp', `${who} swings, and it's outta here! ${ft} feet!`, PRI.big, 6, 0.25, 3));
-        if (this.lastExit > 0) out.push(cue.speak('color', `That one left the bat at ${Math.round(this.lastExit)} miles an hour.`, PRI.color + 1, 12, 3.2, 2));
         break;
       }
       case 'baseTouch': {
@@ -449,7 +444,6 @@ export class CueMapper {
         const score = scored ? ` ${teamSay(c.teams.away)} ${sc.away}, ${teamSay(c.teams.home)} ${sc.home}.` : '';
         // with umpire events the ruling ('Strike three!', 'Out!') comes 0.2-0.6 s after the play: let the umpire go first
         const lag = this.detailed ? 1.3 : 0.4;
-        out.push(cue.speak('pbp', desc + score, scored ? PRI.pbp + 1 : PRI.pbp - 1, (scored ? 8 : 5) + lag, lag, 1));
         break;
       }
       case 'pitchingChange': {
@@ -470,7 +464,6 @@ export class CueMapper {
         const hw = num(ev.home, c.score.home), aw = num(ev.away, c.score.away);
         out.push(cue.crowd(w === 'home' ? 'roar_big' : 'groan', 3, w === 'home' ? 1 : 0.6, 0.2), { kind: 'organ', id: w === 'home' ? 'hr_fanfare' : 'dirge', imp: 3, delay: 1, gain: 1 });
         const nm = w === 'home' ? c.teams.home : w === 'away' ? c.teams.away : '';
-        out.push(cue.speak('pbp', w === 'tie' ? "And that's the ballgame." : `And that's the ballgame. ${teamSay(nm)} win, ${Math.max(hw, aw)} to ${Math.min(hw, aw)}.`, PRI.big, 20, 0.5, 3));
         break;
       }
       default:
