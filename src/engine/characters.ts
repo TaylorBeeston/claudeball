@@ -328,6 +328,10 @@ export interface PuppetLike {
   shoulderCenter?(out: Vector3): Vector3 | null;
   /** centre of the face in scene space (glTF characters only): where close-up shots aim */
   faceCenter?(out: Vector3): Vector3 | null;
+  /** render phase: the shadow passes and the GTAO depth/normal prepass draw a merged proxy instead of the puppet's parts (glTF characters only) */
+  phase?(p: 'main' | 'shadow' | 'gbuf'): void;
+  /** back to full detail at once (warm-up) */
+  lodReset?(): void;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
   ballHeld?: boolean;
   /** world position of that ball */
@@ -357,6 +361,12 @@ export interface PuppetEnv {
   positions?: Map<string, Vector3>;
   /** the camera's position (scene): far extras drop to a cheaper animation */
   cameraPos?: { x: number; y: number; z: number };
+  /**
+   * level-of-detail inputs: `lodK` = screen height per metre at 1 m (1 / (2 tan(fov / 2))), so a 1.85 m player at distance d fills 1.85 * lodK / d of the picture;
+   * `lodCut` = the fractions below which a puppet drops to tier 1 (micro details off) and tier 2 (only the body shapes). Unset: always full detail.
+   */
+  lodK?: number;
+  lodCut?: readonly [number, number];
   /** whoever holds the ball (a fielder mid-transfer / look / toss): where a receiver should turn and hold his glove */
   carrier?: { id: string; role: string; anim: string; pos: Vector3 } | null;
   /** makes a practice bat with a donut for the on-deck batter's hand */

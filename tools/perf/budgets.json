@@ -1,0 +1,58 @@
+{
+ "low": {
+  "pitchcam": {
+   "calls": 470,
+   "triangles": 5600000
+  },
+  "wide": {
+   "calls": 830,
+   "triangles": 8290000
+  },
+  "faces": {
+   "calls": 310,
+   "triangles": 3630000
+  }
+ },
+ "medium": {
+  "pitchcam": {
+   "calls": 850,
+   "triangles": 10720000
+  },
+  "wide": {
+   "calls": 1780,
+   "triangles": 20910000
+  },
+  "faces": {
+   "calls": 490,
+   "triangles": 5160000
+  }
+ },
+ "high": {
+  "pitchcam": {
+   "calls": 990,
+   "triangles": 11520000
+  },
+  "wide": {
+   "calls": 1870,
+   "triangles": 21980000
+  },
+  "faces": {
+   "calls": 490,
+   "triangles": 5050000
+  }
+ },
+ "ultra": {
+  "pitchcam": {
+   "calls": 1020,
+   "triangles": 9630000
+  },
+  "wide": {
+   "calls": 2270,
+   "triangles": 26320000
+  },
+  "faces": {
+   "calls": 510,
+   "triangles": 4640000
+  }
+ }
+}

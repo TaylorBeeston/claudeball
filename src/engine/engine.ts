@@ -29,6 +29,8 @@ import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from '
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
+import { perf } from './perf';
+import { FLAGS } from './flags';
 
 export interface EngineOptions {
   seed?: number;
@@ -89,6 +91,8 @@ export class Engine {
   private prevFar: Vector3 | null = null;
   private fieldGroup: Object3D;
   assets: Assets | null = null;
+  /** benchmark mode: every frame advances the game by this many seconds, whatever the real frame time */
+  fixedDt?: number;
   /** menu mode: the sim stays frozen, the camera drifts around the park and the hot keys are off */
   attract = false;
   /** false while a menu / pause screen has the keyboard */
@@ -126,6 +130,7 @@ export class Engine {
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
+    this.players.lodOff = FLAGS.nolod;
     this.scene.add(this.players.group);
     this.ball = new BallView(this.env);
     this.bat = new BatView(this.env);
@@ -134,6 +139,8 @@ export class Engine {
 
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     this.hookGBufferVisibility();
+    this.hookShadowPhase();
+    if (perf.on) this.attachPerf();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
@@ -321,9 +328,38 @@ export class Engine {
     ao._renderOverride = (...args: unknown[]) => {
       const vis = this.gbufferHidden.map((o) => o.visible);
       for (const o of this.gbufferHidden) o.visible = false;
-      orig(...args);
+      this.players.phase('gbuf');
+      this.stadium.crowdVisible(false);
+      try {
+        orig(...args);
+      } finally {
+        this.players.phase('main');
+        this.stadium.crowdVisible(true);
+      }
       this.gbufferHidden.forEach((o, i) => (o.visible = vis[i]));
     };
+  }
+
+  /** the shadow passes draw each puppet as one merged proxy mesh (visible only while they run; the main pass list is built before they start) */
+  private hookShadowPhase() {
+    const sm = this.renderer.shadowMap;
+    const orig = sm.render.bind(sm);
+    sm.render = (...args: Parameters<typeof orig>) => {
+      this.players.phase('shadow');
+      try {
+        orig(...args);
+      } finally {
+        this.players.phase('main');
+      }
+    };
+  }
+
+  /** profiler hooks (`?perf=1` / `?bench=1`): the composer's passes, the shadow pass and the GTAO prepass are timed on CPU and GPU */
+  private attachPerf() {
+    const post = this.post;
+    perf.attach(this.renderer, post.passList());
+    perf.wrap(post.ao, '_renderOverride', 'gtao_gbuf');
+    perf.setOverlayExtra(() => ({ preset: this.qualityName, scale: this.adaptive.scale.toFixed(2), dpr: this.renderer.getPixelRatio().toFixed(2), px: `${this.renderer.domElement.width}x${this.renderer.domElement.height}` }));
   }
 
   setQuality(name: QualityName) {
@@ -333,6 +369,7 @@ export class Engine {
     this.post.setQuality(this.quality);
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
+    this.stadium.crowd.setSectors(this.quality.crowdSectors);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
@@ -425,8 +462,10 @@ export class Engine {
     this.timer.connect(document);
     const loop = (ts: number) => {
       this.raf = requestAnimationFrame(loop);
+      perf.frameBegin(ts);
       this.timer.update(ts);
-      this.tick(Math.min(this.timer.getDelta(), 0.25));
+      // benchmarks step the game by a fixed dt per frame, so every preset plays out the same game
+      this.tick(this.fixedDt ?? Math.min(this.timer.getDelta(), 0.25));
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -441,11 +480,13 @@ export class Engine {
     this.time += dt;
     const { state } = this.sim.advance(dt);
     this.live = state;
+    if (perf.on) perf.lap('sim');
 
     // director picks camera + which state to render (live or replay)
     const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
+    if (perf.on) perf.lap('director');
     if (this.attract) this.attractCamera(dt);
     const animDt = this.attract ? dt : this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
@@ -468,8 +509,12 @@ export class Engine {
     this.side.setClips((n) => !!this.assets?.manifest?.clips?.[n]);
     const extras = this.side.update(state, animDt, (e) => this.sim.emit(e));
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
+    if (perf.on) perf.lap('bat+side');
     this.players.makeBat = () => this.bat.makeHandBat();
+    this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.players.lodCut = this.quality.puppetLod;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
+    if (perf.on) perf.lap('puppets');
     this.contact.visible = this.quality.name !== 'low';
     if (this.contact.visible) this.contact.update(this.players.feet());
     this.updateTossBall();
@@ -492,6 +537,7 @@ export class Engine {
       this.sbTimer = 0.3;
       this.stadium.updateScoreboard(state);
     }
+    if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);
     this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);
     if (this.hud && (this.hudTimer -= dt) < 0) {
@@ -499,6 +545,7 @@ export class Engine {
       this.hud.setFps(this.fps, this.adaptive.scale);
     }
 
+    if (perf.on) perf.lap('hud');
     // pan motion blur: how far a distant point ahead of the camera slid across the screen since last frame
     {
       const fwd = this.tmpV.set(0, 0, -1).applyQuaternion(this.camera.quaternion).multiplyScalar(200).add(this.camera.position);
@@ -513,19 +560,27 @@ export class Engine {
     this.post.capture = out.capture;
     if (out.dissolve > 0) this.post.startDissolve(out.dissolve);
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
+    if (perf.on) perf.lap('post-setup');
     this.stadium.crowd.update(this.time, dt);
+    if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
     this.lights.setShadowCap(this.lightShadowCap ?? (this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();
+    if (perf.on) perf.lap('env');
     if (!render) return;
     if (location.search.includes('nopost')) this.renderer.render(this.scene, this.camera);
     else this.post.render(this.time, dt);
+    if (perf.on) {
+      perf.lap('render');
+      perf.setScale(this.adaptive.scale);
+    }
     const ms = performance.now() - t0;
     this.fps += (1 / Math.max(dt, 1e-4) - this.fps) * 0.08;
     if (this.adaptive.update(Math.max(ms, dt * 1000), dt)) this.resize();
+    perf.frameEnd();
   }
 
   get liveState() {
