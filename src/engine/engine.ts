@@ -16,7 +16,7 @@ import { Environment, type TimeOfDay } from './environment';
 import { buildField } from './field';
 import { buildStadium, type Stadium } from './stadium';
 import { PostFX } from './postfx';
-import { AdaptiveScale, QUALITY, QUALITY_ORDER, pixelRatioFor, type QualityName } from './quality';
+import { AdaptiveScale, QUALITY, QUALITY_ORDER, loadEffects, pixelRatioFor, type LoadEffects, type QualityName } from './quality';
 import { SimDriver, type SimConfig } from './simAdapter';
 import { BallView, BatView, PlayerManager } from './players';
 import { Puppet } from './characters';
@@ -378,11 +378,30 @@ export class Engine {
     this.post.setQuality(this.quality);
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
-    this.stadium.crowd.setSectors(this.quality.crowdSectors);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
+    this.adaptive.full();
+    this.loadApplied = -1;
+    this.applyLoad();
     this.resize();
+  }
+
+  private loadApplied = -1;
+  private lodCutTmp: [number, number] = [0.2, 0.08];
+  fx: LoadEffects = loadEffects(0);
+
+  /** the adaptive controller's CPU-side level -> what is actually switched (see `loadEffects`); cheap when the level did not change */
+  private applyLoad() {
+    const lv = this.adaptive.level;
+    if (lv === this.loadApplied) return;
+    this.loadApplied = lv;
+    const fx = (this.fx = loadEffects(lv));
+    const q = this.quality;
+    this.stadium.crowd.setSectors(Math.min(q.crowdSectors, fx.crowdSectors));
+    this.stadium.crowd.setAnimate(q.crowdAnimate && fx.crowdAnimate);
+    this.post.setNoAo(fx.noAo);
+    this.env.setFarShadowEvery(fx.farShadowEvery);
   }
 
   setTimeOfDay(t: TimeOfDay): Promise<void> {
@@ -523,7 +542,9 @@ export class Engine {
     this.camera.updateMatrixWorld();
     this.players.frustum = this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    this.players.lodCut = this.quality.puppetLod;
+    this.lodCutTmp[0] = this.quality.puppetLod[0] * this.fx.lodScale;
+    this.lodCutTmp[1] = this.quality.puppetLod[1] * this.fx.lodScale;
+    this.players.lodCut = this.lodCutTmp;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
     if (perf.on) perf.lap('puppets');
     this.contact.visible = this.quality.name !== 'low';
@@ -576,7 +597,7 @@ export class Engine {
     if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
-    this.lights.setShadowCap(this.lightShadowCap ?? (this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
+    this.lights.setShadowCap(this.lightShadowCap ?? Math.min(this.fx.towerShadows, this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();
@@ -590,7 +611,10 @@ export class Engine {
     }
     const ms = performance.now() - t0;
     this.fps += (1 / Math.max(dt, 1e-4) - this.fps) * 0.08;
-    if (this.adaptive.update(Math.max(ms, dt * 1000), dt)) this.resize();
+    if (this.adaptive.update(ms, dt * 1000, dt)) {
+      this.applyLoad();
+      this.resize();
+    }
     perf.frameEnd();
   }
 
