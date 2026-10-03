@@ -13,7 +13,17 @@ import type { GameState, LullKind, PlayerSnap } from './types';
 export type BrollKind =
   | 'walkup' | 'batterFace' | 'onDeck' | 'dugout' | 'dugoutReaction' | 'pitcherFace' | 'catcherSigns' | 'shakeOff' | 'leadOff'
   | 'coachSigns' | 'bullpen' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'managerWalk' | 'bullpenDoor'
-  | 'relieverJog' | 'relieverFace' | 'umpires';
+  | 'relieverJog' | 'relieverFace' | 'umpires' | 'infieldDrill' | 'outfieldCatch';
+
+/** the label the HUD / audio see for a B-roll shot, and whether the shot is about a person who gets a name card */
+export function shotLabel(shot: BrollShot): { kind: import('./types').ShotLabel; card: boolean } {
+  switch (shot.kind) {
+    case 'batterFace': case 'pitcherFace': return { kind: 'faceCloseup', card: true };
+    case 'walkup': case 'onDeck': case 'shakeOff': case 'leadOff': case 'relieverJog': case 'relieverFace': case 'catcherSigns':
+      return { kind: shot.kind === 'onDeck' ? 'ondeck' : shot.kind, card: shot.kind !== 'catcherSigns' };
+    default: return { kind: shot.kind as import('./types').ShotLabel, card: false };
+  }
+}
 
 export type Transition = 'cut' | 'dissolve';
 
@@ -48,7 +58,7 @@ const CF_CAM = new Vector3(-2.6, 10.5, 121);
 const HOLD: Record<BrollKind, [number, number]> = {
   walkup: [3, 4.5], batterFace: [2.8, 4], onDeck: [3, 4.5], dugout: [3, 5], dugoutReaction: [3, 4.5], pitcherFace: [2.6, 3.8], catcherSigns: [2.6, 3.6],
   shakeOff: [2.6, 3.6], leadOff: [2.6, 3.8], coachSigns: [2.8, 4], bullpen: [3, 5], crowd: [3, 5], scoreboard: [3, 4.5], aerial: [4, 6], sky: [3.5, 5.5],
-  moundWide: [2.6, 3.6], moundHuddle: [3, 5], managerWalk: [3, 4.5], bullpenDoor: [3, 4.5], relieverJog: [3, 4.5], relieverFace: [2.6, 3.6], umpires: [3, 4.5],
+  moundWide: [2.6, 3.6], moundHuddle: [3, 5], infieldDrill: [3, 4.5], outfieldCatch: [3, 4.5], managerWalk: [3, 4.5], bullpenDoor: [3, 4.5], relieverJog: [3, 4.5], relieverFace: [2.6, 3.6], umpires: [3, 4.5],
 };
 
 /** shots that are scenery rather than the game: they melt in instead of cutting */
@@ -59,8 +69,8 @@ const WEIGHTS: Record<LullKind, Partial<Record<BrollKind, number>>> = {
   walkup: { walkup: 4, batterFace: 3, onDeck: 2, dugout: 2, pitcherFace: 1.5, coachSigns: 1, leadOff: 1, crowd: 1, scoreboard: 0.5 },
   betweenPitches: { pitcherFace: 3, catcherSigns: 3, shakeOff: 3, leadOff: 3, coachSigns: 1.5, batterFace: 1.5, crowd: 0.6, dugout: 0.6 },
   moundVisit: { moundWide: 5, moundHuddle: 5, dugout: 1, crowd: 0.7, batterFace: 0.7, bullpen: 0.7 },
-  pitchingChange: { managerWalk: 4, bullpenDoor: 3, relieverJog: 4, relieverFace: 3, bullpen: 3, dugout: 1.5, crowd: 0.7 },
-  break: { aerial: 3, scoreboard: 2.5, crowd: 3, sky: 2, dugout: 1.5, onDeck: 1.5, bullpen: 1, batterFace: 1 },
+  pitchingChange: { managerWalk: 4, bullpenDoor: 2.5, relieverJog: 4, relieverFace: 3, bullpen: 3, moundHuddle: 4, moundWide: 1.5, pitcherFace: 1.5, dugout: 1.5, crowd: 0.7 },
+  break: { infieldDrill: 3.5, outfieldCatch: 2.5, aerial: 3, scoreboard: 2.5, crowd: 3, sky: 2, dugout: 1.5, onDeck: 1.5, bullpen: 1, batterFace: 1 },
   review: { umpires: 5, crowd: 1.5, scoreboard: 1, dugout: 1, batterFace: 1 },
 };
 
@@ -225,6 +235,10 @@ export function availableKinds(s: GameState, lm: Landmarks, flags: { reaction?: 
     subjects.relieverJog = rel.id;
     subjects.relieverFace = rel.id;
   }
+  // the warm-up between innings: balls rolling around the infield, outfielders playing catch
+  const xb = s.extraBalls ?? [];
+  if (xb.some((b) => b.z < 48 && Math.abs(b.x) < 36)) av.add('infieldDrill');
+  if (xb.some((b) => b.z >= 48)) av.add('outfieldCatch');
   const ump = s.players.filter((p) => p.role === 'umpire');
   if (ump.length >= 2) av.add('umpires');
   return { available: av, subjects };
@@ -401,7 +415,7 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       const l = along.length() || 1;
       along.divideScalar(l);
       const out = _c.set(bs.x, 0, bs.z).sub(MOUND).setY(0).normalize();
-      r.pos.copy(rp).addScaledVector(out, 6.5).addScaledVector(_b.set(-along.z, 0, along.x), 1.5 * side).setY(0.8);
+      r.pos.copy(rp).addScaledVector(out, 3.2).addScaledVector(_b.set(-along.z, 0, along.x), 4.6 * side).setY(0.9);
       r.tgt.copy(rp).setY(1.0);
       r.fov = tele(3.8, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(r.tgt);
@@ -490,6 +504,20 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       r.lp = r.lt = r.lf = 20;
       return r;
     }
+    case 'infieldDrill':
+    case 'outfieldCatch': {
+      const deep = shot.kind === 'outfieldCatch';
+      const xb = (s.extraBalls ?? []).filter((b) => (deep ? b.z >= 48 : b.z < 48 && Math.abs(b.x) < 36)).map(sc);
+      const c = xb.length ? xb.reduce((a, b) => a.add(b), new Vector3()).divideScalar(xb.length) : new Vector3(0, 0, deep ? 70 : 28);
+      // from the foul-territory side, low: the balls and the people throwing them
+      r.pos.set(c.x + 16 * side * (deep ? 1.2 : 1), deep ? 2.4 : 2.0, c.z - (deep ? 20 : 13));
+      r.tgt.copy(c).setY(1.0);
+      r.fov = tele(deep ? 22 : 17, r.pos.distanceTo(r.tgt), v.aspect);
+      r.focus.copy(r.tgt);
+      r.slab = deep ? 10 : 7;
+      r.lp = 3; r.lt = 4; r.lf = 4;
+      return r;
+    }
     case 'moundWide': {
       r.pos.set(-7, 9.5, -16);
       r.tgt.set(0, 1.3, MOUND.z);
@@ -516,9 +544,10 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       if (!m) return fallback();
       const mp = sc(m.pos);
       const dir = Math.hypot(m.vel.x, m.vel.z) > 0.3 ? _a.set(m.vel.x, 0, m.vel.z).normalize() : _a.set(Math.sin(m.facing), 0, Math.cos(m.facing));
-      r.pos.copy(mp).addScaledVector(dir, 6.5).addScaledVector(_b.set(-dir.z, 0, dir.x), 1.6 * side).setY(1.4);
-      r.tgt.copy(mp).setY(1.25);
-      r.fov = tele(3.2, r.pos.distanceTo(r.tgt), v.aspect);
+      const pit = mp.y < -0.3; // still in the dugout pit: look down into it from above the rail
+      r.pos.copy(mp).addScaledVector(dir, pit ? 9 : 6.5).addScaledVector(_b.set(-dir.z, 0, dir.x), 1.6 * side).setY(pit ? 3.4 : 1.4);
+      r.tgt.copy(mp).setY(pit ? mp.y + 1.0 : 1.25);
+      r.fov = tele(pit ? 4.5 : 3.2, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(r.tgt);
       r.slab = 2.6;
       r.lp = 6; r.lt = 8; r.lf = 6;
