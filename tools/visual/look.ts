@@ -6,9 +6,10 @@
  *                                [--extra "k=v&k2"] [--no-build] [--url http://host/path/] [--sheet]
  *
  * static: the game runs with a fixed 1/60 s step to game time `--at` (deterministic, so two builds show the same frame), is paused, and every camera
- *         in `--cams` (CAMS below, or a `name:px,py,pz:tx,ty,tz:fov` spec) is shot for every time of day.
+ *         in `--cams` (CAMS below, or a `name:px/py/pz:tx/ty/tz:fov` spec) is shot for every time of day.
  * play:   the auto director runs the game (B-roll, replays, cards) and a picture is taken every `--every` seconds of game time (the sim is paused for it);
  *         the file name carries the director's shot.
+ * --dist DIR serves another build (a saved copy of an older dist/) for before / after pictures.
  * --sheet writes a labelled contact sheet (`_sheet.jpg`, ImageMagick montage) next to the shots.
  */
 import { execFileSync } from 'node:child_process';
@@ -72,7 +73,7 @@ function camSpecs(): ({ name: string; p: V3; t: V3; fov: number; face?: string; 
       return { name: s, ...c, aperture: c.face ? 1.2 : c.slab ? apertureFor(c.crowd !== undefined || c.dugout !== undefined ? 18 : d, c.slab) : 0 };
     }
     const [name, p, t, fov] = s.split(':');
-    return { name, p: p.split(',').map(Number) as V3, t: t.split(',').map(Number) as V3, fov: +fov };
+    return { name, p: p.split('/').map(Number) as V3, t: t.split('/').map(Number) as V3, fov: +fov };
   });
 }
 
@@ -81,8 +82,10 @@ async function main() {
   let url = opt('url', '');
   let stop = () => {};
   if (!url) {
-    build(flag('no-build'));
-    const s = await startPreview();
+    // --dist DIR: serve another build (e.g. a saved copy of the old dist/ for a before / after)
+    const dist = opt('dist', '');
+    if (!dist) build(flag('no-build'));
+    const s = await startPreview(undefined, dist || 'dist');
     url = s.url;
     stop = s.stop;
   }
@@ -179,8 +182,14 @@ async function main() {
         const f = () => (e.liveState.time >= target ? ((e.sim.paused = true), res()) : requestAnimationFrame(f));
         f();
       }), at);
+      const ev = opt('eval', '');
       for (const tod of tods) {
         await page.evaluate((t) => (window as any).engine.setTimeOfDay(t), tod);
+        // --eval: script run in the page before the shots (e.g. "engine.stadium.crowd.startWave()"), then --settle seconds of frames
+        if (ev) {
+          await page.evaluate(ev);
+          await frames(Math.round(+opt('settle', '0') * 60));
+        }
         await frames(20);
         for (const c of camSpecs()) {
           await page.evaluate((c) => {
