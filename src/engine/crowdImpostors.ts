@@ -18,6 +18,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   Vector3,
+  type Texture,
 } from 'three';
 import { WINDOW, type CrowdAtlas } from './crowdAtlas';
 
@@ -36,6 +37,10 @@ export interface ImpostorCrowd {
   setVisible(v: boolean): void;
   /** the wave: x = azimuth (rad, about the point (0, 30) like the sectors), y = angular half-width, z = strength 0..1 */
   wave: Vector3;
+  /** brightness of the fans against the rest of the scene (night: the stands sit darker than the floodlit field) */
+  setGain(g: number): void;
+  /** the game's colours for the fans in team colours (team-neutral atlases only) */
+  setTeams(home: string, away: string): void;
   /** alpha-to-coverage (soft cut-out edges) when the frame buffer is multisampled */
   setMsaa(on: boolean): void;
   readonly meshes: InstancedMesh[];
@@ -52,6 +57,11 @@ export function buildImpostorCrowd(register: (m: MeshStandardMaterial, patch: (s
     uCell: { value: new Vector3(1 / 16, 1 / 8, 4) }, // cellU, cellV, people per row
     uPeople: { value: 32 },
     uWave: { value: new Vector3(0, 0.12, 0) },
+    tCrowdMask: { value: null as Texture | null },
+    uMaskOn: { value: 0 },
+    uGain: { value: 1 },
+    uHome: { value: new Color(1, 1, 1) },
+    uAway: { value: new Color(1, 1, 1) },
   };
   const patch = (s: unknown) => {
     const shader = s as { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string };
@@ -63,7 +73,9 @@ export function buildImpostorCrowd(register: (m: MeshStandardMaterial, patch: (s
         uniform float uTime, uExcite, uAnimate, uPeople;
         uniform vec3 uAtlasGrid, uCell, uWave;
         attribute vec4 aFan; // person, mirror (+-1), random a, random b
-        varying float vFanShade;`,
+        uniform vec3 uHome, uAway;
+        varying float vFanShade;
+        varying vec3 vTeamCol;`,
       )
       // the cell: which person in which pose
       .replace(
@@ -92,7 +104,8 @@ export function buildImpostorCrowd(register: (m: MeshStandardMaterial, patch: (s
           vMapUv = vec2((col + cuv.x) * uCell.x, 1.0 - (row + 1.0 - cuv.y) * uCell.y);
         #endif
         float hop = cheer * uAnimate * (inWave > 0.5 ? 0.0 : 0.06 * abs(sin(t * (6.0 + rb * 3.0) + ra * 20.0)));
-        vFanShade = 0.86 + 0.28 * rb;`,
+        vFanShade = 0.86 + 0.28 * rb;
+        vTeamCol = fract(rb * 13.7) < 0.84 ? uHome : uAway; // a home crowd, with a visiting section`,
       )
       // a cylindrical billboard: x across the camera's view, y up, anchored at the fan's feet
       .replace(
@@ -112,8 +125,16 @@ export function buildImpostorCrowd(register: (m: MeshStandardMaterial, patch: (s
       .replace('#include <project_vertex>', 'vec4 mvPosition = viewMatrix * vec4(bbWorld, 1.0);\ngl_Position = projectionMatrix * mvPosition;')
       .replace('#include <worldpos_vertex>', 'vec4 worldPosition = vec4(bbWorld, 1.0);');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vFanShade;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= vFanShade;');
+      .replace('#include <common>', '#include <common>\nvarying float vFanShade;\nvarying vec3 vTeamCol;\nuniform sampler2D tCrowdMask;\nuniform float uMaskOn;\nuniform float uGain;')
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        diffuseColor.rgb *= vFanShade * uGain;
+        #ifdef USE_MAP
+          // team-neutral atlas: the white shirts / caps take the game's colours
+          if (uMaskOn > 0.5) diffuseColor.rgb *= mix(vec3(1.0), vTeamCol, texture2D(tCrowdMask, vMapUv).r);
+        #endif`,
+      );
   };
   const mat = register(
     new MeshStandardMaterial({ color: new Color(1, 1, 1), roughness: 0.92, metalness: 0, alphaTest: 0.5, side: DoubleSide }),
@@ -194,8 +215,17 @@ export function buildImpostorCrowd(register: (m: MeshStandardMaterial, patch: (s
       sectors = n;
       build();
     },
+    setGain(g) {
+      extra.uGain.value = g;
+    },
+    setTeams(home, away) {
+      extra.uHome.value.set(home);
+      extra.uAway.value.set(away);
+    },
     setAtlas(a) {
       mat.map = a.texture;
+      extra.tCrowdMask.value = a.mask;
+      extra.uMaskOn.value = a.mask ? 1 : 0;
       mat.needsUpdate = true;
       extra.uAtlasGrid.value.set(a.cols, a.rows, a.poses);
       extra.uCell.value.set(a.cellU, a.cellV, Math.floor(a.cols / a.poses));

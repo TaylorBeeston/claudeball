@@ -254,7 +254,7 @@ export class StadiumLights {
     }
     for (const l of this.spill) {
       const d = l.position.distanceTo(l.target.position);
-      l.intensity = t.intensity * 0.1 * ((d * d) / (110 * 110));
+      l.intensity = t.intensity * 0.06 * ((d * d) / (110 * 110));
       l.visible = t.intensity > 0;
     }
     this.coneMat.uniforms.uStrength.value = 0.1 * t.haze;
