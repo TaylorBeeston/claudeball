@@ -22,14 +22,25 @@
     "announcer:test": "tsx tools/announcer/train/web_test.ts ${CB_VOICEPACK:-${CB_DATA_DIR:-${CB_VOICE_DIR:-$HOME/claudeball-voice}}/voicepack}",
     "announcer:pilot": "bash tools/announcer/train/pilot.sh",
     "announcer:clips": "bash tools/announcer/train/run.sh clips",
-    "announcer:test:game": "tsx tools/announcer/train/game_test.ts"
+    "announcer:test:game": "tsx tools/announcer/train/game_test.ts",
+    "perf": "tsx tools/perf/run.ts",
+    "perf:gpu": "tsx tools/perf/run.ts --uncapped",
+    "perf:emu": "tsx tools/perf/run.ts --target emu",
+    "perf:phone": "tsx tools/perf/run.ts --target phone",
+    "perf:report": "tsx tools/perf/report.ts",
+    "perf:check": "tsx tools/perf/check.ts",
+    "assets:derive": "node scripts/derive-assets.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/node": "^26.6.3",
     "@types/three": "^0.186.0",
+    "meshoptimizer": "^1.3.0",
     "onnxruntime-web": "^1.30.0",
     "playwright-core": "^1.63.0",
     "tsx": "^4.23.15",
