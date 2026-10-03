@@ -332,6 +332,8 @@ export interface PuppetLike {
   phase?(p: 'main' | 'shadow' | 'gbuf'): void;
   /** back to full detail at once (warm-up) */
   lodReset?(): void;
+  /** show the simplified geometry (true) or the full one (warm-up uploads both) */
+  useLodGeometry?(on: boolean): void;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
   ballHeld?: boolean;
   /** world position of that ball */

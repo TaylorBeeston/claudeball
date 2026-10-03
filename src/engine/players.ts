@@ -399,6 +399,11 @@ export class PlayerManager {
     for (const pu of this.puppets.values()) pu.phase?.(p);
   }
 
+  /** warm-up: every puppet shows its simplified geometry (or the full one again) */
+  lodGeometry(on: boolean) {
+    for (const pu of this.puppets.values()) pu.useLodGeometry?.(on);
+  }
+
   allPuppets(): IterableIterator<PuppetLike> {
     return this.puppets.values();
   }

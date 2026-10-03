@@ -7,6 +7,8 @@ export const FLAGS = {
   nolod: q.has('nolod'),
   /** shadows and the GTAO prepass draw the puppets' own parts instead of the merged proxy */
   noproxy: q.has('noproxy'),
+  /** small / distant players keep the full-detail meshes */
+  nolodgeo: q.has('nolodgeo'),
   nomatrix: q.has('nomatrix'),
   /** off-screen / tiny puppets are animated in full like everybody else */
   noskip: q.has('noskip'),

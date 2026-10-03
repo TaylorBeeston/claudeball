@@ -91,6 +91,9 @@ export async function rewarm(e: Engine): Promise<void> {
     await e.renderer.compileAsync(e.scene, e.camera);
     await yieldUi();
     drawEverything(e);
+    e.players.lodGeometry(true);
+    drawEverything(e);
+    e.players.lodGeometry(false);
   } finally {
     restore();
   }
@@ -148,6 +151,10 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
     report(0.88, 'Building shaders…');
     await yieldUi();
     drawEverything(e);
+    // the simplified player geometry is uploaded too, so the first small player does not stall a frame
+    e.players.lodGeometry(true);
+    drawEverything(e);
+    e.players.lodGeometry(false);
   } finally {
     restore();
   }
