@@ -73,8 +73,9 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     hemi: [0x8aa0d0, 0x40382a, 0.28],
     lightsOn: true,
     sky: { turbidity: 6, rayleigh: 2.2, mie: 0.006, g: 0.9 },
-    fog: 0xc0907a,
-    fogDensity: 0.0012,
+    // a cool evening haze (the old salmon fog washed the stands and the skyline out to pink)
+    fog: 0x7d7488,
+    fogDensity: 0.0008,
   },
   night: {
     sunDir: [0.3, 0.86, 0.2],
@@ -365,7 +366,7 @@ export class Environment {
     this.scene.environment = this.hdriEnv.texture;
     const t = this.tod;
     this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.7 : 0.12;
-    this.scene.backgroundIntensity = name === 'dusk' ? 0.6 : 1.0;
+    this.scene.backgroundIntensity = name === 'dusk' ? 0.45 : 1.0;
     if (name !== 'night') {
       this.sunDir.copy(sunDir).normalize();
       this.csm.lightDirection.copy(this.sunDir).negate();
