@@ -28,3 +28,6 @@ tools/perf/results/*
 !tools/perf/results/summary-*.md
 dist-dbg/
 dist-prod/
+
+# visual review screenshots (tools/visual/look.ts)
+tools/visual/out/
