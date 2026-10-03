@@ -330,9 +330,14 @@ export class Engine {
       for (const o of this.gbufferHidden) o.visible = false;
       this.players.phase('gbuf');
       this.stadium.crowdVisible(false);
+      // GTAO's prepass is a second `renderer.render`, which would render every shadow map again (the main pass has just done it): no shadows here
+      const sm = this.renderer.shadowMap;
+      const wasAuto = sm.autoUpdate;
+      sm.autoUpdate = false;
       try {
         orig(...args);
       } finally {
+        sm.autoUpdate = wasAuto;
         this.players.phase('main');
         this.stadium.crowdVisible(true);
       }
