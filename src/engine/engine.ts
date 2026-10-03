@@ -28,6 +28,9 @@ import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { installFeather } from './facialHair';
 import { fieldKind, fieldPatch, tagField } from './fieldLook';
+import { buildSurroundings, type Surroundings } from './surroundings';
+
+const NIGHT_OF: Record<TimeOfDay, number> = { day: 0, dusk: 0.45, night: 1 };
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
@@ -251,11 +254,12 @@ export class Engine {
       if (pens.length === 2) this.director.landmarks.bullpens = [pens[0].setY(0), pens[1].setY(0)];
       const sb = centre(a.stadium?.getObjectByName('Scoreboard'));
       if (sb) this.director.landmarks.scoreboard = sb;
-      // ground under the stands / beyond the field mesh
-      const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
-      under.position.y = -0.06;
-      under.receiveShadow = true;
-      this.scene.add(under);
+      // the ground under the stands and the town beyond them (surroundings.ts)
+      const sur = buildSurroundings((m, patch) => this.env.register(m, patch));
+      this.scene.add(sur.group);
+      this.gbufferHidden.push(sur.group);
+      this.surroundings = sur;
+      sur.setNight(NIGHT_OF[this.env.todName]);
     }
     if (a.stadium) {
       this.stadium.adoptGltf(a.stadium as never, a.mirrored);
@@ -473,7 +477,10 @@ export class Engine {
     return c.toDataURL('image/png');
   }
 
+  private surroundings: Surroundings | null = null;
+
   setTimeOfDay(t: TimeOfDay): Promise<void> {
+    this.surroundings?.setNight(NIGHT_OF[t]);
     // the settings store (UI) remembers the choice; the tower lights follow at once, the sky / HDRI when its texture is ready
     this.lights.setTimeOfDay(t);
     return this.env.setTimeOfDay(t);
