@@ -46,6 +46,8 @@ function cbAssets(): Plugin {
     name: 'cb-assets',
     configureServer(server) {
       server.middlewares.use('/assets', (req, res, next) => {
+        // `import x from '../../assets/shipped.json'` is requested as /assets/shipped.json?import: let Vite transform it instead of serving the raw file
+        if (/[?&]import\b/.test(req.url ?? '')) return next();
         const rel = decodeURIComponent((req.url ?? '/').split('?')[0]);
         if (rel === '/asset_sizes.json') {
           res.setHeader('Content-Type', 'application/json');
