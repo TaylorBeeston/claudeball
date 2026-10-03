@@ -78,6 +78,8 @@ export class SimDriver {
   paused = false;
   /** set by the camera director while a replay plays: the live game waits (unlike `paused`, animations keep running) */
   hold = false;
+  /** the most real time a frame may spend stepping the sim before it carries the rest over (the benchmark lifts it, so the game does not depend on frame time) */
+  stepBudgetMs = 10;
   /** true while fast-forwarding to the next half inning; listeners should not cut cameras */
   skipping = false;
 
@@ -162,7 +164,7 @@ export class SimDriver {
   advance(realDt: number): { state: GameState; alpha: number; steps: number } {
     let steps = 0;
     const t0adv = perf.t();
-    const budgetEnd = performance.now() + 10;
+    const budgetEnd = performance.now() + this.stepBudgetMs;
     if (!this.paused && !this.hold) {
       this.acc += Math.min(realDt, 0.1) * this.speed;
       const maxSteps = 600;
