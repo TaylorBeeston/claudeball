@@ -1,0 +1,7 @@
+{
+  "_": "Which player files the game loads (src/engine/assets.ts) and the deploy ships (vite.config.ts). Everything else under assets/optimized/players stays out of dist/.",
+  "players": ["player_base", "player_ballkid", "player_coach", "player_umpire", "player_umpire_base"],
+  "players_1k": ["player_base", "player_ballkid", "player_coach", "player_umpire", "player_umpire_base"],
+  "fallbackPlayers": ["player_home", "player_away", "player_batter", "player_catcher"],
+  "gearFiles": ["player_home", "player_batter", "player_catcher"]
+}

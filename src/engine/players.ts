@@ -353,8 +353,20 @@ export class PlayerManager {
 
   constructor(env: Environment) {
     this.group.name = 'players';
+    // glTF puppets update their own matrices (see `GltfPuppet.update`); the group itself never moves
+    this.group.matrixAutoUpdate = !!new URLSearchParams(location.search).has('nomatrix');
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
   }
+
+  /** puppet level of detail (see `GltfPuppet.updateLod`): set by the engine from the camera's field of view and the quality preset */
+  lodK = 1;
+  lodCut: readonly [number, number] = [0.2, 0.08];
+  /** false while the warm-up draws every variant at full detail */
+  lodEnabled = true;
+  /** the camera's frustum (set by the engine each frame) */
+  frustum: { intersectsSphere(s: import('three').Sphere): boolean } | null = null;
+  /** `?nolod` */
+  lodOff = false;
 
   /** Bat grip empty of the current batter's glTF puppet, if any. */
   batterGrip(state: GameState): Object3D | null {
@@ -382,6 +394,20 @@ export class PlayerManager {
     return (b && this.puppets.get(b.id)?.shoulderCenter?.(out)) || null;
   }
 
+  /** switch every puppet between its normal parts and the shadow / depth proxy (see `GltfPuppet.phase`) */
+  phase(p: 'main' | 'shadow' | 'gbuf') {
+    for (const pu of this.puppets.values()) pu.phase?.(p);
+  }
+
+  /** warm-up: every puppet shows its simplified geometry (or the full one again) */
+  lodGeometry(on: boolean) {
+    for (const pu of this.puppets.values()) pu.useLodGeometry?.(on);
+  }
+
+  allPuppets(): IterableIterator<PuppetLike> {
+    return this.puppets.values();
+  }
+
   /** Drop all puppets (they are recreated with the current factory on the next update). */
   reset() {
     for (const p of this.puppets.values()) p.dispose();
@@ -397,6 +423,9 @@ export class PlayerManager {
     this.penv.makeBall = makeBall;
     this.penv.cameraPos = cameraPos;
     this.penv.makeBat = this.makeBat;
+    this.penv.lodK = this.lodEnabled && !this.lodOff ? this.lodK : undefined;
+    this.penv.lodCut = this.lodCut;
+    this.penv.frustum = this.frustum ?? undefined;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;

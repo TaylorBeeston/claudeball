@@ -303,7 +303,9 @@ export interface Stadium {
   adoptGltf(root: Group, mirrored?: boolean): void;
   /** objects that must not be drawn into the SSAO/DoF depth pass */
   gbufferHidden: Object3D[];
-  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; excite(v: number): void; update(t: number, dt: number): void };
+  /** show / hide every spectator and seat mesh (the GTAO depth/normal prepass skips the crowd: hundreds of draw calls for no visible occlusion) */
+  crowdVisible(v: boolean): void;
+  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; setSectors(n: number): void; excite(v: number): void; update(t: number, dt: number): void };
   updateScoreboard(s: GameState): void;
   setLightsOn(on: boolean): void;
   /** where the lamp banks of the light towers are (scene coordinates); replaced when the glTF stadium is adopted */
@@ -522,6 +524,30 @@ export function buildStadium(env: Environment): Stadium {
   // --- crowd -----------------------------------------------------------------------------------------
   const crowd = buildCrowd(env, group);
   crowd.setMatrices(crowdMatrices(path));
+  // the asset stadium's seat / spectator instancing is split into azimuth sectors (own bounding spheres, so off-screen stands are culled); more sectors
+  // cull better and cost more draw calls, so the quality preset picks the count (`setSectors` re-splits the original instanced meshes)
+  const chunkSets: { orig: InstancedMesh; chunks: InstancedMesh[]; crowd: boolean }[] = [];
+  let wantSectors = 12;
+  const setSectors = (n: number) => {
+    crowd.setSectors(n);
+    if (n === wantSectors) return;
+    wantSectors = n;
+    for (const set of chunkSets) {
+      if (set.crowd) {
+        const dead = new Set<InstancedMesh>(set.chunks);
+        const keep = crowd.extra.filter((e) => !dead.has(e.mesh));
+        crowd.extra.length = 0;
+        crowd.extra.push(...keep);
+      }
+      for (const c of set.chunks) {
+        c.removeFromParent();
+        c.dispose();
+      }
+      set.chunks = chunkInstanced(set.orig, n);
+      if (set.crowd) for (const c of set.chunks) crowd.extra.push({ mesh: c, total: c.count });
+    }
+    crowd.setDensity(crowd.density);
+  };
 
   // crowd cutaway shots: pick a few spots in lower-deck stands looking back across the crowd
   const crowdShots: { pos: Vector3; target: Vector3 }[] = [];
@@ -616,7 +642,7 @@ export function buildStadium(env: Environment): Stadium {
       if (o.name.startsWith('Seats_T')) seatMeshes.push(im);
       else if (o.name.startsWith('Crowd_')) crowdMeshes.push(im);
     });
-    for (const im of seatMeshes) chunkInstanced(im, 24);
+    for (const im of seatMeshes) chunkSets.push({ orig: im, chunks: chunkInstanced(im, wantSectors), crowd: false });
     if (crowdMeshes.length) {
       // the asset pack ships real spectators, but at 35-50% seat fill: keep them and top up empty seats with
       // the lightweight placeholder figures so the stands read as full
@@ -642,7 +668,9 @@ export function buildStadium(env: Environment): Stadium {
       for (const im of crowdMeshes) {
         const mats = (Array.isArray(im.material) ? im.material : [im.material]) as MeshStandardMaterial[];
         for (const m of mats) env.register(m, crowd.patch);
-        for (const c of chunkInstanced(im, 24)) crowd.extra.push({ mesh: c, total: c.count });
+        const cs = chunkInstanced(im, wantSectors);
+        chunkSets.push({ orig: im, chunks: cs, crowd: true });
+        for (const c of cs) crowd.extra.push({ mesh: c, total: c.count });
       }
       crowd.setDensity(crowd.density);
     }
@@ -690,11 +718,16 @@ export function buildStadium(env: Environment): Stadium {
     crowd: {
       setDensity: (d) => crowd.setDensity(d),
       setAnimate: (a) => (crowd.uniforms.uAnimate.value = a ? 1 : 0),
+      setSectors: (n) => setSectors(n),
       excite: (v) => (crowd.uniforms.uExcite.value = v),
       update: (t, dt) => {
         crowd.uniforms.uTime.value = t;
         crowd.uniforms.uExcite.value = Math.max(crowd.baseExcite, crowd.uniforms.uExcite.value - dt * 0.18);
       },
+    },
+    crowdVisible: (v: boolean) => {
+      crowd.setVisible(v);
+      for (const set of chunkSets) for (const c of set.chunks) c.visible = v;
     },
     updateScoreboard,
     setLightsOn: (on: boolean) => {
@@ -820,7 +853,8 @@ function buildCrowd(env: Environment, group: Group) {
     for (const c of chunks) c.body.count = c.head.count = Math.floor(c.total * density);
     for (const e of extraRef) e.mesh.count = Math.max(1, Math.floor(e.total * density));
   };
-  const SECTORS = 24;
+  let SECTORS = 24;
+  let lastMats: Matrix4[] = [];
   const extra = extraRef;
   return {
     uniforms,
@@ -832,6 +866,7 @@ function buildCrowd(env: Environment, group: Group) {
     baseExcite: 0.12,
     /** (Re)build the spectators from seat transforms in world space, in azimuth sectors so off-screen stands are culled. */
     setMatrices(mats: Matrix4[]) {
+      lastMats = mats;
       for (const c of chunks) {
         group.remove(c.body, c.head);
         c.body.dispose();
@@ -875,6 +910,18 @@ function buildCrowd(env: Environment, group: Group) {
     setDensity(d: number) {
       density = d;
       applyDensity();
+    },
+    /** how many azimuth sectors the placeholder spectators are split into (fewer = fewer draw calls, coarser culling) */
+    setSectors(n: number) {
+      if (n === SECTORS) return;
+      SECTORS = n;
+      if (lastMats.length) this.setMatrices(lastMats);
+    },
+    get sectors() {
+      return SECTORS;
+    },
+    setVisible(v: boolean) {
+      for (const c of chunks) c.body.visible = c.head.visible = v;
     },
   };
 }

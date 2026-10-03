@@ -72,6 +72,8 @@ export interface DirectorOutput {
 
 export class CameraDirector {
   auto = true;
+  /** the benchmark runner's scripted camera (null = the director decides) */
+  bench: { pos: Vector3; tgt: Vector3; fov: number; aperture: number } | null = null;
   /** [3B side (+X), 1B side (−X)] camera/target pairs aimed at the real dugouts */
   dugoutShots: { pos: Vector3; target: Vector3 }[] = [];
   replaysEnabled = true;
@@ -454,6 +456,21 @@ export class CameraDirector {
 
     let rs = live;
     let label: string | null = null;
+    if (this.bench) {
+      // benchmark: a scripted static camera (the auto director keeps handling the sim's events, but does not move the camera)
+      const b = this.bench;
+      this.pos.copy(b.pos);
+      this.tgt.copy(b.tgt);
+      this.camera.position.copy(b.pos);
+      this.camera.lookAt(b.tgt);
+      if (this.camera.fov !== b.fov || this.camera.near !== 0.3) {
+        this.camera.fov = b.fov;
+        this.camera.near = 0.3;
+        this.camera.far = 700;
+        this.camera.updateProjectionMatrix();
+      }
+      return { renderState: live, focus: b.pos.distanceTo(b.tgt), aperture: b.aperture, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
+    }
     if (!this.auto) {
       this.orbit.update();
       this.tgt.copy(this.orbit.target);
