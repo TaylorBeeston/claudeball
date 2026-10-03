@@ -1,7 +1,7 @@
 import {
   Frustum,
   Matrix4,
-  NeutralToneMapping,
+  ACESFilmicToneMapping,
   Object3D,
   PerspectiveCamera,
   Quaternion,
@@ -27,6 +27,7 @@ import { ContactShadows } from './contactShadows';
 import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { installFeather } from './facialHair';
+import { fieldKind, fieldPatch, tagField } from './fieldLook';
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
@@ -120,7 +121,8 @@ export class Engine {
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = SRGBColorSpace;
     // Khronos PBR Neutral: keeps the hue and saturation of albedo (ACES pushed lit skin to a pale cream); the contrast comes from the grade pass
-    this.renderer.toneMapping = NeutralToneMapping;
+    // ACES: natural grass / dirt / skin with a filmic shoulder (Neutral read bright and cartoony, AgX flat; A/B in the t-0013 report)
+    this.renderer.toneMapping = ACESFilmicToneMapping;
     installCharacterShading();
     installFeather();
     this.renderer.shadowMap.enabled = true;
@@ -218,7 +220,13 @@ export class Engine {
       this.scene.add(a.field);
       a.field.traverse((o) => {
         const m = o as Mesh;
-        if (m.isMesh) for (const mt of Array.isArray(m.material) ? m.material : [m.material]) this.env.register(mt as MeshStandardMaterial);
+        if (!m.isMesh) return;
+        for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
+          // clay / lawn / track look on top of the asset textures (fieldLook.ts)
+          const kind = fieldKind(mt.name);
+          if (kind) tagField(mt, kind);
+          this.env.register(mt as MeshStandardMaterial, kind ? fieldPatch(kind) : undefined);
+        }
       });
       // dugout cutaway cameras from the real dugout nodes: 9 m out on the field side, looking in
       for (const name of ['Dugout_3B', 'Dugout_1B']) {
