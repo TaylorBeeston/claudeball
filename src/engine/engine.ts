@@ -31,6 +31,7 @@ import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
+import { buildCrowdAtlas, type AtlasPuppet, type CrowdAtlas } from './crowdAtlas';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 import { perf } from './perf';
@@ -45,6 +46,8 @@ export interface EngineOptions {
   /** innings / chosen teams for the sim (the menu's game setup) */
   simConfig?: SimConfig;
 }
+
+const fract = (x: number) => x - Math.floor(x);
 
 /** Farthest knob-to-shoulder distance (m) the batter's arms can plausibly cover: arm length plus IK slack. */
 const BAT_REACH_MAX = 0.95;
@@ -283,6 +286,7 @@ export class Engine {
   newGame(seed: number, cfg: SimConfig = {}) {
     this.sim.load(seed, cfg);
     this.players.reset();
+    this.updateCrowd();
     this.director.reset();
     this.hud?.reset();
     this.live = this.sim.state;
@@ -392,6 +396,7 @@ export class Engine {
     setShadingQuality(name, this.quality.msaa > 0);
     setJerseyQuality(name);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
+    if (this.stadium.impostors) this.updateCrowd();
     this.adaptive.full();
     this.loadApplied = -1;
     this.applyLoad();
@@ -413,6 +418,48 @@ export class Engine {
     this.stadium.crowd.setAnimate(q.crowdAnimate && fx.crowdAnimate);
     this.post.setNoAo(fx.noAo);
     this.env.setFarShadowEvery(fx.farShadowEvery);
+  }
+
+  /** spectators rendered from the player model (see `crowdAtlas.ts`); rebuilt when the teams change */
+  crowdAtlas: CrowdAtlas | null = null;
+  private crowdAtlasKey = '';
+
+  /** (Re)build the crowd atlas for the current teams; cheap when nothing changed. false when there are no glTF players to render. */
+  refreshCrowdAtlas(): boolean {
+    const t = this.sim.state.teams;
+    const size = this.coarse || this.qualityName === 'low' ? 1024 : 2048;
+    const key = `${t.home.color}|${t.home.trim}|${t.away.color}|${size}`;
+    if (key === this.crowdAtlasKey && this.crowdAtlas) return true;
+    const atlas = buildCrowdAtlas(this.renderer, (s) => this.players.makePuppet(s) as unknown as AtlasPuppet, t, { size, environment: this.scene.environment });
+    if (!atlas) return false;
+    this.crowdAtlas?.dispose();
+    this.crowdAtlas = atlas;
+    this.crowdAtlasKey = key;
+    return true;
+  }
+
+  /** fill the stands with the billboard crowd for the current teams (no-op without glTF players: the placeholder figures stay) */
+  updateCrowd() {
+    if (FLAGS.oldcrowd || !this.assets?.characters.size) return;
+    if (this.refreshCrowdAtlas() && this.crowdAtlas) this.stadium.useCrowdAtlas(this.crowdAtlas, this.quality.msaa > 0);
+  }
+
+  /** dev: the crowd atlas as a PNG data URL */
+  crowdAtlasPng(): string | null {
+    const a = this.crowdAtlas;
+    if (!a) return null;
+    const img = a.texture.image as { width: number; height: number };
+    const w = img.width, h = img.height;
+    const buf = new Uint8Array(w * h * 4);
+    this.renderer.readRenderTargetPixels(a.target, 0, 0, w, h, buf);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d')!;
+    const id = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) id.data.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    g.putImageData(id, 0, 0);
+    return c.toDataURL('image/png');
   }
 
   setTimeOfDay(t: TimeOfDay): Promise<void> {
@@ -601,6 +648,8 @@ export class Engine {
     if ((this.sbTimer -= dt) < 0) {
       this.sbTimer = 0.3;
       this.stadium.updateScoreboard(state);
+      // now and then in the late innings the stands start a wave (between plays, not on replays)
+      if (state.inning >= 5 && !this.batted && !out.replaying && !this.sim.paused && fract(Math.sin(Math.floor(state.time * 3.3) * 12.9898) * 43758.5453) < 0.3 / 240) this.stadium.crowd.startWave();
     }
     if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);

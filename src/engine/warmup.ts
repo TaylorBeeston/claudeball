@@ -133,6 +133,11 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
   e.tick(1 / 60, false); // builds every puppet (and swaps nothing visible: the canvas is hidden)
   lap('players');
 
+  report(0.7, 'Filling the stands…');
+  await yieldUi();
+  e.updateCrowd();
+  lap('crowd');
+
   report(0.72, 'Uploading textures…');
   const tex = [...sceneTextures(e.scene)];
   for (let i = 0; i < tex.length; i++) {

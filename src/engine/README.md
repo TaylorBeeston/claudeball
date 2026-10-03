@@ -34,6 +34,7 @@ interpolates snapshots for rendering, records 30 s of history (used for replays)
 | `cameraDirector.ts` | broadcast shots: pitch (CF cam), follow, fielder, base, action (ball + throw + runners), home-run sequence (wall → crowd → trot → plate → replay from a second angle), replay (slow-mo from history), cutaways |
 | `hud.ts` | DOM/CSS: scorebug, pitch tracker, name cards, exit velo/LA/distance, ticker, controls |
 | `quality.ts` | presets + adaptive resolution scale |
+| `crowdAtlas.ts`, `crowdImpostors.ts` | the stands' spectators: 32 fans rendered from the player model (faces, hair, caps, team-coloured shirts; seated / clapping / arms up / waving) into an atlas once per game (~100 ms, 2048 px; 1024 on phones / Low), drawn as camera-facing instanced billboards, one draw call per stand sector; excitement stands fans up, `crowd.startWave()` runs the wave; `?oldcrowd` = the previous box / capsule figures |
 | `mockSim.ts` | dev-only mock game with real ball flight and chasing fielders |
 
 ## Sky / lighting

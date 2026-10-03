@@ -1859,6 +1859,45 @@ export class GltfPuppet implements PuppetLike {
     apply(head, neckHeadYaw * 0.6, hl.pitch * 0.6);
   }
 
+  /**
+   * A still picture of this person for an off-screen render (the crowd atlas, `crowdAtlas.ts`): plain clothes instead of the role's gear (no glove,
+   * decals, numbers, belt or eye black), a cap or the given hair style, the clip held at time `t`, the model at the origin facing +Z at full detail.
+   * Returns false when the clip does not exist. Only for puppets that never join the game.
+   */
+  poseStill(clip: string, t: number, o: { cap: boolean; hair?: string; jersey?: string }): boolean {
+    const a = this.actions.get(clip);
+    if (!a) return false;
+    const show = (name: string, on: boolean) => {
+      const n = this.nodes.get(name);
+      if (n) n.visible = on;
+    };
+    for (const [name, n] of this.nodes) {
+      if (/^(Gear_Glove|Gear_Number_|Gear_Belt|Gear_EyeBlack|Gear_Helmet|Gear_Wristband|Gear_ArmSleeve|Gear_CatcherMask|Gear_ChestProtector|Gear_ShinGuard|Gear_LineupCard|Gear_Jacket|Hand_L_Open|Hand_R_Ball|Jersey_.*Decal|Gear_Hair)/.test(name)) n.visible = false;
+    }
+    show('Hand_L', true);
+    show('Hand_R', true);
+    show('Gear_Cap', o.cap);
+    if (!o.cap) show(o.hair ?? this.look?.hairNode ?? 'Gear_Hair', true);
+    if (o.jersey) for (const n of JERSEY_NODES) show(n, n === o.jersey);
+    // a t-shirt shows bare arms
+    if (o.jersey === 'Jersey_ShortSleeve') show('Undershirt', false);
+    for (const c of this.cornea) c.visible = true;
+    this.mixer.stopAllAction();
+    a.reset();
+    a.enabled = true;
+    a.setEffectiveWeight(1);
+    a.play();
+    a.time = Math.min(t, a.getClip().duration - 1e-3);
+    this.mixer.update(0);
+    this.model.scale.setScalar(this.bodyScale);
+    this.root.position.set(0, 0, 0);
+    this.root.rotation.set(0, 0, 0);
+    this.root.matrixWorldAutoUpdate = true;
+    this.root.updateMatrixWorld(true);
+    for (const m of this.meshes) m.frustumCulled = false;
+    return true;
+  }
+
   dispose() {
     this.ballObj?.removeFromParent();
     this.mixer.stopAllAction();
