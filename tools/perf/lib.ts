@@ -52,10 +52,17 @@ export function build(reuse: boolean) {
   execFileSync('npx', ['vite', 'build'], { cwd: ROOT, stdio: 'inherit' });
 }
 
+/** an unminified build in dist-dbg/ (readable function names in profiles) */
+export function buildDebug(reuse: boolean) {
+  if (reuse && fs.existsSync(path.join(ROOT, 'dist-dbg/index.html'))) return;
+  console.log('[perf] building (unminified, dist-dbg)...');
+  execFileSync('npx', ['vite', 'build', '--minify', 'false', '--outDir', 'dist-dbg'], { cwd: ROOT, stdio: 'inherit' });
+}
+
 /** `vite preview` on a free port, listening on all interfaces so `adb reverse` / LAN devices can reach it */
-export async function startPreview(port?: number): Promise<{ url: string; port: number; stop: () => void }> {
+export async function startPreview(port?: number, outDir = 'dist'): Promise<{ url: string; port: number; stop: () => void }> {
   const p = port ?? (await freePort());
-  const child = spawn('npx', ['vite', 'preview', '--host', '0.0.0.0', '--port', String(p), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  const child = spawn('npx', ['vite', 'preview', '--host', '0.0.0.0', '--port', String(p), '--strictPort', '--outDir', outDir], { cwd: ROOT, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try {
       const r = await fetch(`http://127.0.0.1:${p}/`);
