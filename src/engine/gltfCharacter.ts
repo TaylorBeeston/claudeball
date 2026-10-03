@@ -3,6 +3,7 @@
  * hints through an AnimationMixer. Root motion is the sim's position; head lookAt and arm IK
  * (batter's hands to the sim's bat) are applied on top of the mixer output each frame.
  */
+import { FEATHERED, addEdgeAttribute } from './facialHair';
 import {
   AnimationAction,
   AnimationMixer,
@@ -231,8 +232,21 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     } else m = b.clone();
     m.userData = {};
     if (skin) shadeSkin(m);
-    if (name === 'hair' || name === 'stubble') shadeHair(m);
+    if (name === 'hair_beard') {
+      // the beard / mustache / goatee shells fade out over their last millimetres (see facialHair.ts) instead of ending in a hard line
+      m.alphaTest = 0.4;
+      (m.defines ??= {}).CB_FEATHER = '0.011';
+    }
+    if (name === 'stubble') {
+      m.transparent = true;
+      m.depthWrite = false;
+      shadeHair(m, false, false);
+    }
+    if (name === 'hair_beard') shadeHair(m, true, false);
+    if (name === 'hair') shadeHair(m);
     m.color = new Color(color);
+    // the fibre texture is dark on top of the hair colour: a beard read as a black mask; lift it toward the scalp hair's value
+    if (name === 'hair_beard') m.color.multiplyScalar(1.6);
     reg(m);
     matCache.set(key, m);
   }
@@ -421,6 +435,13 @@ function proxyGeometry(tpl: object, key: string, parts: SkinnedMesh[], ref: Skin
   return merged;
 }
 
+/** metres per geometry unit of a (possibly quantized) mesh: its bind matrix's scale, over the model's own (the player's height) */
+function edgeUnit(m: Mesh): number {
+  const sk = m as SkinnedMesh;
+  const k = sk.isSkinnedMesh ? sk.bindMatrix.getMaxScaleOnAxis() : m.matrixWorld.getMaxScaleOnAxis();
+  return k > 0 ? k : 1;
+}
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   /** (set in the constructor) this puppet's matrices are updated by the puppet itself, not by the scene-wide pass in `renderer.render` */
@@ -537,12 +558,14 @@ export class GltfPuppet implements PuppetLike {
       }
     }
     this.setCullBounds();
+    for (const m of this.meshes) if (FEATHERED.test(m.name)) addEdgeAttribute(m.geometry, edgeUnit(m));
     for (const m of this.meshes) {
       const t = LOD_TIER1.test(m.name) ? 1 : LOD_TIER2.test(m.name) ? 2 : 0;
       if (t) this.lodParts.push({ m, tier: t });
       // the simplified geometry (same mesh names, skeleton, uv layout and morph targets; a third of the triangles) for the small / distant tiers
       const lg = tpl.lodGeo?.get(m.name);
       const sk = m as SkinnedMesh;
+      if (lg && FEATHERED.test(m.name)) addEdgeAttribute(lg, edgeUnit(m));
       if (lg && sk.isSkinnedMesh && m.name !== 'Eyes_Cornea' && lg.morphAttributes.position?.length === m.geometry.morphAttributes.position?.length) this.lodSwap.push({ m, full: m.geometry, lod: lg });
     }
     this.rig = new Rig(this.model);
@@ -783,7 +806,9 @@ export class GltfPuppet implements PuppetLike {
     // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
     const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
     for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
-    for (const n of FACIAL_NODES) show(n, n === L.facialNode && role !== 'ballkid');
+    // the mustache and goatee shells are flat dark bars over the lip / chin (asset shape; reported): stubble stands in for them until they are reshaped
+    const facial = L.facialNode === 'Gear_Mustache' || L.facialNode === 'Gear_Goatee' ? 'Gear_Beard_Stubble' : L.facialNode;
+    for (const n of FACIAL_NODES) show(n, n === facial && role !== 'ballkid');
     show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
     // arms
     if (!own) {
@@ -835,6 +860,7 @@ export class GltfPuppet implements PuppetLike {
     if (L) {
       map.hair = L.hairColor;
       map.stubble = L.hairColor;
+      map.hair_beard = L.hairColor;
       map.wristband = trimOf(L.wristbandColor);
       map.arm_sleeve = trimOf(L.sleeveColor);
       map.batting_glove = L.battingGlove;
