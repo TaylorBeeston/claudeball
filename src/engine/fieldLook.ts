@@ -77,3 +77,34 @@ export function fieldPatch(kind: Kind): (s: unknown) => void {
 export function tagField(m: Material, kind: Kind) {
   m.customProgramCacheKey = () => `cb-field-${kind}`;
 }
+
+/**
+ * Material fixes by name for the park's own pieces (applied when the field / stadium glTF is adopted): dugout interiors were near-black boxes, the
+ * roofs flat light-grey slabs, and the lamp banks black from behind (their emissive panels are double-sided; the back is now a grey housing).
+ */
+export function tuneParkMaterial(m: Material): ((shader: unknown) => void) | undefined {
+  const s = m as Material & { color?: { setRGB(r: number, g: number, b: number): void; multiplyScalar(k: number): void }; emissive?: { setRGB(r: number, g: number, b: number): void }; roughness?: number; metalness?: number };
+  const n = m.name.replace(/\.\d+$/, '');
+  if (n === 'dugout_interior') {
+    s.color?.setRGB(0.2, 0.19, 0.18);
+    s.emissive?.setRGB(0.035, 0.032, 0.028); // the dugout's own lights
+  } else if (n === 'dugout_roof') {
+    s.color?.setRGB(0.07, 0.075, 0.085);
+    s.roughness = 0.75;
+  } else if (n === 'dugout_concrete') {
+    s.color?.multiplyScalar(0.72);
+  } else if (n === 'stadium_light') {
+    m.customProgramCacheKey = () => 'cb-lamp-bank';
+    s.metalness = 0.3;
+    m.needsUpdate = true;
+    // returned as the patch for Environment.register (which owns onBeforeCompile for the cascaded shadows)
+    return (shader: unknown) => {
+      const sh = shader as { fragmentShader: string };
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <color_fragment>', '#include <color_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb = vec3(0.3, 0.31, 0.33);')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (!gl_FrontFacing) totalEmissiveRadiance = vec3(0.0);');
+    };
+  }
+  m.needsUpdate = true;
+  return undefined;
+}
