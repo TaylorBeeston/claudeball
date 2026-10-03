@@ -45,3 +45,26 @@ Blender work (14, possibly a rendered crowd atlas later) only after asking the c
 ## Tool
 `npx tsx tools/visual/look.ts --help`-style usage is in the file header: `--mode static|play|ui`, `--tod day,dusk,night`, `--quality`, `--cams`,
 `--emu 390x844@3`, `--sheet` (ImageMagick contact sheet).
+
+## Status (end of the first pass, 2026-10-03)
+
+| # | status | commit(s) |
+|---|---|---|
+| 1 crowd | done: billboard fans from an atlas of the player model, pre-baked and team-neutral (`public/crowd/`), excitement / the wave, fuller at every tier, fewer calls | 3fa5633, 88159d6 |
+| 2 faces | done in the engine: stubble was a solid black beard (now a translucent film), beards feathered, DoF reads full-res scene depth, B-roll close-ups blur the background. Left for the assets thread: mustache / goatee shells are bars (stubble stands in), thin light streaks / fins at the neck of `Body_Skin` / `Head` in close-ups | 16e56bc, 27db0ea |
+| 3 night sky | done | 16e56bc |
+| 4 surroundings | done: plaza, parking lots, ring road, skyline (lit at night) | b7c7c88 |
+| 5 net | done: dark thin cord | 27db0ea |
+| 6 colour | done: ACES, clay / lawn / track look, less aberration | 0ebdab4 |
+| 7 dugouts | done: dark roofs, lit interiors | 22a7b50 |
+| 8 towers | done: grey lamp-bank backs, glare only from the front; fixed an AO bug that painted a dark slab over the sky behind every tower | 22a7b50 |
+| 9 jersey font | done: Anton (OFL) shipped; decals now also show in the telephoto pitch cam | 04c5563, e608a1b |
+| 10 concrete | partly: bowl concrete darker; no roof / canopy added | 88159d6 |
+| 11 night look | partly: stands darker than the field, less spill; no per-corner falloff work | 88159d6 |
+| 12 dusk | done: cooler haze, deeper sky | 7edef8b |
+| 13 player gear | partly: catcher gear in team colours; glove / helmet materials untouched | 11b83f7 |
+| 14 chalk through the plate | not done (field.glb, Blender) | |
+| 15 Low / Medium | covered: fuller crowd; phone-proxy A/B shows no fps / JS change | |
+| also | aerial B-roll camera was behind the upper deck (half the frame black) | d9c9f8a |
+
+Not yet looked at closely: replay presentation and transitions, motion blur on fast pans, animation contact issues (feet sliding, glove clipping), the menu fly-around with the new surroundings on a real phone.
