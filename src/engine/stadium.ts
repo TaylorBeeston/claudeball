@@ -28,6 +28,7 @@ import {
 import { DIM, wallDistance } from './dims';
 import type { Environment } from './environment';
 import type { GameState } from './types';
+import { tuneParkMaterial } from './fieldLook';
 import { buildImpostorCrowd, type ImpostorCrowd } from './crowdImpostors';
 import type { CrowdAtlas } from './crowdAtlas';
 
@@ -312,6 +313,8 @@ export interface Stadium {
   useCrowdAtlas(atlas: CrowdAtlas, msaa: boolean): void;
   /** the billboard crowd once an atlas is in use (null before) */
   impostors: ImpostorCrowd | null;
+  /** lamp glare only toward the side the lamps face (from behind a tower there is no glare) */
+  updateGlare(camera: Vector3): void;
   updateScoreboard(s: GameState): void;
   setLightsOn(on: boolean): void;
   /** where the lamp banks of the light towers are (scene coordinates); replaced when the glTF stadium is adopted */
@@ -536,6 +539,7 @@ export function buildStadium(env: Environment): Stadium {
   let crowdDensity = 1;
   let crowdShown = true;
   let waveLeft = 0;
+  const tmpA = new Vector3(), tmpB = new Vector3(), tmpC = new Vector3();
   const WAVE_TIME = 34;
   // the asset stadium's seat / spectator instancing is split into azimuth sectors (own bounding spheres, so off-screen stands are culled); more sectors
   // cull better and cost more draw calls, so the quality preset picks the count (`setSectors` re-splits the original instanced meshes)
@@ -581,7 +585,7 @@ export function buildStadium(env: Environment): Stadium {
   const gltfGlares: Sprite[] = [];
   const applyLights = () => {
     setLightsOn(lightsState);
-    for (const g of gltfGlares) (g.material as SpriteMaterial).opacity = lightsState ? 0.85 : 0;
+    for (const g of gltfGlares) (g.material as SpriteMaterial).opacity = lightsState ? 0.85 * (g.userData.facing ?? 1) : 0;
     gltfLamps.forEach((m, i) => (m.emissiveIntensity = lightsState ? gltfLampBase[i] : 0.03));
   };
   const adoptGltf = (root: Group, mirrored = false) => {
@@ -599,7 +603,7 @@ export function buildStadium(env: Environment): Stadium {
       if (!m.isMesh) return;
       const mats = (Array.isArray(m.material) ? m.material : [m.material]) as MeshStandardMaterial[];
       for (const mt of mats) {
-        env.register(mt);
+        env.register(mt, tuneParkMaterial(mt));
         if (mt.transparent) gbufferHidden.push(m);
         if (o.name.endsWith('_Lamps')) lampSet.add(mt);
         if (o.name === 'Scoreboard_Screen') {
@@ -733,6 +737,18 @@ export function buildStadium(env: Environment): Stadium {
     group,
     structure,
     gbufferHidden,
+    updateGlare: (cam: Vector3) => {
+      if (!lightsState) return;
+      for (const g of gltfGlares) {
+        // the banks aim at the field: compare the camera's direction with the aim (lamp -> middle of the park)
+        g.getWorldPosition(tmpC);
+        const aim = tmpA.set(0, 0, 40).sub(tmpC).normalize();
+        const view = tmpB.copy(cam).sub(tmpC).normalize();
+        const k = Math.min(1, Math.max(0, (aim.dot(view) + 0.15) / 0.5));
+        g.userData.facing = k * k * (3 - 2 * k);
+        (g.material as SpriteMaterial).opacity = 0.85 * g.userData.facing;
+      }
+    },
     get impostors() {
       return impostors;
     },

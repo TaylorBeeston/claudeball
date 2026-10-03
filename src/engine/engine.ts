@@ -27,7 +27,7 @@ import { ContactShadows } from './contactShadows';
 import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { installFeather } from './facialHair';
-import { fieldKind, fieldPatch, tagField } from './fieldLook';
+import { fieldKind, fieldPatch, tagField, tuneParkMaterial } from './fieldLook';
 import { buildSurroundings, type Surroundings } from './surroundings';
 
 const NIGHT_OF: Record<TimeOfDay, number> = { day: 0, dusk: 0.45, night: 1 };
@@ -226,9 +226,10 @@ export class Engine {
         if (!m.isMesh) return;
         for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
           // clay / lawn / track look on top of the asset textures (fieldLook.ts)
+          const tuned = tuneParkMaterial(mt);
           const kind = fieldKind(mt.name);
           if (kind) tagField(mt, kind);
-          this.env.register(mt as MeshStandardMaterial, kind ? fieldPatch(kind) : undefined);
+          this.env.register(mt as MeshStandardMaterial, kind ? fieldPatch(kind) : tuned);
         }
       });
       // dugout cutaway cameras from the real dugout nodes: 9 m out on the field side, looking in
@@ -262,7 +263,11 @@ export class Engine {
       sur.setNight(NIGHT_OF[this.env.todName]);
     }
     if (a.stadium) {
+      const before = this.stadium.gbufferHidden.length;
       this.stadium.adoptGltf(a.stadium as never, a.mirrored);
+      // what the glTF stadium adds (lamp glare sprites, the backstop net) must stay out of the AO prepass too: the list was copied at construction,
+      // and the prepass's override material draws an invisible sprite as an opaque square (a dark AO column in the sky behind every light tower)
+      this.gbufferHidden.push(...this.stadium.gbufferHidden.slice(before));
       this.lights.setTowers(this.stadium.towers);
     }
     if (a.ball) this.ball.useModel(a.ball, this.env);
@@ -694,6 +699,7 @@ export class Engine {
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
     if (perf.on) perf.lap('post-setup');
     this.stadium.crowd.update(this.time, dt);
+    this.stadium.updateGlare(this.camera.position);
     if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
