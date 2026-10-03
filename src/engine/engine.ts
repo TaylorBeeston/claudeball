@@ -24,7 +24,9 @@ import { CameraDirector } from './cameraDirector';
 import { Hud } from './hud';
 import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
+import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
+import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
@@ -60,11 +62,15 @@ export class Engine {
   lightShadowCap?: number;
   readonly lights: StadiumLights;
   readonly contact = new ContactShadows();
+  /** camera cuts, replays, graphics and featured shots, for audio and the HUD (see README, `BroadcastEvent`) */
+  readonly broadcast = new Broadcast();
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
   private tossBall: Object3D | null = null;
   /** a foul ball on the ground / in flight with nobody holding it, and the bat the hitter dropped (both from the sim) */
   private deadBallObj: Object3D | null = null;
+  /** the show-only balls of the warm-up between innings (the sim's `extraBalls`) */
+  private extraBallObjs: Object3D[] = [];
   private droppedBat: Object3D | null = null;
   readonly adaptive = new AdaptiveScale();
   readonly sim: SimDriver;
@@ -147,6 +153,10 @@ export class Engine {
     if (perf.on) this.attachPerf();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
+    this.director.onBroadcast = (e) => {
+      this.broadcast.emit(e);
+      this.sim.emit({ type: 'broadcast', event: e });
+    };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
 
     this.hud =
@@ -245,7 +255,7 @@ export class Engine {
         // every player is built from the full base file (all hair / beard / accessory variants, morph targets) and configured per role and
         // per person; umpires keep their fixed dark outfit; files without the variants fall back to the role-specific ones
         const base = a.characters.get('player_base');
-        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' ? 'player_coach' : null;
+        const own = snap.role === 'ballkid' ? 'player_ballkid' : snap.role === 'coach1b' || snap.role === 'coach3b' || snap.role === 'batboy' || snap.role === 'manager' || snap.role === 'pitchcoach' ? 'player_coach' : null;
         const name = own && a.characters.has(own) ? own : snap.role === 'umpire' ? (snap.position && snap.position !== 'HP' && a.characters.has('player_umpire_base') ? 'player_umpire_base' : 'player_umpire') : base?.full ? 'player_base' : templateNameFor(snap);
         const tpl = a.characters.get(name) ?? base;
         return tpl ? new GltfPuppet(tpl, snap, a.gear, a.manifest) : new Puppet(snap.id);
@@ -380,6 +390,7 @@ export class Engine {
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
+    setJerseyQuality(name);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
     this.adaptive.full();
     this.loadApplied = -1;
@@ -428,7 +439,13 @@ export class Engine {
       this.tossBall.visible = false;
       this.scene.add(this.tossBall);
     }
-    return [this.deadBallObj, this.droppedBat, this.tossBall];
+    while (this.extraBallObjs.length < 8) {
+      const o = this.ball.makeHandBall();
+      o.visible = false;
+      this.scene.add(o);
+      this.extraBallObjs.push(o);
+    }
+    return [this.deadBallObj, this.droppedBat, this.tossBall, ...this.extraBallObjs];
   }
 
   /** the sim's dead foul ball and the dropped bat, drawn where they lie (a ball a kid carries is in his hand instead) */
@@ -442,6 +459,22 @@ export class Engine {
     if (this.deadBallObj) {
       this.deadBallObj.visible = showBall;
       if (showBall) this.deadBallObj.position.set(db!.pos.x, Math.max(0.037, db!.pos.y), db!.pos.z);
+    }
+    const xb = rs.extraBalls ?? [];
+    for (let i = 0; i < Math.max(xb.length, this.extraBallObjs.length); i++) {
+      if (i >= xb.length) {
+        if (this.extraBallObjs[i]) this.extraBallObjs[i].visible = false;
+        continue;
+      }
+      if (!this.extraBallObjs[i]) {
+        if (this.extraBallObjs.length >= 8) break;
+        const o = this.ball.makeHandBall();
+        this.scene.add(o);
+        this.extraBallObjs.push(o);
+      }
+      const o = this.extraBallObjs[i];
+      o.visible = true;
+      o.position.set(xb[i].x, Math.max(0.037, xb[i].y), xb[i].z);
     }
     const d = rs.bat.dropped;
     if (d && !this.droppedBat) {
