@@ -7,11 +7,12 @@ from mathutils.bvhtree import BVHTree
 
 # name: kind, centre, size (width, height in metres) and the recommended texture size (same aspect as the patch)
 DECALS = {
- "Jersey_BackNameDecal":     dict(kind="back",   c=(0.0, 1.405),  size=(.40, .10),   arch=.50, tex=(1024, 256), mat="jersey_decal_name"),
+ "Jersey_BackNameDecal":     dict(kind="back",   c=(0.0, 1.41),  size=(.36, .09),   arch=.45, tex=(1024, 256), mat="jersey_decal_name"),
  "Jersey_BackNumberDecal":   dict(kind="back",   c=(0.0, 1.185),  size=(.25, .25),   arch=0.0, tex=(512, 512),  mat="jersey_decal_backnum"),
  "Jersey_FrontNumberDecal":  dict(kind="front",  c=(-.085, 1.365), size=(.14, .14),  arch=0.0, tex=(256, 256),  mat="jersey_decal_frontnum"),
  "Jersey_SleeveNumberDecal": dict(kind="sleeve", s=.52,           size=(.085, .085), arch=0.0, tex=(128, 128),  mat="jersey_decal_sleevenum"),
 }
+RT = .16; AX = 0.0                                                               # torso radius / axis y used for the wrap (build frame, back = +y)
 def _bvh(obj):
     bm = bmesh.new(); bm.from_mesh(obj.data); t = BVHTree.FromBMesh(bm); bm.free(); return t
 def build_decal(name, jersey, spec, off=.001, nu=None, nv=6):
@@ -35,7 +36,8 @@ def build_decal(name, jersey, spec, off=.001, nu=None, nv=6):
                 else:
                     px = spec["c"][0] + ((.5 - u)*W if kind == "back" else (u - .5)*W); pz = spec["c"][1] + (v - .5)*H
                 if R: px += spec["c"][0]
-                org = Vector((px, .6 if kind == "back" else -.6, pz)); d = Vector((0, -1, 0)) if kind == "back" else Vector((0, 1, 0))
+                phi = px/RT                                                                       # wrap round the torso: rays go radially toward the torso axis (parallel rays slide along the steep sides)
+                sg = 1.0 if kind == "back" else -1.0; org = Vector((math.sin(phi)*.6, sg*math.cos(phi)*.6 + AX, pz)); d = Vector((-math.sin(phi), -sg*math.cos(phi), 0.0))
             loc, n, idx, dist = bvh.ray_cast(org, d)
             if loc is None: miss += 1; loc, n = org + d*.45, -d
             nrm_sum += n; row.append((bm.verts.new(loc + n.normalized()*off), u, v))
