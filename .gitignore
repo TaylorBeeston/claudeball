@@ -26,3 +26,4 @@ work/
 tools/perf/results/*
 !tools/perf/results/README.md
 !tools/perf/results/summary-*.md
+dist-dbg/
