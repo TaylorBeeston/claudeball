@@ -97,3 +97,49 @@ describe('availability and rigs', () => {
     expect(f0.distanceTo(cam)).toBeGreaterThan(b.focus.distanceTo(cam) + 2);
   });
 });
+
+import { Broadcast } from '../broadcast';
+import { shotLabel } from '../broll';
+
+describe('broadcast labels and emitter', () => {
+  it('gives the HUD one label per shot and a card only for shots about a person', () => {
+    const s = (kind: BrollKind) => shotLabel({ kind, variant: 0, hold: 3, transition: 'cut' });
+    expect(s('batterFace')).toEqual({ kind: 'faceCloseup', card: true });
+    expect(s('pitcherFace')).toEqual({ kind: 'faceCloseup', card: true });
+    expect(s('onDeck')).toEqual({ kind: 'ondeck', card: true });
+    expect(s('walkup')).toEqual({ kind: 'walkup', card: true });
+    expect(s('crowd')).toEqual({ kind: 'crowd', card: false });
+    expect(s('catcherSigns').card).toBe(false);
+  });
+  it('delivers to every listener, survives one that throws, and unsubscribes', () => {
+    const b = new Broadcast();
+    const got: string[] = [];
+    const off = b.on((e) => got.push(e.type));
+    b.on(() => {
+      throw new Error('boom');
+    });
+    const quiet = console.error;
+    console.error = () => {};
+    b.emit({ type: 'replayEnd', variant: 'infield', simTime: 1 });
+    off();
+    b.emit({ type: 'replayEnd', variant: 'infield', simTime: 2 });
+    console.error = quiet;
+    expect(got).toEqual(['replayEnd']);
+  });
+});
+
+describe('break warm-up shots', () => {
+  it('offers the infield drill and the outfield catch only while show balls are in those places', () => {
+    const st = (xb: { x: number; y: number; z: number }[]) => ({ ...state([]), extraBalls: xb }) as GameState;
+    expect(availableKinds(st([]), lm).available.has('infieldDrill')).toBe(false);
+    expect(availableKinds(st([{ x: 10, y: 1, z: 30 }]), lm).available.has('infieldDrill')).toBe(true);
+    expect(availableKinds(st([{ x: 10, y: 1, z: 30 }]), lm).available.has('outfieldCatch')).toBe(false);
+    expect(availableKinds(st([{ x: 20, y: 3, z: 80 }]), lm).available.has('outfieldCatch')).toBe(true);
+  });
+  it('frames the balls for both', () => {
+    const s = { ...state([]), extraBalls: [{ x: 10, y: 1, z: 30 }, { x: 14, y: 1, z: 32 }] } as GameState;
+    const r = computeRig({ kind: 'infieldDrill', variant: 1, hold: 3, transition: 'cut' }, { state: s, lm, t: 0, aspect: 16 / 9, battingSide: 0 });
+    expect(Math.abs(r.tgt.x - 12)).toBeLessThan(0.01);
+    expect(r.pos.distanceTo(r.tgt)).toBeGreaterThan(8);
+  });
+});

@@ -1,0 +1,5709 @@
+{
+ "lod0/player_away": {
+  "size_mb": 7.12,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 69344,
+  "vertices_default": 43788,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.07,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_away_1b": {
+  "size_mb": 7.09,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 68396,
+  "vertices_default": 42552,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.02,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_away_of": {
+  "size_mb": 7.15,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 71281,
+  "vertices_default": 44886,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.12,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_ballkid": {
+  "size_mb": 5.49,
+  "lod1": false,
+  "visible_meshes": 19,
+  "draw_calls_default": 19,
+  "materials_default": [
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 54727,
+  "vertices_default": 32662,
+  "morph_targets_total": 75,
+  "morph_memory_mb": 3.41,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 21,
+  "texture_file_kb": 2406,
+  "gpu_texture_mb_worst": 23.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 11.7,
+  "gpu_texture_mb_used_by_visible": 23.3,
+  "texture_list": [
+   {
+    "name": "skin_normal_old",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 156,
+    "sha1": "62b388501bac",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm_old",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "d9af9f509f6c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo_old",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 125,
+    "sha1": "fc76f9075359",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "0ad3f11a9188",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "265c13acc0c3",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "3562bf930f63",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "5034951d62dc",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "fc499b92dc03",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "79d268142c90",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "e13e3db5c558",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "eae701af5896",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "7a6218a63b69",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "d5fbe0f55a8a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "53d0b7b07c01",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "0217e52d19ee",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "e5755a93570a",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "63e05c18e11f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "307e41dd46f8",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "9dba72da2d9d",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "c0e72d7e9052",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "275bc351ffba",
+    "gpu_mb_worst": 1.33
+   }
+  ]
+ },
+ "lod0/player_base": {
+  "size_mb": 12.4,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 69344,
+  "vertices_default": 43788,
+  "morph_targets_total": 103,
+  "morph_memory_mb": 3.99,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 47,
+  "texture_file_kb": 5505,
+  "gpu_texture_mb_worst": 57,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 28.5,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "2c9edcf40e57",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "bbf2301bac13",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "c7731c5f3d42",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "3708a8d89ba9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "f26ecebda838",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "30226edaff4b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "4a0b856ef5d3",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "e3b291ce0a21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "e235a7103255",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "e86df2df5714",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "beard_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 79,
+    "sha1": "832036a66acc",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "beard_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 43,
+    "sha1": "633ad458d58e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "dd10b73fc20a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "039f6e53cc30",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "e03a19417acf",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "f80fc80e02db",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "500511efe433",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "plastic_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 4,
+    "sha1": "6f65bd659549",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 78,
+    "sha1": "e7e8e440898d",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 139,
+    "sha1": "fbe40940821c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "90719963b2c2",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "395ec69d86f0",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "ea65e96d0a62",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "b716bfa10fc6",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "ea7401397c7d",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "da1a56fc505f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "32e98fa2e223",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "8c11e8dda942",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "8b663aa5bcee",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_bob01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 165,
+    "sha1": "73f39b629b91",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 230,
+    "sha1": "6c40da9b7a6f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_afro01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 221,
+    "sha1": "5351333000b4",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_long01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 142,
+    "sha1": "5841378f9e22",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_ponytail01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 194,
+    "sha1": "f368e095b775",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short03_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 116,
+    "sha1": "a7aa62bf2b35",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short04_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 172,
+    "sha1": "627ae4a71a90",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "cb8c248174c6",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "659f54a33491",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "29e45d8e574b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "4d11f4b1c82e",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "711cfcd4023e",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "teeth_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 173,
+    "sha1": "4c81e8530dcf",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "tongue_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 61,
+    "sha1": "0f0e4e2bb3e7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "09084036bcf4",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "95d9a3edc18d",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "d075ce8c9632",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "d63331df8272",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_batter": {
+  "size_mb": 6.79,
+  "lod1": false,
+  "visible_meshes": 27,
+  "draw_calls_default": 27,
+  "materials_default": [
+   "batting_glove",
+   "belt",
+   "buckle",
+   "button",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "helmet",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 63421,
+  "vertices_default": 40110,
+  "morph_targets_total": 97,
+  "morph_memory_mb": 3.86,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 30,
+  "texture_file_kb": 3375,
+  "gpu_texture_mb_worst": 36.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 18.2,
+  "gpu_texture_mb_used_by_visible": 36.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   }
+  ]
+ },
+ "lod0/player_catcher": {
+  "size_mb": 7.67,
+  "lod1": false,
+  "visible_meshes": 32,
+  "draw_calls_default": 33,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "catcher_gear",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "helmet",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "mask",
+   "mask_pad",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 84267,
+  "vertices_default": 53603,
+  "morph_targets_total": 119,
+  "morph_memory_mb": 4.96,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 34,
+  "texture_file_kb": 3879,
+  "gpu_texture_mb_worst": 43.7,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 21.9,
+  "gpu_texture_mb_used_by_visible": 43.4,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 4,
+    "sha1": "0d28a120969a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 78,
+    "sha1": "b86324629339",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 139,
+    "sha1": "c16101116cb6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   }
+  ]
+ },
+ "lod0/player_coach": {
+  "size_mb": 6.84,
+  "lod1": false,
+  "visible_meshes": 28,
+  "draw_calls_default": 28,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "helmet",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 63621,
+  "vertices_default": 38632,
+  "morph_targets_total": 104,
+  "morph_memory_mb": 4.03,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 30,
+  "texture_file_kb": 3375,
+  "gpu_texture_mb_worst": 36.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 18.2,
+  "gpu_texture_mb_used_by_visible": 36.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_home": {
+  "size_mb": 7.12,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 69344,
+  "vertices_default": 43788,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.07,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_home_1b": {
+  "size_mb": 7.09,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 68396,
+  "vertices_default": 42552,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.02,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_home_of": {
+  "size_mb": 7.15,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "glove",
+   "glove_laces",
+   "hair",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 71281,
+  "vertices_default": 44886,
+  "morph_targets_total": 105,
+  "morph_memory_mb": 4.12,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3690,
+  "gpu_texture_mb_worst": 40.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
+  "gpu_texture_mb_used_by_visible": 40.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_glove_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 52,
+    "sha1": "b0e04325aac9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 97,
+    "sha1": "54b94da72060",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_glove_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 166,
+    "sha1": "73fa81f38ffe",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_manager": {
+  "size_mb": 7.55,
+  "lod1": false,
+  "visible_meshes": 29,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "jacket",
+   "jersey_decal_backnum",
+   "jersey_decal_frontnum",
+   "jersey_decal_name",
+   "jersey_decal_sleevenum",
+   "skin",
+   "sole",
+   "spikes",
+   "stubble",
+   "uniform_jersey",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 67565,
+  "vertices_default": 42152,
+  "morph_targets_total": 109,
+  "morph_memory_mb": 4.31,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 33,
+  "texture_file_kb": 3727,
+  "gpu_texture_mb_worst": 38.4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 19.2,
+  "gpu_texture_mb_used_by_visible": 36.1,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "26e24b3026da",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "28f8d5c5e2f5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "e3237172ed72",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "20481035c4ca",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "6b5e1754713f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "0fd83e122eae",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "54dbfb0814cb",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "beard_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 79,
+    "sha1": "3259159ba1d0",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "beard_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 43,
+    "sha1": "8bdf0744ad97",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "f5b9508c2807",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "c878d5853e3a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "8e7c676632a7",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "7e852fb1ec97",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "42fef6912e7c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f10468eb4878",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "5a7f1d201d98",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "5327616fdbfe",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "e7eaf0317853",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "da57393502d6",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "f81944f07cef",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "a3f5b2061474",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "1a1e045a757f",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "dd0819aa1b6b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "hair_short01_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 230,
+    "sha1": "7af281653563",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "num_n",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 10,
+    "sha1": "aa6569e7598b",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "number_digits",
+    "w": 1024,
+    "h": 104,
+    "mime": "image/ktx2",
+    "kb": 14,
+    "sha1": "8c9ad82573f4",
+    "gpu_mb_worst": 0.14
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "7764b591ed21",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "9089251a4522",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "8e893b4e1b82",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "jersey_decal_name_tex",
+    "w": 1024,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 20,
+    "sha1": "6b3989144e2e",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "f7d936f27d80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_frontnum_tex",
+    "w": 256,
+    "h": 256,
+    "mime": "image/ktx2",
+    "kb": 9,
+    "sha1": "0c9e9efb610e",
+    "gpu_mb_worst": 0.08
+   },
+   {
+    "name": "jersey_decal_sleevenum_tex",
+    "w": 128,
+    "h": 128,
+    "mime": "image/ktx2",
+    "kb": 5,
+    "sha1": "5f5440bef0f0",
+    "gpu_mb_worst": 0.02
+   }
+  ]
+ },
+ "lod0/player_umpire": {
+  "size_mb": 7.04,
+  "lod1": false,
+  "visible_meshes": 28,
+  "draw_calls_default": 29,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "catcher_gear",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "mask",
+   "mask_pad",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 69531,
+  "vertices_default": 45687,
+  "morph_targets_total": 102,
+  "morph_memory_mb": 4.3,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 27,
+  "texture_file_kb": 3517,
+  "gpu_texture_mb_worst": 39.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 19.7,
+  "gpu_texture_mb_used_by_visible": 39.3,
+  "texture_list": [
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "9f3cbc475222",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "59ae1abb2c59",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "f68342f3444c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "6938c325db41",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "9b6e7370bddb",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "bd0740357a9e",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "5bc892e5dd8c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "97fdad996a4b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "64024eb50ed5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "e9221ecaf356",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "e586e67f8d91",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "c81bd208a27a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f94f9f164af5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "28695f079a31",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "82642209b3a4",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "plastic_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 4,
+    "sha1": "632effb05164",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 78,
+    "sha1": "1e8c344bce3c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "plastic_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 139,
+    "sha1": "194752dfcbf1",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "6ae40a4bca7d",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "3355f94acd28",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "bb4daf670c29",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "e89c6bfb187d",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "7ee2d2d46c3c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "cf6fb8357def",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "20d6a9e12d60",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "c721ea8b038f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "56b0348628a6",
+    "gpu_mb_worst": 1.33
+   }
+  ]
+ },
+ "lod0/player_umpire_base": {
+  "size_mb": 6.49,
+  "lod1": false,
+  "visible_meshes": 23,
+  "draw_calls_default": 23,
+  "materials_default": [
+   "belt",
+   "buckle",
+   "button",
+   "cap",
+   "cap_logo",
+   "cleats",
+   "cornea",
+   "eye",
+   "eyebrow",
+   "eyelash",
+   "hair",
+   "piping",
+   "skin",
+   "sole",
+   "spikes",
+   "uniform_pants",
+   "uniform_socks",
+   "uniform_undershirt"
+  ],
+  "triangles_default": 57895,
+  "vertices_default": 35541,
+  "morph_targets_total": 87,
+  "morph_memory_mb": 3.61,
+  "joints": 22,
+  "animations": 115,
+  "animation_mb": 1.01,
+  "textures": 24,
+  "texture_file_kb": 3297,
+  "gpu_texture_mb_worst": 35.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 17.7,
+  "gpu_texture_mb_used_by_visible": 35.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 472,
+    "sha1": "6938c325db41",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 66,
+    "sha1": "9b6e7370bddb",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 2048,
+    "h": 2048,
+    "mime": "image/ktx2",
+    "kb": 364,
+    "sha1": "bd0740357a9e",
+    "gpu_mb_worst": 5.33
+   },
+   {
+    "name": "leather_black_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "5bc892e5dd8c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 48,
+    "sha1": "97fdad996a4b",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_black_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 162,
+    "sha1": "64024eb50ed5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eye_albedo",
+    "w": 1024,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 35,
+    "sha1": "e9221ecaf356",
+    "gpu_mb_worst": 0.67
+   },
+   {
+    "name": "leather_belt_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 182,
+    "sha1": "9f3cbc475222",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 135,
+    "sha1": "59ae1abb2c59",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "leather_belt_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 18,
+    "sha1": "f68342f3444c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 219,
+    "sha1": "e586e67f8d91",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 121,
+    "sha1": "c81bd208a27a",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "woven_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 154,
+    "sha1": "f94f9f164af5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "cap_logo_n",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 11,
+    "sha1": "28695f079a31",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "cap_logo_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "82642209b3a4",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 246,
+    "sha1": "6ae40a4bca7d",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 70,
+    "sha1": "3355f94acd28",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "knit_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 145,
+    "sha1": "bb4daf670c29",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "eyebrow_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 27,
+    "sha1": "e89c6bfb187d",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "eyelash_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 42,
+    "sha1": "7ee2d2d46c3c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 111,
+    "sha1": "cf6fb8357def",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_normal",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 207,
+    "sha1": "20d6a9e12d60",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_orm",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 134,
+    "sha1": "c721ea8b038f",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "rubber_albedo",
+    "w": 1024,
+    "h": 1024,
+    "mime": "image/ktx2",
+    "kb": 174,
+    "sha1": "56b0348628a6",
+    "gpu_mb_worst": 1.33
+   }
+  ]
+ },
+ "lod1/player_away": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11369,
+  "vertices_default": 8276,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_away_1b": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11319,
+  "vertices_default": 8168,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_away_of": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11504,
+  "vertices_default": 8397,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_ballkid": {
+  "size_mb": 0.69,
+  "lod1": true,
+  "visible_meshes": 3,
+  "draw_calls_default": 3,
+  "materials_default": [
+   "hair",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 10140,
+  "vertices_default": 6854,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 4,
+  "texture_file_kb": 563,
+  "gpu_texture_mb_worst": 3.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3,
+  "gpu_texture_mb_used_by_visible": 0.7,
+  "texture_list": [
+   {
+    "name": "skin_normal_old",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 314,
+    "sha1": "2dacd1e81c4c",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm_old",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 169,
+    "sha1": "7f24303158a9",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo_old",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 41,
+    "sha1": "04fce788f374",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "f8e5f68446d7",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_base": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11369,
+  "vertices_default": 8281,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_batter": {
+  "size_mb": 0.82,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 12582,
+  "vertices_default": 9047,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_catcher": {
+  "size_mb": 0.88,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 16455,
+  "vertices_default": 12401,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_coach": {
+  "size_mb": 0.82,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 12891,
+  "vertices_default": 8864,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_home": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11369,
+  "vertices_default": 8276,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_home_1b": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11319,
+  "vertices_default": 8168,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_home_of": {
+  "size_mb": 0.81,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 11504,
+  "vertices_default": 8397,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_manager": {
+  "size_mb": 0.82,
+  "lod1": true,
+  "visible_meshes": 4,
+  "draw_calls_default": 4,
+  "materials_default": [
+   "hair",
+   "jersey_decal_backnum",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 12030,
+  "vertices_default": 8624,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 6,
+  "texture_file_kb": 650,
+  "gpu_texture_mb_worst": 4,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
+  "gpu_texture_mb_used_by_visible": 1.3,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "676dba6bcc2c",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "d9dc67f8fb80",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "knit_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 65,
+    "sha1": "49c57753bdbb",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "jersey_decal_backnum_tex",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 21,
+    "sha1": "21c1bcebc489",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_umpire": {
+  "size_mb": 0.78,
+  "lod1": true,
+  "visible_meshes": 3,
+  "draw_calls_default": 3,
+  "materials_default": [
+   "hair",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 15163,
+  "vertices_default": 12083,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 4,
+  "texture_file_kb": 565,
+  "gpu_texture_mb_worst": 3.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3,
+  "gpu_texture_mb_used_by_visible": 0.7,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "9d12cccdcc28",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "f8e5f68446d7",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "lod1/player_umpire_base": {
+  "size_mb": 0.71,
+  "lod1": true,
+  "visible_meshes": 3,
+  "draw_calls_default": 3,
+  "materials_default": [
+   "hair",
+   "lod_cloth",
+   "skin"
+  ],
+  "triangles_default": 10945,
+  "vertices_default": 7759,
+  "morph_targets_total": 0,
+  "morph_memory_mb": 0,
+  "joints": 22,
+  "animations": 0,
+  "animation_mb": 0,
+  "textures": 4,
+  "texture_file_kb": 565,
+  "gpu_texture_mb_worst": 3.3,
+  "gpu_texture_mb_etc1s_opaque_4bpp": 3,
+  "gpu_texture_mb_used_by_visible": 0.7,
+  "texture_list": [
+   {
+    "name": "skin_normal",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 319,
+    "sha1": "5b6db944eaff",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_orm",
+    "w": 512,
+    "h": 512,
+    "mime": "image/png",
+    "kb": 168,
+    "sha1": "246a12a93ff5",
+    "gpu_mb_worst": 1.33
+   },
+   {
+    "name": "skin_albedo",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "9d12cccdcc28",
+    "gpu_mb_worst": 0.33
+   },
+   {
+    "name": "hair_short02_a",
+    "w": 512,
+    "h": 512,
+    "mime": "image/ktx2",
+    "kb": 39,
+    "sha1": "f8e5f68446d7",
+    "gpu_mb_worst": 0.33
+   }
+  ]
+ },
+ "_texture_sharing": {
+  "lod0": {
+   "texture_references": 444,
+   "unique_textures": 134,
+   "gpu_mb_worst_if_every_file_uploads_its_own": 551,
+   "gpu_mb_worst_if_unique_textures_are_shared": 166
+  },
+  "lod1": {
+   "texture_references": 78,
+   "unique_textures": 11,
+   "gpu_mb_worst_if_every_file_uploads_its_own": 54,
+   "gpu_mb_worst_if_unique_textures_are_shared": 8
+  }
+ }
+}

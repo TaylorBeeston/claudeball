@@ -34,6 +34,7 @@ import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
 import { makeOnDeckBat } from './ondeckProp';
+import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
@@ -43,13 +44,13 @@ import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, 
 const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base', 'bench_sit', 'ondeck_ready', 'ondeck_stretch', 'coach_ready', 'coach_go_loop', 'ballkid_sit', 'catch_ready']);
 const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left', 'center', 'right']);
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
-export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
+export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'pitchcoach', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
 /**
  * Parts that cast no shadow: tiny details, thin cards and things hidden under other parts. Every caster is one more draw call in each shadow cascade,
  * so only the shapes that read in a shadow (body, head, hair, jersey, pants, cap / helmet, cleats, hands, gloves, gear) remain.
  */
-const NO_SHADOW = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt$|Socks|Gear_Goatee)/;
+const NO_SHADOW = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt$|Socks|Gear_Goatee|Jersey_.*Decal)/;
 /** parts left out of the merged shadow / depth proxy (alpha cards and the like: they would need an alpha-tested depth material) */
 const PROXY_SKIP = /^(Gear_Hair|Face_Hair|Gear_Beard|Hair|Eyes_Cornea)/;
 /** one shared material for every proxy: it never draws colour (the proxy is only visible during the shadow and the GTAO depth/normal passes) */
@@ -58,8 +59,8 @@ proxyMaterial.name = 'shadow_proxy';
 /** parts the GTAO depth/normal prepass skips: details, cards and thin layers (the proxy stands in for none of them: they are simply not part of the occlusion) */
 const GBUF_SKIP = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt|Socks|Gear_Goatee|Gear_Hair|Face_Hair|Hair)/;
 /** puppet level of detail: parts dropped from tier 1 (small on screen) and from tier 2 (tiny), by mesh name; the rest always draws */
-const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_Piping|Gear_BeltBuckle|Gear_Soles|Gear_Spikes|Gear_Wristband|Gear_EyeBlack|Gear_Beard_Stubble|Gear_Mustache|Gear_Glove.*Laces|Gear_CapLogo)/;
-const LOD_TIER2 = /^(Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
+const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_Piping|Gear_BeltBuckle|Gear_Soles|Gear_Spikes|Gear_Wristband|Gear_EyeBlack|Gear_Beard_Stubble|Gear_Mustache|Gear_Glove.*Laces|Gear_CapLogo|Jersey_(BackName|FrontNumber|SleeveNumber)Decal)/;
+const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
 /** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */
@@ -144,6 +145,26 @@ function idleFor(role: PlayerRole): string[] {
   return ['idle'];
 }
 
+/** hints whose pose is meant to be stationary: when the player is nonetheless travelling, the legs must follow the ground speed (no sliding in a ready pose) */
+const STATIC_HINTS = new Set<string>(['idle', 'ump_ready', 'ump_time', 'ondeck_ready', 'coach_ready', 'ballkid_sit', 'ballkid_idle', 'bench_sit', 'catch_ready', 'transfer', 'mound_talk', 'mound_talk_listen', 'umpire_brush_plate', 'ump_new_ball', 'ump_huddle', 'field_ready']);
+/** gaits with their own foot speed: kept while the speed fits them, replaced by a faster gait above this */
+const WALKISH_HINTS = new Set<string>(['walk', 'manager_walk', 'ballkid_run', 'batter_step_in']);
+
+/**
+ * Should locomotion override the sim's pose hint? Whenever the ground speed is clearly above a standing sway: stationary hints from ~0.45 m/s (0.9 for the
+ * batter, catcher, pitcher and umpires, who shuffle in their routines; less once a gait is already playing), walking hints once they are faster than a walk can
+ * keep up with (the walk clip's feet do ~1.4-2.4 m/s), a transfer only when really travelling.
+ */
+export function wantsGait(hint: string, role: string, speed: number, gaitOn: boolean): boolean {
+  if (STATIC_HINTS.has(hint)) {
+    if (hint === 'transfer') return speed > (gaitOn ? 1.4 : 2.0);
+    const shuffler = role === 'batter' || role === 'catcher' || role === 'pitcher' || role === 'umpire';
+    return speed > (shuffler ? (gaitOn ? 0.5 : 0.9) : gaitOn ? 0.3 : 0.45);
+  }
+  if (WALKISH_HINTS.has(hint)) return speed > (gaitOn ? 2.3 : 2.6);
+  return false;
+}
+
 /** Yaw (rad, direction = (sin f, cos f)) a batter's body faces in the box: chest toward the plate, a little open to the pitcher. */
 export const STANCE_OPEN = 0.2;
 export function stanceYaw(hand: 'L' | 'R' | undefined): number {
@@ -154,12 +175,38 @@ export function stanceYaw(hand: 'L' | 'R' | undefined): number {
 export function templateNameFor(snap: PlayerSnap): string {
   switch (snap.role) {
     case 'batter': case 'runner': case 'coach': case 'coach1b': case 'coach3b': case 'ondeck': return 'player_batter';
-    case 'batboy': case 'manager': return 'player_coach';
+    case 'batboy': case 'manager': case 'pitchcoach': return 'player_coach';
     case 'ballkid': return 'player_ballkid';
     case 'catcher': return 'player_catcher';
     case 'umpire': return 'player_umpire';
     default: return snap.team === 1 ? 'player_home' : 'player_away';
   }
+}
+
+/** every puppet's name / number textures, shared and kept across games */
+export const jerseyTextures = new JerseyTextures();
+const decalMats = new WeakMap<object, MeshStandardMaterial>();
+function decalMaterial(tpl: Material | undefined, tex: import('three').Texture): MeshStandardMaterial {
+  let m = decalMats.get(tex);
+  if (!m) {
+    const b = tpl as MeshStandardMaterial | undefined;
+    m = b && b.isMeshStandardMaterial ? b.clone() : new MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
+    m.userData = {};
+    m.map = tex;
+    m.color = new Color(0xffffff);
+    m.transparent = true;
+    m.alphaTest = 0.02;
+    m.depthWrite = false;
+    m.polygonOffset = true;
+    m.polygonOffsetFactor = -2;
+    m.polygonOffsetUnits = -2;
+    m.name = 'jersey_decal';
+    reg(m);
+    const mm = m;
+    tex.addEventListener('dispose', () => mm.dispose());
+    decalMats.set(tex, m);
+  }
+  return m;
 }
 
 const matCache = new Map<string, MeshStandardMaterial>();
@@ -421,6 +468,10 @@ export class GltfPuppet implements PuppetLike {
   private ballPlace: BallPlace | 'none' | 'transfer' = 'none';
   private ballGrip = 'Ball_Grip';
   ballHeld = false;
+  /** the jersey's name / number decal meshes of this file (none until the assets ship them: the digit quads stay) */
+  private decals: Partial<Record<DecalKind, Mesh>> = {};
+  private decalTemplate: Material | undefined;
+  private decalKey = '';
   /** glassy cornea shells over the eyes (visible only in the full tier, near the camera) */
   private cornea: Object3D[] = [];
   private torso: TorsoVolume = torsoVolume(undefined);
@@ -474,6 +525,15 @@ export class GltfPuppet implements PuppetLike {
         m.parent.add(shell);
         this.cornea.push(shell);
         this.meshes.push(shell);
+      }
+    }
+    for (const k of Object.keys(DECAL_NODES) as DecalKind[]) {
+      const n = this.nodes.get(DECAL_NODES[k]) as Mesh | undefined;
+      if (n && n.isMesh) {
+        this.decals[k] = n;
+        this.decalTemplate ??= (Array.isArray(n.material) ? n.material[0] : n.material) as Material;
+        n.visible = false;
+        n.castShadow = false;
       }
     }
     this.setCullBounds();
@@ -853,6 +913,7 @@ export class GltfPuppet implements PuppetLike {
     const { tens, ones } = this.numMeshes;
     const apply = (mesh: Mesh | undefined, digit: number, def: number, show: boolean) => {
       if (!mesh) return;
+      mesh.userData.show = show;
       mesh.visible = show;
       if (!show) return;
       const base = mesh.material as MeshStandardMaterial;
@@ -911,10 +972,10 @@ export class GltfPuppet implements PuppetLike {
    * skate; the neighbour gait takes over (cross-fade) when it fits better, with hysteresis so a player at a gait boundary does not flicker.
    * A turn at speed uses the turning clips. Returns null when the player is not moving on the ground.
    */
-  private locomotionClip(snap: PlayerSnap): string | null {
+  private locomotionClip(snap: PlayerSnap, override = false): string | null {
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const hint = snap.anim;
-    const moving = hint === 'run' || hint === 'trot' || hint === 'run_turn' || (hint === 'idle' && sp > 0.3 && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher');
+    const moving = override || hint === 'run' || hint === 'trot' || hint === 'run_turn';
     if (!moving) {
       this.gait = '';
       return null;
@@ -1226,7 +1287,7 @@ export class GltfPuppet implements PuppetLike {
       this.rebuildProxy(); // (a no-op unless the set of visible parts changed)
     }
     this.animClock += dt;
-    const pit0 = snap.role === 'pitcher' ? this.pitcherPlan(snap) : null;
+    const pit0 = snap.role === 'pitcher' && !(snap.anim === 'idle' && Math.hypot(snap.vel.x, snap.vel.z) > 0.9) ? this.pitcherPlan(snap) : null;
     // the catcher's catch is inferred from the ball's flight only when the sim reports none (no glove target, no catch hint)
     const realCatch = !!snap.gloveTarget || snap.anim === 'catch_pitch';
     if (realCatch) {
@@ -1235,9 +1296,12 @@ export class GltfPuppet implements PuppetLike {
     }
     const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
-    const hint = this.moveHint(snap);
-    const loco = pit0 || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap);
-    const baseName = this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
+    const speed0 = Math.hypot(snap.vel.x, snap.vel.z);
+    const gaitOver = wantsGait(snap.anim, snap.role, speed0, this.gaitOn) && snap.anim !== 'catch_pitch';
+    this.gaitOn = gaitOver;
+    const hint = gaitOver ? snap.anim : this.moveHint(snap);
+    const loco = (pit0 && !gaitOver) || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap, gaitOver);
+    const baseName = gaitOver && loco ? loco : this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
     this.trackTag(snap, env);
     const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : this.eventPlan(snap, baseName));
     const name = pit ? pit.name : baseName;
@@ -1247,7 +1311,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.lastHint = snap.anim;
     this.lastMoveHint = hint;
-    const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
+    const stanceHeld = !gaitOver && snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (pit && pit.time !== null && this.current) {
@@ -1281,7 +1345,7 @@ export class GltfPuppet implements PuppetLike {
     this.lod1 = lod1;
     this.updateLod(snap, env);
     if (this.cornea.length) {
-      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 24;
+      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 12; // close-ups only: each shell is a draw call
       const vis = shadingTier() === 'full' && !lod1 && near;
       for (const c of this.cornea) c.visible = vis;
     }
@@ -1303,7 +1367,8 @@ export class GltfPuppet implements PuppetLike {
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
     const ready = this.updateReady(snap, env, dt);
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : snap.facing;
+    // travelling in a stationary pose (a gait chosen by speed): the body faces where it is going
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -1321,6 +1386,7 @@ export class GltfPuppet implements PuppetLike {
     this.refreshMatrices();
     if (perf.on) perf.sub('pup.matrix', tMat);
     this.updateProp(snap, env);
+    this.updateDecals(snap, env, lod1);
     if (lod1) {
       this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
       return;
@@ -1375,8 +1441,43 @@ export class GltfPuppet implements PuppetLike {
     if (this.prop) this.prop.visible = want;
   }
 
+  /**
+   * Last name and number on the jersey: textures come from the shared cache (a substitution just looks up another), are applied when the player,
+   * his colours, his handedness or the quality change, and the decals are drawn only within their range of the camera (the old digit quads
+   * stand in for the back number whenever the decal is not shown).
+   */
+  private updateDecals(snap: PlayerSnap, env: PuppetEnv, lod1: boolean) {
+    const kinds = Object.keys(this.decals) as DecalKind[];
+    if (!kinds.length) return;
+    const look = this.lastLook?.look;
+    const q = jerseyQuality();
+    const mirror = this.mirrored;
+    const printed = snap.team >= 0 && !!look && (snap.name !== undefined || snap.number !== undefined);
+    const key = printed ? `${snap.name}|${snap.number}|${look!.jersey}|${look!.sock}|${mirror}|${q}` : '';
+    if (key !== this.decalKey) {
+      this.decalKey = key;
+      const print = printed ? jerseyPrint(snap.name, snap.number, look!.jersey, look!.sock, q, mirror) : {};
+      for (const k of kinds) {
+        const mesh = this.decals[k]!;
+        const spec = print[k];
+        mesh.userData.hasPrint = !!spec;
+        if (spec) mesh.material = decalMaterial(this.decalTemplate, jerseyTextures.get(spec));
+      }
+    }
+    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) : 0;
+    for (const k of kinds) {
+      const mesh = this.decals[k]!;
+      mesh.visible = !lod1 && !!mesh.userData.hasPrint && d < decalRange(k, q);
+    }
+    const back = this.decals.backNumber;
+    const digitsOff = !!back && back.visible;
+    for (const m of [this.numMeshes.tens, this.numMeshes.ones]) if (m) m.visible = (m.userData.show ?? true) && !digitsOff;
+  }
+
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
+  /** a gait chosen by speed is overriding a stationary hint (hysteresis for `wantsGait`) */
+  private gaitOn = false;
   private ikFade = 1;
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */

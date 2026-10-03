@@ -103,6 +103,31 @@ HUD: name cards show 20-80 rating bars, today's line and the pitch arsenal; `B` 
 Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).
 
+## B-roll, broadcast events and cards
+During the sim's lulls (`lull` / `lullKind` / `lullRemaining`) the director (`broll.ts`) plans B-roll: walk-up, face close-up (rack focus), on-deck, dugout, pitcher's face, catcher's signs, shake-off,
+lead-off, base coaches, bullpen, crowd, scoreboard, aerial, sky, mound wide / huddle, manager walking, bullpen door, reliever jogging, umpire huddle. Holds are 2.5-6 s, a kind never repeats within 4 shots,
+nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag).
+
+**`Engine.broadcast.on(cb)`** (also mirrored into the sim event path as `{type: 'broadcast', event}`, for hosts that only read `sim.on`; a game with a raw sim bus must subscribe to `engine.broadcast`) delivers:
+| event | fields |
+|---|---|
+| `cameraCut` | `kind: 'cut' \| 'dissolve' \| 'wipe' \| 'replay' \| 'broll'` (a cut into or out of a replay is `replay`; a dissolve wins over `broll`; `wipe` is reserved, nothing sends it yet), `from`, `to` (shot names), `durationMs` (the dissolve length, else 0), `toBroll`, `simTime` |
+| `replayStart` / `replayEnd` | `variant` ('infield' \| 'outfield' \| 'hr' \| 'close'), `caption` ('CLOSE PLAY' or null), `slow` |
+| `graphicShown` | `kind: 'replay' \| 'closePlay' \| 'card'`, `subjectId` for a card |
+| `shot` | `phase: 'start' \| 'end'`, `kind`, `subjectId` (a sim player id), `role`, `card` (true: show a lower-third card for `subjectId`), `holdMs`; every `start` gets its `end`, so a card shows and hides with the shot |
+
+Shot kinds (`ShotLabel`): `walkup`, `ondeck`, `faceCloseup` (batter or pitcher), `shakeOff`, `catcherSigns`, `leadOff`, `coachSigns`, `managerWalk`, `relieverJog`, `relieverFace`, `dugout`, `dugoutReaction`, `bullpen`, `bullpenDoor`,
+`crowd`, `scoreboard`, `aerial`, `sky`, `moundWide`, `moundHuddle`, `umpires`, `coachSend`, `kidToss`. `card` is true for `walkup`, `ondeck`, `faceCloseup`, `shakeOff`, `leadOff`, `relieverJog`, `relieverFace`.
+A card is built from `getState().stats` and the player's snapshot (`name`, `number`, `ratings`).
+
+## Jersey names and numbers
+`jerseyText.ts` draws the last name (last token of the snapshot's `name`, upper case, suffixes dropped) and the number for the decal meshes the player files carry (`Jersey_BackNameDecal`, `Jersey_BackNumberDecal`,
+`Jersey_FrontNumberDecal`, `Jersey_SleeveNumberDecal`, UV 0..1 over the whole decal): a block face (Impact / Haettenschweiler / Arial Black), condensed down to 55 % to fit long names then shrunk, numbers all one height,
+fill white or near-black by contrast with the jersey, outline the team trim when it reads else the opposite extreme. Textures are cached by content (`JerseyTextures`, LRU of 160, kept across games; two teams whose text
+colours agree share them), left-handers get flipped print (their model is mirrored), one number texture serves back, front and sleeve. `GltfPuppet.updateDecals` rebinds on a substitution (name / number / colours / hand / quality change)
+and shows each decal only within its range of the camera (`decalRange`: name 42 m, back number 55 m, front and sleeve 24 m; low quality 24 / 32 m and no front or sleeve). Without the decal meshes in a file nothing changes and the
+old digit quads stay; with a back number decal shown the quads hide. Canvas sizes by tier: 256x48 + 128x160 (low) up to 768x144 + 384x480 (ultra); about 35 MB of textures at high for 50 players.
+
 ## Boot, menus and new games (`src/ui`, `warmup.ts`)
 `main.ts` only calls `startApp()` (`src/ui/app.ts`): loading screen (markup + critical CSS in `index.html`) → `Engine.prepare()` → menu or game.
 - `Engine.prepare({assets, onProgress})` (`warmup.ts`): glTF assets (progress weighted by `assets/asset_sizes.json`, written by the Vite plugin), the HDRI sky
@@ -120,4 +145,4 @@ Tests: `npm test` (headLook maths + mirror-safe rig).
 - **Captions** (`src/ui/captionModel.ts` pure + `captions.ts` DOM): fed by the audio layer's speech events (`{ id, channel, speaker, text, startMs, expectedDurationMs }` at the start of a line, `{ id, truncatedAt? }` at its end). `app.ts` calls
   `captions.attach(audioController)` for every game; it subscribes through `onSpeech` / `onSpeechEnd` when the controller has them and stays quiet otherwise. `window.__captionsFeed(event)` feeds one event by hand (demos, `scripts/ui-captions.py`).
   One timer for the next deadline, DOM touched only when a line starts, ends or fades. Phones (and narrow / short screens) get a compact bar in the ticker's place and the HUD lifts its bottom column by its height (`--tick-h`).
-- **B-roll cards**: `CameraDirector.brollShot` exposes the shot on screen; `Engine.tick` compares it with the last one (no DOM unless it changed) and `Hud.subjectShot` shows `cardFor(shot, state)` (`subjectCard.ts`: ON DECK / WALKING UP / AT BAT / PITCHING / CATCHER / MANAGER / NOW WARMING / COMING IN, ratings bars, game line, arsenal) for the length of the hold.
+- **B-roll cards**: the director's `shot` events (`Engine.broadcast`, `card: true`) drive `Hud.subjectShot`, which shows `cardFor(shot, state)` (`subjectCard.ts`: ON DECK / WALKING UP / AT BAT / PITCHING / CATCHER / MANAGER / NOW WARMING / COMING IN, ratings bars, game line, arsenal) for the length of the hold.

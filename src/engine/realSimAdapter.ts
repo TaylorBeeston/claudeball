@@ -37,6 +37,9 @@ interface RSState {
   lull?: boolean;
   lullKind?: string | null;
   lullSec?: number | null;
+  lullRemaining?: number | null;
+  phaseDetail?: string | null;
+  extraBalls?: V[];
   deadBall?: { pos: V; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
@@ -227,8 +230,8 @@ export class RealSimAdapter implements GameLike {
       case 'onDeck':
         this.emit({ type: 'on_deck', playerId: String(e.playerId), team: e.team === 'home' ? 1 : 0 });
         break;
-      case 'signsGiven': case 'shakeOff': case 'timeCalled': case 'moundVisit': case 'challenge': case 'pitchingChangeStart':
-        this.emit({ type: e.type === 'signsGiven' ? 'signs_given' : e.type === 'shakeOff' ? 'shake_off' : e.type === 'timeCalled' ? 'time_called' : e.type === 'moundVisit' ? 'mound_visit' : e.type === 'challenge' ? 'challenge' : 'pitching_change_start', playerId: (e.playerId ?? e.pitcherId ?? e.batterId) as string | undefined, pos: e.pos as V | undefined, data: e as Record<string, unknown> });
+      case 'signsGiven': case 'shakeOff': case 'timeCalled': case 'moundVisit': case 'moundVisitEnd': case 'challenge': case 'challengeResult': case 'breakStart': case 'pitchingChangeStart':
+        this.emit({ type: ({ signsGiven: 'signs_given', shakeOff: 'shake_off', timeCalled: 'time_called', moundVisit: 'mound_visit', moundVisitEnd: 'mound_visit_end', challenge: 'challenge', challengeResult: 'challenge_result', breakStart: 'break_start', pitchingChangeStart: 'pitching_change_start' } as const)[e.type], playerId: (e.playerId ?? e.pitcherId ?? e.batterId ?? e.catcherId ?? e.visitorId) as string | undefined, pos: e.pos as V | undefined, data: e as Record<string, unknown> });
         break;
       case 'walk':
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
@@ -315,7 +318,9 @@ export class RealSimAdapter implements GameLike {
       bat: { visible: s.bat.active, pos: knob, quat: quatFromTo({ x: 0, y: 1, z: 0 }, { x: dir.x / dl, y: dir.y / dl, z: dir.z / dl }), dropped: s.bat.dropped ?? null },
       deadBall: s.deadBall ?? null,
       phase: s.phase,
-      lull: s.lull && s.lullKind ? { kind: s.lullKind as LullKind, sec: Number(s.lullSec ?? 0) } : null,
+      lull: s.lull && s.lullKind ? { kind: s.lullKind as LullKind, sec: Number(s.lullSec ?? 0), remaining: s.lullRemaining != null ? Number(s.lullRemaining) : undefined } : null,
+      phaseDetail: s.phaseDetail ?? null,
+      extraBalls: s.extraBalls && s.extraBalls.length ? s.extraBalls : undefined,
       players,
       umpireCall: { seq: this.callSeq, kind: call ? (CALL_KIND[call.kind] ?? 'none') : 'none' },
       count: { balls: s.balls, strikes: s.strikes },

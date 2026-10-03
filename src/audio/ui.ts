@@ -22,6 +22,9 @@ export function loadSettings(): Settings {
       crowd: num(o.crowd, DEFAULT_SETTINGS.crowd),
             announcer: num(o.announcer, DEFAULT_SETTINGS.announcer),
       paVolume: num(o.paVolume, DEFAULT_SETTINGS.paVolume),
+      fxVolume: num(o.fxVolume, DEFAULT_SETTINGS.fxVolume),
+      musicVolume: num(o.musicVolume, DEFAULT_SETTINGS.musicVolume),
+      music: bool(o.music, true),
       muted: bool(o.muted, false),
       pa: bool(o.pa, true),
       commentary: bool(o.commentary, true),
@@ -114,7 +117,7 @@ export class AudioUi {
     row.append(this.btn, gear);
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', text: string) => {
+    const slider = (key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume' | 'fxVolume' | 'musicVolume', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -131,7 +134,7 @@ export class AudioUi {
       panel.append(l);
       this.inputs[key] = i;
     };
-    const check = (key: 'pa' | 'commentary', text: string) => {
+    const check = (key: 'pa' | 'commentary' | 'music', text: string) => {
       const l = document.createElement('label');
       l.append(text);
       const i = document.createElement('input');
@@ -151,6 +154,9 @@ export class AudioUi {
     slider('organVolume', 'Organ');
     slider('announcer', 'Voices');
     slider('paVolume', 'PA announcer');
+    slider('fxVolume', 'Broadcast effects');
+    slider('musicVolume', 'Park music');
+    check('music', 'Park music on');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
     {

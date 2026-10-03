@@ -99,6 +99,44 @@ Two voices, a play-by-play announcer ("pxp") and a colour analyst, behave like a
 **Pronouns.** Every player is "he / him / his" (the owner's decision: "baseball is usually males playing"): "he'll hold at first", "he took that away", "his fourth strikeout". Nobody else is gendered: umpires are "the umpire", the crowd and the audience are neutral. A pronoun is only written where it can mean one person (the batter, the runner, the pitcher in a line that names only him; 204 templates in `lexicon.ts` plus pronoun variants in the stories), and tests check that no template says she / her, and none that mentions the umpire says he. The tiny-LM validator now accepts he / him / his and rejects she / her. Per-player gender is not modelled (the sim has none).
 Excited calls (home runs, robbed home runs, walk-offs, double plays, diving catches) use `rate` 1.12 and `pitch` 1.1 for browser voices; for the HD voices the line is generated at speed 1.12/1.06 and played back 6% faster, so the pitch rises while the tempo stays. (Kokoro only takes voice and speed.)
 
+## The crowd (`crowd.ts`, `ambience.ts`)
+
+The crowd reacts to what happens. `crowd.ts` is a pure model (no Web Audio, no clock, no `Math.random`: the rng and the time step are injected; `__tests__/crowd.test.ts` has 15 tests). It keeps a stack of **envelopes** (attack / hold / decay per event, summed with a soft maximum on top of the situation's leverage: late innings, a close score, runners in scoring position), schedules **one-shots**, and makes a trickle of **incidental life**; `ambience.ts` only holds the bed: three looping buffers (murmur, roar wash, applause) with gain and low-pass automation, so the bed costs three sources and four parameters.
+
+| event | reaction |
+|---|---|
+| `contact` | an immediate pop sized by exit velocity: a soft "ooh" for weak contact, a sharper rise (gasp + ooh) for hard hits; a fly ball with carry makes an **anticipation swell** that rises over its hang time (1-6 s) while the murmur holds its breath |
+| foul call | the pop is cut at once, a small "aww": gone in a second or two |
+| out / catch | caught fly: relief "ohh" (+ applause when the home defence made the out, an "aww" when it was the home batter); strikeout: cheer for the home pitcher, "aww" for the home batter; double / triple play; close play |
+| hits | a cheer scaled by impact (single, double, triple) and by side: the home team's is loud; a visitor's is muted, with groans, a few boos and a small pocket of cheering |
+| `homeRun` | home: a crescendo that keeps building for 4-8 s: first wave as it clears the wall, a long roar that peaks at ~4 s, clapping loop, whistles, a second wave and a wave of cheer that sweeps across the stands; visitor: groan, a few boos, a pocket of cheering |
+| robbed home run | gasp, then a groan (home batter) or a roar and applause (home fielder) |
+| count | two strikes with the home pitcher: the **clap-clap, clap-clap-clap** rhythm; swinging strike: an "oh"; the murmur leans in on two strikes and full counts and hushes right before the pitch in tense moments |
+| others | walks (aww + boos for the home pitcher), steals (tension swell, then a pop), runs (roar, rally, walk-off: huge), pitching change, mound visit (conversation and quiet clapping), a ball tossed to a fan, game start / end, between-innings chants |
+| life | lone claps, a shout, a whistle, a kid, a distant vendor-style call, a seat banging, pockets of conversation, a chant start, the wave: random, quieter when the game is hot, half as often on a phone |
+
+The camera matters: the listener's distance from the diamond sets the bed's gain and brightness (stands shots are close and loud, wide shots from above are distant). Synthesised in `synth.ts` (nothing sampled, the CC0 applause clips still replace `applause` when present): 12 new sounds (`clap_single`, `clap_burst`, `whistle`, `shout`, `shout2`, `kid`, `vendor`, `chatter`, `chant`, `aww`, `oh_relief`, `boo_few`) and the applause loop. The old crowd cues of `cues.ts` are switched off in the running game (`crowdCues: false`); the model makes every crowd sound from the same events.
+
+**Light on phones** (`perf.ts`, `?lowpower=1|0` forces it): the model advances at 10 Hz (5 Hz on a phone), the bed is three loops, one-shots are capped at 6 voices (3 on a phone), incidental sounds are half as frequent, footsteps are off and the controller tick runs at 15 Hz instead of 30. `__audioDebug.controller.debug.tickMs` is the moving average of one tick (about 0.4 ms measured on a desktop).
+
+## Broadcast stings (`broadcastfx.ts`)
+
+Subtle synthesised stings for the camera work, on their own bus with its own slider (**Broadcast effects**) and the master mute: a soft whoosh for a dissolve or a wipe, a tiny low tick on a hard cut to B-roll or out of a replay (an ordinary cut is silent), a whoosh with a short rising sting into a replay, a small blip when a graphic appears, a low thump on a stadium aerial. At most one every 3 s (a replay sting may follow after 1 s), never at 2x+, paused or skipping.
+
+Input, two ways and never both: the engine's structured events `cameraCut { kind: 'cut' | 'dissolve' | 'wipe' | 'replay' | 'broll', from, to, durationMs }`, `replayStart`, `replayEnd`, `graphicShown { kind }` (through the engine's event stream, the sim's event bus or `audio.cameraEvent(ev)`), and until the first of them arrives the director's **shot name** changes (`host.director.shot`: into `replay`, out of it, `broll`, `wide`). `src/engine/README.md` does not list these events yet; once it does, check the field names against `FX_EVENT_TYPES` and `BroadcastFx.event`.
+
+## Park music (`park/`)
+
+Optional stadium music for the big moments, from files in `public/audio/music/` (see `docs/park-music-brief.md` for the 27 tracks to make, prompts for YuE, mastering, and licensing). **With no files the organ stingers play** (nothing changes); each trigger that has a file uses it and keeps the organ otherwise.
+
+| file | what |
+|---|---|
+| `manifest.ts` | the triggers (`runScored`, `homeRun`, `rally`, `walkUp`, `inningBreak`, `pitchingChange`, `gameStart`, `finalWin`, `finalLoss`) with priority, wanted length, cooldown; `parseManifest` (validates what came over the network), `pickTrack` (weighted, avoids the last two), `buildManifest` (the index script's logic: keeps hand-tuned `gain` / `weight` / `loop`, warns about sizes, lengths, names, sample rate, missing variants) |
+| `director.ts` | pure rules: the home team's good news only; priority finals > home run > rally > run > game start > pitching change > walk-up > break, nothing overlaps (a higher track fades the current one first), cooldowns, walk-ups and the break stop at the windup / when the next batter is called, the break is as long as `breakStart.sec`, the stretch is the organ's, a walk-off run has no stinger |
+| `player.ts` | `ParkMusic`: manifest (fetched once, at app boot), decisions -> files, **streamed** through a media element (no whole-track decode: light on phones), fades, only the next likely files fetched ahead (2 on a phone, none on data saver), a failing file is never retried and the organ stinger plays instead; `WebAudioMusic` is the real backend |
+
+Mixing: music goes through its own bus (level slider **Park music**, switch on/off, default on at a modest level) under the booth (-6 dB while the booth talks, -4 dB under the PA) and under big crowd moments, with a little stadium reverb; it is silent while paused, skipping, at 2x+ or muted, and the organ stays quiet while a track plays. While the break music plays the booth keeps to the calls (chatter `low`). `scripts/music-index.ts` (`npm run audio:music:index`) writes `manifest.json` (durations from `ffprobe`, or the Ogg header). Check with `?musictest=homeRun` (or `a,b`, or `all`); `__audioDebug.state.music` shows what plays and the last decisions.
+
 ## HD voices (optional neural speech)
 
 `hd.ts` is a manager that outlives games: download, progress, cache check and a *Preview voices* button work from the title menu before any game or `AudioContext` exists (an `AudioBuffer` belongs to no context; the preview makes its own mixer on the click), and a new game just rebinds its mixer, so the model is not reloaded or re-downloaded. Clause-by-clause synthesis for the booth (the first clause plays sooner, a cut happens exactly at a clause), one generation job at a time in priority order (a spoken line > the next queued line > background warm-up of the umpire's calls), concurrent playback for the channels.
@@ -146,6 +184,23 @@ An opt-in third speech engine: the owner's own trained voice (recorded and train
 
 Nothing is downloaded until the owner switches it on, and the voice pack is never part of the repo or the build. Debug: `__audioDebug.state.speech.voice` (state) and `.voiceStats` (generated / played / fallbacks / failures).
 
+## Captions API (`captions.ts`, for the UI)
+
+```ts
+const off = audio.onSpeech((e) => {
+  if (e.type === 'speechStart') show(e.id, e.channel, e.speaker, e.text);          // a line starts to sound
+  else if (e.truncatedAt !== undefined) trim(e.id, e.truncatedAt);                  // it was cut / cancelled: the caption ends here
+  else done(e.id);                                                                  // it was said to the end
+});
+audio.speakingNow();  // lines sounding right now: a caption UI that subscribes late
+audio.clockMs();      // the clock of startMs / endMs (AudioContext time in ms)
+```
+
+* `speechStart { id, channel: 'booth' | 'pa' | 'umpire', speaker: 'pbp' | 'color' | 'pa' | 'ump', text, startMs, expectedDurationMs, excited }`. `text` is exactly what the voice is given (no markup; a booth line that had the live count folded in already contains it, "(Now one and one.)": folds are resolved when the line is spoken, so there is no later text edit). `startMs` is when the line really started to sound (the engine's start callback: browser `onstart`, or the first clause of an HD / custom-voice line), on the audio clock. `expectedDurationMs` is an estimate from the words (a real end comes with `speechEnd`).
+* `speechEnd { id, endMs, reason: 'finished' | 'cut' | 'cancelled' | 'error', truncatedAt? }`. `truncatedAt` is the number of characters of `text` that were spoken: a booth line cut by the director ends at a clause (`reason: 'cut'`); a more important line, pause, skip or mute cancels (`'cancelled'`). The HD voices report the exact count (completed clauses plus the fraction of the current one), other engines get an estimate from the elapsed time. Absent when the whole line was said.
+* A line that never sounds (dropped as stale while waiting for a one-line-at-a-time browser voice, a failed voice, muted roles, speed above 1x) produces no events. Listeners that throw are ignored. PA, umpire and booth lines can overlap with the HD voices, so several lines can be started at the same time; use `id`.
+* Implementation: `SpeechGate` (`broadcast/gate.ts`) wraps every line of both channels; engines say they report starts with `emitsStart` and `SpeakOptions.onstart`, and optionally give `SpeakHandle.spokenChars()`. Tests: `broadcast/__tests__/captions.test.ts`.
+
 ## Tiny language model for colour lines (experimental, off by default)
 
 `?lm=1` (WebGPU only) loads an in-browser model in a worker (`lmWorker.ts`, transformers.js and weights fetched from jsDelivr / Hugging Face at run time, nothing bundled), prompts it with a compact facts JSON, a style guide and the last lines, validates the answer (every number and name must be in the facts, no pronouns for players, length, no repetition) and uses it for a colour line now and then; late, invalid or failed answers fall back instantly to the grammar. **Evaluation (30 sampled game situations, headless Chrome, RTX GPU, q4, transformers.js 3.8 / 4.3, prompt ~300 tokens):**
@@ -161,5 +216,7 @@ Nothing is downloaded until the owner switches it on, and the voice pack is neve
 Speed is fine for the LFM2 models (well inside a 1.5 s budget, 100+ tok/s; Qwen / SmolLM2 are 3-4x slower). **Quality is not**: the validator only checks surface grounding, and lines that pass it are still mostly nonsense or wrong ("hitting a home run" in a game without one, "60 hits", "Ramirez faced 87 inning", a pitcher who "struck out twice"), they do not sound like colour, and the 0.5B models degenerate; a rewrite-the-grammar-line variant was worse. All 30 grammar lines for the same moments are coherent. With Kokoro (326 MB) alongside, the combined download is 0.6-1.1 GB and the GPU holds both. **Recommendation: do not ship it.** The plumbing stays behind `?lm=1` for a future, better model (raw outputs: the report's library folder; reproduce with `scripts/lm/`). LFM Open License v1.0 (checked from the model repo): Apache-style grant, redistribution with the licence copy, but commercial use is only licensed for entities below USD 10M annual revenue; this MIT repo redistributes no weights (the player's browser downloads them), so it is compatible for a hobby / non-commercial project, but anyone commercial above that threshold would need their own arrangement; Qwen2.5 and SmolLM2 are Apache-2.0.
 
 ## Scripts
+
+`scripts/crowd-check.cjs` (a game in headless Chrome: crowd level timeline, which reactions played, music decisions, stings, tick cost), `scripts/music-index.ts`.
 
 `scripts/booth-transcript.ts` (a game through the booth), `scripts/audio-check.cjs` (headless Chrome: fake browser voices or the HD voices, PA/booth overlap, errors), `scripts/modal-shots.cjs` (in-game panels at five viewports), `scripts/lm/` (LM benchmark and evaluation). The browser scripts need Playwright 1.58 (`PLAYWRIGHT_DIR`).

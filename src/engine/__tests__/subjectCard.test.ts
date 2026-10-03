@@ -79,6 +79,22 @@ describe('subject cards for B-roll shots', () => {
     expect(cardFor({ kind: 'onDeck', subject: 'od' }, state({ players: [snap({ id: 'od' })] }))).toBeNull(); // nameless
   });
 
+  it('every shot label the director sends with card: true gets a card (ShotLabel names)', () => {
+    const s = state({
+      players: [
+        snap({ id: 'b', name: 'Bat Man', number: 5, hand: 'L', team: 0, role: 'batter', ratings: { power: 60 } }),
+        snap({ id: 'p', name: 'Pitch Man', number: 6, hand: 'R', team: 1, role: 'pitcher' }),
+        snap({ id: 'r', name: 'Run Man', number: 7, hand: 'R', team: 0, role: 'runner' }),
+        snap({ id: 'rel', name: 'Rel Man', number: 8, hand: 'R', team: 1, role: 'bench' }),
+      ],
+    });
+    const by = { ondeck: 'b', walkup: 'b', shakeOff: 'p', leadOff: 'r', relieverJog: 'rel', relieverFace: 'rel' } as const;
+    for (const [kind, subject] of Object.entries(by)) expect(cardFor({ kind, subject }, s), kind).not.toBeNull();
+    expect(cardFor({ kind: 'faceCloseup', subject: 'b' }, s)!.role).toBe('AT BAT');
+    expect(cardFor({ kind: 'faceCloseup', subject: 'p' }, s)!.role).toBe('PITCHING');
+    for (const kind of ['coachSend', 'kidToss', 'infieldDrill', 'outfieldCatch']) expect(cardFor({ kind, subject: 'b' }, s), kind).toBeNull();
+  });
+
   it('team colour falls back sensibly', () => {
     expect(teamColor(undefined)).toBe('#333');
     expect(teamColor({ name: '', abbr: '', color: '#123456', trim: '#fff' })).toBe('#123456');

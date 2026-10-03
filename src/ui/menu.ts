@@ -121,11 +121,11 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   const tod = reg(segmented<TimeOfDay>('Time of day', TOD_ITEMS, ctx.settings.tod, (v) => ctx.update({ tod: v })), () => ctx.settings.tod);
 
   const a = () => ctx.audio.get();
-  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume', hint?: string) => {
+  const vol = (label: string, key: 'master' | 'sfx' | 'crowd' | 'organVolume' | 'announcer' | 'paVolume' | 'fxVolume' | 'musicVolume', hint?: string) => {
     const s = reg(slider(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
     return field(label, s.el, hint);
   };
-  const sw = (label: string, key: 'pa' | 'commentary' | 'organ', hint?: string) => {
+  const sw = (label: string, key: 'pa' | 'commentary' | 'organ' | 'music', hint?: string) => {
     const t = reg(toggle(label, a()[key], (v) => ctx.audio.set({ [key]: v })), () => a()[key]);
     const f = field(label, t.el, hint);
     f.classList.add('inline');
@@ -284,7 +284,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), field('Voices', voicesBox), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), vol('Park music volume', 'musicVolume', 'Stadium music after runs and home runs, walk-ups and between innings.'), sw('Play park music', 'music'), vol('Broadcast effects', 'fxVolume', 'Soft whooshes and stings for replays, dissolves and graphics.'), field('Voices', voicesBox), muteField),
     section('Subtitles', field('Captions for the announcers', subs.el), subs.hintEl, field('Size', subSize.el), field('Background', subBg.el), inl('Speaker labels', subLabels.el, 'PLAY-BY-PLAY, COLOR, PA, UMPIRE.'), field('Position', subPos.el)),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Pace of play', tempo.el, TEMPO_NOTE), tempo.hintEl, field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
