@@ -23,6 +23,7 @@
     "announcer:pilot": "bash tools/announcer/train/pilot.sh",
     "announcer:clips": "bash tools/announcer/train/run.sh clips",
     "announcer:test:game": "tsx tools/announcer/train/game_test.ts",
+    "audio:music:index": "tsx scripts/music-index.ts",
     "perf": "tsx tools/perf/run.ts",
     "perf:gpu": "tsx tools/perf/run.ts --uncapped",
     "perf:emu": "tsx tools/perf/run.ts --target emu",

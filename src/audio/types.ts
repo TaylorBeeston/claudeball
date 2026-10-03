@@ -39,7 +39,13 @@ export type SfxId =
   | 'firework'
   | 'replay_whoosh'
   | 'pa_click'
-  | 'ump_yell'; // fallback shout when there is no speech synthesis
+  | 'ump_yell' // fallback shout when there is no speech synthesis
+  // broadcast stings (broadcastfx.ts): quiet, on their own bus with its own volume
+  | 'bfx_whoosh' // a soft swish for a dissolve or a wipe
+  | 'bfx_thunk' // a tiny low tick on a hard cut to a close-up
+  | 'bfx_replay' // whoosh + a short rising sting into a replay
+  | 'bfx_blip' // a graphic (lower third) appearing
+  | 'bfx_thump'; // a low thump on a stadium aerial
 
 /** One-shot crowd reactions (stereo, played on the crowd bus, not positional). */
 export type CrowdId =
@@ -53,7 +59,20 @@ export type CrowdId =
   | 'ooh'
   | 'boo'
   | 'swell'
-  | 'whoop';
+  | 'whoop'
+  // crowd life and finer reactions (crowd.ts)
+  | 'clap_single' // one hand-clap, a handful of hands close together
+  | 'clap_burst' // one beat of a rhythmic clap (many hands within ~90 ms)
+  | 'whistle'
+  | 'shout' // a lone "hey!"
+  | 'shout2' // a lone "yeah!"
+  | 'kid' // a child's squeal
+  | 'vendor' // a far-off long call from the aisles (no words)
+  | 'chatter' // a pocket of conversation
+  | 'chant' // "let's go!" clap clap, three times
+  | 'aww' // a soft disappointed "awww"
+  | 'oh_relief' // "ohh" falling: the ball is caught
+  | 'boo_few'; // a handful of boos
 
 import type { OrganId } from './music';
 export type { OrganId };

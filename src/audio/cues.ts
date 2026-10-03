@@ -135,15 +135,22 @@ export interface MapperOptions {
    * Also switched on by the first `umpireCall` seen.
    */
   detailed?: boolean;
+  /**
+   * Keep the crowd cues (`crowd`, `excite`). The running game turns them off: the crowd reaction model (`crowd.ts`) makes every crowd
+   * sound itself from the same events. On by default so the mapping stays testable on its own.
+   */
+  crowdCues?: boolean;
 }
 
 export class CueMapper {
   detailed: boolean;
+  crowdCues: boolean;
   private lastTagT = -9;
   private close: { t: number } | null = null;
 
   constructor(opts: MapperOptions = {}) {
     this.detailed = !!opts.detailed;
+    this.crowdCues = opts.crowdCues !== false;
   }
 
   private lastPitcherId = '';
@@ -164,7 +171,8 @@ export class CueMapper {
 
   map(ev: RawEvent, c: MapCtx): Cue[] {
     try {
-      return this.mapInner(ev, c);
+      const cues = this.mapInner(ev, c);
+      return this.crowdCues ? cues : cues.filter((k) => k.kind !== 'crowd' && k.kind !== 'excite');
     } catch {
       return []; // audio never breaks the game
     }
