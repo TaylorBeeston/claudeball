@@ -144,7 +144,7 @@ MATS = {
  "uniform_socks": pbr("uniform_socks", (.05, .08, .3, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=2.0),      # own texture set (not the jersey knit): gltf-transform merges materials with identical textures and colour, and socks / undershirt share a colour
  "cleats": pbr("cleats", (.03, .03, .03, 1), L_BLACK["a"], L_BLACK["n"], L_BLACK["o"], nstrength=.6),
  "cap": pbr("cap", (.05, .08, .3, 1), WOVEN["a"], WOVEN["n"], WOVEN["o"], nstrength=1.6),
- "helmet": pbr("helmet", (.05, .08, .3, 1), PLASTIC["a"], PLASTIC["n"], PLASTIC["o"], rough=.3, nstrength=.5),
+ "helmet": pbr("helmet", (.05, .08, .3, 1), None, None, None, rough=.2),                                          # glossy ABS shell: colour factor only
  "glove": pbr("glove", (.28, .14, .07, 1), L_GLOVE["a"], L_GLOVE["n"], L_GLOVE["o"], nstrength=.8),
  "catcher_gear": pbr("catcher_gear", (.03, .03, .04, 1), PLASTIC["a"], PLASTIC["n"], PLASTIC["o"], rough=.45, nstrength=.5),
  "belt": pbr("belt", (.02, .02, .02, 1), L_BELT["a"], L_BELT["n"], L_BELT["o"], nstrength=.6),
@@ -156,6 +156,8 @@ def flat_mat(name, color, rough=.7, metal=0.0, alpha=None):
     b.inputs["Base Color"].default_value = color; b.inputs["Roughness"].default_value = rough; b.inputs["Metallic"].default_value = metal
     if alpha is not None: b.inputs["Alpha"].default_value = alpha; m.surface_render_method = 'BLENDED'
     return m
+MATS["mask_pad"] = flat_mat("mask_pad", (.015, .015, .018, 1), .9)                                                 # pads / straps of the masks (second material slot)
+MATS["mask"] = flat_mat("mask", (.02, .02, .025, 1), .4, metal=.55)                                      # catcher / umpire mask: coated steel bars, black pads and straps
 MATS["piping"] = pbr("piping", (.05, .08, .3, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"])                       # contrast trim (sleeve bands, placket, pants stripe, sock stripes)
 MATS["button"] = flat_mat("button", (.85, .85, .82, 1), .35)
 MATS["batting_glove"] = pbr("batting_glove", (.03, .03, .035, 1), L_BLACK["a"], L_BLACK["n"], L_BLACK["o"], rough=.55, nstrength=.6)
@@ -221,3 +223,22 @@ def add_normal(mat, nimg, strength=1.0):
 _lg = np.asarray(Image.open(os.path.join(CB_SRC, "pbr", "cap_logo.png")).convert("RGBA"), np.float32)/255.0
 MATS["cap_logo"] = _alpha_mat("cap_logo", (.96, .96, .96, 1), _rgba_image("cap_logo_a", _lg), .7, clip=True); add_normal(MATS["cap_logo"], emboss_normal("cap_logo_n", _lg[..., 3], 10.0, 2), 1.0)
 MATS["spikes"] = flat_mat("spikes", (.62, .62, .65, 1), .3, metal=1.0)
+
+# ---- jersey decals: placeholder textures (the engine replaces `baseColorTexture` per player; patch aspect = texture aspect, see README "Jersey decals") + the jersey knit normal at the jersey's weave scale
+def _decal_png(size, text, fs, name):
+    from PIL import ImageFont, ImageDraw
+    W, H = size; im = Image.new("RGBA", (W, H), (255, 255, 255, 0)); d = ImageDraw.Draw(im)
+    try: font = ImageFont.truetype("/usr/share/fonts/liberation/LiberationSans-Bold.ttf", int(H*fs))
+    except Exception: font = ImageFont.load_default()
+    d.text((W/2, H/2), text, font=font, fill=(255, 255, 255, 255), stroke_width=max(2, int(H*.035)), stroke_fill=(10, 22, 70, 255), anchor="mm")
+    return _rgba_image(name, np.asarray(im, np.float32)/255.0)
+def decal_mat(name, size, text, fs, patch):
+    m = _alpha_mat(name, (1, 1, 1, 1), _decal_png(size, text, fs, name + "_tex"), .85, clip=True); nt = m.node_tree; b = nt.nodes["Principled BSDF"]
+    t = nt.nodes.new("ShaderNodeTexImage"); t.image = KNIT["n"]; uv = nt.nodes.new("ShaderNodeUVMap"); uv.uv_map = "UVMap"; mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (patch[0]/.14, patch[1]/.14, 1.0); nt.links.new(uv.outputs["UV"], mp.inputs["Vector"]); nt.links.new(mp.outputs["Vector"], t.inputs["Vector"])
+    nm = nt.nodes.new("ShaderNodeNormalMap"); nm.inputs["Strength"].default_value = 1.2; nt.links.new(t.outputs["Color"], nm.inputs["Color"]); nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    m.use_backface_culling = True                                                   # single sided
+    return m
+for _dn, _ds in DECALS.items():
+    _txt, _fs = {"jersey_decal_name": ("PLAYER", .62), "jersey_decal_backnum": ("27", .78), "jersey_decal_frontnum": ("27", .72), "jersey_decal_sleevenum": ("27", .72)}[_ds["mat"]]
+    MATS[_ds["mat"]] = decal_mat(_ds["mat"], _ds["tex"], _txt, _fs, _ds["size"])

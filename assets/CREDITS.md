@@ -40,3 +40,6 @@ All sets are **CC0 1.0** (https://docs.ambientcg.com/license/, downloaded withou
 | Leather026 (also) | `wall_padding` (stadium.glb), dugout padding (field.glb) |
 | Rubber004 (also) | home plate and pitcher's rubber (field.glb) |
 | Fabric036 (also) | bases (field.glb) |
+
+## Tools used in the tenth pass (not shipped)
+KTX-Software 4.4.2 (`toktx`, Apache-2.0, Khronos), glTF-Transform (MIT), meshoptimizer (MIT), sharp (Apache-2.0); fonts for the placeholder decal textures: Liberation Sans Bold (SIL OFL 1.1, embedded as rasterised text only).
