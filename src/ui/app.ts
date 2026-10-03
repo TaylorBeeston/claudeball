@@ -15,6 +15,7 @@ import { Engine } from '../engine/engine';
 import { attachAudio, type AudioController } from '../audio';
 import { hdManager } from '../audio/hd';
 import { voiceManager } from '../audio/voiceManager';
+import { fetchParkManifest } from '../audio/park/player';
 import { DEFAULT_SETTINGS as AUDIO_DEFAULTS, type Settings as AudioSettings } from '../audio/mixer';
 import { loadSettings as loadAudio, saveSettings as saveAudio } from '../audio/ui';
 import type { QualityName } from '../engine/quality';
@@ -97,6 +98,7 @@ class App {
     if (!this.res.flags.noaudio) {
       void hdManager.autoStart();
       void voiceManager.autoStart();
+      void fetchParkManifest(`${import.meta.env.BASE_URL}audio/music/`); // so the park music is known when the game starts
     }
     report.autostart = this.res.autostart;
   }

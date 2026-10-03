@@ -17,6 +17,9 @@ import { mulberry32, type Rendered } from './dsp';
 export const MAX_VOICES = 32;
 /** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
 const MAKEUP = 2;
+/** park music at the full slider: sits a little under the crowd bed and the PA */
+const MUSIC_LEVEL = 1.0;
+
 /** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
 const ORGAN_LEVEL = 1.0;
 /** PA bus gain at slider 1 (the default slider 0.55 is about 4-5 dB under the old fixed level) */
@@ -29,6 +32,11 @@ export interface Settings {
   announcer: number;
   /** the stadium PA announcer's own volume (field channel); the umpire shares it */
   paVolume: number;
+  /** camera-transition whooshes, replay stings and graphic blips (`broadcastfx.ts`) */
+  fxVolume: number;
+  /** park music (`parkmusic.ts`): the level and the on / off switch */
+  musicVolume: number;
+  music: boolean;
   muted: boolean;
   /** PA announcer + umpire calls */
   pa: boolean;
@@ -44,7 +52,7 @@ export interface Settings {
   hd: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, fxVolume: 0.5, musicVolume: 0.5, music: true, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
 
 interface Voice {
   src: AudioBufferSourceNode;
@@ -67,6 +75,9 @@ const MIN_GAP: Partial<Record<string, number>> = {
   slide_scuff: 0.25,
 };
 
+/** Minimum seconds between two plays of the same crowd sound (a clap pattern needs short gaps; the rest must not stack up). */
+const CROWD_GAP: Partial<Record<string, number>> = { clap_burst: 0.1, clap_single: 0.12, whistle: 1.5, shout: 1.2, shout2: 1.2, kid: 6, vendor: 4, chatter: 2, aww: 0.5, ooh: 0.3, gasp: 0.5, oh_relief: 0.6 };
+
 export class Mixer {
   ctx: AudioContext | null = null;
   settings: Settings;
@@ -79,6 +90,15 @@ export class Mixer {
   master!: GainNode;
   sfxBus!: GainNode;
   crowdBus!: GainNode;
+  /** broadcast stings (camera whooshes, replay sting, graphic blips): their own level, unaffected by the replay filter */
+  fxBus!: GainNode;
+  /** park music (`park/player.ts`): the stadium PA layer's music, under the voices */
+  musicBus!: GainNode;
+  private musicDuck = 1;
+  /** the bed and the one-shots of the crowd enter here; the camera's distance to the stands sets its gain */
+  crowdProx!: GainNode;
+  /** phone-class device: fewer simultaneous crowd voices */
+  lowPower = false;
   organBus!: GainNode;
   private sfxFilter!: BiquadFilterNode;
   reverbIn!: GainNode;
@@ -149,6 +169,12 @@ export class Mixer {
     this.sfxFilter.connect(this.master);
     this.crowdBus = ctx.createGain();
     this.crowdBus.connect(this.master);
+    this.fxBus = ctx.createGain();
+    this.fxBus.connect(this.master);
+    this.musicBus = ctx.createGain();
+    this.musicBus.connect(this.master);
+    this.crowdProx = ctx.createGain();
+    this.crowdProx.connect(this.crowdBus);
     this.organBus = ctx.createGain();
     this.organBus.connect(this.master);
     this.voiceBus = ctx.createGain();
@@ -169,6 +195,10 @@ export class Mixer {
       conv.connect(ret);
       ret.connect(this.master);
       this.organBus.connect(this.reverbIn);
+      const msend = ctx.createGain();
+      msend.gain.value = 0.12; // a little stadium room on the music
+      this.musicBus.connect(msend);
+      msend.connect(this.reverbIn);
     } catch {
       /* no reverb */
     }
@@ -200,6 +230,8 @@ export class Mixer {
     const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
     this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
+    this.musicBus.gain.setTargetAtTime(this.paused || !s.music ? 0 : s.musicVolume * s.musicVolume * MUSIC_LEVEL * this.musicDuck, t, 0.15);
+    this.fxBus.gain.setTargetAtTime(this.paused ? 0 : s.fxVolume * s.fxVolume * 1.3, t, 0.05);
     this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
     this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
     this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
@@ -213,6 +245,19 @@ export class Mixer {
     if (pa === this.duck.pa && booth === this.duck.booth) return;
     this.duck = { pa, booth };
     this.applySettings();
+  }
+
+  /** the music sits under the booth (-6 dB) and the PA, and under big crowd moments: 0..1 (the controller works it out) */
+  setMusicDuck(d: number) {
+    if (Math.abs(d - this.musicDuck) < 0.01) return;
+    this.musicDuck = d;
+    this.applySettings();
+  }
+
+  /** camera closer to the stands = a louder crowd (0.7 .. 1.4, smoothed) */
+  setCrowdProximity(g: number) {
+    if (!this.ctx) return;
+    this.crowdProx.gain.setTargetAtTime(g, this.ctx.currentTime, 0.6);
   }
 
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */
@@ -255,6 +300,7 @@ export class Mixer {
     for (const id of CROWD_IDS) jobs.push(() => this.buffers.set(`crowd:${id}`, [this.toBuffer(renderCrowd(id))]));
     jobs.push(() => this.buffers.set('loop:murmur', [this.toBuffer(crowdLoop('murmur'))]));
     jobs.push(() => this.buffers.set('loop:roar', [this.toBuffer(crowdLoop('roar'))]));
+    jobs.push(() => this.buffers.set('loop:claps', [this.toBuffer(crowdLoop('claps'))]));
     this.totalToPrepare = jobs.length;
     let i = 0;
     const next = () => {
@@ -339,7 +385,8 @@ export class Mixer {
     const sp = c.pos ? spatialize(this.listener, c.pos as Vec3) : { gain: 1, pan: 0, cutoff: 20000, dist: 0 };
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    const slow = this.replay ? 0.6 : 1;
+    const fx = c.id.startsWith('bfx_');
+    const slow = this.replay && !fx ? 0.6 : 1;
     src.playbackRate.value = (c.rate ?? 1) * (0.96 + this.rnd() * 0.08) * slow;
     const gain = ctx.createGain();
     gain.gain.value = Math.min(1.5, (c.gain ?? 1) * sp.gain);
@@ -361,7 +408,7 @@ export class Mixer {
       tail = p;
       nodes.push(p);
     }
-    tail.connect(this.sfxBus);
+    tail.connect(fx ? this.fxBus : this.sfxBus);
     const v: Voice = { src, nodes, id: c.id, imp: c.imp, start: now };
     this.voices.add(v);
     src.onended = () => {
@@ -399,8 +446,11 @@ export class Mixer {
     return true;
   }
 
-  /** Non-positional crowd reaction (stereo one-shot on the crowd bus). */
-  playCrowd(id: CrowdId, gain = 1, delay = 0): boolean {
+  /**
+   * Non-positional crowd reaction (stereo one-shot on the crowd bus). `o.pan` places it in the stands, `o.sweep` moves it across them
+   * (the wave), `o.rate` changes pitch and length. At the voice cap only louder sounds get through.
+   */
+  playCrowd(id: CrowdId, gain = 1, delay = 0, o: { pan?: number; rate?: number; sweep?: { from: number; to: number; dur: number } } = {}): boolean {
     const ctx = this.ctx;
     if (!ctx || !this.ready || ctx.state !== 'running') return false;
     const list = this.buffers.get(`crowd:${id}`);
@@ -408,22 +458,32 @@ export class Mixer {
     if (!b) return false;
     const now = ctx.currentTime;
     const key = `crowd:${id}`;
-    if (now - (this.last.get(key) ?? -9) < 0.8) return false;
-    if (this.crowdVoices.size >= 4) return false;
+    if (now - (this.last.get(key) ?? -9) < (CROWD_GAP[id] ?? 0.8)) return false;
+    const cap = this.lowPower ? 3 : 6;
+    if (this.crowdVoices.size >= cap && !(gain > 0.6 && this.crowdVoices.size < cap + 2)) return false;
     this.last.set(key, now);
     const src = ctx.createBufferSource();
     src.buffer = b;
-    src.playbackRate.value = 0.97 + this.rnd() * 0.06;
+    src.playbackRate.value = (o.rate ?? 1) * (0.98 + this.rnd() * 0.04);
     const g = ctx.createGain();
     g.gain.value = Math.min(1.4, gain);
     src.connect(g);
-    g.connect(this.crowdBus);
+    let pan: StereoPannerNode | null = null;
+    if ((o.pan !== undefined || o.sweep) && typeof ctx.createStereoPanner === 'function') {
+      pan = ctx.createStereoPanner();
+      const from = o.sweep ? o.sweep.from : o.pan!;
+      pan.pan.setValueAtTime(Math.max(-1, Math.min(1, from)), now + Math.max(0, delay));
+      if (o.sweep) pan.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, o.sweep.to)), now + Math.max(0, delay) + o.sweep.dur);
+      g.connect(pan);
+      pan.connect(this.crowdProx);
+    } else g.connect(this.crowdProx);
     this.crowdVoices.add(src);
     src.onended = () => {
       this.crowdVoices.delete(src);
       try {
         src.disconnect();
         g.disconnect();
+        pan?.disconnect();
       } catch {
         /* ignore */
       }
