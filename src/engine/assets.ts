@@ -23,6 +23,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import shipped from '../../assets/shipped.json';
+import { FLAGS } from './flags';
 
 export interface CharacterTemplate {
   /** file name without extension (`player_base`, `player_coach`, …) */
@@ -130,7 +131,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     onProgress?.({ frac: w ? l / w : 0, label });
   };
   const playerDir = tier === '1k' ? 'players_1k' : 'players';
-  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', 'lod/player_base_geo.glb', ...CHARACTERS.map((c) => `${playerDir}/${c}.glb`)];
+  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', ...(FLAGS.nolodgeo ? [] : ['lod/player_base_geo.glb']), ...CHARACTERS.map((c) => `${playerDir}/${c}.glb`)];
   for (const f of known) progress.set(f, { loaded: 0, weight: fileWeight(`optimized/${f}`) });
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
@@ -167,7 +168,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     load('ball.glb'),
     load('bat.glb'),
     load('bat_donut.glb'),
-    load('lod/player_base_geo.glb', undefined, true),
+    FLAGS.nolodgeo ? Promise.resolve(null) : load('lod/player_base_geo.glb', undefined, true),
     ...CHARACTERS.map((c) => load(`${playerDir}/${c}.glb`, 'Bat_Grip')),
   ]);
 
