@@ -12,6 +12,7 @@
 import type { Material, Object3D, Texture } from 'three';
 import type { Engine } from './engine';
 import type { Assets } from './assets';
+import { loadJerseyFont } from './jerseyText';
 
 export interface PrepareProgress {
   /** 0..1 over the whole preparation */
@@ -129,6 +130,7 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
   lap('sky');
 
   report(0.68, 'Dressing the players…');
+  await loadJerseyFont(); // names and numbers are drawn with it as the players are built
   await yieldUi();
   e.tick(1 / 60, false); // builds every puppet (and swaps nothing visible: the canvas is hidden)
   lap('players');
