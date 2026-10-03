@@ -145,6 +145,26 @@ function idleFor(role: PlayerRole): string[] {
   return ['idle'];
 }
 
+/** hints whose pose is meant to be stationary: when the player is nonetheless travelling, the legs must follow the ground speed (no sliding in a ready pose) */
+const STATIC_HINTS = new Set<string>(['idle', 'ump_ready', 'ump_time', 'ondeck_ready', 'coach_ready', 'ballkid_sit', 'ballkid_idle', 'bench_sit', 'catch_ready', 'transfer', 'mound_talk', 'mound_talk_listen', 'umpire_brush_plate', 'ump_new_ball', 'ump_huddle', 'field_ready']);
+/** gaits with their own foot speed: kept while the speed fits them, replaced by a faster gait above this */
+const WALKISH_HINTS = new Set<string>(['walk', 'manager_walk', 'ballkid_run', 'batter_step_in']);
+
+/**
+ * Should locomotion override the sim's pose hint? Whenever the ground speed is clearly above a standing sway: stationary hints from ~0.45 m/s (0.9 for the
+ * batter, catcher, pitcher and umpires, who shuffle in their routines; less once a gait is already playing), walking hints once they are faster than a walk can
+ * keep up with (the walk clip's feet do ~1.4-2.4 m/s), a transfer only when really travelling.
+ */
+export function wantsGait(hint: string, role: string, speed: number, gaitOn: boolean): boolean {
+  if (STATIC_HINTS.has(hint)) {
+    if (hint === 'transfer') return speed > (gaitOn ? 1.4 : 2.0);
+    const shuffler = role === 'batter' || role === 'catcher' || role === 'pitcher' || role === 'umpire';
+    return speed > (shuffler ? (gaitOn ? 0.5 : 0.9) : gaitOn ? 0.3 : 0.45);
+  }
+  if (WALKISH_HINTS.has(hint)) return speed > (gaitOn ? 2.3 : 2.6);
+  return false;
+}
+
 /** Yaw (rad, direction = (sin f, cos f)) a batter's body faces in the box: chest toward the plate, a little open to the pitcher. */
 export const STANCE_OPEN = 0.2;
 export function stanceYaw(hand: 'L' | 'R' | undefined): number {
@@ -952,10 +972,10 @@ export class GltfPuppet implements PuppetLike {
    * skate; the neighbour gait takes over (cross-fade) when it fits better, with hysteresis so a player at a gait boundary does not flicker.
    * A turn at speed uses the turning clips. Returns null when the player is not moving on the ground.
    */
-  private locomotionClip(snap: PlayerSnap): string | null {
+  private locomotionClip(snap: PlayerSnap, override = false): string | null {
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const hint = snap.anim;
-    const moving = hint === 'run' || hint === 'trot' || hint === 'run_turn' || (hint === 'idle' && sp > 0.3 && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher');
+    const moving = override || hint === 'run' || hint === 'trot' || hint === 'run_turn';
     if (!moving) {
       this.gait = '';
       return null;
@@ -1267,7 +1287,7 @@ export class GltfPuppet implements PuppetLike {
       this.rebuildProxy(); // (a no-op unless the set of visible parts changed)
     }
     this.animClock += dt;
-    const pit0 = snap.role === 'pitcher' ? this.pitcherPlan(snap) : null;
+    const pit0 = snap.role === 'pitcher' && !(snap.anim === 'idle' && Math.hypot(snap.vel.x, snap.vel.z) > 0.9) ? this.pitcherPlan(snap) : null;
     // the catcher's catch is inferred from the ball's flight only when the sim reports none (no glove target, no catch hint)
     const realCatch = !!snap.gloveTarget || snap.anim === 'catch_pitch';
     if (realCatch) {
@@ -1276,9 +1296,12 @@ export class GltfPuppet implements PuppetLike {
     }
     const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
-    const hint = this.moveHint(snap);
-    const loco = pit0 || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap);
-    const baseName = this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
+    const speed0 = Math.hypot(snap.vel.x, snap.vel.z);
+    const gaitOver = wantsGait(snap.anim, snap.role, speed0, this.gaitOn) && snap.anim !== 'catch_pitch';
+    this.gaitOn = gaitOver;
+    const hint = gaitOver ? snap.anim : this.moveHint(snap);
+    const loco = (pit0 && !gaitOver) || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap, gaitOver);
+    const baseName = gaitOver && loco ? loco : this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
     this.trackTag(snap, env);
     const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : this.eventPlan(snap, baseName));
     const name = pit ? pit.name : baseName;
@@ -1288,7 +1311,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.lastHint = snap.anim;
     this.lastMoveHint = hint;
-    const stanceHeld = snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
+    const stanceHeld = !gaitOver && snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (pit && pit.time !== null && this.current) {
@@ -1344,7 +1367,8 @@ export class GltfPuppet implements PuppetLike {
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
     const ready = this.updateReady(snap, env, dt);
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : snap.facing;
+    // travelling in a stationary pose (a gait chosen by speed): the body faces where it is going
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -1452,6 +1476,8 @@ export class GltfPuppet implements PuppetLike {
 
   private wasStance = false;
   private lastMoveHint: AnimHint | '' = '';
+  /** a gait chosen by speed is overriding a stationary hint (hysteresis for `wantsGait`) */
+  private gaitOn = false;
   private ikFade = 1;
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */
