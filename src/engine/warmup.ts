@@ -53,8 +53,15 @@ function showVariants(e: Engine): () => void {
   const hidden: Object3D[] = [];
   for (const root of [e.players.group, e.ball.group, e.bat.obj, ...e.ensureLooseProps()]) root.traverse((o) => !o.visible && hidden.push(o));
   for (const o of hidden) o.visible = true;
+  // parts the level of detail would skip at this camera are compiled and uploaded too
+  const lodWas = e.players.lodEnabled;
+  e.players.lodEnabled = false;
+  e.camera.layers.enableAll();
+  for (const p of e.players.allPuppets()) p.lodReset?.();
   return () => {
     for (const o of hidden) o.visible = false;
+    e.players.lodEnabled = lodWas;
+    e.camera.layers.set(0);
   };
 }
 
@@ -84,6 +91,9 @@ export async function rewarm(e: Engine): Promise<void> {
     await e.renderer.compileAsync(e.scene, e.camera);
     await yieldUi();
     drawEverything(e);
+    e.players.lodGeometry(true);
+    drawEverything(e);
+    e.players.lodGeometry(false);
   } finally {
     restore();
   }
@@ -141,6 +151,10 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
     report(0.88, 'Building shaders…');
     await yieldUi();
     drawEverything(e);
+    // the simplified player geometry is uploaded too, so the first small player does not stall a frame
+    e.players.lodGeometry(true);
+    drawEverything(e);
+    e.players.lodGeometry(false);
   } finally {
     restore();
   }

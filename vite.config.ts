@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -14,9 +15,19 @@ function cbAssets(): Plugin {
     '.ktx2': 'image/ktx2', '.jpg': 'image/jpeg', '.png': 'image/png', '.bin': 'application/octet-stream',
   };
   // byte sizes of the shipped files, for the loading screen's progress bar (the same set the build copies, see `shipped` below)
+  const shippedList = JSON.parse(fs.readFileSync(path.resolve('assets/shipped.json'), 'utf8')) as { players: string[]; players_1k: string[] };
+  // what the deploy carries: the layout, and under optimized/ everything except the raw lod1 players and the player files the game never spawns from
+  // (the role files that only carried default node sets are replaced by gear_defaults.json; see assets/shipped.json and scripts/derive-assets.mjs)
   const shippedFile = (src: string, f: string) => {
     const rel = path.relative(src, f).split(path.sep);
-    return rel[0] === 'field_layout.json' || (rel[0] === 'optimized' && rel[1] !== 'lod1');
+    if (rel[0] === 'field_layout.json') return true;
+    // the engine fetches players/player_manifest.json (clip event times, glove-closing keys, foot speeds); it was never part of the deploy, so production ran on the fallbacks
+    if (rel[0] === 'players' && rel[1] === 'player_manifest.json') return true;
+    if (rel[0] === 'shipped.json' || rel[0] !== 'optimized') return false;
+    if (rel[1] === 'lod1') return false;
+    if (rel[1] === 'players' && rel[2]?.endsWith('.glb')) return shippedList.players.includes(rel[2].replace(/\.glb$/, ''));
+    if (rel[1] === 'players_1k') return shippedList.players_1k.includes((rel[2] ?? '').replace(/\.glb$/, ''));
+    return true;
   };
   const sizes = () => {
     const src = dir();
@@ -54,9 +65,18 @@ function cbAssets(): Plugin {
       if (!fs.existsSync(src)) return;
       // ship only what the runtime loads: field_layout.json and the optimized/ builds (not the raw exports, Blender sources or unused lod1/)
       const shipped = (f: string) => {
-        const rel = path.relative(src, f).split(path.sep);
-        return rel[0] === '' || rel[0] === 'field_layout.json' || (rel[0] === 'optimized' && rel[1] !== 'lod1');
+        const rel = path.relative(src, f).split(path.sep).join('/');
+        if (fs.statSync(f).isDirectory()) return rel === '' || rel === 'players' || rel === 'optimized' || rel.startsWith('optimized/');
+        return shippedFile(src, f);
       };
+      // the derived assets (1k player textures, simplified geometry, gear defaults) must come from the current sources
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(src, 'derived.json'), 'utf8')) as { sources: Record<string, string> };
+        const stale = Object.entries(d.sources).filter(([rel, sha]) => crypto.createHash('sha1').update(fs.readFileSync(path.join(src, rel))).digest('hex') !== sha).map(([rel]) => rel);
+        if (stale.length) console.warn(`\n[cb-assets] WARNING: ${stale.length} source file(s) changed since the derived assets were built (${stale.slice(0, 3).join(', ')}): run \`npm run assets:derive\` (players_1k, lod geometry and gear defaults are out of date)\n`);
+      } catch {
+        console.warn('\n[cb-assets] WARNING: assets/derived.json is missing: run `npm run assets:derive`\n');
+      }
       fs.cpSync(src, path.resolve('dist/assets'), { recursive: true, filter: shipped });
       fs.writeFileSync(path.resolve('dist/assets/asset_sizes.json'), JSON.stringify(sizes()));
     },
