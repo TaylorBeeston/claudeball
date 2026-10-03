@@ -75,7 +75,7 @@ const GradeShader = {
     vignette: { value: 0.32 },
     saturation: { value: 0.94 },
     contrast: { value: 1.06 },
-    aberration: { value: 0.0012 },
+    aberration: { value: 0.0005 },
     tint: { value: new Vector2(0.0, 0.0) },
     fade: { value: 0 },
     aspect: { value: 1.7 },
