@@ -15,4 +15,6 @@ export const FLAGS = {
   nomatrix: q.has('nomatrix'),
   /** off-screen / tiny puppets are animated in full like everybody else */
   noskip: q.has('noskip'),
+  /** the old crowd (the asset's box figures + placeholder capsules) instead of the billboard spectators (A/B) */
+  oldcrowd: q.has('oldcrowd'),
 };

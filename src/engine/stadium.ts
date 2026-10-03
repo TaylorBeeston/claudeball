@@ -28,6 +28,9 @@ import {
 import { DIM, wallDistance } from './dims';
 import type { Environment } from './environment';
 import type { GameState } from './types';
+import { tuneParkMaterial } from './fieldLook';
+import { buildImpostorCrowd, type ImpostorCrowd } from './crowdImpostors';
+import type { CrowdAtlas } from './crowdAtlas';
 
 type P2 = [number, number];
 const SCOREBOARD_FLIP_X = false; // assets fixed the screen UVs after the axis flip
@@ -305,7 +308,13 @@ export interface Stadium {
   gbufferHidden: Object3D[];
   /** show / hide every spectator and seat mesh (the GTAO depth/normal prepass skips the crowd: hundreds of draw calls for no visible occlusion) */
   crowdVisible(v: boolean): void;
-  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; setSectors(n: number): void; excite(v: number): void; update(t: number, dt: number): void };
+  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; setSectors(n: number): void; excite(v: number): void; update(t: number, dt: number): void; startWave(): void };
+  /** switch the stands to billboard spectators rendered from the player model (see `crowdImpostors.ts`); the old figures stay as the fallback */
+  useCrowdAtlas(atlas: CrowdAtlas, msaa: boolean): void;
+  /** the billboard crowd once an atlas is in use (null before) */
+  impostors: ImpostorCrowd | null;
+  /** lamp glare only toward the side the lamps face (from behind a tower there is no glare) */
+  updateGlare(camera: Vector3): void;
   updateScoreboard(s: GameState): void;
   setLightsOn(on: boolean): void;
   /** where the lamp banks of the light towers are (scene coordinates); replaced when the glTF stadium is adopted */
@@ -524,14 +533,23 @@ export function buildStadium(env: Environment): Stadium {
   // --- crowd -----------------------------------------------------------------------------------------
   const crowd = buildCrowd(env, group);
   crowd.setMatrices(crowdMatrices(path));
+  // the billboard crowd (used once the engine renders an atlas of spectators); the procedural stands' rows until a glTF stadium is adopted
+  const floorSeats: Matrix4[] = crowdMatrices(path).map((m) => m.clone().premultiply(new Matrix4().makeTranslation(0, -0.28, 0)));
+  let impostors: ImpostorCrowd | null = null;
+  let crowdDensity = 1;
+  let crowdShown = true;
+  let waveLeft = 0;
+  const tmpA = new Vector3(), tmpB = new Vector3(), tmpC = new Vector3();
+  const WAVE_TIME = 34;
   // the asset stadium's seat / spectator instancing is split into azimuth sectors (own bounding spheres, so off-screen stands are culled); more sectors
   // cull better and cost more draw calls, so the quality preset picks the count (`setSectors` re-splits the original instanced meshes)
   const chunkSets: { orig: InstancedMesh; chunks: InstancedMesh[]; crowd: boolean }[] = [];
   let wantSectors = 12;
   const setSectors = (n: number) => {
-    crowd.setSectors(n);
+    if (!impostors) crowd.setSectors(n);
     if (n === wantSectors) return;
     wantSectors = n;
+    impostors?.setSeats(floorSeats, n);
     for (const set of chunkSets) {
       if (set.crowd) {
         const dead = new Set<InstancedMesh>(set.chunks);
@@ -567,7 +585,7 @@ export function buildStadium(env: Environment): Stadium {
   const gltfGlares: Sprite[] = [];
   const applyLights = () => {
     setLightsOn(lightsState);
-    for (const g of gltfGlares) (g.material as SpriteMaterial).opacity = lightsState ? 0.85 : 0;
+    for (const g of gltfGlares) (g.material as SpriteMaterial).opacity = lightsState ? 0.85 * (g.userData.facing ?? 1) : 0;
     gltfLamps.forEach((m, i) => (m.emissiveIntensity = lightsState ? gltfLampBase[i] : 0.03));
   };
   const adoptGltf = (root: Group, mirrored = false) => {
@@ -576,6 +594,7 @@ export function buildStadium(env: Environment): Stadium {
     group.add(root);
     root.updateMatrixWorld(true);
     const seatMats: Matrix4[] = [];
+    floorSeats.length = 0;
     const wm = new Matrix4(), inst = new Matrix4();
     const up = new Vector3(0, 1, 0), p = new Vector3(), q = new Quaternion(), sc = new Vector3();
     const lampSet = new Set<MeshStandardMaterial>();
@@ -584,7 +603,7 @@ export function buildStadium(env: Environment): Stadium {
       if (!m.isMesh) return;
       const mats = (Array.isArray(m.material) ? m.material : [m.material]) as MeshStandardMaterial[];
       for (const mt of mats) {
-        env.register(mt);
+        env.register(mt, tuneParkMaterial(mt));
         if (mt.transparent) gbufferHidden.push(m);
         if (o.name.endsWith('_Lamps')) lampSet.add(mt);
         if (o.name === 'Scoreboard_Screen') {
@@ -616,7 +635,7 @@ export function buildStadium(env: Environment): Stadium {
         const rnd = () => ((r = (r * 1664525 + 1013904223) >>> 0) / 4294967296);
         wm.copy(im.matrixWorld);
         for (let i = 0; i < im.count; i++) {
-          if (rnd() > fill) continue;
+          const skip = rnd() > fill;
           im.getMatrixAt(i, inst);
           inst.premultiply(wm);
           inst.decompose(p, q, sc);
@@ -624,6 +643,9 @@ export function buildStadium(env: Environment): Stadium {
           const fwd = new Vector3(0, 0, 1).transformDirection(inst);
           fwd.y = 0;
           fwd.normalize();
+          // every seat, anchored on the floor under it, for the billboard crowd
+          floorSeats.push(new Matrix4().compose(p.clone().addScaledVector(up, bb.min.y * sc.y), new Quaternion().setFromAxisAngle(up, Math.atan2(fwd.x, fwd.z)), new Vector3(1, 1, 1).multiplyScalar(0.97 + ((i * 7919) % 97) / 97 * 0.08)));
+          if (skip) continue;
           p.addScaledVector(fwd, -0.05).addScaledVector(up, bb.min.y + 0.03 + (bb.max.y - bb.min.y) * 0.18);
           q.setFromAxisAngle(up, Math.atan2(fwd.x, fwd.z) + (rnd() - 0.5) * 0.5);
           const s = 0.92 + rnd() * 0.2;
@@ -715,17 +737,76 @@ export function buildStadium(env: Environment): Stadium {
     group,
     structure,
     gbufferHidden,
+    updateGlare: (cam: Vector3) => {
+      if (!lightsState) return;
+      for (const g of gltfGlares) {
+        // the banks aim at the field: compare the camera's direction with the aim (lamp -> middle of the park)
+        g.getWorldPosition(tmpC);
+        const aim = tmpA.set(0, 0, 40).sub(tmpC).normalize();
+        const view = tmpB.copy(cam).sub(tmpC).normalize();
+        const k = Math.min(1, Math.max(0, (aim.dot(view) + 0.15) / 0.5));
+        g.userData.facing = k * k * (3 - 2 * k);
+        (g.material as SpriteMaterial).opacity = 0.85 * g.userData.facing;
+      }
+    },
+    get impostors() {
+      return impostors;
+    },
+    useCrowdAtlas: (atlas, msaa) => {
+      if (!impostors) {
+        impostors = buildImpostorCrowd((m, patch) => env.register(m, patch), crowd.uniforms);
+        group.add(impostors.group);
+        impostors.setAtlas(atlas);
+        impostors.setSeats(floorSeats, wantSectors);
+      } else impostors.setAtlas(atlas);
+      impostors.setMsaa(msaa);
+      impostors.setDensity(crowdDensity);
+      impostors.setVisible(crowdShown);
+      // the old figures (the asset's boxes and the placeholder capsules) go for good
+      crowd.setVisible(false);
+      for (const set of chunkSets.filter((c) => c.crowd)) {
+        for (const c of set.chunks) {
+          c.removeFromParent();
+          c.dispose();
+        }
+        set.orig.visible = false;
+        chunkSets.splice(chunkSets.indexOf(set), 1);
+      }
+      crowd.extra.length = 0;
+    },
     crowd: {
-      setDensity: (d) => crowd.setDensity(d),
+      setDensity: (d) => {
+        crowdDensity = d;
+        crowd.setDensity(d);
+        impostors?.setDensity(d);
+      },
       setAnimate: (a) => (crowd.uniforms.uAnimate.value = a ? 1 : 0),
       setSectors: (n) => setSectors(n),
       excite: (v) => (crowd.uniforms.uExcite.value = v),
       update: (t, dt) => {
         crowd.uniforms.uTime.value = t;
         crowd.uniforms.uExcite.value = Math.max(crowd.baseExcite, crowd.uniforms.uExcite.value - dt * 0.18);
+        // the wave: runs round the bowl (counter-clockwise seen from above) for a few laps, fading in and out
+        const w = impostors?.wave;
+        if (w && waveLeft > 0) {
+          waveLeft -= dt;
+          w.x = ((w.x + dt * 0.42 + Math.PI) % (Math.PI * 2)) - Math.PI;
+          w.z = Math.min(1, Math.min(waveLeft, WAVE_TIME - waveLeft) / 3);
+        } else if (w) w.z = 0;
+      },
+      startWave: () => {
+        if (!impostors || waveLeft > 0) return;
+        waveLeft = WAVE_TIME;
+        impostors.wave.set(-2.2, 0.16, 0);
       },
     },
     crowdVisible: (v: boolean) => {
+      crowdShown = v;
+      if (impostors) {
+        impostors.setVisible(v);
+        for (const set of chunkSets) for (const c of set.chunks) c.visible = v;
+        return;
+      }
       crowd.setVisible(v);
       for (const set of chunkSets) for (const c of set.chunks) c.visible = v;
     },

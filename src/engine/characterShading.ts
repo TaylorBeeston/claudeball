@@ -99,7 +99,7 @@ function configure(m: Material) {
       defineOff(m, 'CB_SSS_CURV');
     }
   } else if (kind === 'hair') {
-    if (on) defineOn(m, 'CB_HAIR');
+    if (on && !m.userData.cbNoSpec) defineOn(m, 'CB_HAIR');
     else defineOff(m, 'CB_HAIR');
     const cards = m.userData.cbCards as boolean;
     if (cards) {
@@ -128,11 +128,16 @@ export function shadeSkin(m: Material): Material {
   return m;
 }
 
-/** Tag a hair / beard / stubble material; `cards` for translucent strand cards. */
-export function shadeHair(m: Material): Material {
+/**
+ * Tag a hair / beard / stubble material; strand cards (alpha-tested or translucent textures) get coverage / cutoff edges. `cards: false` keeps a
+ * translucent shell blended (stubble: a 40 % film over the skin; as a card its alpha would pass the cutoff everywhere and read as a black beard).
+ */
+export function shadeHair(m: Material, cards?: boolean, strandSpecular = true): Material {
   const s = m as MeshStandardMaterial;
   m.userData.cbShade = 'hair';
-  m.userData.cbCards = !!s.transparent || s.alphaTest > 0 || !!s.alphaMap;
+  // the strand highlight runs down the head; on a beard shell (fibres in every direction, lit from below) it reads as a white band
+  m.userData.cbNoSpec = !strandSpecular;
+  m.userData.cbCards = cards ?? (!!s.transparent || s.alphaTest > 0 || !!s.alphaMap);
   registry.add(m);
   configure(m);
   return m;

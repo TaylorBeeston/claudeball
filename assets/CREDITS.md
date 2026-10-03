@@ -43,3 +43,6 @@ All sets are **CC0 1.0** (https://docs.ambientcg.com/license/, downloaded withou
 
 ## Tools used in the tenth pass (not shipped)
 KTX-Software 4.4.2 (`toktx`, Apache-2.0, Khronos), glTF-Transform (MIT), meshoptimizer (MIT), sharp (Apache-2.0); fonts for the placeholder decal textures: Liberation Sans Bold (SIL OFL 1.1, embedded as rasterised text only).
+
+## Fonts
+- `public/fonts/anton-latin-400.woff2`: **Anton** by The Anton Project Authors (https://github.com/googlefonts/AntonFont), SIL Open Font License 1.1 (`public/fonts/OFL-Anton.txt`), via Fontsource (`@fontsource/anton` 5.3.0, latin subset). Used for jersey names and numbers (`src/engine/jerseyText.ts`).
