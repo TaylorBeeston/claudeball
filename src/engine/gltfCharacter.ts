@@ -1322,7 +1322,7 @@ export class GltfPuppet implements PuppetLike {
     this.lod1 = lod1;
     this.updateLod(snap, env);
     if (this.cornea.length) {
-      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 24;
+      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 12; // close-ups only: each shell is a draw call
       const vis = shadingTier() === 'full' && !lod1 && near;
       for (const c of this.cornea) c.visible = vis;
     }
