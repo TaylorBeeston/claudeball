@@ -437,6 +437,16 @@ function proxyGeometry(tpl: object, key: string, parts: SkinnedMesh[], ref: Skin
   return merged;
 }
 
+/** the darker of two team colours for the catcher's gear (white gear reads as plaster), navy when both are light */
+function gearColor(a: string, b: string): string {
+  const lum = (h: string) => {
+    const c = new Color(h);
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  };
+  const d = lum(a) <= lum(b) ? a : b;
+  return lum(d) > 0.35 ? '#1d2a44' : d;
+}
+
 /** metres per geometry unit of a (possibly quantized) mesh: its bind matrix's scale, over the model's own (the player's height) */
 function edgeUnit(m: Mesh): number {
   const sk = m as SkinnedMesh;
@@ -858,6 +868,8 @@ export class GltfPuppet implements PuppetLike {
     const trimOf = (c: 'trim' | 'white' | 'black') => (c === 'trim' ? look.sock : c === 'white' ? TRIM_WHITE : TRIM_BLACK);
     const map: Record<string, string> = {
       uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, uniform_undershirt: look.sock, cap: look.cap, helmet: look.cap, piping: look.sock,
+      // the catcher's chest protector and shin guards in the team colour (they were near-black); umpires keep theirs dark (see `dark` below)
+      catcher_gear: gearColor(look.cap, look.jersey),
     };
     if (L) {
       map.hair = L.hairColor;
