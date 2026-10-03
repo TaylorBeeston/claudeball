@@ -21,6 +21,8 @@ function cbAssets(): Plugin {
   const shippedFile = (src: string, f: string) => {
     const rel = path.relative(src, f).split(path.sep);
     if (rel[0] === 'field_layout.json') return true;
+    // the engine fetches players/player_manifest.json (clip event times, glove-closing keys, foot speeds); it was never part of the deploy, so production ran on the fallbacks
+    if (rel[0] === 'players' && rel[1] === 'player_manifest.json') return true;
     if (rel[0] === 'shipped.json' || rel[0] !== 'optimized') return false;
     if (rel[1] === 'lod1') return false;
     if (rel[1] === 'players' && rel[2]?.endsWith('.glb')) return shippedList.players.includes(rel[2].replace(/\.glb$/, ''));
@@ -64,7 +66,7 @@ function cbAssets(): Plugin {
       // ship only what the runtime loads: field_layout.json and the optimized/ builds (not the raw exports, Blender sources or unused lod1/)
       const shipped = (f: string) => {
         const rel = path.relative(src, f).split(path.sep).join('/');
-        if (fs.statSync(f).isDirectory()) return rel === '' || rel === 'optimized' || rel.startsWith('optimized/');
+        if (fs.statSync(f).isDirectory()) return rel === '' || rel === 'players' || rel === 'optimized' || rel.startsWith('optimized/');
         return shippedFile(src, f);
       };
       // the derived assets (1k player textures, simplified geometry, gear defaults) must come from the current sources
