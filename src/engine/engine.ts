@@ -31,12 +31,14 @@ import { fieldKind, fieldPatch, tagField, tuneParkMaterial } from './fieldLook';
 import { buildSurroundings, type Surroundings } from './surroundings';
 
 const NIGHT_OF: Record<TimeOfDay, number> = { day: 0, dusk: 0.45, night: 1 };
+/** the stands under the lights read darker than the field (the towers aim at the field; the fans only get the spill) */
+const CROWD_GAIN: Record<TimeOfDay, number> = { day: 1, dusk: 0.85, night: 0.6 };
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
-import { buildCrowdAtlas, type AtlasPuppet, type CrowdAtlas } from './crowdAtlas';
+import { buildCrowdAtlas, loadCrowdAtlas, type AtlasPuppet, type CrowdAtlas } from './crowdAtlas';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 import { perf } from './perf';
@@ -306,7 +308,7 @@ export class Engine {
   newGame(seed: number, cfg: SimConfig = {}) {
     this.sim.load(seed, cfg);
     this.players.reset();
-    this.updateCrowd();
+    void this.updateCrowd();
     this.director.reset();
     this.hud?.reset();
     this.live = this.sim.state;
@@ -416,7 +418,7 @@ export class Engine {
     setShadingQuality(name, this.quality.msaa > 0);
     setJerseyQuality(name);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
-    if (this.stadium.impostors) this.updateCrowd();
+    if (this.stadium.impostors) void this.updateCrowd();
     this.adaptive.full();
     this.loadApplied = -1;
     this.applyLoad();
@@ -440,38 +442,62 @@ export class Engine {
     this.env.setFarShadowEvery(fx.farShadowEvery);
   }
 
-  /** spectators rendered from the player model (see `crowdAtlas.ts`); rebuilt when the teams change */
+  /** the stands' spectators (see `crowdAtlas.ts`): the pre-baked team-neutral atlas, or one rendered here when it is missing */
   crowdAtlas: CrowdAtlas | null = null;
   private crowdAtlasKey = '';
+  private bakedAtlas: Promise<CrowdAtlas | null> | null = null;
 
-  /** (Re)build the crowd atlas for the current teams; cheap when nothing changed. false when there are no glTF players to render. */
-  refreshCrowdAtlas(): boolean {
+  /**
+   * The crowd atlas for the current teams. The shipped, pre-baked atlas (`public/crowd/`, team colours applied per instance through its mask)
+   * is loaded once; without it the fans are rendered here from the player model (team colours baked in, rebuilt when the teams change: ~3 s of
+   * shader compiles on first use). `neutral` forces the render path in team-neutral mode (the bake tool). false when nothing could be made.
+   */
+  async refreshCrowdAtlas(o: { render?: boolean; neutral?: boolean } = {}): Promise<boolean> {
+    if (!o.render) {
+      // phones and Low: the 1024 px colour atlas (a quarter of the memory)
+      const baked = await (this.bakedAtlas ??= loadCrowdAtlas(import.meta.env.BASE_URL, this.coarse || this.qualityName === 'low'));
+      if (baked) {
+        this.crowdAtlas = baked;
+        this.crowdAtlasKey = 'baked';
+        return true;
+      }
+    }
     const t = this.sim.state.teams;
     const size = this.coarse || this.qualityName === 'low' ? 1024 : 2048;
-    const key = `${t.home.color}|${t.home.trim}|${t.away.color}|${size}`;
+    const keyOf = () => (o.neutral ? `neutral|${size}` : `${this.sim.state.teams.home.color}|${this.sim.state.teams.home.trim}|${this.sim.state.teams.away.color}|${size}`);
+    const key = keyOf();
     if (key === this.crowdAtlasKey && this.crowdAtlas) return true;
-    const atlas = buildCrowdAtlas(this.renderer, (s) => this.players.makePuppet(s) as unknown as AtlasPuppet, t, { size, environment: this.scene.environment });
+    const atlas = await buildCrowdAtlas(this.renderer, (s) => this.players.makePuppet(s) as unknown as AtlasPuppet, o.neutral ? null : t, { size });
+    if (key !== keyOf()) {
+      atlas?.dispose(); // the teams changed meanwhile: the newer request wins
+      return false;
+    }
     if (!atlas) return false;
-    this.crowdAtlas?.dispose();
+    if (this.crowdAtlasKey !== 'baked') this.crowdAtlas?.dispose();
     this.crowdAtlas = atlas;
     this.crowdAtlasKey = key;
     return true;
   }
 
   /** fill the stands with the billboard crowd for the current teams (no-op without glTF players: the placeholder figures stay) */
-  updateCrowd() {
+  async updateCrowd(): Promise<void> {
     if (FLAGS.oldcrowd || !this.assets?.characters.size) return;
-    if (this.refreshCrowdAtlas() && this.crowdAtlas) this.stadium.useCrowdAtlas(this.crowdAtlas, this.quality.msaa > 0);
+    if ((await this.refreshCrowdAtlas()) && this.crowdAtlas) {
+      this.stadium.useCrowdAtlas(this.crowdAtlas, this.quality.msaa > 0);
+      const t = this.sim.state.teams;
+      this.stadium.impostors?.setTeams(t.home.color, t.away.color);
+      this.stadium.impostors?.setGain(CROWD_GAIN[this.env.todName]);
+    }
   }
 
-  /** dev: the crowd atlas as a PNG data URL */
-  crowdAtlasPng(): string | null {
+  /** dev: the crowd atlas (or its mask) as a PNG data URL, when it was rendered here */
+  crowdAtlasPng(which: 'color' | 'mask' = 'color'): string | null {
     const a = this.crowdAtlas;
-    if (!a) return null;
-    const img = a.texture.image as { width: number; height: number };
-    const w = img.width, h = img.height;
+    const target = which === 'mask' ? a?.maskTarget : a?.target;
+    if (!a || !target) return null;
+    const w = target.width, h = target.height;
     const buf = new Uint8Array(w * h * 4);
-    this.renderer.readRenderTargetPixels(a.target, 0, 0, w, h, buf);
+    this.renderer.readRenderTargetPixels(target, 0, 0, w, h, buf);
     const c = document.createElement('canvas');
     c.width = w;
     c.height = h;
@@ -486,6 +512,7 @@ export class Engine {
 
   setTimeOfDay(t: TimeOfDay): Promise<void> {
     this.surroundings?.setNight(NIGHT_OF[t]);
+    this.stadium.impostors?.setGain(CROWD_GAIN[t]);
     // the settings store (UI) remembers the choice; the tower lights follow at once, the sky / HDRI when its texture is ready
     this.lights.setTimeOfDay(t);
     return this.env.setTimeOfDay(t);

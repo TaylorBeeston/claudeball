@@ -137,7 +137,7 @@ export async function prepareEngine(e: Engine, o: PrepareOptions): Promise<Prepa
 
   report(0.7, 'Filling the stands…');
   await yieldUi();
-  e.updateCrowd();
+  await e.updateCrowd();
   lap('crowd');
 
   report(0.72, 'Uploading textures…');

@@ -60,22 +60,28 @@ export function fieldKind(materialName: string): Kind | null {
   return n === 'dirt' ? 'dirt' : n === 'grass' ? 'grass' : n === 'track' ? 'track' : null;
 }
 
-/** the `onBeforeCompile` patch for a field material (pass to `Environment.register`) */
+const KIND_ID: Record<Kind, number> = { dirt: 0, grass: 1, track: 2 };
+
+/**
+ * The `onBeforeCompile` patch for a field material (pass to `Environment.register`). All three kinds compile to ONE program (the kind is a
+ * uniform), so the field costs one shader compile at boot instead of three.
+ */
 export function fieldPatch(kind: Kind): (s: unknown) => void {
   return (s: unknown) => {
-    const shader = s as { vertexShader: string; fragmentShader: string };
+    const shader = s as { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string };
+    shader.uniforms.uCbFieldKind = { value: KIND_ID[kind] };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vCbWorld;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCbWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vCbWorld;\n${NOISE}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG[kind]}`);
+      .replace('#include <common>', `#include <common>\nvarying vec3 vCbWorld;\nuniform int uCbFieldKind;\n${NOISE}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\nif (uCbFieldKind == 0) ${FRAG.dirt}\nelse if (uCbFieldKind == 1) ${FRAG.grass}\nelse ${FRAG.track}`);
   };
 }
 
-/** a distinct program per kind (the patched source differs while the materials look alike to three's cache) */
-export function tagField(m: Material, kind: Kind) {
-  m.customProgramCacheKey = () => `cb-field-${kind}`;
+/** one program for every field kind (the patched source is the same; three's cache cannot tell from the material alone) */
+export function tagField(m: Material, _kind: Kind) {
+  m.customProgramCacheKey = () => 'cb-field';
 }
 
 /**
@@ -91,6 +97,9 @@ export function tuneParkMaterial(m: Material): ((shader: unknown) => void) | und
   } else if (n === 'dugout_roof') {
     s.color?.setRGB(0.07, 0.075, 0.085);
     s.roughness = 0.75;
+  } else if (n === 'concrete') {
+    // the bowl's concrete was near-white: it outshone the crowd in day shots and glared under the tower lights at night
+    s.color?.setRGB(0.6, 0.59, 0.57);
   } else if (n === 'dugout_concrete') {
     s.color?.multiplyScalar(0.72);
   } else if (n === 'backstop_net') {
