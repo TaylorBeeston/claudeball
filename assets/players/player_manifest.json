@@ -2524,7 +2524,7 @@
     "gpu_texture_mb_used_by_visible": 23.3
    },
    "lod0/player_base": {
-    "size_mb": 12.4,
+    "size_mb": 12.32,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2613,7 +2613,7 @@
     "gpu_texture_mb_used_by_visible": 36.1
    },
    "lod0/player_catcher": {
-    "size_mb": 7.67,
+    "size_mb": 7.66,
     "lod1": false,
     "visible_meshes": 32,
     "draw_calls_default": 33,
@@ -2838,7 +2838,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_manager": {
-    "size_mb": 7.55,
+    "size_mb": 7.48,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2868,10 +2868,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 67565,
-    "vertices_default": 42152,
+    "triangles_default": 66733,
+    "vertices_default": 41503,
     "morph_targets_total": 109,
-    "morph_memory_mb": 4.31,
+    "morph_memory_mb": 4.21,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -3042,8 +3042,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 10140,
-    "vertices_default": 6854,
+    "triangles_default": 10138,
+    "vertices_default": 6848,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,

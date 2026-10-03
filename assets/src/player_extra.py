@@ -69,27 +69,39 @@ def hair_long(bm):
     bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=.004)
 
 # ---------------------------------------------------------------- facial hair (shells of the head mesh; mouth left open so the lips show)
-def _mouth(q, rx=.031, rz=.017, zc=-.092):
+def _mouth(q, rx=.0285, rz=.0135, zc=-.0815):
+    # the lips of the MPFB head: stomion at z 1.652 (q.z -.083), upper lip top 1.667, lower lip bottom ~1.640, corners at |x| ~.025
     return math.hypot(q.x/rx, (q.z-zc)/rz) - 1.0 if q.y < -.05 else 1.0
-def beard_keep(top=-.052):
+def _top_edge(ax, centre=-.0595, side=-.002):
+    # under the nose (subnasale z 1.678) at the centre, rising along the cheek line to the sideburns at the ear
+    t = max(0.0, min(1.0, (ax - .022)/.058)); return centre + (side - centre)*t*t*(3 - 2*t)
+def beard_keep(top=-.0595):
     def f(q):
-        edge = top + .050*max(0.0, min(1.0, (abs(q.x)-.040)/.038))              # sideburns rise toward the ear
+        edge = _top_edge(abs(q.x), top)
         return min(edge - q.z, .060 - q.y, .090 - abs(q.x), _mouth(q)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
     return f
 def stubble_keep(q):
-    edge = -.040 + .020*max(0.0, min(1.0, (abs(q.x)-.045)/.03))
-    return min(edge - q.z, .060 - q.y, .088 - abs(q.x), _mouth(q, .028, .012, -.090)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
+    edge = _top_edge(abs(q.x), -.0600, -.012)
+    return min(edge - q.z, .060 - q.y, .088 - abs(q.x), _mouth(q, .0275, .0125, -.0815)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
 def _taper(v, k=.014): return max(0.0, min(1.0, v/k))
 def beard_full(head):
     f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0018 + .0065*_taper(f(q))*(1 + .35*max(0.0, -q.z-.10)/.05))
 def beard_stubble(head):
     return head_copy(head, "Gear_Beard_Stubble", stubble_keep, lambda q: .0007*_taper(stubble_keep(q), .008))
 def mustache(head):
-    def f(q): return min(.030 - abs(q.x), q.z + .080, -.061 - q.z, -q.y + .070)
-    return head_copy(head, "Gear_Mustache", f, lambda q: .0012 + .0052*_taper(f(q), .006))
+    """Gear_Mustache: over the upper lip, from under the nose to the lip line, the ends drooping toward the mouth corners; fullest either side of the philtrum."""
+    def f(q):
+        ax = abs(q.x); top = -.0585 - .007*(ax/.030)**2; bot = -.0695 - .011*min(1.0, ax/.031)**2.4
+        return min(.0315 - ax, top - q.z, q.z - bot, -q.y - .075)
+    def amt(q): return (.0010 + .0040*_taper(f(q), .0045))*(1 - .30*math.exp(-(q.x/.0055)**2))
+    return head_copy(head, "Gear_Mustache", f, amt)
 def goatee(head):
-    def f(q): return min(.021 - abs(q.x), q.z + .138, -.104 - q.z, -q.y + .070)
-    return head_copy(head, "Gear_Goatee", f, lambda q: .0015 + .0065*_taper(f(q), .008))
+    """Gear_Goatee: chin beard from the lip fold down over the front of the chin, a soul patch joining it to the lower lip; it stops at the chin's underside."""
+    def f(q):
+        e = 1.0 - math.hypot(q.x/.021, (q.z + .108)/.020)
+        soul = min(.0065 - abs(q.x), -.0895 - q.z)
+        return min(max(e*.018, soul), -.0895 - q.z, q.z + .127, -q.y - .080)
+    return head_copy(head, "Gear_Goatee", f, lambda q: .0008 + .0030*_taper(f(q), .006))
 def eye_black(head):
     def f(q):
         e = min(math.hypot((q.x-.036)/.014, (q.z+.019)/.0042), math.hypot((q.x+.036)/.014, (q.z+.019)/.0042))

@@ -237,7 +237,7 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     if (name === 'hair_beard') {
       // the beard / mustache / goatee shells fade out over their last millimetres (see facialHair.ts) instead of ending in a hard line
       m.alphaTest = 0.4;
-      (m.defines ??= {}).CB_FEATHER = '0.011';
+      (m.defines ??= {}).CB_FEATHER = '0.006';
     }
     if (name === 'stubble') {
       m.transparent = true;
@@ -818,9 +818,7 @@ export class GltfPuppet implements PuppetLike {
     // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
     const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
     for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
-    // the mustache and goatee shells are flat dark bars over the lip / chin (asset shape; reported): stubble stands in for them until they are reshaped
-    const facial = L.facialNode === 'Gear_Mustache' || L.facialNode === 'Gear_Goatee' ? 'Gear_Beard_Stubble' : L.facialNode;
-    for (const n of FACIAL_NODES) show(n, n === facial && role !== 'ballkid');
+    for (const n of FACIAL_NODES) show(n, n === L.facialNode && role !== 'ballkid');
     show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
     // arms
     if (!own) {

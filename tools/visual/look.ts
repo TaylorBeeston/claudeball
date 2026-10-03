@@ -69,7 +69,10 @@ function camSpecs(): ({ name: string; p: V3; t: V3; fov: number; face?: string; 
   const list = opt('cams', 'pitchcam,wide,follow,stadium,aerial,batterface,pitcherface,catcher,mound,plate,wall,crowd0,crowd2,crowdfar,dugout,behindhome');
   return list.split(',').map((s) => {
     // `id:<player id>`: that player's face from the front, telephoto
-    if (s.startsWith('id:')) return { name: s.replace(':', '-'), p: [0, 0, 0] as V3, t: [0, 0, 0] as V3, fov: 9, face: s.slice(3), aperture: 1.2 };
+    if (s.startsWith('id:')) {
+      const [, who, fov] = s.split(':');
+      return { name: `id-${who}${fov ? '-' + fov : ''}`, p: [0, 0, 0] as V3, t: [0, 0, 0] as V3, fov: fov ? +fov : 9, face: who, aperture: 1.2 };
+    }
     if (CAMS[s]) {
       const c = CAMS[s];
       const d = Math.hypot(c.p[0] - c.t[0], c.p[1] - c.t[1], c.p[2] - c.t[2]);

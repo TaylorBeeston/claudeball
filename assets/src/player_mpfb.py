@@ -103,8 +103,16 @@ def _neigh(P):
         w[i] = w[i]/w[i].sum()*math.exp(-(max(0.0, dmin - .008)/.06)**2)
     c[key] = (idx, w); return idx, w
 HEAD_KEYS = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large", "brow_heavy", "chin_strong", "cheeks_full", "nose_narrow", "eyes_deep", "eyes_blink", "mouth_open", "smile", "brow_raise", "brow_furrow", "mouth_pucker")
+def _seam_fade(P):
+    """0 on the neck at the Head / Body_Skin cut (seam vertices z 1.576-1.593, up to 8.3 cm from the neck axis), 1 from 3 cm above it and away
+    from the neck (chin, jaw): Body_Skin carries no head keys, so a head morph that moved the cut ring opened cracks at the seam."""
+    if "neck_c" not in _FIELD:
+        b = base(); ring = b["P"][np.abs(b["P"][:, 2] - NECK_CUT) < .006]; _FIELD["neck_c"] = ring[:, :2].mean(0)
+    c = _FIELD["neck_c"]; r = np.hypot(P[:, 0] - c[0], P[:, 1] - c[1]); z = P[:, 2]
+    sm = lambda a, b_, x: (lambda t: t*t*(3 - 2*t))(np.clip((x - a)/(b_ - a), 0, 1))
+    return 1 - (1 - sm(1.594, 1.625, z))*(1 - sm(.095, .11, r))
 def head_morph(P, kind):
-    b = base(); idx, w = _neigh(P); D = b["D_" + kind]; return P + (D[idx]*w[:, :, None]).sum(1)
+    b = base(); idx, w = _neigh(P); D = b["D_" + kind]; return P + (D[idx]*w[:, :, None]).sum(1)*_seam_fade(P)[:, None]
 def teeth_morph(P, kind, tongue=False):
     """Morph for teeth / tongue: the nearest-surface field tears the tooth rows apart when the mouth opens (spikes), so `mouth_open` moves the upper teeth with the upper lip and the lower teeth (and tongue) rigidly with the lower lip; smile / pucker leave them alone; the head-shape keys use the normal field."""
     if kind in ("smile", "mouth_pucker"): return P.copy()
