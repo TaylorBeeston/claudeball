@@ -480,6 +480,10 @@ export class GltfPuppet implements PuppetLike {
     for (const m of this.meshes) {
       const t = LOD_TIER1.test(m.name) ? 1 : LOD_TIER2.test(m.name) ? 2 : 0;
       if (t) this.lodParts.push({ m, tier: t });
+      // the simplified geometry (same mesh names, skeleton, uv layout and morph targets; a third of the triangles) for the small / distant tiers
+      const lg = tpl.lodGeo?.get(m.name);
+      const sk = m as SkinnedMesh;
+      if (lg && sk.isSkinnedMesh && m.name !== 'Eyes_Cornea' && lg.morphAttributes.position?.length === m.geometry.morphAttributes.position?.length) this.lodSwap.push({ m, full: m.geometry, lod: lg });
     }
     this.rig = new Rig(this.model);
     for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
@@ -627,12 +631,15 @@ export class GltfPuppet implements PuppetLike {
 
   /** parts that drop out at a level of detail (see `LOD_TIER1`) */
   private lodParts: { m: Mesh; tier: number }[] = [];
+  private lodSwap: { m: Mesh; full: BufferGeometry; lod: BufferGeometry }[] = [];
+  private lodGeoOn = false;
   /** current level of detail: 0 full, 1 no micro details, 2 only the body shapes */
   lodTier = 0;
 
   lodReset() {
     this.lodTier = 0;
     for (const p of this.lodParts) p.m.layers.mask = 1;
+    this.useLodGeometry(false);
   }
 
   /** pick the level of detail from how much of the picture the player fills (hysteresis so the edge does not flicker) */
@@ -649,6 +656,14 @@ export class GltfPuppet implements PuppetLike {
     if (want === this.lodTier) return;
     this.lodTier = want;
     for (const p of this.lodParts) p.m.layers.mask = want >= p.tier ? HIDDEN_LAYERS : 1;
+    this.useLodGeometry(want >= 1);
+  }
+
+  /** swap the simplified geometry in (small / distant players) or the full one back */
+  useLodGeometry(on: boolean) {
+    if (on === this.lodGeoOn || FLAGS.nolodgeo) return;
+    this.lodGeoOn = on;
+    for (const s of this.lodSwap) s.m.geometry = on ? s.lod : s.full;
   }
 
   /** conehead guard: the head's world scale must be uniform (clips carry unit scale tracks, the body scale is uniform); warns once in dev */

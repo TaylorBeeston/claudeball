@@ -26,7 +26,7 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
-import { loadAssets, type Assets, type LoadProgress } from './assets';
+import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
@@ -195,7 +195,7 @@ export class Engine {
 
   /** Load Blender assets from /assets and swap them in for the procedural placeholders. */
   async loadAssets(onProgress?: (p: LoadProgress) => void): Promise<Assets> {
-    const a = await loadAssets(this.renderer, undefined, onProgress);
+    const a = await loadAssets(this.renderer, undefined, onProgress, textureTierFor(this.coarse));
     this.assets = a;
     if (a.field) {
       this.fieldGroup.visible = false;
