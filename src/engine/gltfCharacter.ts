@@ -581,6 +581,8 @@ export class GltfPuppet implements PuppetLike {
     px.frustumCulled = true;
     px.bind(ref.skeleton, ref.bindMatrix);
     px.boundingSphere = new Sphere(new Vector3(0, CULL_CENTER_Y, 0), CULL_RADIUS * 1.1);
+    // a left-hander's model is mirrored (scale.x = -1), which flips the triangle winding three draws with: the proxy must be mirrored the same way
+    px.scale.x = this.mirrored ? -1 : 1;
     this.root.add(px);
     this.proxy = px;
   }
@@ -593,11 +595,16 @@ export class GltfPuppet implements PuppetLike {
    * normal prepass: the body shapes draw, the small details that cannot move an occlusion value are hidden). `visible` is put back by the next 'main'.
    */
   phase(p: 'main' | 'shadow' | 'gbuf') {
+    // three updates a skeleton only when one of its meshes is projected into the main pass: a puppet culled there (out of the picture) would cast its
+    // shadow with a stale pose, so the proxy's skeleton is brought up to date here
+    if (this.proxy && p === 'shadow') this.proxy.skeleton.update();
     if (this.proxy) this.proxy.visible = p === 'shadow';
     if (p === 'gbuf') {
       this.gbufHidden.length = 0;
+      // tiny distant players leave no mark in an ambient-occlusion / depth-of-field buffer: they are left out; the rest draw their body shapes only
+      const tiny = this.lodTier >= 2;
       for (const m of this.meshes) {
-        if (m.visible && m.layers.mask === 1 && GBUF_SKIP.test(m.name)) {
+        if (m.visible && m.layers.mask === 1 && (tiny || GBUF_SKIP.test(m.name))) {
           m.visible = false;
           this.gbufHidden.push(m);
         }
@@ -804,6 +811,7 @@ export class GltfPuppet implements PuppetLike {
     this.mirrored = m;
     // uniform scale from the player's height, mirrored across X for left-handers
     this.model.scale.set(m ? -this.bodyScale : this.bodyScale, this.bodyScale, this.bodyScale);
+    if (this.proxy) this.proxy.scale.x = m ? -1 : 1;
     if (changed) {
       this.numberSet = -1;
       this.setNumber(this.numberValue);
