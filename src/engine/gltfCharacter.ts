@@ -8,6 +8,8 @@ import {
   AnimationMixer,
   Bone,
   Color,
+  BufferAttribute,
+  BufferGeometry,
   Group,
   LoopOnce,
   LoopRepeat,
@@ -15,13 +17,17 @@ import {
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
+  Sphere,
   Vector3,
 } from 'three';
 import { AnimationClip, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { FLAGS } from './flags';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
@@ -38,6 +44,26 @@ const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
 export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
+/**
+ * Parts that cast no shadow: tiny details, thin cards and things hidden under other parts. Every caster is one more draw call in each shadow cascade,
+ * so only the shapes that read in a shadow (body, head, hair, jersey, pants, cap / helmet, cleats, hands, gloves, gear) remain.
+ */
+const NO_SHADOW = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt$|Socks|Gear_Goatee)/;
+/** parts left out of the merged shadow / depth proxy (alpha cards and the like: they would need an alpha-tested depth material) */
+const PROXY_SKIP = /^(Gear_Hair|Face_Hair|Gear_Beard|Hair|Eyes_Cornea)/;
+/** one shared material for every proxy: it never draws colour (the proxy is only visible during the shadow and the GTAO depth/normal passes) */
+const proxyMaterial = new MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+proxyMaterial.name = 'shadow_proxy';
+/** parts the GTAO depth/normal prepass skips: details, cards and thin layers (the proxy stands in for none of them: they are simply not part of the occlusion) */
+const GBUF_SKIP = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt|Socks|Gear_Goatee|Gear_Hair|Face_Hair|Hair)/;
+/** puppet level of detail: parts dropped from tier 1 (small on screen) and from tier 2 (tiny), by mesh name; the rest always draws */
+const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_Piping|Gear_BeltBuckle|Gear_Soles|Gear_Spikes|Gear_Wristband|Gear_EyeBlack|Gear_Beard_Stubble|Gear_Mustache|Gear_Glove.*Laces|Gear_CapLogo)/;
+const LOD_TIER2 = /^(Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
+/** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
+const HIDDEN_LAYERS = 1 << 1;
+/** the culling sphere of a puppet (see `setCullBounds`): centre height and radius, metres */
+const CULL_CENTER_Y = 0.95;
+const CULL_RADIUS = 2.1;
 
 const SKINS = ['#f0c6a0', '#dca47a', '#c08558', '#8a5a3a', '#5d3b26', '#e8b48a'];
 
@@ -284,6 +310,63 @@ export function gloveKindFor(role: PlayerRole): GloveKind | null {
 }
 const TRIM_WHITE = '#f2f2ee', TRIM_BLACK = '#17181b';
 
+/**
+ * The merged geometry of `parts` (position, normal, skin attributes only; skin indices remapped to `ref`'s bone order by bone name), cached on the template
+ * per variant set so every puppet that wears the same parts shares it. null when the parts cannot be merged (different skeletons, odd attributes).
+ */
+function proxyGeometry(tpl: object, key: string, parts: SkinnedMesh[], ref: SkinnedMesh): BufferGeometry | null {
+  const holder = tpl as { __proxy?: Map<string, BufferGeometry | null> };
+  const cache = (holder.__proxy ??= new Map());
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const refNames = ref.skeleton.bones.map((b) => b.name);
+  const list: BufferGeometry[] = [];
+  let ok = true;
+  for (const m of parts) {
+    const g = m.geometry;
+    const pos = g.getAttribute('position'), nor = g.getAttribute('normal'), si = g.getAttribute('skinIndex'), sw = g.getAttribute('skinWeight');
+    if (!pos || !si || !sw || m.bindMatrix.equals(ref.bindMatrix) === false) {
+      ok = false;
+      break;
+    }
+    const map = m.skeleton.bones.map((b) => refNames.indexOf(b.name));
+    if (map.some((i) => i < 0)) {
+      ok = false;
+      break;
+    }
+    // (read through the accessors: the meshopt-compressed files store quantised, normalised integers)
+    const f = (a: { count: number; itemSize: number; getComponent(i: number, c: number): number }, size: number) => {
+      const out = new Float32Array(a.count * size);
+      for (let i = 0; i < a.count; i++) for (let c = 0; c < size; c++) out[i * size + c] = a.getComponent(i, c);
+      return out;
+    };
+    const idx = new Uint16Array(si.count * 4);
+    for (let i = 0; i < si.count; i++) for (let c = 0; c < 4; c++) idx[i * 4 + c] = map[si.getComponent(i, c)] ?? 0;
+    const n = new BufferGeometry();
+    n.setAttribute('position', new BufferAttribute(f(pos, 3), 3));
+    n.setAttribute('normal', nor ? new BufferAttribute(f(nor, 3), 3) : new BufferAttribute(new Float32Array(pos.count * 3), 3));
+    n.setAttribute('skinIndex', new BufferAttribute(idx, 4));
+    n.setAttribute('skinWeight', new BufferAttribute(f(sw, 4), 4));
+    if (g.index) {
+      const ix = new Uint32Array(g.index.count);
+      for (let i = 0; i < ix.length; i++) ix[i] = g.index.getX(i);
+      n.setIndex(new BufferAttribute(ix, 1));
+    }
+    list.push(n);
+  }
+  let merged: BufferGeometry | null = null;
+  if (ok && list.length) {
+    merged = mergeGeometries(list, false);
+    if (merged) {
+      merged.computeBoundingSphere();
+      merged.name = 'shadow_proxy';
+    }
+  }
+  for (const g of list) g.dispose();
+  cache.set(key, merged);
+  return merged;
+}
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   team = -2;
@@ -362,9 +445,8 @@ export class GltfPuppet implements PuppetLike {
       if (m.isMesh) {
         for (const mt of Array.isArray(m.material) ? m.material : [m.material]) reg(mt);
         // tiny details add draw calls to every shadow cascade and cast no visible shadow of their own
-        m.castShadow = !/^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard_Stubble|Gear_Mustache)/.test(m.name);
+        m.castShadow = !NO_SHADOW.test(m.name);
         m.receiveShadow = true;
-        m.frustumCulled = false;
         this.meshes.push(m);
       }
     });
@@ -384,6 +466,11 @@ export class GltfPuppet implements PuppetLike {
         this.cornea.push(shell);
         this.meshes.push(shell);
       }
+    }
+    this.setCullBounds();
+    for (const m of this.meshes) {
+      const t = LOD_TIER1.test(m.name) ? 1 : LOD_TIER2.test(m.name) ? 2 : 0;
+      if (t) this.lodParts.push({ m, tier: t });
     }
     this.rig = new Rig(this.model);
     for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
@@ -410,6 +497,7 @@ export class GltfPuppet implements PuppetLike {
       this.headVol = this.headVolCap;
       this.applyGear(gearKindOf(snap.role), snap.role);
       this.assertUniformHead(snap.id);
+      this.rebuildProxy();
     } else {
       // fixed-look files (umpires, coaches, ball kids): show exactly the nodes the file marks as its default look (glTF has no visibility flag,
       // so optional caps / helmets / lineup cards would all be on), the bat boy wears the coach's file with a cap instead of the helmet
@@ -428,7 +516,122 @@ export class GltfPuppet implements PuppetLike {
       // hair hidden under caps / helmets
       const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
       if (hair && (this.nodes.get('Gear_Cap') || this.nodes.get('Gear_Helmet'))) hair.visible = false;
+      this.rebuildProxy();
     }
+  }
+
+  /**
+   * Skinned meshes are culled by a fixed sphere around the standing body instead of the bind-pose bounds (which the animation leaves behind), so the
+   * main pass, the GTAO prepass and every shadow cascade skip a puppet that is out of view; an unculled puppet costs ~25 draw calls in each of them.
+   * The sphere is in the mesh's local space (the same as the model's at rest, where the skeleton root is the origin) and reaches an extended arm or a slide.
+   */
+  private setCullBounds() {
+    this.model.updateMatrixWorld(true);
+    for (const m of this.meshes) {
+      m.frustumCulled = !FLAGS.nocull;
+      const sk = m as SkinnedMesh;
+      if (!sk.isSkinnedMesh) continue;
+      const k = Math.max(1e-3, m.matrixWorld.getMaxScaleOnAxis());
+      const c = new Vector3(0, CULL_CENTER_Y, 0).applyMatrix4(new Matrix4().copy(m.matrixWorld).invert());
+      sk.boundingSphere = new Sphere(c, CULL_RADIUS / k);
+    }
+  }
+
+  // ---- shadow / depth proxy ------------------------------------------------------------------------------------------------
+  // Every visible body part is its own skinned draw call, and the shadow cascades, the tower-spot shadows and the GTAO depth/normal prepass each draw
+  // the whole puppet again (~25 calls x 5 passes x 47 players). The parts that matter for a shadow or an ambient-occlusion depth are merged into ONE
+  // skinned mesh (same skeleton, no uvs / morphs, cached per template and variant set) that is visible only in those passes.
+  private proxy: SkinnedMesh | null = null;
+  private proxyKey = '';
+
+  private chainVisible(o: Object3D): boolean {
+    for (let n: Object3D | null = o; n && n !== this.root; n = n.parent) if (!n.visible) return false;
+    return true;
+  }
+
+  private rebuildProxy() {
+    if (FLAGS.noproxy) {
+      for (const m of this.meshes) m.castShadow = !NO_SHADOW.test(m.name);
+      return;
+    }
+    const parts: SkinnedMesh[] = [];
+    for (const m of this.meshes) {
+      const sk = m as SkinnedMesh;
+      if (!sk.isSkinnedMesh || NO_SHADOW.test(m.name) || PROXY_SKIP.test(m.name) || !this.chainVisible(m)) continue;
+      parts.push(sk);
+    }
+    const key = parts.map((q) => q.name).sort().join('|');
+    if (key === this.proxyKey) return;
+    this.proxyKey = key;
+    const old = this.proxy;
+    this.proxy = null;
+    if (old) {
+      old.removeFromParent();
+      old.skeleton = undefined as never;
+    }
+    const ref = parts.find((q) => q.name === 'Body_Skin') ?? parts[0];
+    const geo = ref ? proxyGeometry(this.tpl, key, parts, ref) : null;
+    for (const m of this.meshes) m.castShadow = !geo && !NO_SHADOW.test(m.name);
+    if (!geo || !ref) return;
+    const px = new SkinnedMesh(geo, proxyMaterial);
+    px.name = 'ShadowProxy';
+    px.castShadow = true;
+    px.receiveShadow = false;
+    px.visible = false;
+    px.frustumCulled = true;
+    px.bind(ref.skeleton, ref.bindMatrix);
+    px.boundingSphere = new Sphere(new Vector3(0, CULL_CENTER_Y, 0), CULL_RADIUS * 1.1);
+    this.root.add(px);
+    this.proxy = px;
+  }
+
+  /** parts hidden during the GTAO prepass (they are visible parts; restored afterwards) */
+  private gbufHidden: Object3D[] = [];
+
+  /**
+   * The render phase: 'main' (everything as usual), 'shadow' (the merged proxy is visible; the parts themselves cast nothing) and 'gbuf' (the GTAO depth /
+   * normal prepass: the body shapes draw, the small details that cannot move an occlusion value are hidden). `visible` is put back by the next 'main'.
+   */
+  phase(p: 'main' | 'shadow' | 'gbuf') {
+    if (this.proxy) this.proxy.visible = p === 'shadow';
+    if (p === 'gbuf') {
+      this.gbufHidden.length = 0;
+      for (const m of this.meshes) {
+        if (m.visible && m.layers.mask === 1 && GBUF_SKIP.test(m.name)) {
+          m.visible = false;
+          this.gbufHidden.push(m);
+        }
+      }
+    } else if (this.gbufHidden.length) {
+      for (const m of this.gbufHidden) m.visible = true;
+      this.gbufHidden.length = 0;
+    }
+  }
+
+  /** parts that drop out at a level of detail (see `LOD_TIER1`) */
+  private lodParts: { m: Mesh; tier: number }[] = [];
+  /** current level of detail: 0 full, 1 no micro details, 2 only the body shapes */
+  lodTier = 0;
+
+  lodReset() {
+    this.lodTier = 0;
+    for (const p of this.lodParts) p.m.layers.mask = 1;
+  }
+
+  /** pick the level of detail from how much of the picture the player fills (hysteresis so the edge does not flicker) */
+  private updateLod(snap: PlayerSnap, env: PuppetEnv) {
+    let want = 0;
+    const cam = env.cameraPos;
+    if (cam && env.lodK && env.lodCut) {
+      const d = Math.max(1, Math.hypot(cam.x - snap.pos.x, cam.y - snap.pos.y - 1, cam.z - snap.pos.z));
+      const size = (1.85 * env.lodK) / d;
+      const [c1, c2] = env.lodCut;
+      const g = this.lodTier;
+      want = size < c2 * (g === 2 ? 1.2 : 1) ? 2 : size < c1 * (g >= 1 ? 1.2 : 1) ? 1 : 0;
+    }
+    if (want === this.lodTier) return;
+    this.lodTier = want;
+    for (const p of this.lodParts) p.m.layers.mask = want >= p.tier ? HIDDEN_LAYERS : 1;
   }
 
   /** conehead guard: the head's world scale must be uniform (clips carry unit scale tracks, the body scale is uniform); warns once in dev */
@@ -944,7 +1147,10 @@ export class GltfPuppet implements PuppetLike {
     this.setNumber(snap.number);
     if (snap.anim !== this.lastHint) this.variant = this.pickVariant(snap, env);
     this.setMirrored(snap.hand === 'L');
-    if (this.look) this.applyGear(gearKindOf(snap.role), snap.role);
+    if (this.look) {
+      this.applyGear(gearKindOf(snap.role), snap.role);
+      this.rebuildProxy(); // (a no-op unless the set of visible parts changed)
+    }
     this.animClock += dt;
     const pit0 = snap.role === 'pitcher' ? this.pitcherPlan(snap) : null;
     // the catcher's catch is inferred from the ball's flight only when the sim reports none (no glove target, no catch hint)
@@ -999,6 +1205,7 @@ export class GltfPuppet implements PuppetLike {
     // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
     const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
     this.lod1 = lod1;
+    this.updateLod(snap, env);
     if (this.cornea.length) {
       const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 24;
       const vis = shadingTier() === 'full' && !lod1 && near;

@@ -163,6 +163,18 @@ export class PostFX {
     if (qs.includes('noao')) this.ao.enabled = false;
   }
 
+  /** the composer's passes with names, for the profiler */
+  passList() {
+    return [
+      { name: 'main', pass: this.renderPass },
+      { name: 'gtao', pass: this.ao },
+      { name: 'dof', pass: this.dof },
+      { name: 'bloom', pass: this.bloom },
+      { name: 'output', pass: this.output },
+      { name: 'grade', pass: this.grade },
+    ] as unknown as { name: string; pass: { render: (...a: never[]) => void } }[];
+  }
+
   setQuality(q: QualitySettings) {
     this.q = q;
     this.ao.enabled = q.ao && !location.search.includes('noao');
