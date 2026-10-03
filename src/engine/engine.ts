@@ -26,6 +26,7 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
+import { installFeather } from './facialHair';
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
@@ -121,6 +122,7 @@ export class Engine {
     // Khronos PBR Neutral: keeps the hue and saturation of albedo (ACES pushed lit skin to a pale cream); the contrast comes from the grade pass
     this.renderer.toneMapping = NeutralToneMapping;
     installCharacterShading();
+    installFeather();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
@@ -140,6 +142,7 @@ export class Engine {
     this.gbufferHidden.push(this.lights.group);
     this.scene.add(this.contact.mesh);
     this.gbufferHidden.push(this.contact.mesh);
+    this.gbufferHidden.push(this.env.stars);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);

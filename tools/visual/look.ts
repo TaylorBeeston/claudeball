@@ -35,6 +35,8 @@ export const CAMS: Record<string, { p: V3; t: V3; fov: number; face?: string; sl
   aerial: { p: [60, 95, -70], t: [0, 0, 50], fov: 50 },
   batterface: { p: [0, 0, 0], t: [0, 0, 0], fov: 26, face: 'batter' },
   pitcherface: { p: [0, 0, 0], t: [0, 0, 0], fov: 26, face: 'pitcher' },
+  pitchermouth: { p: [0, 0, 0], t: [0, 0, 0], fov: 8, face: 'pitcher' },
+  battermouth: { p: [0, 0, 0], t: [0, 0, 0], fov: 8, face: 'batter' },
   catcher: { p: [-4, 1.4, 4], t: [0, 0.8, -0.6], fov: 30, slab: 2 },
   mound: { p: [6, 2.2, 12], t: [0, 0.8, 18.4], fov: 34, slab: 4 },
   plate: { p: [2.5, 1.5, 3], t: [0, 0.1, 0], fov: 40, slab: 3 },
@@ -66,6 +68,8 @@ const emu = opt('emu', '');
 function camSpecs(): ({ name: string; p: V3; t: V3; fov: number; face?: string; slab?: number; crowd?: number; dugout?: number; aperture?: number })[] {
   const list = opt('cams', 'pitchcam,wide,follow,stadium,aerial,batterface,pitcherface,catcher,mound,plate,wall,crowd0,crowd2,crowdfar,dugout,behindhome');
   return list.split(',').map((s) => {
+    // `id:<player id>`: that player's face from the front, telephoto
+    if (s.startsWith('id:')) return { name: s.replace(':', '-'), p: [0, 0, 0] as V3, t: [0, 0, 0] as V3, fov: 9, face: s.slice(3), aperture: 1.2 };
     if (CAMS[s]) {
       const c = CAMS[s];
       const d = Math.hypot(c.p[0] - c.t[0], c.p[1] - c.t[1], c.p[2] - c.t[2]);
@@ -199,11 +203,20 @@ async function main() {
             const lm = c.crowd !== undefined ? e.director.landmarks.crowdShots?.[c.crowd] : c.dugout !== undefined ? e.director.dugoutShots?.[c.dugout] : null;
             if (lm) { cam.pos.copy(lm.pos); cam.tgt.copy(lm.target); cam.aperture = c.aperture ?? 0; }
             if (c.face) {
-              const p = e.liveState.players.find((q: any) => q.role === c.face);
+              const p = e.liveState.players.find((q: any) => q.role === c.face || q.id === c.face);
               const f = new V();
               if (p && e.players.faceOf(p.id, f)) {
                 cam.tgt.copy(f);
-                cam.pos.copy(f).add(c.face === 'batter' ? new V(0.7, 0.15, 2.6) : new V(0.5, 0.15, -2.6));
+                if (p.id === c.face) {
+                  // in front of the face: the head bone's forward axis (+Z in the rig)
+                  const pu = e.players.puppets.get(p.id);
+                  const head = pu?.bones?.Head;
+                  const fwd = new V(0, 0, 1);
+                  if (head) fwd.transformDirection(head.matrixWorld);
+                  if (pu?.mirrored) fwd.x *= 1;
+                  fwd.y = 0.05;
+                  cam.pos.copy(f).addScaledVector(fwd.normalize(), 3);
+                } else cam.pos.copy(f).add(c.face === 'batter' ? new V(0.7, 0.15, 2.6) : new V(0.5, 0.15, -2.6));
                 cam.aperture = 1.2;
               }
             }

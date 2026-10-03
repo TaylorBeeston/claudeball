@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BufferGeometry,
   Camera,
   Color,
@@ -16,9 +17,13 @@ import {
   Material,
   Mesh,
   PMREMGenerator,
+  BackSide,
+  CanvasTexture,
   Points,
   PointsMaterial,
   Scene,
+  ShaderMaterial,
+  SphereGeometry,
   Vector3,
   WebGLCubeRenderTarget,
   WebGLRenderer,
@@ -97,7 +102,9 @@ export class Environment {
   private fill = new DirectionalLight(0xfff0dc, 0);
   private skyScene = new Scene();
   private sky = new Sky();
-  private stars: Points;
+  /** the night's stars (scene object: the engine keeps it out of the depth / normal prepass) */
+  readonly stars: Points;
+  private nightSky: Mesh;
   private cubeRT: WebGLCubeRenderTarget;
   private cubeCam: CubeCamera;
   private pmrem: PMREMGenerator;
@@ -128,16 +135,60 @@ export class Environment {
       s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( min( texColor, vec3( 2.2 ) ), 1.0 );');
     };
     this.skyScene.add(this.sky);
+    // night: a dark navy dome with the city's warm glow low on the horizon (in the background cube, so it also lights the night a little)
+    this.nightSky = new Mesh(
+      new SphereGeometry(40000, 32, 16),
+      new ShaderMaterial({
+        side: BackSide,
+        depthWrite: false,
+        uniforms: {},
+        vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `varying vec3 vDir;
+          void main(){
+            float h = clamp(vDir.y, -0.2, 1.0);
+            vec3 zenith = vec3(0.004, 0.007, 0.018), mid = vec3(0.010, 0.016, 0.034), glow = vec3(0.060, 0.042, 0.030);
+            vec3 c = mix(mid, zenith, smoothstep(0.05, 0.75, h));
+            c = mix(c, glow, (1.0 - smoothstep(-0.02, 0.22, h)) * 0.9);
+            gl_FragColor = vec4(c, 1.0);
+          }`,
+      }),
+    );
+    this.nightSky.visible = false;
+    this.skyScene.add(this.nightSky);
+    // stars are drawn in the scene itself (a few pixels each at any focal length; the 512 px background cube made them squares or blobs);
+    // fewer and dimmer toward the horizon, where the city's light washes them out
     const sg = new BufferGeometry();
     const pos: number[] = [];
-    for (let i = 0; i < 1800; i++) {
-      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
-      if (u < 0.02) continue;
-      pos.push(Math.cos(th) * s * 20000, u * 20000, Math.sin(th) * s * 20000);
+    const col: number[] = [];
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 2600; i++) {
+      const u = rnd() * 2 - 1, th = rnd() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+      if (u < 0.06 || rnd() > Math.min(1, (u - 0.06) * 2.2)) continue;
+      pos.push(Math.cos(th) * s * 600, u * 600, Math.sin(th) * s * 600);
+      const b = Math.min(1.6, Math.pow(rnd(), 3) * 1.4 + 0.25);
+      const warm = rnd();
+      col.push(b * (0.9 + 0.1 * warm), b * 0.95, b * (1.05 - 0.15 * warm));
     }
     sg.setAttribute('position', new Float32BufferAttribute(pos, 3));
-    this.stars = new Points(sg, new PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85 }));
-    this.skyScene.add(this.stars);
+    sg.setAttribute('color', new Float32BufferAttribute(col, 3));
+    const dot = document.createElement('canvas');
+    dot.width = dot.height = 16;
+    const g = dot.getContext('2d')!;
+    const gr = g.createRadialGradient(8, 8, 0, 8, 8, 8);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 16, 16);
+    this.stars = new Points(
+      sg,
+      new PointsMaterial({ size: 2.4, sizeAttenuation: false, vertexColors: true, map: new CanvasTexture(dot), fog: false, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false }),
+    );
+    this.stars.frustumCulled = false;
+    this.stars.renderOrder = -10;
+    this.stars.visible = false;
+    scene.add(this.stars);
     this.cubeRT = new WebGLCubeRenderTarget(512, { type: HalfFloatType, generateMipmaps: true });
     this.cubeCam = new CubeCamera(1, 100000, this.cubeRT);
     this.pmrem = new PMREMGenerator(renderer);
@@ -223,6 +274,8 @@ export class Environment {
     u['mieDirectionalG'].value = t.sky.g;
     u['sunPosition'].value.set(...t.skySun).normalize();
     this.stars.visible = name === 'night';
+    this.sky.visible = name !== 'night';
+    this.nightSky.visible = name === 'night';
     const wasVisible = this.scene.background;
     void wasVisible;
     this.cubeCam.update(this.renderer, this.skyScene);
@@ -333,6 +386,8 @@ export class Environment {
 
   update() {
     this.csm.update();
+    // the star dome travels with the camera (no parallax: they are infinitely far away)
+    if (this.stars.visible) this.stars.position.copy((this.camera as unknown as { position: Vector3 }).position);
     if (this.farEvery > 1) {
       // the far cascades are redrawn every n-th frame (their maps stay valid for a moment: they are broad and soft)
       const redraw = this.frame++ % this.farEvery === 0;
