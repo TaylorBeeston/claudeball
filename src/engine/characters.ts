@@ -365,6 +365,8 @@ export interface PuppetEnv {
    * level-of-detail inputs: `lodK` = screen height per metre at 1 m (1 / (2 tan(fov / 2))), so a 1.85 m player at distance d fills 1.85 * lodK / d of the picture;
    * `lodCut` = the fractions below which a puppet drops to tier 1 (micro details off) and tier 2 (only the body shapes). Unset: always full detail.
    */
+  /** the camera's view frustum (scene): puppets outside it are simplified */
+  frustum?: { intersectsSphere(s: import('three').Sphere): boolean };
   lodK?: number;
   lodCut?: readonly [number, number];
   /** whoever holds the ball (a fielder mid-transfer / look / toss): where a receiver should turn and hold his glove */

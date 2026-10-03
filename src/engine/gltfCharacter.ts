@@ -27,6 +27,7 @@ import {
 import { AnimationClip, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { FLAGS } from './flags';
+import { perf } from './perf';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
@@ -61,6 +62,12 @@ const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_
 const LOD_TIER2 = /^(Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
+/** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */
+function puppetIsKey(snap: PlayerSnap, env: PuppetEnv): boolean {
+  if (snap.role === 'batter' || snap.role === 'runner' || snap.role === 'pitcher' || snap.role === 'catcher' || snap.role === 'ondeck') return true;
+  if (snap.hasBall || snap.gloveTarget || env.carrier?.id === snap.id) return true;
+  return /^(catch|throw|tag|transfer|dive|slide|field|toss)/.test(snap.anim);
+}
 /** the culling sphere of a puppet (see `setCullBounds`): centre height and radius, metres */
 const CULL_CENTER_Y = 0.95;
 const CULL_RADIUS = 2.1;
@@ -369,6 +376,7 @@ function proxyGeometry(tpl: object, key: string, parts: SkinnedMesh[], ref: Skin
 
 export class GltfPuppet implements PuppetLike {
   root = new Group();
+  /** (set in the constructor) this puppet's matrices are updated by the puppet itself, not by the scene-wide pass in `renderer.render` */
   team = -2;
   private model: Object3D;
   private mixer: AnimationMixer;
@@ -433,6 +441,7 @@ export class GltfPuppet implements PuppetLike {
   constructor(private tpl: CharacterTemplate, snap: PlayerSnap, private gearSets: GearSets = {}, private manifest?: PlayerManifest) {
     this.umpBase = snap.role === 'umpire' && !!snap.position && snap.position !== 'HP';
     const id = snap.id;
+    this.root.matrixWorldAutoUpdate = false;
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
     this.model.traverse((o) => {
@@ -1152,6 +1161,35 @@ export class GltfPuppet implements PuppetLike {
   }
 
   update(snap: PlayerSnap, dt: number, env: PuppetEnv) {
+    const tAll = perf.t();
+    // an unimportant puppet outside the picture is advanced every other frame (and then without look-at / IK, at a quarter of the animation rate):
+    // nothing about him can be seen, only his shadow might reach into the picture
+    this.offscreen = false;
+    if (env.frustum && !FLAGS.noskip && !puppetIsKey(snap, env)) {
+      this.cullSphere.center.set(snap.pos.x, snap.pos.y + 1, snap.pos.z);
+      if (!env.frustum.intersectsSphere(this.cullSphere)) {
+        this.skipAcc += dt;
+        if ((this.skipN = (this.skipN + 1) & 1)) {
+          this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
+          if (perf.on) perf.sub('pup.total', tAll);
+          return;
+        }
+        dt = this.skipAcc;
+        this.skipAcc = 0;
+        this.offscreen = true;
+      }
+    }
+    this.updateInner(snap, dt, env);
+    // the scene-wide matrix pass skips puppets (see the constructor): bring the whole tree up to date once, after every bone has been moved
+    this.root.updateMatrixWorld(true);
+    if (perf.on) perf.sub('pup.total', tAll);
+  }
+  private offscreen = false;
+  private skipAcc = 0;
+  private skipN = 0;
+  private cullSphere = new Sphere(new Vector3(), 2.6);
+
+  private updateInner(snap: PlayerSnap, dt: number, env: PuppetEnv) {
     this.setNumber(snap.number);
     if (snap.anim !== this.lastHint) this.variant = this.pickVariant(snap, env);
     this.setMirrored(snap.hand === 'L');
@@ -1211,7 +1249,7 @@ export class GltfPuppet implements PuppetLike {
     // was applied again on top, every frame. Put every bone we modify back to its clip pose before the mixer runs.
     for (const [bone, q] of this.clipPose) bone.quaternion.copy(q);
     // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
-    const lod1 = AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE;
+    const lod1 = this.offscreen || (AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE) || (this.lodTier >= 2 && !FLAGS.noskip && !puppetIsKey(snap, env));
     this.lod1 = lod1;
     this.updateLod(snap, env);
     if (this.cornea.length) {
@@ -1219,6 +1257,7 @@ export class GltfPuppet implements PuppetLike {
       const vis = shadingTier() === 'full' && !lod1 && near;
       for (const c of this.cornea) c.visible = vis;
     }
+    const tMix = perf.t();
     if (lod1) {
       this.lodAcc += dt;
       this.lodFlip = !this.lodFlip;
@@ -1230,6 +1269,7 @@ export class GltfPuppet implements PuppetLike {
       this.mixer.update(dt + this.lodAcc);
       this.lodAcc = 0;
     }
+    if (perf.on) perf.sub('pup.mixer', tMix);
     for (const [bone, q] of this.clipPose) q.copy(bone.quaternion);
 
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
@@ -1249,7 +1289,9 @@ export class GltfPuppet implements PuppetLike {
     this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
+    const tMat = perf.t();
     this.root.updateMatrixWorld(true);
+    if (perf.on) perf.sub('pup.matrix', tMat);
     this.updateProp(snap, env);
     if (lod1) {
       this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
@@ -1258,7 +1300,10 @@ export class GltfPuppet implements PuppetLike {
     this.rig.refresh();
 
     // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
+    const tLook = perf.t();
     this.lookAt(snap, dt, env);
+    if (perf.on) perf.sub('pup.look', tLook);
+    const tIk = perf.t();
     // arm IK: batter's hands follow the sim's bat
     const wantIK = !!(env.batGrip && snap.role === 'batter');
     // grab the sim's bat almost at once (the swing starts abruptly), let go smoothly
@@ -1275,6 +1320,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.reachIK(snap, env, dt);
     this.clearElbows(snap);
+    if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
       // a fielder who holds the ball has it in the glove pocket; while he throws it stays in his hand until the sim releases it

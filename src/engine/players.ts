@@ -353,6 +353,8 @@ export class PlayerManager {
 
   constructor(env: Environment) {
     this.group.name = 'players';
+    // glTF puppets update their own matrices (see `GltfPuppet.update`); the group itself never moves
+    this.group.matrixAutoUpdate = false;
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
   }
 
@@ -361,6 +363,8 @@ export class PlayerManager {
   lodCut: readonly [number, number] = [0.2, 0.08];
   /** false while the warm-up draws every variant at full detail */
   lodEnabled = true;
+  /** the camera's frustum (set by the engine each frame) */
+  frustum: { intersectsSphere(s: import('three').Sphere): boolean } | null = null;
   /** `?nolod` */
   lodOff = false;
 
@@ -416,6 +420,7 @@ export class PlayerManager {
     this.penv.makeBat = this.makeBat;
     this.penv.lodK = this.lodEnabled && !this.lodOff ? this.lodK : undefined;
     this.penv.lodCut = this.lodCut;
+    this.penv.frustum = this.frustum ?? undefined;
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;
