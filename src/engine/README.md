@@ -27,6 +27,7 @@ interpolates snapshots for rendering, records 30 s of history (used for replays)
 | `postfx.ts` | GTAO, depth-of-field (reads the main pass's own full-resolution depth via `DepthCopyPass`), bloom, output, grade + grain + vignette |
 | `fieldLook.ts` | clay / lawn / warning-track look over the field textures (world-space damp and dry patches, grain, rake lines, lawn tone variation, less saturated colours); no extra draw calls |
 | `surroundings.ts` | beyond the stands: procedural ground (plaza, parking lots with cars, ring road, lawns / trees, sodium light pools at night) and an instanced city skyline with window grids lit at night; 2 draw calls, depth clamped inside the far plane |
+| `lodSimplify.ts` | small / distant players (detail tier >= 1) draw simplified index buffers (meshoptimizer, a third of the triangles, borders locked) that share the full meshes' vertices, skin and morphs; made at load (`?nolodgeo` = off) |
 | `facialHair.ts` | beard shells fade out over their last ~1 cm (per-vertex distance to the shell's edge, `CB_FEATHER`), stubble is a translucent film; mustache / goatee shells render as stubble until the asset reshapes them |
 | `field.ts`, `stadium.ts` | procedural placeholders with real MLB dimensions (used until/unless `field.glb`/`stadium.glb` load) |
 | `assets.ts` | GLTFLoader + meshopt/Draco/KTX2, prefers `optimized/`, everything optional |
