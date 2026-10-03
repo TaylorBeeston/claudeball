@@ -1,4 +1,4 @@
-for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_crew", "player_rituals", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_mpfb", "player_headwear", "player_helmet", "player_decals", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
+for f in ("common", "player_rig", "player_anim", "player_clips", "player_pitch", "player_motion", "player_catch", "player_ump", "player_crew", "player_rituals", "player_arms", "player_body", "player_cloth", "player_extra", "player_morph", "player_mpfb", "player_headwear", "player_helmet", "player_decals", "player_lod1", "player_glove"): exec(open(CB_SRC + f"/{f}.py").read())
 import os, json
 reset_scene()
 arm = build_armature()
@@ -275,7 +275,7 @@ def setk_all(name, val):
     for o_ in bpy.data.objects:
         sk_ = getattr(o_.data, "shape_keys", None) if o_.type == 'MESH' else None
         if sk_ and name in sk_.key_blocks: sk_.key_blocks[name].value = val
-os.makedirs(ROOT+"/players", exist_ok=True); info = {}
+os.makedirs(ROOT+"/players", exist_ok=True); info = {}; LOD1 = {}
 if not FAST: arm.animation_data.action = ACTS["idle"]
 allnodes = {**allobjs, **gear, "Elbow_Pole_L": E_ELBOW["L"], "Elbow_Pole_R": E_ELBOW["R"], "Bat_Grip": E_bat, "Ball_Grip": E_ball, "Ball_Grip_2Seam": E_ball2, **{K_["pocket_node"]: POCKET[k_] for k_, K_ in KINDS.items()}}
 GLOVE_NODES = {k_: (gear[K_["node"]], gear[K_["node"] + "_Laces"], POCKET[k_]) for k_, K_ in KINDS.items()}
@@ -329,6 +329,8 @@ for vn, (cols, gl, gkind, rhand, lhand) in ({} if FAST else VARIANTS).items():
     bpy.ops.export_scene.gltf(filepath=ROOT+f"/players/{vn}.glb", use_selection=True, export_format='GLB', export_yup=True, export_image_format='WEBP',
         export_animations=True, export_animation_mode='ACTIONS', export_skins=True, export_apply=False, export_force_sampling=True, export_frame_range=False,
         export_vertex_color='NONE', export_extras=True, export_morph=True)
+    try: LOD1[vn] = make_lod1(vn, sel, dflt, arm, ROOT)
+    except Exception as e_: LOD1[vn] = "ERR " + repr(e_)[:300]
     for o, old in reversed(renames): o.name = old
     for k_, v_ in MORPH_DEF.get(vn, {}).items(): setk_all(k_, v_)
     swap_skin(vn == "player_manager")
@@ -337,4 +339,4 @@ for vn, (cols, gl, gkind, rhand, lhand) in ({} if FAST else VARIANTS).items():
     for k_ in ("cb_note", "cb_height_m", "cb_scale_note"):
         if k_ in arm: del arm[k_]
     info[vn] = os.path.getsize(ROOT+f"/players/{vn}.glb")//1024
-result = {"kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values()), "fit": FIT}
+result = {"lod1": LOD1, "kb": info, "tris": sum(len(o.data.polygons) for o in allobjs.values()), "fit": FIT}

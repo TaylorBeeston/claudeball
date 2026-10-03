@@ -264,7 +264,7 @@ def eye_equirect(color="brown", w=1024, h=512, seed=3):
 def build_eyes():
     """Both eyeballs as ONE object `Eyes` (+ `Eyes_Cornea`): front pole = -Y, equirect UV, shape keys eyes_look_left / right / up / down (both eyes rotate together)."""
     objs = []
-    for nm, rad, seg, ring in (("Eyes", EYE_R, 40, 24), ("Eyes_Cornea", EYE_R*1.012, 36, 12)):
+    for nm, rad, seg, ring in (("Eyes", EYE_R, 28, 16), ("Eyes_Cornea", EYE_R*1.012, 28, 9)):
         bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); verts = {}
         for sx in (1, -1):
             c = Vector((sx*.032, EYE_Y, 1.732)); rings = []

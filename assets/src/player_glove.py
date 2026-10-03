@@ -41,6 +41,12 @@ def KS(kind):
     K = dict(KINDS[kind]); g = K.get("grow", 1.0); px, py, pz = K["pocket"]; sc = float(_hscale(np.array([pz]))[0]); py, pz = py*sc, pz*sc
     if g != 1.0: py *= g; pz = .06 + (pz - .06)*g
     K["pocket"] = (px*sc, py, pz); L = K["fingers"][0]; K["fingers"] = (L*float(_hscale(np.array([L]))[0])*g,) + tuple(K["fingers"][1:]); K["pad"] = K["pad"]*sc; return K
+def _thin(bm, a, b, r, seg=5):
+    """Lace segment: an open tube (no end spheres) - the laces were 6.4k triangles of capsules."""
+    a, b = Vector(a), Vector(b); d = b - a; L = d.length
+    if L < 1e-5: return
+    ret = bmesh.ops.create_cone(bm, cap_ends=False, segments=seg, radius1=r, radius2=r, depth=L); R = d.normalized().to_track_quat('Z', 'Y').to_matrix()
+    for v in ret["verts"]: v.co = R @ v.co + (a + b)/2
 def _frame(side):
     sx = 1 if side == "Left" else -1
     wr = JOINTS[side+"Hand"][1]; dvec = (JOINTS[side+"Hand"][2] - wr).normalized()
@@ -159,14 +165,14 @@ def glove_laces(glove, kind, side="Left"):
         for lp in np.linspace(path[0], path[-1], 12):
             l, n = on_surface((lp[0] + .08, lp[1], lp[2]), (-1, 0, 0))
             if l is not None: pts.append(l + n*.0016)
-        for a, b in zip(pts, pts[1:]): capsule(bm, a, b, .0021, 6)
+        for a, b in zip(pts, pts[1:]): _thin(bm, a, b, .0021)
     # lace loops around the pocket rim
     pc = Vector(K["pocket"]); ring_pts = []
     for k in range(20):
         ph = 2*math.pi*k/20; lp = (pc.x + .06, pc.y + math.cos(ph)*(K["pr"]*1.08), pc.z + math.sin(ph)*(K["pr"]*1.08 if kind != "firstbase" else K["pr"]*1.6))
         l, n = on_surface(lp, (-1, 0, 0))
         if l is not None: ring_pts.append(l + n*.0016)
-    for a, b in zip(ring_pts, ring_pts[1:] + ring_pts[:1]): capsule(bm, a, b, .0024, 6)
+    for a, b in zip(ring_pts, ring_pts[1:] + ring_pts[:1]): _thin(bm, a, b, .0024)
     me = bpy.data.meshes.new(K["node"] + "_laces"); bm.to_mesh(me); bm.free()
     for p in me.polygons: p.use_smooth = True
     o = bpy.data.objects.new(K["node"] + "_Laces", me); bpy.context.collection.objects.link(o); return o
