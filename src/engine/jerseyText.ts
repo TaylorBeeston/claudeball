@@ -95,7 +95,20 @@ export const DECAL_SIZE: Record<QualityName, Record<'name' | 'number', DecalSpec
   ultra: { name: { w: 768, h: 144 }, number: { w: 384, h: 480 } },
 };
 
-const FONT = "900 {S}px Impact, 'Haettenschweiler', 'Arial Narrow Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif";
+// Anton (OFL, shipped in public/fonts: phones have none of the block faces below), then the system block faces
+const FONT = "400 {S}px 'CB Jersey', Impact, 'Haettenschweiler', 'Arial Narrow Bold', 'Arial Black', 'Helvetica Neue', Arial, sans-serif";
+
+let fontLoad: Promise<void> | null = null;
+/** Load the jersey face (once; resolves on failure or after `timeoutMs` too, the fallbacks then draw). Call before the first decal is drawn. */
+export function loadJerseyFont(timeoutMs = 4000): Promise<void> {
+  if (fontLoad) return fontLoad;
+  if (typeof FontFace === 'undefined' || typeof document === 'undefined') return (fontLoad = Promise.resolve());
+  const face = new FontFace('CB Jersey', `url(${import.meta.env.BASE_URL}fonts/anton-latin-400.woff2) format('woff2')`);
+  const load = face.load().then((f) => {
+    document.fonts.add(f);
+  });
+  return (fontLoad = Promise.race([load, new Promise<void>((r) => setTimeout(r, timeoutMs))]).catch(() => undefined));
+}
 const font = (s: number) => FONT.replace('{S}', String(Math.round(s)));
 
 export interface TextureKey {
