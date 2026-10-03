@@ -441,7 +441,7 @@ export class GltfPuppet implements PuppetLike {
   constructor(private tpl: CharacterTemplate, snap: PlayerSnap, private gearSets: GearSets = {}, private manifest?: PlayerManifest) {
     this.umpBase = snap.role === 'umpire' && !!snap.position && snap.position !== 'HP';
     const id = snap.id;
-    this.root.matrixWorldAutoUpdate = false;
+    this.root.matrixWorldAutoUpdate = !!FLAGS.nomatrix;
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
     this.model.traverse((o) => {
@@ -610,8 +610,9 @@ export class GltfPuppet implements PuppetLike {
     if (this.proxy) this.proxy.visible = p === 'shadow';
     if (p === 'gbuf') {
       this.gbufHidden.length = 0;
-      // tiny distant players leave no mark in an ambient-occlusion / depth-of-field buffer: they are left out; the rest draw their body shapes only
-      const tiny = this.lodTier >= 2;
+      // small distant players (tier 1 and 2) leave no mark in an ambient-occlusion / depth-of-field buffer (the contact-shadow quad anchors them): they are left out;
+      // the close ones draw their body shapes only
+      const tiny = this.lodTier >= 1;
       for (const m of this.meshes) {
         if (m.visible && m.layers.mask === 1 && (tiny || GBUF_SKIP.test(m.name))) {
           m.visible = false;
@@ -1005,7 +1006,7 @@ export class GltfPuppet implements PuppetLike {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (target && this.gloveW > 0.02 && sh && fore && hand) {
-      this.root.updateMatrixWorld(true);
+      this.refreshMatrices();
       const S = sh.getWorldPosition(new Vector3()).sub(this.reachShift);
       const E = fore.getWorldPosition(new Vector3()), H = hand.getWorldPosition(new Vector3());
       const pocket = side === 'Left' ? this.pocket : null;
@@ -1024,7 +1025,7 @@ export class GltfPuppet implements PuppetLike {
     this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
     if (this.reachShift.lengthSq() > 1e-8) {
       this.root.position.add(this.reachShift);
-      this.root.updateMatrixWorld(true);
+      this.refreshMatrices();
       this.rig.refresh();
     }
   }
@@ -1181,8 +1182,20 @@ export class GltfPuppet implements PuppetLike {
     }
     this.updateInner(snap, dt, env);
     // the scene-wide matrix pass skips puppets (see the constructor): bring the whole tree up to date once, after every bone has been moved
-    this.root.updateMatrixWorld(true);
+    this.refreshMatrices();
     if (perf.on) perf.sub('pup.total', tAll);
+  }
+  /**
+   * Bring the whole tree up to date. Three skips a node's own world matrix when its `matrixWorldAutoUpdate` is false (that flag is how the root keeps the
+   * scene-wide pass out of the subtree), so the root's is composed here, then the children are updated from it.
+   */
+  private refreshMatrices() {
+    const r = this.root;
+    if (FLAGS.nomatrix) return r.updateMatrixWorld(true);
+    r.updateMatrix();
+    if (r.parent) r.matrixWorld.multiplyMatrices(r.parent.matrixWorld, r.matrix);
+    else r.matrixWorld.copy(r.matrix);
+    r.updateMatrixWorld(true);
   }
   private offscreen = false;
   private skipAcc = 0;
@@ -1290,7 +1303,7 @@ export class GltfPuppet implements PuppetLike {
     this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
     const tMat = perf.t();
-    this.root.updateMatrixWorld(true);
+    this.refreshMatrices();
     if (perf.on) perf.sub('pup.matrix', tMat);
     this.updateProp(snap, env);
     if (lod1) {
@@ -1640,7 +1653,7 @@ export class GltfPuppet implements PuppetLike {
   faceCenter(out: Vector3): Vector3 | null {
     const head = this.bones.Head;
     if (!head) return null;
-    this.root.updateMatrixWorld(true);
+    this.refreshMatrices();
     this.rig.refresh();
     const p = this.rig.pos(head, new Vector3());
     const q = this.rig.quat(head, new Quaternion());

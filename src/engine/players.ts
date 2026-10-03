@@ -354,7 +354,7 @@ export class PlayerManager {
   constructor(env: Environment) {
     this.group.name = 'players';
     // glTF puppets update their own matrices (see `GltfPuppet.update`); the group itself never moves
-    this.group.matrixAutoUpdate = false;
+    this.group.matrixAutoUpdate = !!new URLSearchParams(location.search).has('nomatrix');
     setMaterialRegistrar((m) => env.register(m as MeshStandardMaterial));
   }
 
