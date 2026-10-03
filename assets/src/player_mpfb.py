@@ -8,11 +8,21 @@ from mathutils.kdtree import KDTree
 MP = os.path.join(globals().get("CB_SRC") or os.path.join(os.environ.get("CB_ASSETS", "."), "src"), "mpfb")
 _B = None
 MOUTH_OPEN_SCALE = .3; FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
+HAND_S = 1.24                                                      # hands + fingers scaled about the wrist: the MPFB fit made them ~25 % too small (wrist to middle fingertip 15 cm instead of ~18-19 cm for a 1.85 m man)
+def hand_scale_map(P, side, S=None):
+    """Scale of hand + fingers about the wrist joint, blended in from 2 cm before the wrist to 7 cm beyond it (the forearm is unchanged). Same map is used for the hand mesh, the finger chains and the gloves."""
+    S = HAND_S if S is None else S
+    wr = np.array(JOINTS[side + "Hand"][1], float); d = np.array(JOINTS[side + "Hand"][2], float) - wr; d /= np.linalg.norm(d)
+    v = np.asarray(P, float) - wr; t = v @ d; r = np.linalg.norm(v, axis=1); u = np.clip((t + .02)/.09, 0, 1); s = 1 + (S - 1)*u*u*(3 - 2*u); s[r > .30] = 1.0
+    return wr + v*s[:, None]
+_hand_map = hand_scale_map
 def base():
     global _B
     if _B is None:
         _B = dict(np.load(os.path.join(MP, "base_body.npz"), allow_pickle=False))
         P = _B["P"].copy(); lo = P[:, 2] < FOOT_ANK; P[lo, 2] = FOOT_ANK - (FOOT_ANK - P[lo, 2])*FOOT_K      # lifts the foot sole by FOOT_LIFT (skinned feet of the straightened legs sank 8-15 mm in the clips): compress the foot below the ankle joint
+        for sd in ("Left", "Right"):
+            P = _hand_map(P, sd); _B["CH_" + sd] = _hand_map(np.asarray(_B["CH_" + sd], float).reshape(-1, 3), sd).reshape(np.asarray(_B["CH_" + sd]).shape)
         _B["P"] = P
         _B["D_mouth_open"] = _B["D_mouth_open"]*MOUTH_OPEN_SCALE                                         # the MPFB mouth interior (stretched inner-lip faces) turns into jagged spikes beyond ~30 % of the original opening: weight 1 = that usable opening
     return _B

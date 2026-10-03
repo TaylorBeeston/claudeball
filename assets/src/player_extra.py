@@ -194,14 +194,14 @@ def spikes(soles_obj):
             c = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=.0045, radius2=.0016, depth=.009)
             for v in c["verts"]: v.co = Vector((cx + fx*W + v.co.x, y0 + fy*L + v.co.y, FOOT_LIFT - .0005 + v.co.z))
     return _obj("Gear_Spikes", bm)
-def cap_logo(cap_obj, text="C", w=.075, h=.052):
+def cap_logo(cap_obj, text="C", w=.075, h=.052, zc=1.815):
     """Gear_CapLogo: a stitched front-panel logo patch following the cap surface (ray-cast grid from the head centre, lifted 1.2 mm); alpha texture is made in player_mats."""
     from mathutils.bvhtree import BVHTree
     bvh = bvh_of(cap_obj); bm = bmesh.new(); uvl = bm.loops.layers.uv.new("UVMap"); nu, nv = 14, 10; grid = []
     for j in range(nv + 1):
         row = []
         for i in range(nu + 1):
-            u = i/nu - .5; v = j/nv - .5; x = u*w; z = 1.815 + v*h
+            u = i/nu - .5; v = j/nv - .5; x = u*w; z = zc + v*h
             loc, n, idx, dist = bvh.ray_cast(Vector((x, -.6, z)), Vector((0, 1, 0)))
             if loc is None: row.append(None); continue
             row.append(bm.verts.new(loc + n.normalized()*.0013))
