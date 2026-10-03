@@ -2,57 +2,57 @@
  "low": {
   "pitchcam": {
    "calls": 470,
-   "triangles": 5600000
+   "triangles": 5120000
   },
   "wide": {
    "calls": 830,
-   "triangles": 8290000
+   "triangles": 7040000
   },
   "faces": {
    "calls": 310,
-   "triangles": 3630000
+   "triangles": 3580000
   }
  },
  "medium": {
   "pitchcam": {
-   "calls": 850,
-   "triangles": 10720000
+   "calls": 540,
+   "triangles": 5610000
   },
   "wide": {
-   "calls": 1780,
-   "triangles": 20910000
+   "calls": 1090,
+   "triangles": 10530000
   },
   "faces": {
-   "calls": 490,
-   "triangles": 5160000
+   "calls": 390,
+   "triangles": 3220000
   }
  },
  "high": {
   "pitchcam": {
-   "calls": 990,
-   "triangles": 11520000
+   "calls": 670,
+   "triangles": 6300000
   },
   "wide": {
-   "calls": 1870,
-   "triangles": 21980000
+   "calls": 1170,
+   "triangles": 11600000
   },
   "faces": {
-   "calls": 490,
-   "triangles": 5050000
+   "calls": 390,
+   "triangles": 3100000
   }
  },
  "ultra": {
   "pitchcam": {
-   "calls": 1020,
-   "triangles": 9630000
+   "calls": 750,
+   "triangles": 5370000
   },
   "wide": {
-   "calls": 2270,
-   "triangles": 26320000
+   "calls": 1500,
+   "triangles": 14040000
   },
   "faces": {
-   "calls": 510,
-   "triangles": 4640000
+   "calls": 420,
+   "triangles": 2880000
   }
  }
 }

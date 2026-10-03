@@ -7,6 +7,7 @@
  * `EXT_mesh_gpu_instancing` (stadium seats) is handled by three's GLTFLoader.
  */
 import {
+  BufferGeometry,
   Group,
   Material,
   Mesh,
@@ -21,6 +22,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import shipped from '../../assets/shipped.json';
 
 export interface CharacterTemplate {
   /** file name without extension (`player_base`, `player_coach`, …) */
@@ -31,6 +33,18 @@ export interface CharacterTemplate {
   defaults: Set<string>;
   /** true for the full `player_base` file, which holds every optional variant (hair styles, beards, accessories, …) */
   full: boolean;
+  /** simplified geometry (a third of the triangles) by mesh name, for small / distant players; only `player_base` has it, and only once it has loaded */
+  lodGeo?: Map<string, BufferGeometry>;
+}
+
+/** which texture set the player files come from: `2k` (`players/`: skin 2048 px, the rest 1024) or `1k` (`players_1k/`: skin and fabric 1024, small maps 512; ~40 % of the GPU memory) */
+export type TextureTier = '1k' | '2k';
+
+/** the texture tier a device should use: phones and other touch-first devices, or `?tex=1k|2k` */
+export function textureTierFor(coarse: boolean, search = typeof location !== 'undefined' ? location.search : ''): TextureTier {
+  const q = new URLSearchParams(search).get('tex');
+  if (q === '1k' || q === '2k') return q;
+  return coarse ? '1k' : '2k';
 }
 
 /** The part of `players/player_manifest.json` the engine uses: per-clip event times and the glove-closing keys of the catch clips. */
@@ -74,9 +88,10 @@ const LABELS: [RegExp, string][] = [
   [/^(optimized\/)?(ball|bat)/, 'Loading ball and bat…'],
 ];
 
-const CHARACTERS = ['player_base', 'player_home', 'player_away', 'player_batter', 'player_catcher', 'player_umpire', 'player_umpire_base', 'player_coach', 'player_ballkid'];
+/** the player files the game spawns from (`assets/shipped.json`); the role files that only carried default node sets are replaced by `gear_defaults.json` */
+const CHARACTERS: string[] = shipped.players;
 
-export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (p: LoadProgress) => void): Promise<Assets> {
+export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.env.BASE_URL}assets/`, onProgress?: (p: LoadProgress) => void, tier: TextureTier = '2k'): Promise<Assets> {
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}libs/draco/`);
   const ktx2 = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}libs/basis/`).detectSupport(renderer);
   const loader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
@@ -114,11 +129,12 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     }
     onProgress?.({ frac: w ? l / w : 0, label });
   };
-  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', ...CHARACTERS.map((c) => `players/${c}.glb`)];
+  const playerDir = tier === '1k' ? 'players_1k' : 'players';
+  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', 'lod/player_base_geo.glb', ...CHARACTERS.map((c) => `${playerDir}/${c}.glb`)];
   for (const f of known) progress.set(f, { loaded: 0, weight: fileWeight(`optimized/${f}`) });
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
-  const load = async (file: string, need?: string) => {
+  const load = async (file: string, need?: string, optional = false) => {
     const order = [`optimized/${file}`, file];
     for (const path of order) {
       try {
@@ -141,17 +157,18 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
         /* try next */
       }
     }
-    out.missing.push(file);
+    if (!optional) out.missing.push(file);
     return null;
   };
 
-  const [field, stadium, ball, bat, donut, ...chars] = await Promise.all([
+  const [field, stadium, ball, bat, donut, lod, ...chars] = await Promise.all([
     load('field.glb'),
     load('stadium.glb'),
     load('ball.glb'),
     load('bat.glb'),
     load('bat_donut.glb'),
-    ...CHARACTERS.map((c) => load(`players/${c}.glb`, 'Bat_Grip')),
+    load('lod/player_base_geo.glb', undefined, true),
+    ...CHARACTERS.map((c) => load(`${playerDir}/${c}.glb`, 'Bat_Grip')),
   ]);
 
   for (const p of progress.values()) p.loaded = p.weight;
@@ -179,17 +196,43 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     });
     out.characters.set(CHARACTERS[i], { name: CHARACTERS[i], scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
   });
+  // the simplified geometry of player_base by mesh name (a missing file just means every player keeps the full meshes)
+  const baseTpl = out.characters.get('player_base');
+  if (lod && baseTpl) {
+    const geo = new Map<string, BufferGeometry>();
+    lod.scene.traverse((o) => {
+      const m = o as Mesh;
+      if (m.isMesh && m.name && !geo.has(m.name)) geo.set(m.name, m.geometry);
+    });
+    baseTpl.lodGeo = geo;
+  }
   try {
     const r = await fetch(base + 'players/player_manifest.json', { cache: 'no-cache' });
     if (r.ok) out.manifest = (await r.json()) as PlayerManifest;
   } catch {
     /* no manifest: glove closing falls back to the clip's catch time */
   }
-  out.gear = {
-    field: out.characters.get('player_home')?.defaults,
-    batter: out.characters.get('player_batter')?.defaults,
-    catcher: out.characters.get('player_catcher')?.defaults,
-  };
+  // which parts the role files show by default: a small JSON (written by `npm run assets:derive`) instead of three whole player files
+  try {
+    const r = await fetch(base + 'optimized/players/gear_defaults.json', { cache: 'no-cache' });
+    if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) {
+      const g = (await r.json()) as Record<'field' | 'batter' | 'catcher', string[]>;
+      out.gear = { field: new Set(g.field), batter: new Set(g.batter), catcher: new Set(g.catcher) };
+    }
+  } catch {
+    /* fall back to the role files below */
+  }
+  if (!out.gear.field) {
+    const gears = await Promise.all(shipped.gearFiles.map((c) => load(`players/${c}.glb`, 'Bat_Grip')));
+    const defaultsOf = (g: { scene: Group } | null) => {
+      const d = new Set<string>();
+      g?.scene.traverse((o) => {
+        if (o.userData?.cb_default === 1 || o.userData?.cb_default === true) d.add(o.name);
+      });
+      return g ? d : undefined;
+    };
+    out.gear = { field: defaultsOf(gears[0]), batter: defaultsOf(gears[1]), catcher: defaultsOf(gears[2]) };
+  }
   return out;
 }
 

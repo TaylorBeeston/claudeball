@@ -167,6 +167,7 @@ export class Environment {
       l.color.setHex(this.tod?.sunColor ?? 0xffffff);
     }
     for (const m of this.materials) this.hook(m);
+    this.setFarShadowEvery(this.farEvery);
   }
 
   setQuality(q: QualitySettings) {
@@ -332,6 +333,24 @@ export class Environment {
 
   update() {
     this.csm.update();
+    if (this.farEvery > 1) {
+      // the far cascades are redrawn every n-th frame (their maps stay valid for a moment: they are broad and soft)
+      const redraw = this.frame++ % this.farEvery === 0;
+      for (let i = 1; i < this.csm.lights.length; i++) this.csm.lights[i].shadow.needsUpdate = redraw;
+    }
+  }
+
+  private farEvery = 1;
+  private frame = 0;
+
+  /** redraw the far shadow cascades only every `n` frames (1 = every frame); the nearest cascade is always redrawn */
+  setFarShadowEvery(n: number) {
+    this.farEvery = n;
+    for (let i = 1; i < this.csm.lights.length; i++) {
+      const sh = this.csm.lights[i].shadow;
+      sh.autoUpdate = n <= 1;
+      sh.needsUpdate = true;
+    }
   }
 
   resize() {
