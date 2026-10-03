@@ -1,7 +1,7 @@
 import {
   Frustum,
   Matrix4,
-  NeutralToneMapping,
+  ACESFilmicToneMapping,
   Object3D,
   PerspectiveCamera,
   Quaternion,
@@ -26,11 +26,19 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { Broadcast } from './broadcast';
 import { installCharacterShading, setShadingQuality } from './characterShading';
+import { installFeather } from './facialHair';
+import { fieldKind, fieldPatch, tagField, tuneParkMaterial } from './fieldLook';
+import { buildSurroundings, type Surroundings } from './surroundings';
+
+const NIGHT_OF: Record<TimeOfDay, number> = { day: 0, dusk: 0.45, night: 1 };
+/** the stands under the lights read darker than the field (the towers aim at the field; the fans only get the spill) */
+const CROWD_GAIN: Record<TimeOfDay, number> = { day: 1, dusk: 0.85, night: 0.6 };
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
+import { buildCrowdAtlas, loadCrowdAtlas, type AtlasPuppet, type CrowdAtlas } from './crowdAtlas';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 import { perf } from './perf';
@@ -45,6 +53,8 @@ export interface EngineOptions {
   /** innings / chosen teams for the sim (the menu's game setup) */
   simConfig?: SimConfig;
 }
+
+const fract = (x: number) => x - Math.floor(x);
 
 /** Farthest knob-to-shoulder distance (m) the batter's arms can plausibly cover: arm length plus IK slack. */
 const BAT_REACH_MAX = 0.95;
@@ -116,8 +126,10 @@ export class Engine {
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = SRGBColorSpace;
     // Khronos PBR Neutral: keeps the hue and saturation of albedo (ACES pushed lit skin to a pale cream); the contrast comes from the grade pass
-    this.renderer.toneMapping = NeutralToneMapping;
+    // ACES: natural grass / dirt / skin with a filmic shoulder (Neutral read bright and cartoony, AgX flat; A/B in the t-0013 report)
+    this.renderer.toneMapping = ACESFilmicToneMapping;
     installCharacterShading();
+    installFeather();
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.canvas = this.renderer.domElement;
@@ -137,6 +149,7 @@ export class Engine {
     this.gbufferHidden.push(this.lights.group);
     this.scene.add(this.contact.mesh);
     this.gbufferHidden.push(this.contact.mesh);
+    this.gbufferHidden.push(this.env.stars);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
@@ -212,7 +225,14 @@ export class Engine {
       this.scene.add(a.field);
       a.field.traverse((o) => {
         const m = o as Mesh;
-        if (m.isMesh) for (const mt of Array.isArray(m.material) ? m.material : [m.material]) this.env.register(mt as MeshStandardMaterial);
+        if (!m.isMesh) return;
+        for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
+          // clay / lawn / track look on top of the asset textures (fieldLook.ts)
+          const tuned = tuneParkMaterial(mt);
+          const kind = fieldKind(mt.name);
+          if (kind) tagField(mt, kind);
+          this.env.register(mt as MeshStandardMaterial, kind ? fieldPatch(kind) : tuned);
+        }
       });
       // dugout cutaway cameras from the real dugout nodes: 9 m out on the field side, looking in
       for (const name of ['Dugout_3B', 'Dugout_1B']) {
@@ -237,14 +257,19 @@ export class Engine {
       if (pens.length === 2) this.director.landmarks.bullpens = [pens[0].setY(0), pens[1].setY(0)];
       const sb = centre(a.stadium?.getObjectByName('Scoreboard'));
       if (sb) this.director.landmarks.scoreboard = sb;
-      // ground under the stands / beyond the field mesh
-      const under = new Mesh(new CircleGeometry(520, 48).rotateX(-Math.PI / 2), this.env.register(new MeshStandardMaterial({ color: 0x1a1d1a, roughness: 1 })));
-      under.position.y = -0.06;
-      under.receiveShadow = true;
-      this.scene.add(under);
+      // the ground under the stands and the town beyond them (surroundings.ts)
+      const sur = buildSurroundings((m, patch) => this.env.register(m, patch));
+      this.scene.add(sur.group);
+      this.gbufferHidden.push(sur.group);
+      this.surroundings = sur;
+      sur.setNight(NIGHT_OF[this.env.todName]);
     }
     if (a.stadium) {
+      const before = this.stadium.gbufferHidden.length;
       this.stadium.adoptGltf(a.stadium as never, a.mirrored);
+      // what the glTF stadium adds (lamp glare sprites, the backstop net) must stay out of the AO prepass too: the list was copied at construction,
+      // and the prepass's override material draws an invisible sprite as an opaque square (a dark AO column in the sky behind every light tower)
+      this.gbufferHidden.push(...this.stadium.gbufferHidden.slice(before));
       this.lights.setTowers(this.stadium.towers);
     }
     if (a.ball) this.ball.useModel(a.ball, this.env);
@@ -283,6 +308,7 @@ export class Engine {
   newGame(seed: number, cfg: SimConfig = {}) {
     this.sim.load(seed, cfg);
     this.players.reset();
+    void this.updateCrowd();
     this.director.reset();
     this.hud?.reset();
     this.live = this.sim.state;
@@ -392,6 +418,7 @@ export class Engine {
     setShadingQuality(name, this.quality.msaa > 0);
     setJerseyQuality(name);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
+    if (this.stadium.impostors) void this.updateCrowd();
     this.adaptive.full();
     this.loadApplied = -1;
     this.applyLoad();
@@ -415,7 +442,77 @@ export class Engine {
     this.env.setFarShadowEvery(fx.farShadowEvery);
   }
 
+  /** the stands' spectators (see `crowdAtlas.ts`): the pre-baked team-neutral atlas, or one rendered here when it is missing */
+  crowdAtlas: CrowdAtlas | null = null;
+  private crowdAtlasKey = '';
+  private bakedAtlas: Promise<CrowdAtlas | null> | null = null;
+
+  /**
+   * The crowd atlas for the current teams. The shipped, pre-baked atlas (`public/crowd/`, team colours applied per instance through its mask)
+   * is loaded once; without it the fans are rendered here from the player model (team colours baked in, rebuilt when the teams change: ~3 s of
+   * shader compiles on first use). `neutral` forces the render path in team-neutral mode (the bake tool). false when nothing could be made.
+   */
+  async refreshCrowdAtlas(o: { render?: boolean; neutral?: boolean } = {}): Promise<boolean> {
+    if (!o.render) {
+      // phones and Low: the 1024 px colour atlas (a quarter of the memory)
+      const baked = await (this.bakedAtlas ??= loadCrowdAtlas(import.meta.env.BASE_URL, this.coarse || this.qualityName === 'low'));
+      if (baked) {
+        this.crowdAtlas = baked;
+        this.crowdAtlasKey = 'baked';
+        return true;
+      }
+    }
+    const t = this.sim.state.teams;
+    const size = this.coarse || this.qualityName === 'low' ? 1024 : 2048;
+    const keyOf = () => (o.neutral ? `neutral|${size}` : `${this.sim.state.teams.home.color}|${this.sim.state.teams.home.trim}|${this.sim.state.teams.away.color}|${size}`);
+    const key = keyOf();
+    if (key === this.crowdAtlasKey && this.crowdAtlas) return true;
+    const atlas = await buildCrowdAtlas(this.renderer, (s) => this.players.makePuppet(s) as unknown as AtlasPuppet, o.neutral ? null : t, { size });
+    if (key !== keyOf()) {
+      atlas?.dispose(); // the teams changed meanwhile: the newer request wins
+      return false;
+    }
+    if (!atlas) return false;
+    if (this.crowdAtlasKey !== 'baked') this.crowdAtlas?.dispose();
+    this.crowdAtlas = atlas;
+    this.crowdAtlasKey = key;
+    return true;
+  }
+
+  /** fill the stands with the billboard crowd for the current teams (no-op without glTF players: the placeholder figures stay) */
+  async updateCrowd(): Promise<void> {
+    if (FLAGS.oldcrowd || !this.assets?.characters.size) return;
+    if ((await this.refreshCrowdAtlas()) && this.crowdAtlas) {
+      this.stadium.useCrowdAtlas(this.crowdAtlas, this.quality.msaa > 0);
+      const t = this.sim.state.teams;
+      this.stadium.impostors?.setTeams(t.home.color, t.away.color);
+      this.stadium.impostors?.setGain(CROWD_GAIN[this.env.todName]);
+    }
+  }
+
+  /** dev: the crowd atlas (or its mask) as a PNG data URL, when it was rendered here */
+  crowdAtlasPng(which: 'color' | 'mask' = 'color'): string | null {
+    const a = this.crowdAtlas;
+    const target = which === 'mask' ? a?.maskTarget : a?.target;
+    if (!a || !target) return null;
+    const w = target.width, h = target.height;
+    const buf = new Uint8Array(w * h * 4);
+    this.renderer.readRenderTargetPixels(target, 0, 0, w, h, buf);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d')!;
+    const id = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) id.data.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    g.putImageData(id, 0, 0);
+    return c.toDataURL('image/png');
+  }
+
+  private surroundings: Surroundings | null = null;
+
   setTimeOfDay(t: TimeOfDay): Promise<void> {
+    this.surroundings?.setNight(NIGHT_OF[t]);
+    this.stadium.impostors?.setGain(CROWD_GAIN[t]);
     // the settings store (UI) remembers the choice; the tower lights follow at once, the sky / HDRI when its texture is ready
     this.lights.setTimeOfDay(t);
     return this.env.setTimeOfDay(t);
@@ -601,6 +698,8 @@ export class Engine {
     if ((this.sbTimer -= dt) < 0) {
       this.sbTimer = 0.3;
       this.stadium.updateScoreboard(state);
+      // now and then in the late innings the stands start a wave (between plays, not on replays)
+      if (state.inning >= 5 && !this.batted && !out.replaying && !this.sim.paused && fract(Math.sin(Math.floor(state.time * 3.3) * 12.9898) * 43758.5453) < 0.3 / 240) this.stadium.crowd.startWave();
     }
     if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);
@@ -627,6 +726,7 @@ export class Engine {
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
     if (perf.on) perf.lap('post-setup');
     this.stadium.crowd.update(this.time, dt);
+    this.stadium.updateGlare(this.camera.position);
     if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)

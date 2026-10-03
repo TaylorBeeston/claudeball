@@ -3,6 +3,7 @@
  * hints through an AnimationMixer. Root motion is the sim's position; head lookAt and arm IK
  * (batter's hands to the sim's bat) are applied on top of the mixer output each frame.
  */
+import { FEATHERED, addEdgeAttribute } from './facialHair';
 import {
   AnimationAction,
   AnimationMixer,
@@ -46,6 +47,8 @@ const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
 export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'pitchcoach', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
+/** `lodK` (1 / (2 tan(fov / 2))) of a 40 deg lens, the reference the decal ranges are measured for */
+const LOD_K_NORMAL = 1 / (2 * Math.tan((40 * Math.PI) / 360));
 /**
  * Parts that cast no shadow: tiny details, thin cards and things hidden under other parts. Every caster is one more draw call in each shadow cascade,
  * so only the shapes that read in a shadow (body, head, hair, jersey, pants, cap / helmet, cleats, hands, gloves, gear) remain.
@@ -231,8 +234,21 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     } else m = b.clone();
     m.userData = {};
     if (skin) shadeSkin(m);
-    if (name === 'hair' || name === 'stubble') shadeHair(m);
+    if (name === 'hair_beard') {
+      // the beard / mustache / goatee shells fade out over their last millimetres (see facialHair.ts) instead of ending in a hard line
+      m.alphaTest = 0.4;
+      (m.defines ??= {}).CB_FEATHER = '0.011';
+    }
+    if (name === 'stubble') {
+      m.transparent = true;
+      m.depthWrite = false;
+      shadeHair(m, false, false);
+    }
+    if (name === 'hair_beard') shadeHair(m, true, false);
+    if (name === 'hair') shadeHair(m);
     m.color = new Color(color);
+    // the fibre texture is dark on top of the hair colour: a beard read as a black mask; lift it toward the scalp hair's value
+    if (name === 'hair_beard') m.color.multiplyScalar(1.6);
     reg(m);
     matCache.set(key, m);
   }
@@ -421,6 +437,23 @@ function proxyGeometry(tpl: object, key: string, parts: SkinnedMesh[], ref: Skin
   return merged;
 }
 
+/** the darker of two team colours for the catcher's gear (white gear reads as plaster), navy when both are light */
+function gearColor(a: string, b: string): string {
+  const lum = (h: string) => {
+    const c = new Color(h);
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  };
+  const d = lum(a) <= lum(b) ? a : b;
+  return lum(d) > 0.35 ? '#1d2a44' : d;
+}
+
+/** metres per geometry unit of a (possibly quantized) mesh: its bind matrix's scale, over the model's own (the player's height) */
+function edgeUnit(m: Mesh): number {
+  const sk = m as SkinnedMesh;
+  const k = sk.isSkinnedMesh ? sk.bindMatrix.getMaxScaleOnAxis() : m.matrixWorld.getMaxScaleOnAxis();
+  return k > 0 ? k : 1;
+}
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   /** (set in the constructor) this puppet's matrices are updated by the puppet itself, not by the scene-wide pass in `renderer.render` */
@@ -537,12 +570,14 @@ export class GltfPuppet implements PuppetLike {
       }
     }
     this.setCullBounds();
+    for (const m of this.meshes) if (FEATHERED.test(m.name)) addEdgeAttribute(m.geometry, edgeUnit(m));
     for (const m of this.meshes) {
       const t = LOD_TIER1.test(m.name) ? 1 : LOD_TIER2.test(m.name) ? 2 : 0;
       if (t) this.lodParts.push({ m, tier: t });
       // the simplified geometry (same mesh names, skeleton, uv layout and morph targets; a third of the triangles) for the small / distant tiers
       const lg = tpl.lodGeo?.get(m.name);
       const sk = m as SkinnedMesh;
+      if (lg && FEATHERED.test(m.name)) addEdgeAttribute(lg, edgeUnit(m));
       if (lg && sk.isSkinnedMesh && m.name !== 'Eyes_Cornea' && lg.morphAttributes.position?.length === m.geometry.morphAttributes.position?.length) this.lodSwap.push({ m, full: m.geometry, lod: lg });
     }
     this.rig = new Rig(this.model);
@@ -783,7 +818,9 @@ export class GltfPuppet implements PuppetLike {
     // head: hair only when no cap / helmet covers it; beard, mustache, eye black on top
     const headwear = !!(this.nodes.get('Gear_Cap')?.visible || this.nodes.get('Gear_Helmet')?.visible);
     for (const n of HAIR_NODES) show(n, !headwear && n === L.hairNode);
-    for (const n of FACIAL_NODES) show(n, n === L.facialNode && role !== 'ballkid');
+    // the mustache and goatee shells are flat dark bars over the lip / chin (asset shape; reported): stubble stands in for them until they are reshaped
+    const facial = L.facialNode === 'Gear_Mustache' || L.facialNode === 'Gear_Goatee' ? 'Gear_Beard_Stubble' : L.facialNode;
+    for (const n of FACIAL_NODES) show(n, n === facial && role !== 'ballkid');
     show('Gear_EyeBlack', L.eyeBlack && kind !== 'catcher');
     // arms
     if (!own) {
@@ -831,10 +868,13 @@ export class GltfPuppet implements PuppetLike {
     const trimOf = (c: 'trim' | 'white' | 'black') => (c === 'trim' ? look.sock : c === 'white' ? TRIM_WHITE : TRIM_BLACK);
     const map: Record<string, string> = {
       uniform_jersey: look.jersey, uniform_pants: look.pants, uniform_socks: look.sock, uniform_undershirt: look.sock, cap: look.cap, helmet: look.cap, piping: look.sock,
+      // the catcher's chest protector and shin guards in the team colour (they were near-black); umpires keep theirs dark (see `dark` below)
+      catcher_gear: gearColor(look.cap, look.jersey),
     };
     if (L) {
       map.hair = L.hairColor;
       map.stubble = L.hairColor;
+      map.hair_beard = L.hairColor;
       map.wristband = trimOf(L.wristbandColor);
       map.arm_sleeve = trimOf(L.sleeveColor);
       map.batting_glove = L.battingGlove;
@@ -1464,7 +1504,10 @@ export class GltfPuppet implements PuppetLike {
         if (spec) mesh.material = decalMaterial(this.decalTemplate, jerseyTextures.get(spec));
       }
     }
-    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) : 0;
+    // the ranges are for a normal lens (~40 deg): a telephoto (the centre-field pitch camera, 9 deg at 120 m) magnifies, so the distance is
+    // scaled by the lens's magnification, like the detail tiers
+    const zoom = env.lodK ? Math.max(1, env.lodK / LOD_K_NORMAL) : 1;
+    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) / zoom : 0;
     for (const k of kinds) {
       const mesh = this.decals[k]!;
       mesh.visible = !lod1 && !!mesh.userData.hasPrint && d < decalRange(k, q);
@@ -1857,6 +1900,45 @@ export class GltfPuppet implements PuppetLike {
     if (Math.abs(spineYaw) > 1e-4) apply(spine, spineYaw, 0);
     apply(neck, neckHeadYaw * 0.4, hl.pitch * 0.4);
     apply(head, neckHeadYaw * 0.6, hl.pitch * 0.6);
+  }
+
+  /**
+   * A still picture of this person for an off-screen render (the crowd atlas, `crowdAtlas.ts`): plain clothes instead of the role's gear (no glove,
+   * decals, numbers, belt or eye black), a cap or the given hair style, the clip held at time `t`, the model at the origin facing +Z at full detail.
+   * Returns false when the clip does not exist. Only for puppets that never join the game.
+   */
+  poseStill(clip: string, t: number, o: { cap: boolean; hair?: string; jersey?: string }): boolean {
+    const a = this.actions.get(clip);
+    if (!a) return false;
+    const show = (name: string, on: boolean) => {
+      const n = this.nodes.get(name);
+      if (n) n.visible = on;
+    };
+    for (const [name, n] of this.nodes) {
+      if (/^(Gear_Glove|Gear_Number_|Gear_Belt|Gear_EyeBlack|Gear_Helmet|Gear_Wristband|Gear_ArmSleeve|Gear_CatcherMask|Gear_ChestProtector|Gear_ShinGuard|Gear_LineupCard|Gear_Jacket|Hand_L_Open|Hand_R_Ball|Jersey_.*Decal|Gear_Hair)/.test(name)) n.visible = false;
+    }
+    show('Hand_L', true);
+    show('Hand_R', true);
+    show('Gear_Cap', o.cap);
+    if (!o.cap) show(o.hair ?? this.look?.hairNode ?? 'Gear_Hair', true);
+    if (o.jersey) for (const n of JERSEY_NODES) show(n, n === o.jersey);
+    // a t-shirt shows bare arms
+    if (o.jersey === 'Jersey_ShortSleeve') show('Undershirt', false);
+    for (const c of this.cornea) c.visible = true;
+    this.mixer.stopAllAction();
+    a.reset();
+    a.enabled = true;
+    a.setEffectiveWeight(1);
+    a.play();
+    a.time = Math.min(t, a.getClip().duration - 1e-3);
+    this.mixer.update(0);
+    this.model.scale.setScalar(this.bodyScale);
+    this.root.position.set(0, 0, 0);
+    this.root.rotation.set(0, 0, 0);
+    this.root.matrixWorldAutoUpdate = true;
+    this.root.updateMatrixWorld(true);
+    for (const m of this.meshes) m.frustumCulled = false;
+    return true;
   }
 
   dispose() {

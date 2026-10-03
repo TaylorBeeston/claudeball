@@ -485,8 +485,9 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       // the high camera behind home plate drifting across, the park laid out below (like the old wide cutaway)
       const k = Math.min(1, v.t / 6);
       const dirn = rnd(3) < 0.5 ? -1 : 1;
-      r.pos.set(dirn * (-34 + 68 * k), 46 - 6 * k, -80);
-      r.tgt.set(0, 5, 60);
+      // high enough to clear the upper deck's back wall (40 m at z = -71): at 46 m the near stands filled the lower half of the frame
+      r.pos.set(dirn * (-34 + 68 * k), 64 - 6 * k, -84);
+      r.tgt.set(0, 0, 58);
       r.fov = 38;
       r.focus.copy(r.tgt);
       r.slab = 0;

@@ -1,6 +1,9 @@
 import {
   Camera,
+  DepthTexture,
   FramebufferTexture,
+  RedFormat,
+  UnsignedIntType,
   HalfFloatType,
   PerspectiveCamera,
   Scene,
@@ -15,6 +18,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FullScreenQuad, Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 import type { QualitySettings } from './quality';
 
 const DofShader = {
@@ -35,7 +39,7 @@ const DofShader = {
     uniform sampler2D tDiffuse; uniform sampler2D tDepth;
     uniform float near, far, focus, aperture, maxBlur, aspect;
     varying vec2 vUv;
-    float viewZ(vec2 uv){ float d = texture2D(tDepth, uv).x; return -perspectiveDepthToViewZ(d, near, far); }
+    float viewZ(vec2 uv){ return texture2D(tDepth, uv).x; } // metres from the camera (DepthCopyPass)
     // foreground (nearer than the focus) is softened less than the background: an over-the-shoulder subject stays only slightly soft
     float coc(float z){ float c = aperture * abs(1.0 / focus - 1.0 / max(z, 0.05)); if (z < focus) c *= 0.45; return clamp(c, 0.0, maxBlur); }
     void main(){
@@ -71,7 +75,7 @@ const GradeShader = {
     vignette: { value: 0.32 },
     saturation: { value: 0.94 },
     contrast: { value: 1.06 },
-    aberration: { value: 0.0012 },
+    aberration: { value: 0.0005 },
     tint: { value: new Vector2(0.0, 0.0) },
     fade: { value: 0 },
     aspect: { value: 1.7 },
@@ -116,16 +120,52 @@ const GradeShader = {
     }`,
 };
 
+/**
+ * Right after the main render: the scene's own depth (full resolution, every visible part incl. hair, caps, crowd) as metres from the camera,
+ * for the depth of field. (The DoF used to read the GTAO prepass depth: half resolution at High and without hair / details, which left sharp
+ * halos of background around heads and blurred hair.) One full-screen draw into a half-float red target.
+ */
+class DepthCopyPass extends Pass {
+  readonly target: WebGLRenderTarget;
+  private quad: FullScreenQuad;
+  private mat: ShaderMaterial;
+  constructor(private camera: PerspectiveCamera) {
+    super();
+    this.needsSwap = false;
+    this.target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, format: RedFormat, depthBuffer: false });
+    this.mat = new ShaderMaterial({
+      uniforms: { tDepth: { value: null }, near: { value: 0.1 }, far: { value: 500 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `#include <packing>
+        uniform sampler2D tDepth; uniform float near, far; varying vec2 vUv;
+        void main(){ float d = texture2D(tDepth, vUv).x; gl_FragColor = vec4(d >= 1.0 ? far : -perspectiveDepthToViewZ(d, near, far), 0.0, 0.0, 1.0); }`,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.quad = new FullScreenQuad(this.mat);
+  }
+  setSize(w: number, h: number) {
+    this.target.setSize(w, h);
+  }
+  render(renderer: WebGLRenderer, _w: WebGLRenderTarget, readBuffer: WebGLRenderTarget) {
+    this.mat.uniforms.tDepth.value = readBuffer.depthTexture;
+    this.mat.uniforms.near.value = this.camera.near;
+    this.mat.uniforms.far.value = this.camera.far;
+    renderer.setRenderTarget(this.target);
+    this.quad.render(renderer);
+  }
+}
+
 export class PostFX {
   composer: EffectComposer;
   private renderPass: RenderPass;
   ao: GTAOPass;
   private dof: ShaderPass;
+  private depthCopy: DepthCopyPass;
   private bloom: UnrealBloomPass;
   private output: OutputPass;
   private grade: ShaderPass;
   private size = new Vector2(1280, 720);
-  private aoActive = false;
   /** the last picture shown, kept while a dissolve might be needed */
   private prev: FramebufferTexture | null = null;
   private prevSize = new Vector2();
@@ -141,6 +181,8 @@ export class PostFX {
     private q: QualitySettings,
   ) {
     const rt = new WebGLRenderTarget(this.size.x, this.size.y, { type: HalfFloatType, samples: q.msaa });
+    // the main pass keeps its depth in a texture (resolved from the multisampled buffer): the depth of field reads it (DepthCopyPass)
+    rt.depthTexture = new DepthTexture(this.size.x, this.size.y, UnsignedIntType);
     this.composer = new EffectComposer(renderer, rt);
     this.renderPass = new RenderPass(scene, camera as Camera);
     this.ao = new GTAOPass(scene, camera as Camera, this.size.x, this.size.y);
@@ -149,10 +191,12 @@ export class PostFX {
     this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, radiusExponent: 1, rings: 2, samples: 12 });
     this.ao.blendIntensity = 0.85;
     this.dof = new ShaderPass(new ShaderMaterial(DofShader));
+    this.depthCopy = new DepthCopyPass(camera);
     this.bloom = new UnrealBloomPass(this.size.clone(), 0.14, 0.4, 4.5);
     this.output = new OutputPass();
     this.grade = new ShaderPass(new ShaderMaterial(GradeShader));
     this.composer.addPass(this.renderPass);
+    this.composer.addPass(this.depthCopy);
     this.composer.addPass(this.ao);
     this.composer.addPass(this.dof);
     this.composer.addPass(this.bloom);
@@ -167,6 +211,7 @@ export class PostFX {
   passList() {
     return [
       { name: 'main', pass: this.renderPass },
+      { name: 'depth', pass: this.depthCopy },
       { name: 'gtao', pass: this.ao },
       { name: 'dof', pass: this.dof },
       { name: 'bloom', pass: this.bloom },
@@ -179,7 +224,8 @@ export class PostFX {
   setNoAo(off: boolean) {
     this.noAo = off;
     this.ao.enabled = this.q.ao && !off && !location.search.includes('noao');
-    this.dof.enabled = this.q.dof && this.q.ao && !off && !location.search.includes('nodof');
+    this.dof.enabled = this.q.dof && !off && !location.search.includes('nodof');
+    this.depthCopy.enabled = this.dof.enabled;
   }
   private noAo = false;
 
@@ -187,8 +233,8 @@ export class PostFX {
     this.q = q;
     this.ao.enabled = q.ao && !this.noAo && !location.search.includes('noao');
     this.bloom.enabled = q.bloom && !location.search.includes('nobloom');
-    this.dof.enabled = q.dof && q.ao && !this.noAo && !location.search.includes('nodof');
-    this.aoActive = q.ao;
+    this.dof.enabled = q.dof && !this.noAo && !location.search.includes('nodof');
+    this.depthCopy.enabled = this.dof.enabled;
     (this.grade.uniforms as Record<string, { value: number }>).grain.value = q.grain ? 0.035 : 0;
     // MSAA changes need a new target
     const rt = this.composer.renderTarget1 as WebGLRenderTarget;
@@ -217,7 +263,7 @@ export class PostFX {
     u.aperture.value = this.q.dof ? aperture * focus * 0.012 : 0;
     u.near.value = this.camera.near;
     u.far.value = this.camera.far;
-    u.tDepth.value = this.aoActive ? this.ao.depthTexture : null;
+    u.tDepth.value = this.depthCopy.target.texture;
   }
 
   /** Screen-space camera motion this frame in uv units (drives the pan motion blur). */
