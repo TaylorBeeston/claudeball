@@ -175,11 +175,19 @@ export class PostFX {
     ] as unknown as { name: string; pass: { render: (...a: never[]) => void } }[];
   }
 
+  /** the adaptive controller drops the ambient-occlusion prepass (and with it the depth of field) when the main thread cannot keep up */
+  setNoAo(off: boolean) {
+    this.noAo = off;
+    this.ao.enabled = this.q.ao && !off && !location.search.includes('noao');
+    this.dof.enabled = this.q.dof && this.q.ao && !off && !location.search.includes('nodof');
+  }
+  private noAo = false;
+
   setQuality(q: QualitySettings) {
     this.q = q;
-    this.ao.enabled = q.ao && !location.search.includes('noao');
+    this.ao.enabled = q.ao && !this.noAo && !location.search.includes('noao');
     this.bloom.enabled = q.bloom && !location.search.includes('nobloom');
-    this.dof.enabled = q.dof && q.ao && !location.search.includes('nodof');
+    this.dof.enabled = q.dof && q.ao && !this.noAo && !location.search.includes('nodof');
     this.aoActive = q.ao;
     (this.grade.uniforms as Record<string, { value: number }>).grain.value = q.grain ? 0.035 : 0;
     // MSAA changes need a new target

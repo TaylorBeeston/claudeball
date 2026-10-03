@@ -44,3 +44,22 @@ The user's own browser (Brave) is never touched. Check the first report line: th
 
 ## Budgets (`perf:check`)
 `tools/perf/check.ts` runs a short deterministic bench (a few scenes, `frames=30`) per preset and fails if draw calls or triangles per frame exceed `tools/perf/budgets.json`. These are machine-independent numbers (counts, not times), so they can run in CI. Update the budgets deliberately when assets change.
+
+## More tools (batch 2)
+- `npx tsx tools/perf/census.ts` - what each puppet draws, main-pass draw calls by scene group, shadow casters per light.
+- `npx tsx tools/perf/alloc.ts` - V8 sampling heap profile of a bench scene (an unminified build in `dist-dbg/` so names are readable).
+- `npx tsx tools/perf/tunecheck.ts [--emu 750x832@2.625 --cpu 2]` - what the start-up tuner ("Auto" quality) picks on this device / emulation, with its measurements.
+- A/B URL flags (add with `--extra "nocull&nolod"`): `nocull` (puppets not culled), `nolod` (no detail tiers), `nolodgeo` (no simplified geometry), `noskip` (off-screen / tiny puppets animated in full), `noproxy` (shadows from the puppets' own parts), `nomatrix` (scene-wide matrix pass instead of the puppets' own), `notune` (skip the start-up tuner), `tex=1k|2k` (player texture set).
+- The runner flags runs whose assets failed to load (`WARNING ... NOT valid`; `meta.invalidRuns`) and records the first-load download (`meta.download`, bytes per kind).
+- `--shots` pauses the game on a quarter-second grid of game time, so an A/B of two builds shows the same frame (a pixel diff then measures the change, not the animation).
+
+## Calibration of the phone proxy (measured against the real Z Fold 7, unfolded)
+The real phone's render-submit cost and JS time were about **1.5-2x** the laptop's (`high/faces`: JS 14 ms phone vs 9.7 ms laptop), not 4-6x: `perf:emu --cpu 2 --emu 750x832@2.625` is the closest proxy for the inner screen; `--cpu 4 --emu 412x915@2.625` is a pessimistic cover-screen / older-phone case. Always check the emulated run against a real-phone run before trusting a threshold.
+The real phone also heats up: Android thermal status went 0 -> 3 (severe) during a low->ultra sequence, so run the presets in a different order, or let it cool, when comparing.
+
+## Derived assets (`npm run assets:derive`)
+`assets/optimize.sh` produces `assets/optimized/`; `scripts/derive-assets.mjs` then derives what the runtime loads on top of it (needs network once for `npx @gltf-transform/cli`):
+`optimized/players_1k/*` (skin / fabric textures 1024 px, small maps 512 px; ~38 % of the player texture GPU memory: 71 MB instead of 186 MB for `player_base`; used on touch-first devices or `?tex=1k`),
+`optimized/lod/player_base_geo.glb` (the simplified lod1 geometry without textures / animations, 2.7 MB: swapped in for small / distant players), `optimized/players/gear_defaults.json` (the nodes the role files show by default, so three whole role files are no longer downloaded).
+`assets/shipped.json` lists which player files the loader reads and the deploy ships (the other `optimized/players/*.glb` and the raw `lod1/` stay out of `dist/`: 115 MB -> 88 MB; a phone downloads ~46 MB on first load instead of ~85 MB).
+`vite build` warns when a source changed since the derived files were made (`assets/derived.json` holds the hashes): **run `npm run assets:derive` after every `assets/optimize.sh`**.

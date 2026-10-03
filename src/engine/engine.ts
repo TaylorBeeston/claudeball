@@ -1,4 +1,6 @@
 import {
+  Frustum,
+  Matrix4,
   NeutralToneMapping,
   Object3D,
   PerspectiveCamera,
@@ -14,7 +16,7 @@ import { Environment, type TimeOfDay } from './environment';
 import { buildField } from './field';
 import { buildStadium, type Stadium } from './stadium';
 import { PostFX } from './postfx';
-import { AdaptiveScale, QUALITY, QUALITY_ORDER, pixelRatioFor, type QualityName } from './quality';
+import { AdaptiveScale, QUALITY, QUALITY_ORDER, loadEffects, pixelRatioFor, type LoadEffects, type QualityName } from './quality';
 import { SimDriver, type SimConfig } from './simAdapter';
 import { BallView, BatView, PlayerManager } from './players';
 import { Puppet } from './characters';
@@ -24,7 +26,7 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
-import { loadAssets, type Assets, type LoadProgress } from './assets';
+import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
@@ -86,6 +88,8 @@ export class Engine {
   private live: GameState;
   private raf = 0;
   private tmpV = new Vector3();
+  private frustum = new Frustum();
+  private viewProj = new Matrix4();
   private batAge = 0;
   private gripFrom = { pos: new Vector3(), quat: new Quaternion() };
   private prevFar: Vector3 | null = null;
@@ -191,7 +195,7 @@ export class Engine {
 
   /** Load Blender assets from /assets and swap them in for the procedural placeholders. */
   async loadAssets(onProgress?: (p: LoadProgress) => void): Promise<Assets> {
-    const a = await loadAssets(this.renderer, undefined, onProgress);
+    const a = await loadAssets(this.renderer, undefined, onProgress, textureTierFor(this.coarse));
     this.assets = a;
     if (a.field) {
       this.fieldGroup.visible = false;
@@ -330,9 +334,14 @@ export class Engine {
       for (const o of this.gbufferHidden) o.visible = false;
       this.players.phase('gbuf');
       this.stadium.crowdVisible(false);
+      // GTAO's prepass is a second `renderer.render`, which would render every shadow map again (the main pass has just done it): no shadows here
+      const sm = this.renderer.shadowMap;
+      const wasAuto = sm.autoUpdate;
+      sm.autoUpdate = false;
       try {
         orig(...args);
       } finally {
+        sm.autoUpdate = wasAuto;
         this.players.phase('main');
         this.stadium.crowdVisible(true);
       }
@@ -369,11 +378,30 @@ export class Engine {
     this.post.setQuality(this.quality);
     this.stadium.crowd.setDensity(this.quality.crowdDensity);
     this.stadium.crowd.setAnimate(this.quality.crowdAnimate);
-    this.stadium.crowd.setSectors(this.quality.crowdSectors);
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
+    this.adaptive.full();
+    this.loadApplied = -1;
+    this.applyLoad();
     this.resize();
+  }
+
+  private loadApplied = -1;
+  private lodCutTmp: [number, number] = [0.2, 0.08];
+  fx: LoadEffects = loadEffects(0);
+
+  /** the adaptive controller's CPU-side level -> what is actually switched (see `loadEffects`); cheap when the level did not change */
+  private applyLoad() {
+    const lv = this.adaptive.level;
+    if (lv === this.loadApplied) return;
+    this.loadApplied = lv;
+    const fx = (this.fx = loadEffects(lv));
+    const q = this.quality;
+    this.stadium.crowd.setSectors(Math.min(q.crowdSectors, fx.crowdSectors));
+    this.stadium.crowd.setAnimate(q.crowdAnimate && fx.crowdAnimate);
+    this.post.setNoAo(fx.noAo);
+    this.env.setFarShadowEvery(fx.farShadowEvery);
   }
 
   setTimeOfDay(t: TimeOfDay): Promise<void> {
@@ -511,8 +539,12 @@ export class Engine {
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
     if (perf.on) perf.lap('bat+side');
     this.players.makeBat = () => this.bat.makeHandBat();
+    this.camera.updateMatrixWorld();
+    this.players.frustum = this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    this.players.lodCut = this.quality.puppetLod;
+    this.lodCutTmp[0] = this.quality.puppetLod[0] * this.fx.lodScale;
+    this.lodCutTmp[1] = this.quality.puppetLod[1] * this.fx.lodScale;
+    this.players.lodCut = this.lodCutTmp;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
     if (perf.on) perf.lap('puppets');
     this.contact.visible = this.quality.name !== 'low';
@@ -565,7 +597,7 @@ export class Engine {
     if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
-    this.lights.setShadowCap(this.lightShadowCap ?? (this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
+    this.lights.setShadowCap(this.lightShadowCap ?? Math.min(this.fx.towerShadows, this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();
@@ -579,7 +611,10 @@ export class Engine {
     }
     const ms = performance.now() - t0;
     this.fps += (1 / Math.max(dt, 1e-4) - this.fps) * 0.08;
-    if (this.adaptive.update(Math.max(ms, dt * 1000), dt)) this.resize();
+    if (this.adaptive.update(ms, dt * 1000, dt)) {
+      this.applyLoad();
+      this.resize();
+    }
     perf.frameEnd();
   }
 

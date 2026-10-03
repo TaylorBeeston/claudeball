@@ -122,6 +122,7 @@ export async function runBench(e: Engine): Promise<BenchState> {
     const shots = params.has('shots');
     // deterministic: fixed step per frame, no adaptive scale, no pause/hold
     e.fixedDt = 1 / 60;
+    e.sim.stepBudgetMs = 1e9; // the same game on every build / preset, whatever the frame time
     e.adaptive.enabled = false;
     e.adaptive.scale = num('scale', 1);
     e.resize();
@@ -169,7 +170,12 @@ export async function runBench(e: Engine): Promise<BenchState> {
         stats,
       });
       if (shots) {
-        // the game stands still while the runner takes the picture, so two builds show the same frame
+        // the game stands still while the runner takes the picture, so two builds show the same frame: first run on to the next quarter-second of game time
+        const target = Math.ceil((e.liveState.time + 0.1) / 0.25) * 0.25;
+        for (let i = 0; i < 600 && e.liveState.time < target; i++) {
+          fn(e, cam);
+          await nextFrame();
+        }
         e.sim.paused = true;
         for (let i = 0; i < 5; i++) await nextFrame();
         state.holding = name;

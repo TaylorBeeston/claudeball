@@ -1,0 +1,13 @@
+{
+ "sources": {
+  "players/player_base.glb": "b851efc6cbfbc5650ca550e0d43d5fe30e63056a",
+  "players/player_ballkid.glb": "58e7d954f45bfb68f0757d39c32a32c0f18f2254",
+  "players/player_coach.glb": "c6a0e0dc8de0ad5a9d3868cf2f24aaa5ba7bee05",
+  "players/player_umpire.glb": "1f9f226093614d3fed68bfaf348322d774759269",
+  "players/player_umpire_base.glb": "e6294e1a851ab5dbc0bd5cd8f6d6e6ee9c4de8d4",
+  "optimized/lod1/player_base.glb": "51b548385e90e9867b73aedbc3eb3ef629ceb076",
+  "optimized/players/player_home.glb": "2d4cdb6a6942e18862202bf5663d0dd691b34949",
+  "optimized/players/player_batter.glb": "fe5d5be78eccae026b8d684b5dd148ec378c08cc",
+  "optimized/players/player_catcher.glb": "ed6ae0a2e959889cb1f5abea103ca48fd56683ee"
+ }
+}
