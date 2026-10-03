@@ -99,7 +99,8 @@ def build_cap(head):
             v.co = v.co - Vector((q.x, q.y, q.z*.6)).normalized()*.0016*g
         bm.normal_update()
         edge_verts = [v for v in bm.verts if v.is_boundary]
-        brim_from_edge(bm, edge_verts, length=.072, droop=.030, side_curl=.065, thick=.0035, lift=.004, arc=54, width_taper=.45)
+        # a pre-curved bill: 7.8 cm at the centre, the tip ~1.4 cm lower, the sides ~2.8 cm lower (the old 3 / 6.5 cm read as a band hanging over the eyes)
+        brim_from_edge(bm, edge_verts, length=.078, droop=.014, side_curl=.028, thick=.0035, lift=0.0, arc=52, width_taper=.45)
     bm, inner, hbvh = head_shell(head, "Gear_Cap", lambda co: co.z - edge(co.x, co.y), lambda q: .0105 + .004*_sm1(-.02, .12, q.z), smooth_iters=6, thick=.0035, decorate=decorate, min_clear=.006)
     # button, eyelets
     top = Vector((HC.x, HC.y, 1.95))
@@ -108,7 +109,10 @@ def build_cap(head):
     for k in range(6):
         ph = math.radians(60*k + 30); dirv = Vector((math.sin(ph)*.62, -math.cos(ph)*.62, .78)).normalized()
         l, n, i, d = inner.ray_cast(HC + dirv*.35, -dirv)
-        if l is not None: blob(bm, l + n*.005, .0032, (1, 1, .45), 8, 5)
+        if l is not None:                                                                         # a flat stitched ring lying on the crown's outer surface (they were nubs standing 3 mm off it)
+            c_ = bmesh.ops.create_circle(bm, cap_ends=True, segments=10, radius=.0030)
+            R_ = n.to_track_quat('Z', 'Y').to_matrix().to_4x4(); R_.translation = l + n*.0038
+            bmesh.ops.transform(bm, matrix=R_, verts=c_["verts"])
     return _obj("Gear_Cap", bm), inner
 
 # ---------------------------------------------------------------- batting helmet (ear flap on the left for a right-handed batter)
