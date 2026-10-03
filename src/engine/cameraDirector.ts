@@ -854,7 +854,10 @@ export class CameraDirector {
     const focus = this.lastCutFrame ? (this.rack.snap(dist), dist) : this.rack.step(dist, dt);
     const slab = this.shot === 'broll' && this.brollRig ? this.brollRig.slab : slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
     // a shot that asks for a shallower look than its slab allows (des.aperture) keeps its own, never deeper focus than the slab needs
-    const aperture = slab === 0 ? 0 : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
+    // B-roll rigs pick their own slab: a telephoto close-up (slab < 1 m) wants the background well out of focus, so the slab's aperture is opened
+    // up 2.5x (the slab's edge then blurs ~1 px instead of 0.4 px) instead of being capped like the game shots
+    const aperture =
+      slab === 0 ? 0 : this.shot === 'broll' && this.brollRig ? Math.min(1.2, apertureFor(focus, slab) * 2.5) : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
     return { focus, aperture };
   }
 

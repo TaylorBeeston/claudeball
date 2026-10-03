@@ -93,6 +93,11 @@ export function tuneParkMaterial(m: Material): ((shader: unknown) => void) | und
     s.roughness = 0.75;
   } else if (n === 'dugout_concrete') {
     s.color?.multiplyScalar(0.72);
+  } else if (n === 'backstop_net') {
+    // real backstop netting is thin dark cord, nearly invisible on TV: the texture's white grid read as a fence up close
+    s.color?.setRGB(0.09, 0.09, 0.1);
+    (m as Material & { opacity: number }).opacity = 0.55;
+    s.roughness = 0.9;
   } else if (n === 'stadium_light') {
     m.customProgramCacheKey = () => 'cb-lamp-bank';
     s.metalness = 0.3;
