@@ -27,6 +27,7 @@ import { Layer, RotateHint, Toast, gameOverScreen, pauseScreen } from './overlay
 import { DEFAULT_SETTINGS, clearSaved, resolve, saveSettings, shareQuery, type GameSettings, type MatchSetup, type Resolved } from './settings';
 import { TouchControls } from './touch';
 import { Captions } from './captions';
+import { loadTuned, saveTuned, signature, tune } from './tune';
 
 type Mode = 'boot' | 'menu' | 'playing' | 'paused' | 'over';
 
@@ -150,6 +151,7 @@ class App {
 
     e.newGame(this.match.seed, this.simConfig());
     await e.rewarm(); // the new game's puppets and their textures, drawn once while hidden
+    await this.autoTune(e);
     e.start();
     window.addEventListener('keydown', (ev) => this.onKey(ev));
     document.addEventListener('visibilitychange', () => document.hidden && this.mode === 'playing' && this.pause());
@@ -166,6 +168,34 @@ class App {
     console.info(`[boot] interactive in ${this.report.tti} ms (${this.res.autostart ? 'autostart' : 'menu'})`);
     // the sky for the other times of day, downloaded while the menu is up so changing it later does not stall
     void e.env.preloadSky(['day', 'dusk']);
+    // benchmark runner (tools/perf): `?bench=1&autostart` plays scripted scenes at fixed settings and reports to window.__bench
+    if (this.res.autostart && new URLSearchParams(location.search).has('bench')) void import('../engine/bench').then((m) => m.runBench(e));
+  }
+
+  /**
+   * "Auto" quality: measure a few dozen frames of the park behind the loading screen and settle on the preset that fits the 60 fps budget on THIS device
+   * (see `tune.ts`); remembered per device, so later visits skip it. An explicit choice (menu, `?quality=`) is never overridden; benchmarks skip it.
+   */
+  private async autoTune(e: Engine) {
+    const q = new URLSearchParams(location.search);
+    if (this.settings.quality !== 'auto' || this.res.fromUrl.has('quality') || this.res.flags.noassets || q.has('bench') || q.has('notune')) return;
+    const sig = signature(this.device, window.devicePixelRatio || 1);
+    const saved = loadTuned(this.storage, sig);
+    if (saved) {
+      if (saved !== e.qualityName) {
+        e.setQuality(saved);
+        await e.rewarm();
+      }
+      this.autoQuality = saved;
+      return;
+    }
+    const lim = { min: 'low', max: this.device.coarse ? 'medium' : 'high' } as const;
+    const start = e.qualityName;
+    const r = await tune(e, start, lim, (s) => this.boot_.progress(0.98, s));
+    console.info('[boot] tuned', r.preset, JSON.stringify(r.steps.map((x) => [x.preset, +x.m.tickMs.toFixed(1), +x.m.intervalMs.toFixed(1)])));
+    this.report.steps = { ...this.report.steps, tune: r.steps.length };
+    this.autoQuality = r.preset;
+    saveTuned(this.storage, sig, r.preset);
   }
 
   // ---- context for the menu screens ----------------------------------------------------------------------------------------

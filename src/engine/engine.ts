@@ -1,4 +1,6 @@
 import {
+  Frustum,
+  Matrix4,
   NeutralToneMapping,
   Object3D,
   PerspectiveCamera,
@@ -14,7 +16,7 @@ import { Environment, type TimeOfDay } from './environment';
 import { buildField } from './field';
 import { buildStadium, type Stadium } from './stadium';
 import { PostFX } from './postfx';
-import { AdaptiveScale, QUALITY, QUALITY_ORDER, pixelRatioFor, type QualityName } from './quality';
+import { AdaptiveScale, QUALITY, QUALITY_ORDER, loadEffects, pixelRatioFor, type LoadEffects, type QualityName } from './quality';
 import { SimDriver, type SimConfig } from './simAdapter';
 import { BallView, BatView, PlayerManager } from './players';
 import { Puppet } from './characters';
@@ -24,11 +26,13 @@ import { StadiumLights } from './stadiumLights';
 import { ContactShadows } from './contactShadows';
 import { installCharacterShading, setShadingQuality } from './characterShading';
 import { makeLayout, SideCast, type Box } from './sideCast';
-import { loadAssets, type Assets, type LoadProgress } from './assets';
+import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
+import { perf } from './perf';
+import { FLAGS } from './flags';
 
 export interface EngineOptions {
   seed?: number;
@@ -84,15 +88,21 @@ export class Engine {
   private live: GameState;
   private raf = 0;
   private tmpV = new Vector3();
+  private frustum = new Frustum();
+  private viewProj = new Matrix4();
   private batAge = 0;
   private gripFrom = { pos: new Vector3(), quat: new Quaternion() };
   private prevFar: Vector3 | null = null;
   private fieldGroup: Object3D;
   assets: Assets | null = null;
+  /** benchmark mode: every frame advances the game by this many seconds, whatever the real frame time */
+  fixedDt?: number;
   /** menu mode: the sim stays frozen, the camera drifts around the park and the hot keys are off */
   attract = false;
   /** false while a menu / pause screen has the keyboard */
   keysEnabled = true;
+  /** menu mode camera: the slow fly-around ('tour'), or the broadcast pitch camera ('pitch': the typical shot, used while Auto quality is tuned) */
+  attractView: 'tour' | 'pitch' = 'tour';
   private attractT = 0;
   private lastBroll: unknown = null;
   /** touch-first device (phones, tablets): the pixel-ratio policy trades the preset's DPR cap for a pixel budget */
@@ -127,6 +137,7 @@ export class Engine {
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
     this.players = new PlayerManager(this.env);
+    this.players.lodOff = FLAGS.nolod;
     this.scene.add(this.players.group);
     this.ball = new BallView(this.env);
     this.bat = new BatView(this.env);
@@ -135,6 +146,8 @@ export class Engine {
 
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     this.hookGBufferVisibility();
+    this.hookShadowPhase();
+    if (perf.on) this.attachPerf();
     this.director = new CameraDirector(this.camera, this.sim, this.canvas, this.stadium);
     this.live = this.sim.state;
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
@@ -185,7 +198,7 @@ export class Engine {
 
   /** Load Blender assets from /assets and swap them in for the procedural placeholders. */
   async loadAssets(onProgress?: (p: LoadProgress) => void): Promise<Assets> {
-    const a = await loadAssets(this.renderer, undefined, onProgress);
+    const a = await loadAssets(this.renderer, undefined, onProgress, textureTierFor(this.coarse));
     this.assets = a;
     if (a.field) {
       this.fieldGroup.visible = false;
@@ -322,9 +335,43 @@ export class Engine {
     ao._renderOverride = (...args: unknown[]) => {
       const vis = this.gbufferHidden.map((o) => o.visible);
       for (const o of this.gbufferHidden) o.visible = false;
-      orig(...args);
+      this.players.phase('gbuf');
+      this.stadium.crowdVisible(false);
+      // GTAO's prepass is a second `renderer.render`, which would render every shadow map again (the main pass has just done it): no shadows here
+      const sm = this.renderer.shadowMap;
+      const wasAuto = sm.autoUpdate;
+      sm.autoUpdate = false;
+      try {
+        orig(...args);
+      } finally {
+        sm.autoUpdate = wasAuto;
+        this.players.phase('main');
+        this.stadium.crowdVisible(true);
+      }
       this.gbufferHidden.forEach((o, i) => (o.visible = vis[i]));
     };
+  }
+
+  /** the shadow passes draw each puppet as one merged proxy mesh (visible only while they run; the main pass list is built before they start) */
+  private hookShadowPhase() {
+    const sm = this.renderer.shadowMap;
+    const orig = sm.render.bind(sm);
+    sm.render = (...args: Parameters<typeof orig>) => {
+      this.players.phase('shadow');
+      try {
+        orig(...args);
+      } finally {
+        this.players.phase('main');
+      }
+    };
+  }
+
+  /** profiler hooks (`?perf=1` / `?bench=1`): the composer's passes, the shadow pass and the GTAO prepass are timed on CPU and GPU */
+  private attachPerf() {
+    const post = this.post;
+    perf.attach(this.renderer, post.passList());
+    perf.wrap(post.ao, '_renderOverride', 'gtao_gbuf');
+    perf.setOverlayExtra(() => ({ preset: this.qualityName, scale: this.adaptive.scale.toFixed(2), dpr: this.renderer.getPixelRatio().toFixed(2), px: `${this.renderer.domElement.width}x${this.renderer.domElement.height}` }));
   }
 
   setQuality(name: QualityName) {
@@ -337,7 +384,27 @@ export class Engine {
     this.lights.setQuality(name);
     setShadingQuality(name, this.quality.msaa > 0);
     this.lights.setTextureUnits(this.renderer.capabilities.maxTextures);
+    this.adaptive.full();
+    this.loadApplied = -1;
+    this.applyLoad();
     this.resize();
+  }
+
+  private loadApplied = -1;
+  private lodCutTmp: [number, number] = [0.2, 0.08];
+  fx: LoadEffects = loadEffects(0);
+
+  /** the adaptive controller's CPU-side level -> what is actually switched (see `loadEffects`); cheap when the level did not change */
+  private applyLoad() {
+    const lv = this.adaptive.level;
+    if (lv === this.loadApplied) return;
+    this.loadApplied = lv;
+    const fx = (this.fx = loadEffects(lv));
+    const q = this.quality;
+    this.stadium.crowd.setSectors(Math.min(q.crowdSectors, fx.crowdSectors));
+    this.stadium.crowd.setAnimate(q.crowdAnimate && fx.crowdAnimate);
+    this.post.setNoAo(fx.noAo);
+    this.env.setFarShadowEvery(fx.farShadowEvery);
   }
 
   setTimeOfDay(t: TimeOfDay): Promise<void> {
@@ -426,8 +493,10 @@ export class Engine {
     this.timer.connect(document);
     const loop = (ts: number) => {
       this.raf = requestAnimationFrame(loop);
+      perf.frameBegin(ts);
       this.timer.update(ts);
-      this.tick(Math.min(this.timer.getDelta(), 0.25));
+      // benchmarks step the game by a fixed dt per frame, so every preset plays out the same game
+      this.tick(this.fixedDt ?? Math.min(this.timer.getDelta(), 0.25));
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -442,12 +511,14 @@ export class Engine {
     this.time += dt;
     const { state } = this.sim.advance(dt);
     this.live = state;
+    if (perf.on) perf.lap('sim');
 
     // director picks camera + which state to render (live or replay)
     const liveBall = new Vector3(state.ball.pos.x, state.ball.pos.y, state.ball.pos.z);
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
-    if (this.attract) this.attractCamera(dt);
+    if (perf.on) perf.lap('director');
+    if (this.attract && this.attractView === 'tour') this.attractCamera(dt);
     const animDt = this.attract ? dt : this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
     // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.
@@ -469,8 +540,16 @@ export class Engine {
     this.side.setClips((n) => !!this.assets?.manifest?.clips?.[n]);
     const extras = this.side.update(state, animDt, (e) => this.sim.emit(e));
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
+    if (perf.on) perf.lap('bat+side');
     this.players.makeBat = () => this.bat.makeHandBat();
+    this.camera.updateMatrixWorld();
+    this.players.frustum = this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.lodCutTmp[0] = this.quality.puppetLod[0] * this.fx.lodScale;
+    this.lodCutTmp[1] = this.quality.puppetLod[1] * this.fx.lodScale;
+    this.players.lodCut = this.lodCutTmp;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
+    if (perf.on) perf.lap('puppets');
     this.contact.visible = this.quality.name !== 'low';
     if (this.contact.visible) this.contact.update(this.players.feet());
     this.updateTossBall();
@@ -499,6 +578,7 @@ export class Engine {
       this.lastBroll = brollNow;
       this.hud?.subjectShot(brollNow ? { kind: brollNow.kind, subject: brollNow.subject, hold: brollNow.hold } : null, state);
     }
+    if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);
     this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);
     if (this.hud && (this.hudTimer -= dt) < 0) {
@@ -506,6 +586,7 @@ export class Engine {
       this.hud.setFps(this.fps, this.adaptive.scale);
     }
 
+    if (perf.on) perf.lap('hud');
     // pan motion blur: how far a distant point ahead of the camera slid across the screen since last frame
     {
       const fwd = this.tmpV.set(0, 0, -1).applyQuaternion(this.camera.quaternion).multiplyScalar(200).add(this.camera.position);
@@ -520,19 +601,30 @@ export class Engine {
     this.post.capture = out.capture;
     if (out.dissolve > 0) this.post.startDissolve(out.dissolve);
     this.post.setFocus(out.focus, out.aperture * (this.director.auto && !this.attract ? 1 : 0));
+    if (perf.on) perf.lap('post-setup');
     this.stadium.crowd.update(this.time, dt);
+    if (perf.on) perf.lap('crowd');
     this.lights.update(this.time);
     // slow frames: the shadow-casting tower spots go first (then all tower shadows)
-    this.lights.setShadowCap(this.lightShadowCap ?? (this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
+    this.lights.setShadowCap(this.lightShadowCap ?? Math.min(this.fx.towerShadows, this.adaptive.scale < 0.62 ? 0 : this.adaptive.scale < 0.78 ? 1 : 99));
     this.camera.updateMatrixWorld();
     this.env.update();
     this.env.resize();
+    if (perf.on) perf.lap('env');
     if (!render) return;
     if (location.search.includes('nopost')) this.renderer.render(this.scene, this.camera);
     else this.post.render(this.time, dt);
+    if (perf.on) {
+      perf.lap('render');
+      perf.setScale(this.adaptive.scale);
+    }
     const ms = performance.now() - t0;
     this.fps += (1 / Math.max(dt, 1e-4) - this.fps) * 0.08;
-    if (this.adaptive.update(Math.max(ms, dt * 1000), dt)) this.resize();
+    if (this.adaptive.update(ms, dt * 1000, dt)) {
+      this.applyLoad();
+      this.resize();
+    }
+    perf.frameEnd();
   }
 
   get liveState() {

@@ -21,3 +21,9 @@ claudeball-voice/
 voicepack/
 _placeholder/
 work/
+
+# perf: traces and raw results are large; the committed summaries live in tools/perf/*.md
+tools/perf/results/*
+!tools/perf/results/README.md
+!tools/perf/results/summary-*.md
+dist-dbg/
