@@ -17,7 +17,7 @@ with sync_playwright() as p:
         ctx = b.new_context(viewport={'width': w, 'height': h}, device_scale_factor=2 if touch else 1, has_touch=touch, is_mobile=touch)
         pg = ctx.new_page()
         shot = lambda n: pg.screenshot(path=f'{out}/{size}_{n}.png', timeout=90000)
-        pg.goto(f'{base}?autostart&seed=12&subtitles=all&noaudio&tempo=standard', wait_until='commit')
+        pg.goto(f'{base}?autostart&seed=12&subtitles=all&noaudio&tempo=broadcast', wait_until='commit')
         pg.wait_for_function("window.__boot && window.__boot.tti > 0", timeout=120000)
         time.sleep(7)
         feed = lambda ev: pg.evaluate("e => window.__captionsFeed(e)", ev)
@@ -29,6 +29,17 @@ with sync_playwright() as p:
         time.sleep(0.6); shot('b_captions_pa')
         # size XL, solid background, top
         pg.evaluate("""() => { const s = JSON.parse(localStorage.getItem('claudeball.settings.v1') || '{}'); }""")
+        # the card follows the director's real `shot` events: wait for one with card: true (a lull between batters), fall back to forcing one
+        pg.evaluate("window.__shots = []; engine.broadcast.on(e => { if (e.type === 'shot' && e.phase === 'start') window.__shots.push([e.kind, e.card]) })")
+        real = None
+        for _ in range(110):
+            if pg.locator('.cb-card.subj.show').count():
+                real = pg.evaluate("document.querySelector('.cb-card.subj .role').textContent + ' / ' + document.querySelector('.cb-card.subj .nm').textContent")
+                break
+            time.sleep(1)
+        if real:
+            time.sleep(0.8); shot('c_card_real'); print(size, 'real shot card:', real, pg.evaluate('window.__shots'))
+            ctx.close(); continue
         # subject card for the on-deck batter (or the pitcher when nobody is on deck)
         info = pg.evaluate("""() => { const st = engine.liveState; const od = st.players.find(p => p.role === 'ondeck') || st.players.find(p => p.role === 'pitcher');
           engine.hud.subjectShot({ kind: od.role === 'ondeck' ? 'onDeck' : 'pitcherFace', subject: od.id, hold: 20 }, st); return od.name + ' ' + od.role }""")
