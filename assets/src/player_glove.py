@@ -14,10 +14,10 @@ def open_hand(side="Left", name="Hand_L_Open"):
 #   back / pad: x of the back of the glove and of the flat pad front; pocket: ball-centre (x, y, z) and pocket sphere radius;
 #   fingers: (length to the fingertip, half spread of the four finger centres, finger half-thickness x, finger radius y); thumb: (tip y, tip z)
 KINDS = {
- "infield":   dict(node="Gear_Glove",           pocket_node="Glove_Pocket",           back=-.056, pad=.064, half_w=.066, heel_z=(-.030, .075), pocket=(.080, -.004, .112), pr=.0425, fingers=(.205, .036, .034, .0215), thumb=(-.088, .150)),
- "outfield":  dict(node="Gear_Glove_Outfield",  pocket_node="Glove_Pocket_Outfield",  back=-.058, pad=.068, half_w=.071, heel_z=(-.030, .080), pocket=(.086, -.004, .128), pr=.0435, fingers=(.240, .038, .035, .0225), thumb=(-.094, .170)),
- "firstbase": dict(node="Gear_Glove_FirstBase", pocket_node="Glove_Pocket_FirstBase", back=-.056, pad=.062, half_w=.060, heel_z=(-.030, .075), pocket=(.078, -.004, .150), pr=.0425, fingers=(.262, .0, .033, .0300), thumb=(-.080, .190)),
- "catcher":   dict(node="Gear_Glove_Catcher",   pocket_node="Glove_Pocket_Catcher",   back=-.060, pad=.076, half_w=.104, heel_z=(-.030, .080), pocket=(.096, -.004, .118), pr=.0450, fingers=(.215, .0, .040, .0),   thumb=(-.100, .120)),
+ "infield":   dict(grow=1.05, node="Gear_Glove",           pocket_node="Glove_Pocket",           back=-.056, pad=.064, half_w=.066, heel_z=(-.030, .075), pocket=(.080, -.004, .112), pr=.0425, fingers=(.205, .036, .034, .0215), thumb=(-.088, .150)),
+ "outfield":  dict(node="Gear_Glove_Outfield",  pocket_node="Glove_Pocket_Outfield",  back=-.058, pad=.068, half_w=.071, heel_z=(-.030, .080), pocket=(.086, -.004, .128), pr=.0420, fingers=(.232, .038, .035, .0225), thumb=(-.094, .170)),
+ "firstbase": dict(node="Gear_Glove_FirstBase", pocket_node="Glove_Pocket_FirstBase", back=-.056, pad=.062, half_w=.060, heel_z=(-.030, .075), pocket=(.078, -.004, .150), pr=.0425, fingers=(.240, .0, .033, .0300), thumb=(-.080, .190)),
+ "catcher":   dict(grow=1.10, node="Gear_Glove_Catcher",   pocket_node="Glove_Pocket_Catcher",   back=-.060, pad=.076, half_w=.104, heel_z=(-.030, .080), pocket=(.096, -.004, .118), pr=.0450, fingers=(.215, .0, .040, .0),   thumb=(-.100, .120)),
 }
 
 def _add_ellipsoid(bm, c, r, seg=28, ring=18):
@@ -32,6 +32,15 @@ def _add_capsule(bm, a, b, r, seg=20, sq=(1.0, 1.0)):
         s = bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=12, radius=rr)
         for v in s["verts"]: v.co = R @ Vector((v.co.x*sq[0], v.co.y*sq[1], v.co.z)) + p
 
+GLOVE_EASE = 1.03                                                   # gloves are scaled 3 % more than the hand (about 3 mm of room on every side)
+def _hscale(z):
+    """Local scale factor of the hand map (HAND_S about the wrist, blended in between z = -2 cm and +7 cm along the hand axis)."""
+    u = np.clip((np.asarray(z, float) + .02)/.09, 0, 1); return 1 + (HAND_S*GLOVE_EASE - 1)*u*u*(3 - 2*u)
+def KS(kind):
+    """KINDS[kind] with the hand scale (and the catcher's extra growth) applied to the hand-local lengths: pocket, pad, finger length (what the keys / laces / checks use)."""
+    K = dict(KINDS[kind]); g = K.get("grow", 1.0); px, py, pz = K["pocket"]; sc = float(_hscale(np.array([pz]))[0]); py, pz = py*sc, pz*sc
+    if g != 1.0: py *= g; pz = .06 + (pz - .06)*g
+    K["pocket"] = (px*sc, py, pz); L = K["fingers"][0]; K["fingers"] = (L*float(_hscale(np.array([L]))[0])*g,) + tuple(K["fingers"][1:]); K["pad"] = K["pad"]*sc; return K
 def _frame(side):
     sx = 1 if side == "Left" else -1
     wr = JOINTS[side+"Hand"][1]; dvec = (JOINTS[side+"Hand"][2] - wr).normalized()
@@ -50,9 +59,9 @@ def build_glove(kind, side="Left"):
         _add_ellipsoid(bm, (xm*.9, -.055, .10), (xr_*.75, .050, .085))
         _add_capsule(bm, (xm*.5 + .006, -.078, .03), (xm*.5 + .006, -.098, .125), .033, sq=(1.25, 1.0))                              # thumb
     elif kind == "firstbase":                                                                                       # long scoop: elongated body, fingers together, thumb apart
-        _add_ellipsoid(bm, (xm*.95, .0, .17), (xr_*.95, hw*.86, .115), 30, 22)
+        _add_ellipsoid(bm, (xm*.95, .0, .152), (xr_*.95, hw*.86, .115), 30, 22)
         _add_capsule(bm, (xm*.5 + .006, -.052, .03), (xm*.5 + .006, -.078, .19), .031, sq=(1.2, 1.0))
-        _add_ellipsoid(bm, (xm*.85, .006, .215), (xr_*.85, hw*.76, .050))
+        _add_ellipsoid(bm, (xm*.85, .006, .198), (xr_*.85, hw*.76, .050))
     else:
         for i, t in enumerate((-1.5, -.5, .5, 1.5)):                                                               # four finger sleeves (index at -y, pinky at +y)
             y = t*spread; ln = L*(0.96 if abs(t) > 1 else 1.0)*(1.03 if i in (1, 2) else 1.0)
@@ -73,8 +82,14 @@ def build_glove(kind, side="Left"):
     cm = bpy.data.meshes.new("bore_tmp"); cy.to_mesh(cm); cy.free(); co = bpy.data.objects.new("bore_tmp", cm); bpy.context.collection.objects.link(co)
     bb = o.modifiers.new("Bore", 'BOOLEAN'); bb.operation = 'DIFFERENCE'; bb.object = co; bb.solver = 'EXACT'
     bpy.ops.object.modifier_apply(modifier="Bore"); bpy.data.objects.remove(co, do_unlink=True)
+    # scale with the hand (same map as the MPFB hand, see hand_scale_map) so the hand stays inside with the same margins; the catcher's mitt grows further (real mitts are 33-36 cm)
+    grow = K.get("grow", 1.0); Pw = np.array([v.co[:] for v in o.data.vertices]); ss = _hscale(Pw[:, 2]); Pw = Pw*ss[:, None]
+    if grow != 1.0: Pw[:, 1] *= grow; Pw[:, 2] = .06 + (Pw[:, 2] - .06)*grow
+    o.data.vertices.foreach_set("co", Pw.astype(np.float32).ravel()); o.data.update()
+    pc0 = Vector(K["pocket"]); pc0 = pc0*float(_hscale(np.array([pc0.z]))[0])
+    if grow != 1.0: pc0.y *= grow; pc0.z = .06 + (pc0.z - .06)*grow
     # pocket
-    pc = Vector(K["pocket"]); sph = bmesh.new(); bmesh.ops.create_uvsphere(sph, u_segments=32, v_segments=20, radius=K["pr"])
+    pc = pc0; sph = bmesh.new(); bmesh.ops.create_uvsphere(sph, u_segments=32, v_segments=20, radius=K["pr"])
     for v in sph.verts: v.co = v.co*Vector((1.0, 1.0, 1.0)) + pc
     if kind == "firstbase":
         for v in sph.verts: v.co.z = pc.z + (v.co.z - pc.z)*1.55
@@ -96,7 +111,7 @@ def build_glove(kind, side="Left"):
 ZOFF = .042; RAMP = .06                                                                       # the fingers fold over the TOP of the ball (beyond pocket z + 4.2 cm), never through it
 def add_glove_keys(o, kind, side="Left", close_deg=38.0, open_deg=-16.0):
     """Basis = neutral catching state. glove_closed: fingers (and thumb) fold over the pocket; glove_open: fingers spread back / thumb out."""
-    M = local_to_world(side); Mi = M.inverted(); K = KINDS[kind]
+    M = local_to_world(side); Mi = M.inverted(); K = KS(kind)
     me = o.data; P = np.array([(Mi @ v.co)[:] for v in me.vertices])
     if me.shape_keys is None: o.shape_key_add(name="Basis", from_mix=False)
     def rot_fingers(P, deg):
@@ -128,7 +143,7 @@ def weight_glove(o, side="Left"):
 # ---------------------------------------------------------------- laces and wrist strap
 def glove_laces(glove, kind, side="Left"):
     """Tan lace lines on the palm face between the fingers and around the web; strap around the wrist with a velcro tab. Returns a mesh object."""
-    M = local_to_world(side); K = KINDS[kind]; bm = bmesh.new(); gb = bmesh.new(); gb.from_mesh(glove.data); bvh = BVHTree.FromBMesh(gb); gb.free()
+    M = local_to_world(side); K = KS(kind); bm = bmesh.new(); gb = bmesh.new(); gb.from_mesh(glove.data); bvh = BVHTree.FromBMesh(gb); gb.free()
     ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=32, radius1=.0715, radius2=.0715, depth=.026)          # wrist strap
     for v in ring["verts"]: v.co = M @ (Vector((v.co.x*1.03, v.co.y*.99, v.co.z)) + Vector((K["pad"]*.05, 0, .003)))
     bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=.004)
