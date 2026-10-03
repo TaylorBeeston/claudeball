@@ -1,4 +1,6 @@
 import {
+  Frustum,
+  Matrix4,
   NeutralToneMapping,
   Object3D,
   PerspectiveCamera,
@@ -86,6 +88,8 @@ export class Engine {
   private live: GameState;
   private raf = 0;
   private tmpV = new Vector3();
+  private frustum = new Frustum();
+  private viewProj = new Matrix4();
   private batAge = 0;
   private gripFrom = { pos: new Vector3(), quat: new Quaternion() };
   private prevFar: Vector3 | null = null;
@@ -516,6 +520,8 @@ export class Engine {
     const drawn = extras.length ? { ...rs, players: [...rs.players, ...extras] } : rs;
     if (perf.on) perf.lap('bat+side');
     this.players.makeBat = () => this.bat.makeHandBat();
+    this.camera.updateMatrixWorld();
+    this.players.frustum = this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     this.players.lodK = 1 / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.players.lodCut = this.quality.puppetLod;
     this.players.update(drawn, animDt, this.ball.worldPos, this.bat, () => this.ball.makeHandBall(), this.camera.position);
