@@ -848,7 +848,7 @@ export class GltfPuppet implements PuppetLike {
     const openHand = this.nodes.get('Hand_L_Open');
     if (openHand) {
       show('Hand_L', !gk);
-      show('Hand_L_Open', !!gk);
+      show('Hand_L_Open', false); // the hand inside a glove is never seen (a draw call and 1k triangles per fielder); its glove morphs still run
     }
     if (this.nodes.get('Hand_R_Ball')) {
       show('Hand_R', kind === 'batter');
