@@ -47,6 +47,8 @@ const FIELDERS = new Set<PlayerRole>(['first', 'second', 'third', 'short', 'left
 /** roles that are scenery rather than play: they drop to level of detail 1 when far from the camera */
 export const AMBIENT_ROLES = new Set<PlayerRole>(['bench', 'manager', 'pitchcoach', 'ballkid', 'batboy', 'coach1b', 'coach3b', 'coach', 'ondeck']);
 export const LOD1_DISTANCE = 42;
+/** `lodK` (1 / (2 tan(fov / 2))) of a 40 deg lens, the reference the decal ranges are measured for */
+const LOD_K_NORMAL = 1 / (2 * Math.tan((40 * Math.PI) / 360));
 /**
  * Parts that cast no shadow: tiny details, thin cards and things hidden under other parts. Every caster is one more draw call in each shadow cascade,
  * so only the shapes that read in a shadow (body, head, hair, jersey, pants, cap / helmet, cleats, hands, gloves, gear) remain.
@@ -1490,7 +1492,10 @@ export class GltfPuppet implements PuppetLike {
         if (spec) mesh.material = decalMaterial(this.decalTemplate, jerseyTextures.get(spec));
       }
     }
-    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) : 0;
+    // the ranges are for a normal lens (~40 deg): a telephoto (the centre-field pitch camera, 9 deg at 120 m) magnifies, so the distance is
+    // scaled by the lens's magnification, like the detail tiers
+    const zoom = env.lodK ? Math.max(1, env.lodK / LOD_K_NORMAL) : 1;
+    const d = env.cameraPos ? Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) / zoom : 0;
     for (const k of kinds) {
       const mesh = this.decals[k]!;
       mesh.visible = !lod1 && !!mesh.userData.hasPrint && d < decalRange(k, q);
