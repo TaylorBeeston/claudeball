@@ -110,6 +110,19 @@ async function runOne(page: Page, cdp: CDPSession, url: string, preset: string, 
   const missing = (await page.evaluate(() => (window as unknown as { __boot?: { missing?: string[] } }).__boot?.missing ?? []).catch(() => [])) as string[];
   if (missing.length) console.log(`\n[perf] WARNING: ${missing.length} asset(s) failed to load in this run (${missing.slice(0, 3).join(', ')}): the numbers are NOT valid, re-run`);
   (out as { missing?: string[] }).missing = missing;
+  // what this page really downloaded on first load (resource timing: bytes over the wire, per kind)
+  const dl = await page.evaluate(() => {
+    const by: Record<string, number> = {};
+    let total = 0;
+    for (const e of performance.getEntriesByType('resource') as PerformanceResourceTiming[]) {
+      const n = e.encodedBodySize || e.transferSize || 0;
+      const k = /\.glb/.test(e.name) ? 'glb' : /\.(hdr)/.test(e.name) ? 'hdr' : /\.js/.test(e.name) ? 'js' : /\.(webp|png|jpg|ktx2)/.test(e.name) ? 'img' : 'other';
+      by[k] = (by[k] ?? 0) + n;
+      total += n;
+    }
+    return { totalMB: +(total / 1048576).toFixed(1), byKindMB: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, +(v / 1048576).toFixed(1)])) };
+  }).catch(() => null);
+  if (dl) (out as { download?: unknown }).download = dl;
   let traceFile: string | undefined;
   if (args.trace) traceFile = await traceStop(cdp, trace, path.join(outDir, 'traces', `${label}-${target}-${preset}-${tod}-${tag}.json.gz`));
   page.off('console', onConsole);
@@ -206,6 +219,7 @@ async function main() {
           const r = await runOne(page, cdp, pageUrl(base, preset, tod), preset, tod, `r${rep}`);
           process.stdout.write(` (${((Date.now() - t0) / 1000).toFixed(0)} s)\n`);
           run.device ??= r.device;
+          if ((r as { download?: unknown }).download) ((meta.download ??= {}) as Record<string, unknown>)[`${preset}/${tod}`] = (r as { download?: unknown }).download;
           if ((r as { missing?: string[] }).missing?.length) ((meta.invalidRuns ??= []) as string[]).push(`${preset}/${tod}`);
           for (const x of r.results) {
             (x as Record<string, unknown>).rep = rep;
