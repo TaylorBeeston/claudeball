@@ -180,7 +180,8 @@ def fit_report(head, items, morph_sets):
         bvh = BVHTree.FromBMesh(bm); bm.free()
         for nm, (obj, keys) in items.items():
             ip = morph_positions(obj, head_morph, [k for k in ms if k in keys])
-            out.setdefault(nm, {})["+".join(ms) or "rest"] = round(min(signed_clearance(bvh, Vector(p)) for p in ip), 4)
+            key = "+".join(ms) or "rest"; out.setdefault(nm, {})[key] = round(min(signed_clearance(bvh, Vector(p)) for p in ip), 4)
+            out.setdefault(nm + "_unsigned", {})[key] = round(min(bvh.find_nearest(Vector(p))[3] for p in ip), 4)      # unsigned: robust at the thin ears
     return out
 
 def hair_cap_gap(cap_obj, hair_obj, cap_edge=None):
@@ -193,7 +194,9 @@ def hair_cap_gap(cap_obj, hair_obj, cap_edge=None):
         worst = min(worst, (dist + .02) - r); n += 1
     return round(worst, 4), n
 def fit_summary(head, gear):
-    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide", "brow_heavy"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"])}
+    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide", "brow_heavy"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"]),
+             "catcher_helmet": (gear["Gear_Helmet_Catcher"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"]), "hockey_cage": (gear["Gear_CatcherMask"], ["head_narrow", "head_wide", "brow_heavy"]),
+             "umpire_mask": (gear["Gear_UmpireMask"], ["head_narrow", "head_wide", "brow_heavy"])}
     for k, n in (("hair", "Gear_Hair"), ("buzz", "Gear_Hair_Buzz"), ("curly", "Gear_Hair_Curly"), ("long", "Gear_Hair_Long")): items[k] = (gear[n], ["head_narrow", "head_wide", "ears_large", "brow_heavy"])
     sets = [[], ["head_narrow"], ["head_wide"], ["jaw_square"], ["nose_large"], ["ears_large"], ["head_narrow", "jaw_square", "nose_large"], ["head_wide", "ears_large"], ["brow_heavy"], ["head_wide", "brow_heavy"]]
     return {"min_clearance_from_head": fit_report(head, items, sets), "hair_under_cap_gap": {n: hair_cap_gap(gear["Gear_Cap"], gear[n]) for n in ("Gear_Hair", "Gear_Hair_Buzz", "Gear_Hair_Curly")}}
