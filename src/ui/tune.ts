@@ -1,7 +1,7 @@
 /**
- * Start-up tuning for "Auto" quality: while the loading screen is up, run a few dozen real frames of the park (the menu's fly-around camera: a wide shot,
- * the worst common case), measure the main-thread time of the tick (draw-call submission dominates it) and the frame interval, and move the preset down
- * (or up, on desktop-class devices) until a wide shot fits the 60 fps budget. The result is remembered per device signature, so later visits skip it.
+ * Start-up tuning for "Auto" quality: while the loading screen is up, run a few dozen real frames of the park (on the broadcast pitch camera: the typical shot),
+ * measure the main-thread time of the tick (draw-call submission dominates it) and the frame interval, and move the preset down (or up, on
+ * desktop-class devices) until that shot fits the 60 fps budget. The result is remembered per device signature, so later visits skip it.
  * The choice rests on measured times, not on the user agent: `deviceQuality` only supplies the starting point.
  */
 import type { QualityName } from '../engine/quality';
@@ -50,6 +50,8 @@ export interface TuneEngine {
   setQuality(q: QualityName): void;
   rewarm(): Promise<void>;
   adaptive: { enabled: boolean };
+  /** menu-mode camera; the tuner measures on the pitch camera (the typical shot) instead of the wide fly-around (the worst one) */
+  attractView?: 'tour' | 'pitch';
 }
 
 const raf = () => new Promise<number>((r) => requestAnimationFrame(r));
@@ -78,7 +80,11 @@ export interface TuneResult {
 
 export async function tune(e: TuneEngine, start: QualityName, lim: TuneLimits, onStage?: (s: string) => void): Promise<TuneResult> {
   const wasAdaptive = e.adaptive.enabled;
+  const wasView = e.attractView;
   e.adaptive.enabled = false;
+  // Most of a game is spent on the pitch camera and close-ups; the wide fly-around of the menu costs more (more draw calls in view) and would
+  // push phones down to Low although Medium holds 60 on the usual shots. The adaptive resolution scale absorbs the occasional wide shot.
+  if (wasView !== undefined) e.attractView = 'pitch';
   const steps: TuneResult['steps'] = [];
   let cur = start;
   let came: 'start' | 'down' | 'up' = 'start';
@@ -106,6 +112,7 @@ export async function tune(e: TuneEngine, start: QualityName, lim: TuneLimits, o
     }
   } finally {
     e.adaptive.enabled = wasAdaptive;
+    if (wasView !== undefined) e.attractView = wasView;
   }
   return { preset: cur, steps };
 }

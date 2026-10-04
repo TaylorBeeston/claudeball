@@ -118,6 +118,8 @@ export class Engine {
   attract = false;
   /** false while a menu / pause screen has the keyboard */
   keysEnabled = true;
+  /** menu mode camera: the slow fly-around ('tour'), or the broadcast pitch camera ('pitch': the typical shot, used while Auto quality is tuned) */
+  attractView: 'tour' | 'pitch' = 'tour';
   private attractT = 0;
   /** touch-first device (phones, tablets): the pixel-ratio policy trades the preset's DPR cap for a pixel budget */
   coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -172,6 +174,12 @@ export class Engine {
       this.sim.emit({ type: 'broadcast', event: e });
     };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
+    // the director's `shot` events drive the lower-third card of a person-shot (on deck, walk-up, face close-up, ...): shown with the shot, hidden at its end; no per-frame work
+    this.broadcast.on((e) => {
+      if (e.type !== 'shot') return;
+      const card = e.phase === 'start' && e.card && e.subjectId;
+      this.hud?.subjectShot(card ? { kind: e.kind, subject: e.subjectId, hold: e.holdMs / 1000 } : null, this.sim.state);
+    });
 
     this.hud =
       opts.hud === false
@@ -646,7 +654,7 @@ export class Engine {
     const out = this.director.update(dt, state, liveBall, this.players.positions);
     const rs = out.renderState;
     if (perf.on) perf.lap('director');
-    if (this.attract) this.attractCamera(dt);
+    if (this.attract && this.attractView === 'tour') this.attractCamera(dt);
     const animDt = this.attract ? dt : this.sim.paused ? 0 : dt * (out.replaying ? out.replaySpeed : Math.min(this.sim.speed, 3));
     // The sim keeps the bat's knob within arm's reach of the batter's shoulders, so the bat follows the sim pose and the arm
     // IK meets it. Only if it is out of reach anyway (mismatched body/sim, teleports) do the hands keep the bat instead.

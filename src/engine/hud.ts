@@ -1,5 +1,6 @@
 import { MPS_TO_MPH, M_TO_FT, DIM } from './dims';
 import type { GameEvent, GameState, PersonInfo, TeamStatsView } from './types';
+import { cardFor, type ShotInfo, type SubjectCard } from './subjectCard';
 import { arsenalText, batLine, batterBars, batterTotals, boxBatters, boxPitchers, gradeColor, pitcherBars, pitcherTotals, pitLine, type RatingBar } from './hudStats';
 
 const CSS = /* css */ `
@@ -45,6 +46,10 @@ const CSS = /* css */ `
 .cb-pt canvas{display:block;width:100%;margin-top:calc(var(--u)*.8)}
 .cb-card{display:flex;width:max-content;min-width:min(calc(var(--u)*38),100%);max-width:100%;transform:translateX(calc(-100% - var(--ml)));transition:transform .5s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 calc(var(--u)*.6) calc(var(--u)*1.4) rgba(0,0,0,.6));pointer-events:none;border-radius:calc(var(--u)*1);overflow:hidden}
 .cb-card.show{transform:none}
+.cb-card.suppressed{display:none}
+.cb-card.subj{position:absolute;left:0;bottom:100%}
+.cb-card.subj.show{position:relative;bottom:auto}
+.cb-card.subj .role{color:#ffcf4a}
 .cb-card .num{background:var(--c,#333);width:calc(var(--u)*7.6);flex:none;display:flex;align-items:center;justify-content:center;font-size:max(18px,calc(var(--u)*3.8));font-weight:800}
 .cb-card .txt{background:linear-gradient(180deg,rgba(18,22,30,.96),rgba(8,10,16,.96));padding:calc(var(--u)*1.1) calc(var(--u)*2.2) calc(var(--u)*1.2) calc(var(--u)*1.8);flex:1;min-width:0}
 .cb-card .role{font-size:max(10px,calc(var(--u)*1.4));letter-spacing:.2em;color:#ffcf4a;font-weight:700}
@@ -178,6 +183,10 @@ export class Hud {
   private ptSpeed = el('div', 'spd');
   private ptType = el('div', 'typ');
   private card = el('div', 'cb-card');
+  /** the lower-third for B-roll shots about a person (on deck, pitcher's face, ...) */
+  private subj = el('div', 'cb-card subj');
+  private subjTimer = 0;
+  private subjOn = false;
   private hit = el('div', 'cb-hit');
   private tick = el('div', 'cb-tick');
   private rep = el('div', 'cb-rep', 'REPLAY');
@@ -256,7 +265,10 @@ export class Hud {
 
     // bottom-left column: name card, call caption, scorebug (stacked so they can never overlap)
     const bl = el('div', 'cb-bl');
-    bl.append(this.card, this.bug, this.call);
+    this.subj.innerHTML = '<div class="num"></div><div class="txt"><div class="role"></div><div class="nm"></div><div class="st"></div><div class="sub"></div><div class="cb-bars"></div><div class="cb-ars"></div></div>';
+    this.subj.setAttribute('role', 'status');
+    this.subj.addEventListener('click', () => this.subj.classList.toggle('open'));
+    bl.append(this.subj, this.card, this.bug, this.call);
     this.card.addEventListener('click', () => {
       this.card.classList.toggle('open');
       if (this.card.classList.contains('open')) this.cardTimer = Math.max(this.cardTimer, 12);
@@ -471,7 +483,8 @@ export class Hud {
     this.pendingCaps = [];
     this.haveUmpCalls = false;
     this.cardTimer = this.hitTimer = this.callTimer = this.ptTimer = 0;
-    this.card.classList.remove('show', 'open');
+    this.card.classList.remove('show', 'open', 'suppressed');
+    this.hideSubject();
     this.hit.classList.remove('show');
     this.call.classList.remove('show');
     this.pt.style.opacity = '0';
@@ -598,6 +611,45 @@ export class Hud {
     this.cardTimer = 7;
   }
 
+  /**
+   * A B-roll shot started (or ended: `null`). Shots about a person get a card in the name-card style for as long as the shot is held;
+   * the regular name card steps aside meanwhile, so nothing stacks on the scorebug or the pitch tracker.
+   */
+  subjectShot(shot: (ShotInfo & { hold?: number }) | null, state: GameState | null = this.lastState) {
+    const card = shot ? cardFor(shot, state) : null;
+    if (!card) {
+      if (this.subjOn) this.hideSubject();
+      return;
+    }
+    this.fillSubject(card);
+    this.subjOn = true;
+    this.subjTimer = (shot?.hold ?? 4) + 0.3;
+    this.subj.classList.remove('open');
+    this.subj.classList.add('show');
+    this.card.classList.add('suppressed');
+  }
+
+  private hideSubject() {
+    this.subjOn = false;
+    this.subj.classList.remove('show', 'open');
+    this.card.classList.remove('suppressed');
+  }
+
+  private fillSubject(c: SubjectCard) {
+    const q = (sel: string) => this.subj.querySelector(sel) as HTMLElement;
+    this.subj.style.setProperty('--c', c.color);
+    q('.num').textContent = c.number;
+    q('.role').textContent = c.role;
+    q('.nm').textContent = c.name;
+    q('.st').textContent = c.detail;
+    q('.sub').innerHTML = c.today ? `<span>TODAY</span><b>${escapeHtml(c.today)}</b>` : '';
+    q('.cb-bars').innerHTML = c.bars
+      .map((b) => `<div class="cb-bar"><span class="l">${b.label}</span><span class="tr"><i style="width:${Math.round(b.fill * 100)}%;background:${gradeColor(b.grade)}"></i></span><span class="v">${b.text ?? b.grade}</span></div>`)
+      .join('');
+    q('.cb-ars').textContent = c.arsenal;
+    this.subj.setAttribute('aria-label', `${c.role}: ${c.name}`);
+  }
+
   /** Box-score panel (key B). */
   toggleBox() {
     this.boxOpen = !this.boxOpen;
@@ -633,6 +685,7 @@ export class Hud {
   update(s: GameState, dt: number) {
     if (!this.active) return;
     this.lastState = s;
+    if (this.subjOn && (this.subjTimer -= dt) < 0) this.hideSubject();
     for (let i = this.pendingCaps.length - 1; i >= 0; i--) {
       const c = this.pendingCaps[i];
       if ((c.delay -= dt) <= 0) {

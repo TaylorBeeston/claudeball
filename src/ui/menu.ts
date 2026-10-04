@@ -5,7 +5,7 @@
 import { h } from './dom';
 import { button, field, segmented, slider, toggle, type Control } from './widgets';
 import { CLUBS, clubColors, randomClubs, seedTeams, type Club } from './clubs';
-import { GAME_LENGTHS, inningsLabel, seedFromText, type Tempo, type Chatter, type GameSettings, type MatchSetup, type QualityChoice, type TimeOfDay } from './settings';
+import { GAME_LENGTHS, inningsLabel, seedFromText, type SubtitleBg, type SubtitleMode, type SubtitlePos, type SubtitleSize, type Tempo, type Chatter, type GameSettings, type MatchSetup, type QualityChoice, type TimeOfDay } from './settings';
 import { QUALITY_BLURB, type DeviceInfo } from './device';
 import type { QualityName } from '../engine/quality';
 import type { Settings as AudioSettings } from '../audio/mixer';
@@ -225,6 +225,18 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
   muteField.classList.add('inline');
 
   const tempo = reg(segmented<Tempo>('Pace of play', TEMPO_ITEMS, ctx.settings.tempo, (v) => ctx.update({ tempo: v })), () => ctx.settings.tempo);
+  const subs = reg(
+    segmented<SubtitleMode>('Subtitles', [
+      { value: 'off', label: 'Off' },
+      { value: 'booth', label: 'Booth only', hint: 'Captions for the play-by-play and colour commentators.' },
+      { value: 'all', label: 'All voices', hint: 'Also the PA announcer and the umpires.' },
+    ], ctx.settings.subtitles, (v) => ctx.update({ subtitles: v })),
+    () => ctx.settings.subtitles,
+  );
+  const subSize = reg(segmented<SubtitleSize>('Subtitle size', [{ value: 'S', label: 'S' }, { value: 'M', label: 'M' }, { value: 'L', label: 'L' }, { value: 'XL', label: 'XL' }], ctx.settings.subtitleSize, (v) => ctx.update({ subtitleSize: v })), () => ctx.settings.subtitleSize);
+  const subBg = reg(segmented<SubtitleBg>('Subtitle background', [{ value: 'none', label: 'None' }, { value: 'translucent', label: 'Translucent' }, { value: 'solid', label: 'Solid' }], ctx.settings.subtitleBg, (v) => ctx.update({ subtitleBg: v })), () => ctx.settings.subtitleBg);
+  const subLabels = reg(toggle('Speaker labels', ctx.settings.subtitleLabels, (v) => ctx.update({ subtitleLabels: v })), () => ctx.settings.subtitleLabels);
+  const subPos = reg(segmented<SubtitlePos>('Subtitle position', [{ value: 'bottom', label: 'Bottom' }, { value: 'top', label: 'Top' }], ctx.settings.subtitlePos, (v) => ctx.update({ subtitlePos: v })), () => ctx.settings.subtitlePos);
   const camera = reg(
     segmented<'auto' | 'free'>('Camera', [
       { value: 'auto', label: 'Broadcast', hint: 'A director cuts between TV-style shots and replays.' },
@@ -273,6 +285,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
     section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), vol('Park music volume', 'musicVolume', 'Stadium music after runs and home runs, walk-ups and between innings.'), sw('Play park music', 'music'), vol('Broadcast effects', 'fxVolume', 'Soft whooshes and stings for replays, dissolves and graphics.'), field('Voices', voicesBox), muteField),
+    section('Subtitles', field('Captions for the announcers', subs.el), subs.hintEl, field('Size', subSize.el), field('Background', subBg.el), inl('Speaker labels', subLabels.el, 'PLAY-BY-PLAY, COLOR, PA, UMPIRE.'), field('Position', subPos.el)),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Pace of play', tempo.el, TEMPO_NOTE), tempo.hintEl, field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),
     resetBtn,
