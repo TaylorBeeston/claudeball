@@ -6,13 +6,15 @@ cd "$(dirname "$0")"; mkdir -p optimized optimized/players
 GT="${GLTF_TRANSFORM:-npx --yes @gltf-transform/cli}"
 # Players keep their attachment empties (Bat_Grip, Ball_Grip, Glove_Pocket): the engine parents the bat/ball/glove to
 # them, and gltf-transform's prune would drop them (they have no mesh/skin). Hence `--prune false` for players.
-for f in ball bat field stadium players/*; do
+for f in players/*; do                     # field, stadium, ball, bats: KTX2 (src/ktx_world.sh, below)
   f="${f%.glb}"; [ -f "$f.glb" ] || continue
   case "$f" in players/*) PRUNE="--prune false" ;; *) PRUNE="" ;; esac
   $GT optimize "$f.glb" "optimized/$f.glb" --compress meshopt --texture-compress webp --simplify false --palette false --join false --flatten false $PRUNE
 done
 # iris variants + SSS map live next to the players (not referenced by the GLBs: the engine loads them by name)
 mkdir -p optimized/players/textures; cp players/textures/*.webp optimized/players/textures/
+# field, stadium, ball, bats: KTX2 (Basis ETC1S) + meshopt, ~190 MB less GPU texture memory than WebP
+bash src/ktx_world.sh
 # ---- LODs
 mkdir -p optimized/lod1
 python3 src/make_lods.py stadium.glb /tmp/stadium_lod1_raw.glb
