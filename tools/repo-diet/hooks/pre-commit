@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Size guard before every commit (install once: git config core.hooksPath tools/repo-diet/hooks, or copy to .git/hooks/pre-commit).
+# Blocks build intermediates, files > 25 MB and commits adding > 80 MB; bypass a deliberate large commit with CB_SIZE_MAX_ADD_MB=120 git commit ...
+exec node "$(git rev-parse --show-toplevel)/tools/repo-diet/check-size.mjs" --staged
