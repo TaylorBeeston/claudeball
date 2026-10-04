@@ -150,6 +150,25 @@ After A:
   6. Let the coordinator re-create the thread worktrees from the new main.
 - Old commit hashes in docs and reports no longer resolve; the backup bundle keeps them.
 
+### Option A, prepared (2026-10-04): the swap script
+The rewritten repository is ready in `~/claudeball-slim-final/repo`: rewritten from local main `813dc15`, plus the lean-layout commit and the `assets-v1` lock. It is verified as follows:
+- fsck clean;
+- all 345 commits keep identical authors, dates and messages;
+- a CI simulation in a clean clone passes;
+- `dist/` is byte-identical to main's.
+
+The backup is `~/claudeball-backup.bundle` (755 MB, all 35 refs).
+
+`tools/repo-diet/swap-to-slim.sh` does the rest:
+- a dry run by default, which prints every command;
+- `--execute` runs it, with one more confirmation before the push.
+
+Open on the GitHub side:
+- **The `imgbot` branch and PR #1** (an ImgBot PNG-optimisation PR on an old commit) keep the old history reachable on GitHub. Until the branch is deleted, every `git clone` still downloads it.
+  - `gh pr close 1 --delete-branch`, and pause the ImgBot app.
+- **`refs/pull/1/*`** stays on GitHub even after closing. Ask GitHub Support for a GC so the reported size drops.
+- **The intermediates release:** `gh release create assets-v1 ~/claudeball-assets/claudeball-intermediates-assets-v1.tar.gz --title assets-v1 --notes "..."`. The checksum is in `assets/intermediates.lock.json`.
+
 ### Option B: a brand-new repository (one squashed commit)
 
 ```sh
