@@ -97,8 +97,9 @@ const GradeShader = {
       // camera-pan motion blur (screen-space direction from camera rotation, 180 degree shutter)
       if (dot(motion, motion) > 1e-8) {
         vec3 acc = c; float ws = 1.0;
-        for (int i = 1; i <= 6; i++) {
-          float f = float(i) / 6.0 - 0.5;
+        float j = hash(vUv * vec2(1920.0, 1080.0) + fract(time * 3.7)) - 0.5; // per-pixel jitter: the taps blend into a smear instead of stepped copies
+        for (int i = 1; i <= 8; i++) {
+          float f = (float(i) + j) / 8.0 - 0.5;
           acc += texture2D(tDiffuse, vUv + motion * f).rgb; ws += 1.0;
         }
         c = acc / ws;
