@@ -1,5 +1,6 @@
 import {
   Frustum,
+  MathUtils,
   Matrix4,
   ACESFilmicToneMapping,
   Object3D,
@@ -715,8 +716,10 @@ export class Engine {
       const fwd = this.tmpV.set(0, 0, -1).applyQuaternion(this.camera.quaternion).multiplyScalar(200).add(this.camera.position);
       if (this.prevFar && !out.cut && !this.attract) {
         const a = this.prevFar.clone().project(this.camera);
-        const cap = 0.04;
-        const mx = Math.max(-cap, Math.min(cap, (-a.x * 0.5) * 0.5)), my = Math.max(-cap, Math.min(cap, (-a.y * 0.5) * 0.5));
+        // the smear of a broadcast camera's 1/120 s shutter (180 deg at 60 fps), whatever the display's frame rate: the slide this frame (NDC -> uv)
+        // scaled by exposure / frame time (a 30 fps phone used to smear twice as much, a 144 Hz screen less than half)
+        const cap = 0.04, k = MathUtils.clamp(1 / 120 / Math.max(dt, 1e-3), 0.2, 1.2);
+        const mx = Math.max(-cap, Math.min(cap, -a.x * 0.5 * k)), my = Math.max(-cap, Math.min(cap, -a.y * 0.5 * k));
         this.post.setMotion(Math.abs(mx) < 0.0015 ? 0 : mx, Math.abs(my) < 0.0015 ? 0 : my);
       } else this.post.setMotion(0, 0);
       this.prevFar = fwd.clone();

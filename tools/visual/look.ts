@@ -69,7 +69,10 @@ function camSpecs(): ({ name: string; p: V3; t: V3; fov: number; face?: string; 
   const list = opt('cams', 'pitchcam,wide,follow,stadium,aerial,batterface,pitcherface,catcher,mound,plate,wall,crowd0,crowd2,crowdfar,dugout,behindhome');
   return list.split(',').map((s) => {
     // `id:<player id>`: that player's face from the front, telephoto
-    if (s.startsWith('id:')) return { name: s.replace(':', '-'), p: [0, 0, 0] as V3, t: [0, 0, 0] as V3, fov: 9, face: s.slice(3), aperture: 1.2 };
+    if (s.startsWith('id:')) {
+      const [, who, fov] = s.split(':');
+      return { name: `id-${who}${fov ? '-' + fov : ''}`, p: [0, 0, 0] as V3, t: [0, 0, 0] as V3, fov: fov ? +fov : 9, face: who, aperture: 1.2 };
+    }
     if (CAMS[s]) {
       const c = CAMS[s];
       const d = Math.hypot(c.p[0] - c.t[0], c.p[1] - c.t[1], c.p[2] - c.t[2]);
@@ -227,16 +230,28 @@ async function main() {
         }
       }
     } else {
+      // --from T: fast-forward (speed 4) to game time T first
+      const from = +opt('from', '0');
+      if (from > 0) await page.evaluate((t) => new Promise<void>((res) => { const e = (window as any).engine; e.sim.speed = 4; const f = () => (e.liveState.time >= t ? res() : requestAnimationFrame(f)); f(); }), from);
       await page.evaluate((s) => { const e = (window as any).engine; e.sim.speed = s; }, speed);
+      // --wall S: pictures every S seconds of wall-clock time without pausing (replays hold the game clock, so game-time sampling skips them)
+      const wall = +opt('wall', '0');
+      if (wall > 0) {
+        for (let i = 0; i < count; i++) {
+          await sleep(wall * 1000);
+          const info = await page.evaluate(() => { const e = (window as any).engine; const d = e.director as any; return { t: e.liveState.time, shot: d.shot + (d.hr ? '-' + d.hr.stage : ''), broll: d.broll?.shot?.kind ?? '' }; });
+          await shoot(`${tods[0]}-w${String(i).padStart(3, '0')}-t${info.t.toFixed(0)}-${info.shot}${info.broll ? '-' + info.broll : ''}.jpg`);
+        }
+      }
       let next = (await page.evaluate(() => (window as any).engine.liveState.time)) + every;
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < (wall > 0 ? 0 : count); i++) {
         const info = await page.evaluate((target) => new Promise<{ t: number; shot: string; broll: string }>((res) => {
           const e = (window as any).engine;
           const f = () => {
             if (e.liveState.time >= target) {
               e.sim.paused = true;
               const d = e.director as any;
-              res({ t: e.liveState.time, shot: d.shot, broll: d.broll?.shot?.kind ?? '' });
+              res({ t: e.liveState.time, shot: d.shot + (d.hr ? '-' + d.hr.stage : ''), broll: d.broll?.shot?.kind ?? '' });
             } else requestAnimationFrame(f);
           };
           f();

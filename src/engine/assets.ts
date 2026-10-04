@@ -24,6 +24,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import shipped from '../../assets/shipped.json';
 import { FLAGS } from './flags';
+import { simplifyMeshes } from './lodSimplify';
 
 export interface CharacterTemplate {
   /** file name without extension (`player_base`, `player_coach`, …) */
@@ -131,7 +132,7 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     onProgress?.({ frac: w ? l / w : 0, label });
   };
   const playerDir = tier === '1k' ? 'players_1k' : 'players';
-  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', ...(FLAGS.nolodgeo ? [] : ['lod/player_base_geo.glb']), ...CHARACTERS.map((c) => `${playerDir}/${c}.glb`)];
+  const known = ['field.glb', 'stadium.glb', 'ball.glb', 'bat.glb', 'bat_donut.glb', ...CHARACTERS.map((c) => `${playerDir}/${c}.glb`)];
   for (const f of known) progress.set(f, { loaded: 0, weight: fileWeight(`optimized/${f}`) });
 
   // prefer the meshopt+WebP builds in optimized/, fall back to the raw exports
@@ -162,13 +163,12 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     return null;
   };
 
-  const [field, stadium, ball, bat, donut, lod, ...chars] = await Promise.all([
+  const [field, stadium, ball, bat, donut, ...chars] = await Promise.all([
     load('field.glb'),
     load('stadium.glb'),
     load('ball.glb'),
     load('bat.glb'),
     load('bat_donut.glb'),
-    FLAGS.nolodgeo ? Promise.resolve(null) : load('lod/player_base_geo.glb', undefined, true),
     ...CHARACTERS.map((c) => load(`${playerDir}/${c}.glb`, 'Bat_Grip')),
   ]);
 
@@ -197,15 +197,14 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     });
     out.characters.set(CHARACTERS[i], { name: CHARACTERS[i], scene: c.scene, clips, defaults, full: !!c.scene.getObjectByName('Gear_Hair_Long') });
   });
-  // the simplified geometry of player_base by mesh name (a missing file just means every player keeps the full meshes)
+  // the simplified geometry of player_base by mesh name: index buffers simplified here, sharing the full meshes' vertices, skin and morphs (lodSimplify.ts)
   const baseTpl = out.characters.get('player_base');
-  if (lod && baseTpl) {
-    const geo = new Map<string, BufferGeometry>();
-    lod.scene.traverse((o) => {
-      const m = o as Mesh;
-      if (m.isMesh && m.name && !geo.has(m.name)) geo.set(m.name, m.geometry);
-    });
-    baseTpl.lodGeo = geo;
+  if (baseTpl && !FLAGS.nolodgeo) {
+    try {
+      baseTpl.lodGeo = await simplifyMeshes(baseTpl.scene);
+    } catch (e) {
+      console.warn('[assets] lod simplification failed, full meshes only', e);
+    }
   }
   try {
     const r = await fetch(base + 'players/player_manifest.json', { cache: 'no-cache' });

@@ -68,3 +68,18 @@ Blender work (14, possibly a rendered crowd atlas later) only after asking the c
 | also | aerial B-roll camera was behind the upper deck (half the frame black) | d9c9f8a |
 
 Not yet looked at closely: replay presentation and transitions, motion blur on fast pans, animation contact issues (feet sliding, glove clipping), the menu fly-around with the new surroundings on a real phone.
+
+## Status (second pass, Blender + audit leftovers, 2026-10-03)
+| item | status | commit(s) |
+|---|---|---|
+| 2 faces (assets part) | done: mustache / goatee / beard / stubble fitted to the MPFB mouth; no neck-seam cracks (morph fields fade to zero at the Head / Body_Skin cut) | 1ee8a5e |
+| 10 stands | done: roof canopy over the upper deck, darker concrete | 6161da2, 88159d6 |
+| 8 towers | done: 56 m towers with tapered masts, catwalk, braces, lamp-head frame | 6161da2 |
+| 13 player gear | cap bill pre-curved 7.8 cm (was a band over the eyes), catcher gear team-coloured | 329e21e, 11b83f7 |
+| 14 chalk | done: MLB layout | 0911e87 |
+| scoreboard | MLB line score (innings, R/H/E, count lights, batter / pitcher) | 6161da2 |
+| perf | lodgeo fixed and on by default (in-engine simplification), KTX2 for the world (GPU textures 533 -> 344 MB), gloved hand hidden | b4dc99b, 40867e1, 638b593 |
+| replays / transitions | home-run trot camera stuck behind the dugout fixed; HR sequence + replay verified end to end | eb55ae3 |
+| motion blur | shutter-normalized, jittered taps | 321ff3a |
+| 11 night falloff | not done on purpose: MLB LED field lighting is uniform; the stands now sit darker than the field | |
+Not done: mouth interior, finger detail, jersey folds, dirt / sweat masks, hairline (hidden under caps / small at broadcast distance); per-material joins in `player_base` (blocked by the head's UV remap; vertex-colour tinting would be the bigger lever but changes the recolour contract).

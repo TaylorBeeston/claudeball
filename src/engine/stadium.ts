@@ -449,34 +449,102 @@ export function buildStadium(env: Environment): Stadium {
     sbBack.translateZ(-0.6);
     structure.add(sbBack, sb);
   }
+  // the line score is tracked here from the score (the sim reports totals): runs per half inning = the batting team's score minus its score when the half began
+  const line = { away: [] as number[], home: [] as number[], key: '', base: 0 };
   const updateScoreboard = (s: GameState) => {
     const g = sbCanvas.getContext('2d')!;
-    g.fillStyle = '#05080c';
-    g.fillRect(0, 0, 1024, 384);
-    const grad = g.createLinearGradient(0, 0, 0, 384);
-    grad.addColorStop(0, '#0d1c33');
-    grad.addColorStop(1, '#050a14');
+    const W = 1024, H = 384;
+    const bat = s.half === 'top' ? 'away' : 'home';
+    const key = `${s.inning}${s.half}`;
+    if (s.inning === 1 && s.half === 'top' && s.score.away === 0 && s.score.home === 0) { line.away.length = 0; line.home.length = 0; }
+    if (key !== line.key) { line.key = key; line.base = s.score[bat]; }
+    line[bat][s.inning - 1] = s.score[bat] - line.base;
+    // board: dark LED panel, header row of innings, two team rows, a status band
+    g.fillStyle = '#020407';
+    g.fillRect(0, 0, W, H);
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0b1626');
+    grad.addColorStop(1, '#04080f');
     g.fillStyle = grad;
-    g.fillRect(12, 12, 1000, 360);
+    g.fillRect(8, 8, W - 16, H - 16);
+    const first = Math.max(1, s.inning - 8);
+    const cols = Array.from({ length: 9 }, (_, i) => first + i);
+    const x0 = 210, cw = 56, xr = x0 + cw * 9 + 22;
     g.textBaseline = 'middle';
-    g.font = '700 54px Arial, sans-serif';
-    g.fillStyle = '#9fb7d8';
+    g.textAlign = 'center';
+    g.font = '700 30px Arial, sans-serif';
+    g.fillStyle = '#7f93ad';
+    cols.forEach((n, i) => g.fillText(String(n), x0 + cw * i + cw / 2, 44));
+    ['R', 'H', 'E'].forEach((t, i) => g.fillText(t, xr + 70 * i + 35, 44));
+    const totals = s.stats ? { away: s.stats.away.totals, home: s.stats.home.totals } : null;
+    (['away', 'home'] as const).forEach((side, r) => {
+      const y = 104 + r * 74;
+      const team = s.teams[side];
+      g.fillStyle = team.color;
+      g.fillRect(24, y - 28, 14, 56);
+      g.fillStyle = '#f2f5fa';
+      g.textAlign = 'left';
+      g.font = '800 48px Arial, sans-serif';
+      g.fillText(team.abbr, 52, y);
+      g.textAlign = 'center';
+      g.font = '700 42px Arial, sans-serif';
+      cols.forEach((n, i) => {
+        const v = line[side][n - 1];
+        const played = n < s.inning || (n === s.inning && (side === 'away' || s.half === 'bottom'));
+        g.fillStyle = n === s.inning && side === bat ? '#ffd24a' : '#dfe7f2';
+        if (played && v !== undefined) g.fillText(String(v), x0 + cw * i + cw / 2, y);
+      });
+      g.fillStyle = '#ffd24a';
+      g.font = '800 46px Arial, sans-serif';
+      g.fillText(String(s.score[side]), xr + 35, y);
+      g.fillStyle = '#dfe7f2';
+      g.font = '700 42px Arial, sans-serif';
+      g.fillText(totals ? String(totals[side].hits) : '-', xr + 105, y);
+      g.fillText(totals ? String(totals[side].errors) : '-', xr + 175, y);
+    });
+    // grid lines
+    g.strokeStyle = 'rgba(120,150,190,0.18)';
+    g.lineWidth = 2;
+    for (let i = 0; i <= 9; i++) { g.beginPath(); g.moveTo(x0 + cw * i, 22); g.lineTo(x0 + cw * i, 222); g.stroke(); }
+    g.beginPath(); g.moveTo(24, 228); g.lineTo(W - 24, 228); g.stroke();
+    // status band: count lights and outs, batter, pitcher
+    const lights = (label: string, n: number, max: number, col: string, x: number, y: number) => {
+      g.textAlign = 'left';
+      g.fillStyle = '#7f93ad';
+      g.font = '700 30px Arial, sans-serif';
+      g.fillText(label, x, y);
+      for (let i = 0; i < max; i++) {
+        g.beginPath();
+        g.arc(x + 44 + i * 30, y, 10, 0, Math.PI * 2);
+        g.fillStyle = i < n ? col : '#1a2433';
+        g.fill();
+      }
+    };
+    lights('B', s.count.balls, 3, '#3fd26a', 34, 268);
+    lights('S', s.count.strikes, 2, '#ff5048', 34, 308);
+    lights('O', s.outs, 2, '#ff5048', 34, 348);
     g.textAlign = 'left';
-    g.fillText(s.teams.away.abbr, 60, 90);
-    g.fillText(s.teams.home.abbr, 60, 170);
     g.fillStyle = '#ffd24a';
-    g.font = '800 84px Arial, sans-serif';
-    g.textAlign = 'right';
-    g.fillText(String(s.score.away), 420, 90);
-    g.fillText(String(s.score.home), 420, 170);
-    g.font = '700 46px Arial, sans-serif';
-    g.textAlign = 'left';
-    g.fillStyle = '#e8eef8';
-    g.fillText(`${s.half === 'top' ? '▲' : '▼'} ${s.inning}`, 520, 90);
-    g.fillText(`B ${s.count.balls}  S ${s.count.strikes}  O ${s.outs}`, 520, 170);
+    g.font = '700 30px Arial, sans-serif';
+    g.fillText(`${s.half === 'top' ? '▲' : '▼'} ${s.inning}`, 200, 268);
+    const b = s.batter, p = s.pitcher;
     g.fillStyle = '#7ac0ff';
-    g.font = '600 40px Arial, sans-serif';
-    g.fillText(`AT BAT: ${s.batter?.name ?? ''}`.toUpperCase(), 60, 290);
+    g.font = '600 26px Arial, sans-serif';
+    g.fillText('AT BAT', 300, 268);
+    g.fillText('PITCHING', 300, 330);
+    g.fillStyle = '#f2f5fa';
+    g.font = '700 38px Arial, sans-serif';
+    const avg = (() => {
+      const e = b && s.stats ? s.stats[bat].batters.find((x) => x.playerId === b.id) : null;
+      return e ? e.season.batting.avg.toFixed(3).replace(/^0/, '') : '';
+    })();
+    g.fillText(b ? `${b.number}  ${b.name.toUpperCase()}` : '', 440, 268);
+    g.fillText(p ? p.name.toUpperCase() : '', 440, 330);
+    g.textAlign = 'right';
+    g.fillStyle = '#ffd24a';
+    g.font = '700 34px Arial, sans-serif';
+    if (avg) g.fillText(`AVG ${avg}`, W - 34, 268);
+    if (p && s.pitchCount !== undefined) g.fillText(`P ${s.pitchCount}`, W - 34, 330);
     sbTex.needsUpdate = true;
   };
   updateScoreboard({ score: { away: 0, home: 0 }, inning: 1, half: 'top', outs: 0, count: { balls: 0, strikes: 0 }, batter: null, teams: { away: { abbr: 'AWY' }, home: { abbr: 'HOM' } } } as unknown as GameState);
@@ -625,7 +693,7 @@ export function buildStadium(env: Environment): Stadium {
       }
       m.receiveShadow = true;
       // the huge bowl / light towers / signage are not worth three extra shadow-cascade passes
-      m.castShadow = !mats.some((x) => x.transparent) && /^(Dugout|Wall_Padding|Scoreboard$)/.test(o.name);
+      m.castShadow = !mats.some((x) => x.transparent) && /^(Dugout|Wall_Padding|Scoreboard$|Canopy$)/.test(o.name); // the roof canopy shades the upper deck
       const im = o as InstancedMesh;
       if (im.isInstancedMesh && o.name.startsWith('Seats_T')) {
         // spectators sit on the seat instances

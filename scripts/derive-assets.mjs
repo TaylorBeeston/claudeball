@@ -4,9 +4,7 @@
  *
  *  1. assets/optimized/players_1k/<file>.glb  - the player files the game spawns, with textures capped at 1024 px (skin, fabric), 512 px for the small maps (phones: roughly a
  *     fifth of the texture memory). Built from the raw exports in assets/players/ with the same optimize flags as optimize.sh.
- *  2. assets/optimized/lod/player_base_geo.glb - geometry only (positions, normals, uvs, skin weights, morph targets) of the simplified (lod1) player_base: no
- *     textures, no animations. The engine swaps these meshes in for small / distant players (same mesh names, same skeleton, same uv layout, so the
- *     full-detail materials fit), a third of the triangles.
+ *  2. (removed: the engine makes the simplified geometry for small / distant players itself, see src/engine/lodSimplify.ts)
  *
  *  3. assets/optimized/players/gear_defaults.json - the nodes the role files show by default, so the engine need not download three whole player files for them.
  *
@@ -19,7 +17,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { meshopt } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -42,23 +39,12 @@ for (const f of shipped.players_1k) {
 }
 fs.rmSync(tmp, { recursive: true, force: true });
 
-// 2. geometry-only lod of player_base
+// 2. (removed) the geometry-only lod file: the engine now simplifies player_base's index buffers at load (src/engine/lodSimplify.ts), sharing the full
+//    meshes' vertices, so there is no second quantization space to get wrong (that mismatch made swapped players balloon)
 await MeshoptDecoder.ready;
 await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
-const lodSrc = A('optimized/lod1/player_base.glb');
-const doc = await io.read(lodSrc);
-const root3 = doc.getRoot();
-for (const a of root3.listAnimations()) a.dispose();
-for (const m of root3.listMaterials()) {
-  m.setBaseColorTexture(null).setNormalTexture(null).setOcclusionTexture(null).setEmissiveTexture(null).setMetallicRoughnessTexture(null);
-}
-for (const t of root3.listTextures()) t.dispose();
-await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
-fs.mkdirSync(A('optimized/lod'), { recursive: true });
-await io.write(A('optimized/lod/player_base_geo.glb'), doc);
-derived.sources['optimized/lod1/player_base.glb'] = sha(lodSrc);
-console.log(`[derive] lod geometry: ${(fs.statSync(A('optimized/lod/player_base_geo.glb')).size / 1048576).toFixed(2)} MB`);
+fs.rmSync(A('optimized/lod'), { recursive: true, force: true });
 
 // 3. which parts the role files show by default (`cb_default`): the engine used to load three whole player files just to read this
 const gear = {};

@@ -2355,7 +2355,7 @@
   "note": "measured by src/perf_budget.mjs on optimized/players (lod0) and optimized/lod1 (lod1): triangles / draw calls of the nodes visible by default, morph memory (vertices x targets x 12 B), texture bytes in the file, estimated GPU texture memory (KTX2 ETC1S/UASTC counted as 8 bpp x 4/3 mips = worst case; 4 bpp on ETC2 / opaque ETC1S devices). `_texture_sharing`: identical textures (same sha1) across the files",
   "files": {
    "lod0/player_away": {
-    "size_mb": 7.12,
+    "size_mb": 7.11,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2386,10 +2386,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 69344,
-    "vertices_default": 43788,
+    "triangles_default": 69008,
+    "vertices_default": 43444,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.07,
+    "morph_memory_mb": 4.05,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2400,7 +2400,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_away_1b": {
-    "size_mb": 7.09,
+    "size_mb": 7.08,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2431,10 +2431,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 68396,
-    "vertices_default": 42552,
+    "triangles_default": 68060,
+    "vertices_default": 42208,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.02,
+    "morph_memory_mb": 3.99,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2445,7 +2445,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_away_of": {
-    "size_mb": 7.15,
+    "size_mb": 7.14,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2476,10 +2476,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 71281,
-    "vertices_default": 44886,
+    "triangles_default": 70945,
+    "vertices_default": 44542,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.12,
+    "morph_memory_mb": 4.1,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2490,7 +2490,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_ballkid": {
-    "size_mb": 5.49,
+    "size_mb": 5.48,
     "lod1": false,
     "visible_meshes": 19,
     "draw_calls_default": 19,
@@ -2510,10 +2510,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 54727,
-    "vertices_default": 32662,
+    "triangles_default": 54391,
+    "vertices_default": 32318,
     "morph_targets_total": 75,
-    "morph_memory_mb": 3.41,
+    "morph_memory_mb": 3.38,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2524,7 +2524,7 @@
     "gpu_texture_mb_used_by_visible": 23.3
    },
    "lod0/player_base": {
-    "size_mb": 12.4,
+    "size_mb": 12.31,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2555,10 +2555,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 69344,
-    "vertices_default": 43788,
+    "triangles_default": 69008,
+    "vertices_default": 43444,
     "morph_targets_total": 103,
-    "morph_memory_mb": 3.99,
+    "morph_memory_mb": 3.97,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2613,7 +2613,7 @@
     "gpu_texture_mb_used_by_visible": 36.1
    },
    "lod0/player_catcher": {
-    "size_mb": 7.67,
+    "size_mb": 7.66,
     "lod1": false,
     "visible_meshes": 32,
     "draw_calls_default": 33,
@@ -2660,7 +2660,7 @@
     "gpu_texture_mb_used_by_visible": 43.4
    },
    "lod0/player_coach": {
-    "size_mb": 6.84,
+    "size_mb": 6.83,
     "lod1": false,
     "visible_meshes": 28,
     "draw_calls_default": 28,
@@ -2703,7 +2703,7 @@
     "gpu_texture_mb_used_by_visible": 36.1
    },
    "lod0/player_home": {
-    "size_mb": 7.12,
+    "size_mb": 7.11,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2734,10 +2734,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 69344,
-    "vertices_default": 43788,
+    "triangles_default": 69008,
+    "vertices_default": 43444,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.07,
+    "morph_memory_mb": 4.05,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2748,7 +2748,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_home_1b": {
-    "size_mb": 7.09,
+    "size_mb": 7.08,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2779,10 +2779,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 68396,
-    "vertices_default": 42552,
+    "triangles_default": 68060,
+    "vertices_default": 42208,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.02,
+    "morph_memory_mb": 3.99,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2793,7 +2793,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_home_of": {
-    "size_mb": 7.15,
+    "size_mb": 7.14,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2824,10 +2824,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 71281,
-    "vertices_default": 44886,
+    "triangles_default": 70945,
+    "vertices_default": 44542,
     "morph_targets_total": 105,
-    "morph_memory_mb": 4.12,
+    "morph_memory_mb": 4.1,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2838,7 +2838,7 @@
     "gpu_texture_mb_used_by_visible": 40.1
    },
    "lod0/player_manager": {
-    "size_mb": 7.55,
+    "size_mb": 7.46,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
@@ -2868,10 +2868,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 67565,
-    "vertices_default": 42152,
+    "triangles_default": 66397,
+    "vertices_default": 41159,
     "morph_targets_total": 109,
-    "morph_memory_mb": 4.31,
+    "morph_memory_mb": 4.18,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2882,7 +2882,7 @@
     "gpu_texture_mb_used_by_visible": 36.1
    },
    "lod0/player_umpire": {
-    "size_mb": 7.04,
+    "size_mb": 7.03,
     "lod1": false,
     "visible_meshes": 28,
     "draw_calls_default": 29,
@@ -2909,10 +2909,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 69531,
-    "vertices_default": 45687,
+    "triangles_default": 69195,
+    "vertices_default": 45343,
     "morph_targets_total": 102,
-    "morph_memory_mb": 4.3,
+    "morph_memory_mb": 4.27,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2923,7 +2923,7 @@
     "gpu_texture_mb_used_by_visible": 39.3
    },
    "lod0/player_umpire_base": {
-    "size_mb": 6.49,
+    "size_mb": 6.47,
     "lod1": false,
     "visible_meshes": 23,
     "draw_calls_default": 23,
@@ -2947,10 +2947,10 @@
      "uniform_socks",
      "uniform_undershirt"
     ],
-    "triangles_default": 57895,
-    "vertices_default": 35541,
+    "triangles_default": 57559,
+    "vertices_default": 35197,
     "morph_targets_total": 87,
-    "morph_memory_mb": 3.61,
+    "morph_memory_mb": 3.58,
     "joints": 22,
     "animations": 115,
     "animation_mb": 1.01,
@@ -2971,8 +2971,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11369,
-    "vertices_default": 8276,
+    "triangles_default": 11241,
+    "vertices_default": 8174,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -2995,8 +2995,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11319,
-    "vertices_default": 8168,
+    "triangles_default": 11191,
+    "vertices_default": 8066,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3019,8 +3019,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11504,
-    "vertices_default": 8397,
+    "triangles_default": 11376,
+    "vertices_default": 8295,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3042,8 +3042,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 10140,
-    "vertices_default": 6854,
+    "triangles_default": 10010,
+    "vertices_default": 6746,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3066,8 +3066,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11369,
-    "vertices_default": 8281,
+    "triangles_default": 11241,
+    "vertices_default": 8179,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3162,8 +3162,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11369,
-    "vertices_default": 8276,
+    "triangles_default": 11241,
+    "vertices_default": 8174,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3186,8 +3186,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11319,
-    "vertices_default": 8168,
+    "triangles_default": 11191,
+    "vertices_default": 8066,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3210,8 +3210,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 11504,
-    "vertices_default": 8397,
+    "triangles_default": 11376,
+    "vertices_default": 8295,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3234,8 +3234,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 12030,
-    "vertices_default": 8624,
+    "triangles_default": 11902,
+    "vertices_default": 8522,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3257,8 +3257,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 15163,
-    "vertices_default": 12083,
+    "triangles_default": 15035,
+    "vertices_default": 11981,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,
@@ -3280,8 +3280,8 @@
      "lod_cloth",
      "skin"
     ],
-    "triangles_default": 10945,
-    "vertices_default": 7759,
+    "triangles_default": 10817,
+    "vertices_default": 7657,
     "morph_targets_total": 0,
     "morph_memory_mb": 0,
     "joints": 22,

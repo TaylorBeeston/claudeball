@@ -133,6 +133,55 @@ def orient(vs, fs, ring=4):
     return res
 make_mesh("PressBox", vs, orient(vs, fs), [M_GLASS])
 
+# ---------------- roof canopy over the upper deck (where the 3-tier stands are): a slab cantilevered ~9 m toward the field from above the back
+# wall, rising slightly toward its front edge, with steel struts from the back wall to its underside every ~12 m; one mesh, one material
+import bmesh
+M_CANOPY = mat("canopy", (0.16, 0.17, 0.19, 1), 0.55, 0.35)
+N3 = G['N3']; t3 = np.clip(1 - 2*G['s'], 0, 1)                         # continuous upper-deck factor (the row count steps, which made the roof ends a staircase)
+cj = np.where(N3 >= 3)[0]
+if len(cj) > 8:
+    # the run of samples with an upper deck, in path order (it may wrap around index 0)
+    gaps = np.where(np.diff(cj) > 1)[0]
+    if len(gaps): cj = np.r_[cj[gaps[0]+1:], cj[:gaps[0]+1]]
+    cv, cf = [], []
+    i3 = 1 + 2*RM[0] + 3 + 2*RM[1] + 3 + 2*RM[2]                      # profile index of the top of the back wall
+    ring = []
+    # the back wall steps with the row count: the roof follows a smoothed (running max, then averaged) height so its ends rise in a smooth sweep
+    ybs = np.array([G['prof'][j, i3+1][1] for j in cj]); w_ = 14
+    ybs = np.array([ybs[max(0, i-w_):i+w_+1].max() for i in range(len(ybs))]); ybs = np.convolve(np.pad(ybs, w_, mode='edge'), np.ones(2*w_+1)/(2*w_+1), 'valid')
+    obs = np.array([G['prof'][j, i3+1][0] for j in cj]); obs = np.array([obs[max(0, i-w_):i+w_+1].max() for i in range(len(obs))])
+    obs = np.convolve(np.pad(obs, w_, mode='edge'), np.ones(2*w_+1)/(2*w_+1), 'valid')
+    for n_, j in enumerate(cj):
+        ob, yb = obs[n_], ybs[n_]                                        # back-wall top (outer edge), smoothed distance and height
+        k = t3[j]**.7                                                    # the roof thins out where the upper deck ends
+        reach = 9.0*k; yb_ = yb + 3.2; yf_ = yb_ + 1.2*k; th = .7
+        Bb, Bt = (ob + .6, yb_), (ob + .6, yb_ + th); Fb, Ft = (ob - reach, yf_), (ob - reach, yf_ + th*.45)
+        base = len(cv)
+        for oo, yy in (Bb, Fb, Ft, Bt):
+            pp = P[j] + N_[j]*oo; cv.append((pp[0], yy, pp[1]))
+        ring.append(base)
+    for a_, b_ in zip(ring[:-1], ring[1:]):
+        for k_ in range(4):
+            k2 = (k_ + 1) % 4; cf.append((a_ + k_, a_ + k2, b_ + k2, b_ + k_))
+    cf += [(ring[0] + 3, ring[0] + 2, ring[0] + 1, ring[0]), (ring[-1], ring[-1] + 1, ring[-1] + 2, ring[-1] + 3)]
+    # struts: a raking steel beam from the back wall (6 m below its top) up to the roof underside 2/3 of the way out
+    S_ = G['S']; last = -99.0
+    for j in cj:
+        if S_[j] - last < 12.0 or t3[j] < .5: continue
+        last = S_[j]; ob, yb = G['prof'][j, i3+1]; reach = 9.0*t3[j]**.7
+        a0 = np.array((ob - .2, yb - 6.0)); a1 = np.array((ob - reach*.66, yb + 3.2 + .8*t3[j]**.7))
+        d_ = a1 - a0; L_ = np.linalg.norm(d_); u_ = d_/L_; w_ = np.array((-u_[1], u_[0]))*.22; tv = np.array((-N_[j][1], N_[j][0]))*.22
+        base = len(cv)
+        for (oo, yy) in (a0 - w_, a1 - w_, a1 + w_, a0 + w_):
+            for sgn in (-1, 1):
+                pp = P[j] + N_[j]*oo + tv*sgn; cv.append((pp[0], yy, pp[1]))
+        q = [base + i for i in range(8)]                                 # a box beam: 4 profile corners x 2 sides
+        for k_ in range(4):
+            k2 = (k_ + 1) % 4; cf.append((q[2*k_], q[2*k2], q[2*k2 + 1], q[2*k_ + 1]))
+        cf += [(q[0], q[2], q[4], q[6]), (q[7], q[5], q[3], q[1])]
+    co = make_mesh("Canopy", cv, cf, [M_CANOPY])
+    co.data.update(); bm_ = bmesh.new(); bm_.from_mesh(co.data); bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces); bm_.to_mesh(co.data); bm_.free()
+
 # ---------------- scoreboard (left-center) with emissive screen plane
 jS = int(np.argmin(np.abs(np.degrees(np.arctan2(P[:, 0], P[:, 1])) + 22) + (P[:, 1] < 90)*1000))
 E1 = G['marks'][0][jS][2]; base = P[jS]+N_[jS]*(E1[0]-0.5); tang = np.array([-N_[jS][1], N_[jS][0]])
@@ -166,16 +215,43 @@ for nm, side in (("DugoutRoof_1B", 1), ("DugoutRoof_3B", -1)):
     for mbx, mat_ in ((slab, M_DUGR), (fas, M_ROOFW), (post, M_STEEL)): objs.append(mbx.build(mat_))
 
 # ---------------- light towers (steel mast + emissive lamp banks)
-def tower(name, px, pz, h=46.0):
+def beam(mb_, a, b, w=.18):
+    """Square steel member between two game-space points a, b (x, y, z)."""
+    a = np.asarray(a, float); b = np.asarray(b, float); d = b - a; L = np.linalg.norm(d); d /= L
+    up = np.array((0, 1.0, 0)) if abs(d[1]) < .95 else np.array((1.0, 0, 0)); u = np.cross(d, up); u /= np.linalg.norm(u); v = np.cross(d, u)
+    cs = [(-1, -1), (1, -1), (1, 1), (-1, 1)]; ids = []
+    for e in (a, b):
+        for cu, cv in cs: q = e + (u*cu + v*cv)*w/2; ids.append(mb_.vert(q[0], q[1], q[2]))
+    c = (a + b)/2
+    for i in range(4):
+        j = (i + 1) % 4; mb_.quad_out(ids[i], ids[j], ids[4 + j], ids[4 + i], tuple(c))
+def tower(name, px, pz, h=56.0):                                                # 56 m: the lamp heads clear the roof canopy
+    """Light tower: tapered octagonal steel mast, a lamp head (backboard frame, 5 x 9 lamps, catwalk with railing underneath, braces to the mast)."""
     mb = MB(name, uv_scale=1.5); face = np.array([0.0-px, 60.0-pz]); face /= np.linalg.norm(face); rot = math.atan2(face[1], face[0]) - math.pi/2
-    mb.box(px, pz, 1.4, 1.4, 0.0, h*0.55, rot=rot); mb.box(px, pz, 0.9, 0.9, h*0.55, h, rot=rot)
+    side = np.array((-face[1], face[0]))
+    # mast: 8 sides, 0.8 m radius at the foot to 0.42 m under the head, in 4 sections
+    segs = [(0.0, .80), (h*.35, .66), (h*.7, .52), (h, .42)]; rings = []
+    for y_, r_ in segs:
+        rings.append([mb.vert(px + r_*math.cos(k*math.pi/4 + math.pi/8), y_, pz + r_*math.sin(k*math.pi/4 + math.pi/8)) for k in range(8)])
+    for a_, b_ in zip(rings[:-1], rings[1:]):
+        for k in range(8):
+            k2 = (k + 1) % 8; mb.quad_out(a_[k], a_[k2], b_[k2], b_[k], (px, h/2, pz))
+    hp = lambda lx, y_, fz: (px + face[0]*fz + side[0]*lx, y_, pz + face[1]*fz + side[1]*lx)       # lamp-head local: lx across, fz toward the field
+    # backboard frame: top / bottom chords and posts (the lamps sit in front of it)
+    for y_ in (h + .55, h + 5.25): beam(mb, hp(-5.2, y_, .35), hp(5.2, y_, .35), .22)
+    for lx in (-5.2, -2.6, 0.0, 2.6, 5.2): beam(mb, hp(lx, h + .45, .35), hp(lx, h + 5.35, .35), .18)
+    mb.box(px - face[0]*.05, pz - face[1]*.05, 10.4, 0.18, h + .55, h + 5.25, rot=rot)                # the board behind the lamps
+    # catwalk under the lamps with a railing, and two braces from the mast up to the frame ends
+    cx, cz = px + face[0]*1.35, pz + face[1]*1.35; mb.box(cx, cz, 10.6, 1.5, h - .05, h + .05, rot=rot)
+    for lx in np.linspace(-5.2, 5.2, 9): beam(mb, hp(lx, h + .05, 2.05), hp(lx, h + 1.1, 2.05), .06)
+    beam(mb, hp(-5.3, h + 1.1, 2.05), hp(5.3, h + 1.1, 2.05), .07); beam(mb, hp(-5.3, h + .6, 2.05), hp(5.3, h + .6, 2.05), .05)
+    for sgn in (-1, 1): beam(mb, hp(0, h - 6.0, 0.0), hp(sgn*5.0, h, .35), .2)
     lamps = MB(name+"_Lamps")
     for r_ in range(5):
         for c_ in range(9):
             lx = (c_-4)*1.0; ly = h+0.8+r_*0.9
             ox, oz = px + face[0]*0.7 + (-face[1])*lx, pz + face[1]*0.7 + face[0]*lx
             lamps.box(ox, oz, 0.7, 0.2, ly, ly+0.7, rot=rot)
-    mb.box(px, pz, 10.0, 0.5, h, h+5.2, rot=rot)
     objs.append(mb.build(M_STEEL)); objs.append(lamps.build(M_LAMP))
 Om = 62.0
 def rim(target, extra=10.0):

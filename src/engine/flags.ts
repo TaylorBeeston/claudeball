@@ -8,10 +8,10 @@ export const FLAGS = {
   /** shadows and the GTAO prepass draw the puppets' own parts instead of the merged proxy */
   noproxy: q.has('noproxy'),
   /**
-   * small / distant players keep the full-detail meshes. OFF BY DEFAULT since 2026-10-03: the simplified geometry made players balloon into 'marshmallows'
-   * (see tools/perf/FINDINGS.md); `?lodgeo=1` turns the experiment back on while the cause is being fixed.
+   * small / distant players keep the full-detail meshes (the simplified index buffers of lodSimplify.ts are not used). The old separately exported LOD
+   * geometry made players balloon (its own quantization space); the in-engine simplification shares the full meshes' vertices and is on by default.
    */
-  nolodgeo: !q.has('lodgeo') || q.has('nolodgeo'),
+  nolodgeo: q.has('nolodgeo'),
   nomatrix: q.has('nomatrix'),
   /** off-screen / tiny puppets are animated in full like everybody else */
   noskip: q.has('noskip'),

@@ -38,7 +38,10 @@ def body_morph(P, kind):
     out[:, 0] += (x - sx*.09)*(lk-1)*leg; out[:, 1] += (y + .005)*(lk-1)*leg
     # neck
     out[:, 0] += x*(kneck-1)*neck; out[:, 1] += (y+.006)*(kneck-1)*neck
-    return out
+    # nothing moves at the Head / Body_Skin cut (seam vertices z 1.576-1.593, the split is by face centre at 1.585): Head carries no body keys,
+    # so a displaced neck ring opened cracks at the seam
+    fade = 1 - _sm(1.545, 1.575, z)*(1 - _sm(.11, .14, ax))
+    return P + (out - P)*fade[:, None]
 
 def head_morph(P, kind):
     q = P - HEAD_C; x, y, z = q[:, 0], q[:, 1], q[:, 2]; out = P.copy(); above = _sm(-.10, .03, z)

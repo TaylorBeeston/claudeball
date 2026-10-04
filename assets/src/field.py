@@ -119,24 +119,25 @@ objs.append(hp.build(M_PLATE))
 for n, (cx, cz) in ((1, b1), (2, b2), (3, b3)):
     bb = MB(f"Base_{n}B", uv_scale=.5); bb.box(cx, cz, 15*IN, 15*IN, Y_CUT, Y_CUT+3*IN, rot=math.pi/4)
     objs.append(bb.build(M_BASE))
-# ---------------- chalk: foul lines, batter's boxes, catcher's box, coach boxes, lane, on-deck circles
+# ---------------- chalk (MLB Rule 2.01 layout): foul lines, batter's boxes, catcher's box, 3 ft running lane, coaches' boxes, on-deck circles
 ch = MB("Chalk"); LW = 3*IN
-ch.strip([(0, 0), POLE_R], LW, Y_CH); ch.strip([(0, 0), POLE_L], LW, Y_CH)
-bx0, bx1 = w + 6*IN, w + 6*IN + 4*FT; zc = sd/2
+def along(s, o=0.0, side=1): return (side*(s+o)*S2, (s-o)*S2)          # s = distance along the 1B (side 1) / 3B (side -1) line, o = offset into foul territory
+# batter's boxes: 4 ft x 6 ft, inner line 6 in from the plate, centred on the plate's front-to-back midpoint
+bx0, bx1 = w + 6*IN, w + 6*IN + 4*FT; zc = sd/2; zb0, zb1 = zc - 3*FT, zc + 3*FT
 for sgn in (1, -1):
-    r = [(sgn*bx0, zc-3*FT), (sgn*bx1, zc-3*FT), (sgn*bx1, zc+3*FT), (sgn*bx0, zc+3*FT)]
-    ch.strip(r, 5*IN*0.4, Y_CH, closed=True)
-cbw = 43*IN/2
-ch.strip([(-cbw, 3*FT+zc+0.0-2.4-0.0+2.4-0.9*0), (-cbw, -2.4), (cbw, -2.4), (cbw, 3*FT+zc-2.4-0.0+0.0-0.0)], 5*IN*0.4, Y_CH)
-# first-base 3 ft running lane (45 ft -> 1B, on the foul side of the foul line)
-s45 = 45*FT; lane = [((s45)*S2 + off*S2, (s45)*S2 - off*S2) for off in [0]]
-def along(s, o=0.0, side=1): return (side*(s+o)*S2, (s-o)*S2)
-ch.strip([along(45*FT, 3*FT), along(88*FT, 3*FT)], LW, Y_CH); ch.strip([along(45*FT, 3*FT), along(45*FT, 0.0)], LW, Y_CH)
-ch.strip([along(88*FT, 3*FT), along(88*FT, 0.0)], LW, Y_CH)
-for side in (1, -1):                                        # coach boxes: 10 ft x 20 ft?? (approx) beside 1B/3B
-    for o0 in (15*FT,):
-        s0, s1 = 90*FT-10*FT, 90*FT+10*FT
-        ch.strip([along(s0, o0, side), along(s1, o0, side), along(s1, o0+10*FT, side), along(s0, o0+10*FT, side)], LW*0.8, Y_CH, closed=True)
+    ch.strip([(sgn*bx0, zb0), (sgn*bx1, zb0), (sgn*bx1, zb1), (sgn*bx0, zb1)], LW, Y_CH, closed=True)
+# foul lines: not chalked across the plate or inside the batter's box; they start where the 45 deg line leaves the front of the box and run to the poles
+s_start = zb1*math.sqrt(2)
+ch.strip([along(s_start, 0, 1), POLE_R], LW, Y_CH); ch.strip([along(s_start, 0, -1), POLE_L], LW, Y_CH)
+# catcher's box: 43 in wide, side lines run 8 ft back from the rear line of the batter's boxes, closed at the back
+cbw = 43*IN/2; zcb = zb0 - 8*FT
+ch.strip([(-cbw, zb0), (-cbw, zcb), (cbw, zcb), (cbw, zb0)], LW, Y_CH)
+# first-base running lane: 3 ft outside the foul line from the 45 ft mark to first base, closed at the 45 ft end
+ch.strip([along(45*FT, 3*FT), along(90*FT, 3*FT)], LW, Y_CH); ch.strip([along(45*FT, 3*FT), along(45*FT, 0.0)], LW, Y_CH)
+for side in (1, -1):
+    # coaches' boxes: 20 ft long parallel to the foul line, 15 ft from it, 10 ft deep (open on the far side), centred on the base
+    s0, s1 = 90*FT - 10*FT, 90*FT + 10*FT; o0, o1 = 15*FT, 25*FT
+    ch.strip([along(s0, o1, side), along(s0, o0, side), along(s1, o0, side), along(s1, o1, side)], LW, Y_CH)
     ch.strip(circle(side*11.3, 0.0, 0.76, 48), 0.06, Y_CH, closed=True)          # on-deck circles (5 ft diameter)
 objs.append(ch.build(M_CHALK))
 # ---------------- foul poles (yellow, 45 ft) with fair-side screen

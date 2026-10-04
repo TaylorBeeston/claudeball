@@ -60,6 +60,6 @@ The real phone also heats up: Android thermal status went 0 -> 3 (severe) during
 ## Derived assets (`npm run assets:derive`)
 `assets/optimize.sh` produces `assets/optimized/`; `scripts/derive-assets.mjs` then derives what the runtime loads on top of it (needs network once for `npx @gltf-transform/cli`):
 `optimized/players_1k/*` (skin / fabric textures 1024 px, small maps 512 px; ~38 % of the player texture GPU memory: 71 MB instead of 186 MB for `player_base`; used on touch-first devices or `?tex=1k`),
-`optimized/lod/player_base_geo.glb` (the simplified lod1 geometry without textures / animations, 2.7 MB: swapped in for small / distant players), `optimized/players/gear_defaults.json` (the nodes the role files show by default, so three whole role files are no longer downloaded).
+(the separate simplified geometry file `optimized/lod/player_base_geo.glb` is gone: the engine simplifies player_base's index buffers at load, `src/engine/lodSimplify.ts`), `optimized/players/gear_defaults.json` (the nodes the role files show by default, so three whole role files are no longer downloaded).
 `assets/shipped.json` lists which player files the loader reads and the deploy ships (the other `optimized/players/*.glb` and the raw `lod1/` stay out of `dist/`: 115 MB -> 88 MB; a phone downloads ~46 MB on first load instead of ~85 MB).
 `vite build` warns when a source changed since the derived files were made (`assets/derived.json` holds the hashes): **run `npm run assets:derive` after every `assets/optimize.sh`**.
