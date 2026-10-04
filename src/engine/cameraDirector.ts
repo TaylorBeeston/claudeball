@@ -748,8 +748,12 @@ export class CameraDirector {
         }
         break;
       case 'trot': {
-        const nearHome = !!runner && Math.hypot(runner.pos.x, runner.pos.z) < 9 && runner.pos.z < 12 && this.clock - this.shotStart > 3;
-        if (nearHome || !runner || st > 60) next('home', 'homeplate');
+        // near home on the last leg (or within 3 s of the start: never the plate he just left), or already past it: he scored and is no longer a runner,
+        // or is walking off toward the dugout (the trot camera followed him behind the dugout roof)
+        const nearHome = !!runner && Math.hypot(runner.pos.x, runner.pos.z) < 9 && runner.pos.z < 12 && (this.clock - this.shotStart > 3 || this.legIdx === 3);
+        const scored = !!runner && runner.role !== 'runner' && runner.role !== 'batter' && this.clock - h.t > 2;
+        const offField = !!runner && Math.abs(runner.pos.x) > 12 && runner.pos.z < 8 && this.legIdx >= 3;
+        if (nearHome || scored || offField || !runner || st > 60) next('home', 'homeplate');
         break;
       }
       case 'home': {
@@ -1197,7 +1201,8 @@ export class CameraDirector {
         const centre = new Vector3(0, 0, 19.4);
         const n = new Vector3(-(b.z - a.z), 0, b.x - a.x).normalize();
         if (n.dot(mid.clone().sub(centre)) < 0) n.negate();
-        d.pos.copy(mid).addScaledVector(n, 17).setY(3.0);
+        // the legs that start / end at home put the camera behind a dugout (roof at 2.95 m): from 7.5 m the view clears the roof
+        d.pos.copy(mid).addScaledVector(n, 17).setY(this.legIdx === 0 || this.legIdx === 3 ? 7.5 : 3.0);
         const lead = r ? new Vector3(r.vel.x, 0, r.vel.z).multiplyScalar(0.5) : new Vector3();
         d.tgt.copy(rp).add(lead).setY(1.15);
         const dist = d.pos.distanceTo(d.tgt);
