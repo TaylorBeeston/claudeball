@@ -74,7 +74,9 @@ function cbAssets(): Plugin {
       // the derived assets (1k player textures, simplified geometry, gear defaults) must come from the current sources
       try {
         const d = JSON.parse(fs.readFileSync(path.join(src, 'derived.json'), 'utf8')) as { sources: Record<string, string> };
-        const stale = Object.entries(d.sources).filter(([rel, sha]) => crypto.createHash('sha1').update(fs.readFileSync(path.join(src, rel))).digest('hex') !== sha).map(([rel]) => rel);
+        const stale = Object.entries(d.sources)// sources that are not here (intermediates are fetched only for asset work: npm run assets:fetch) cannot be checked
+          .filter(([rel]) => fs.existsSync(path.join(src, rel)))
+          .filter(([rel, sha]) => crypto.createHash('sha1').update(fs.readFileSync(path.join(src, rel))).digest('hex') !== sha).map(([rel]) => rel);
         if (stale.length) console.warn(`\n[cb-assets] WARNING: ${stale.length} source file(s) changed since the derived assets were built (${stale.slice(0, 3).join(', ')}): run \`npm run assets:derive\` (players_1k, lod geometry and gear defaults are out of date)\n`);
       } catch {
         console.warn('\n[cb-assets] WARNING: assets/derived.json is missing: run `npm run assets:derive`\n');

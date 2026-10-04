@@ -24,6 +24,8 @@ const A = (...p) => path.join(root, 'assets', ...p);
 const shipped = JSON.parse(fs.readFileSync(A('shipped.json'), 'utf8'));
 const sha = (f) => crypto.createHash('sha1').update(fs.readFileSync(f)).digest('hex');
 const derived = { sources: {} };
+const missing = shipped.players_1k.filter((f) => !fs.existsSync(A('players', `${f}.glb`)));
+if (missing.length) throw new Error(`plain player exports missing (${missing.join(', ')}): run \`npm run assets:fetch\` or the Blender build first (docs/repo-size.md)`);
 
 // 1. 1k texture variants
 fs.mkdirSync(A('optimized/players_1k'), { recursive: true });

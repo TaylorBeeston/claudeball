@@ -19,11 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2   # the size check compares the commit with its parent
 
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: npm
+
+      - name: Repository size check (no build intermediates, no huge files / commits; docs/repo-size.md)
+        run: node tools/repo-diet/check-size.mjs
 
       - run: npm ci
 

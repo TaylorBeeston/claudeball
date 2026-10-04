@@ -1,0 +1,14 @@
+# binary assets: never diffed or merged as text (docs/repo-size.md)
+*.glb binary -diff
+*.ktx2 binary -diff
+*.webp binary -diff
+*.png binary -diff
+*.jpg binary -diff
+*.jpeg binary -diff
+*.hdr binary -diff
+*.npz binary -diff
+*.woff2 binary -diff
+*.tar.gz binary -diff
+*.wav binary -diff
+*.mp3 binary -diff
+*.ogg binary -diff
