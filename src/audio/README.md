@@ -264,7 +264,11 @@ at full duck (gain plus presence cut, RMS of the park), 90 % in ~100 ms, back wi
   Booth / PA lines use the owner's first local recording in `~/claudeball-voice/wavs` if present, else a synthetic speech-like signal.
 - `npx tsx tools/audio/live.ts [--cpu 4 --lowpower] [--audiodebug]`: the running game's audio tick cost and the panel.
 
-**Cost** (A/B under the same load, offline render, desktop; the old graph from `ee33acc`): see the report / `docs/soundscape.md`.
+**Cost** (A/B interleaved under the same load, offline render on this desktop, ms of audio-thread CPU per second of audio; the old graph
+from `ee33acc`): game scene old 17.4 -> **new 60** (desktop graph) / **32.5** (phone graph); near-idle old 7.5 -> 28 / 14. The new
+desktop graph is ~6 % of one core, the phone graph ~2x the old cost; all of it on the audio thread. The main-thread audio tick did not
+change (`tools/audio/live.ts`: median 0.10 -> 0.11 ms on desktop, 0.43 -> 0.35 ms with 4x CPU throttling + low power). Renders repeat
+to within 3e-5 (about -91 dBFS; the crowd beds' first moments differ between runs: not bit-exact, cause not found).
 
 ## HD voices (optional neural speech)
 
