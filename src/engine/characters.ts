@@ -334,6 +334,8 @@ export interface PuppetLike {
   lodReset?(): void;
   /** show the simplified geometry (true) or the full one (warm-up uploads both) */
   useLodGeometry?(on: boolean): void;
+  /** the catcher's sign sequence for the coming pitch (shown on his fingers; glTF characters only) */
+  setSigns?(seq: number[]): void;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
   ballHeld?: boolean;
   /** world position of that ball */

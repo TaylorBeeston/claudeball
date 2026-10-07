@@ -143,6 +143,8 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
  * fielders' hands-on-knees set bends the neck back hard once the head looks up at the ball; neither reads as an umpire.
  */
 const BASE_UMP_SET = ['idle'];
+/** the seat height the seated clips are made for (their root is the ground below the seat centre) */
+const SIT_SEAT = 0.45;
 
 /** the standing pose of a role between plays (frame 0 of the swing is the batting stance until a `batting_stance` clip exists) */
 function idleFor(role: PlayerRole): string[] {
@@ -858,8 +860,12 @@ export class GltfPuppet implements PuppetLike {
     }
     if (this.nodes.get('Hand_R_Ball')) {
       show('Hand_R', kind === 'batter');
-      show('Hand_R_Ball', kind !== 'batter');
+      show('Hand_R_Ball', false);
+      show('Hand_R_Relaxed', kind !== 'batter');
     }
+    if (this.nodes.get('Hand_L_Relaxed')) show('Hand_L_Relaxed', !gk && kind !== 'batter');
+    if (!gk && kind !== 'batter' && this.nodes.get('Hand_L_Relaxed')) show('Hand_L', false);
+    this.handShown = { R: '', L: '' };
     this.materialsDirty = true;
   }
   private materialsDirty = false;
@@ -1428,7 +1434,9 @@ export class GltfPuppet implements PuppetLike {
       this.bodyYaw += Math.abs(d) > maxTurn ? Math.sign(d) * maxTurn : d;
     }
     this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);
-    this.root.position.set(snap.pos.x, snap.pos.y, snap.pos.z);
+    // seated, the clip puts the seat 0.45 m up for the nominal 1.85 m body; a player scaled by his height sits on the same seat: keep the seat where it is
+    const seat = this.currentName === 'bench_sit' ? SIT_SEAT * (1 - this.bodyScale) : 0;
+    this.root.position.set(snap.pos.x, snap.pos.y + seat, snap.pos.z);
     this.root.rotation.y = this.bodyYaw;
     const tMat = perf.t();
     this.refreshMatrices();
@@ -1437,6 +1445,7 @@ export class GltfPuppet implements PuppetLike {
     this.updateDecals(snap, env, lod1);
     if (lod1) {
       this.updateHeldBall(snap, env, snap.hasBall ? 'hand' : 'none', dt);
+      this.updateHands(snap);
       return;
     }
     this.rig.refresh();
@@ -1469,6 +1478,71 @@ export class GltfPuppet implements PuppetLike {
       place = snap.anim === 'throw' || snap.anim === 'toss' || snap.role === 'ballkid' ? 'hand' : 'glove';
     }
     this.updateHeldBall(snap, env, place, dt);
+    this.updateHands(snap);
+  }
+
+  // ---- hands --------------------------------------------------------------------------------------------------------------
+  /** the sim's sign sequence for the pitch being called (`signs_given`), shown on the catcher's fingers */
+  private signSeq: number[] | null = null;
+  setSigns(seq: number[]) {
+    this.signSeq = seq.length ? seq.slice() : null;
+  }
+  private handShown = { R: '', L: '' };
+  /**
+   * Which hand mesh shows (the rig has no finger bones; the files carry posed variants): the right hand is the ball claw while it holds the ball, the
+   * fist on the bat (batters, the on-deck hitter) and while the catcher puts down signs (the fingers_n morphs extend n fingers), relaxed otherwise; the left
+   * is in the glove, on the bat, or relaxed. It used to be the claw on every fielder, pitcher and catcher all game, with the sign morphs never driven.
+   */
+  private updateHands(snap: PlayerSnap) {
+    const fist = this.nodes.get('Hand_R'), claw = this.nodes.get('Hand_R_Ball'), relaxed = this.nodes.get('Hand_R_Relaxed');
+    if (!claw && !relaxed) return; // fixed-look files: their one Hand_R is already the right pose for the role
+    const bat = snap.role === 'batter' || snap.role === 'ondeck';
+    const signs = this.currentName === 'catcher_signs' || this.currentName === 'catcher_signs_runner_on';
+    const ball = this.ballPlace === 'hand' || this.ballPlace === 'transfer';
+    const r = ball && claw ? 'ball' : bat || signs || !relaxed ? 'fist' : 'relaxed';
+    if (r !== this.handShown.R) {
+      this.handShown.R = r;
+      if (fist) fist.visible = r === 'fist';
+      if (claw) claw.visible = r === 'ball';
+      if (relaxed) relaxed.visible = r === 'relaxed';
+    }
+    if (fist) this.driveSignFingers(fist as Mesh, signs);
+    const lFist = this.nodes.get('Hand_L'), lRelaxed = this.nodes.get('Hand_L_Relaxed');
+    const gloved = this.gloveNodes.length > 0 && !!this.gloveNodes[0].visible;
+    const l = gloved ? 'glove' : bat || !lRelaxed ? 'fist' : 'relaxed';
+    if (l !== this.handShown.L) {
+      this.handShown.L = l;
+      if (lFist) lFist.visible = l === 'fist';
+      if (lRelaxed) lRelaxed.visible = l === 'relaxed';
+    }
+  }
+  /** the catcher's signs: the clip's flash windows (manifest `finger_keys`: [frame, n]) show the sim's sequence, n fingers extended (`fingers_n`), else a fist */
+  private driveSignFingers(hand: Mesh, signs: boolean) {
+    const dict = hand.morphTargetDictionary, infl = hand.morphTargetInfluences;
+    if (!dict || !infl) return;
+    let n = 0;
+    if (signs && this.current) {
+      const keys = (this.manifest?.clips[this.currentName] as { finger_keys?: [number, number][] } | undefined)?.finger_keys ?? [];
+      const f = this.current.time * 24;
+      let flash = -1, k = 0;
+      for (const [fr, v] of keys) {
+        if (fr > f) break;
+        k = v;
+        if (v > 0) flash++;
+      }
+      if (k > 0) {
+        const seq = this.signSeq;
+        const v = seq ? seq[flash <= 0 ? 0 : Math.min(seq.length - 1, seq.length > 1 ? 2 : 0)] : k;
+        n = v >= 1 && v <= 4 ? v : 0; // a 5 (change-up / splitter) is the closed fist
+      }
+    }
+    for (let i = 1; i <= 4; i++) {
+      const j = dict[`fingers_${i}`];
+      if (j === undefined) continue;
+      const want = i === n ? 1 : 0;
+      infl[j] += (want - infl[j]) * 0.6; // ~1 frame blend, as the clip's keys say
+      if (Math.abs(infl[j] - want) < 0.01) infl[j] = want;
+    }
   }
   /** distant extra: animates at half rate without look-at / IK (level of detail 1) */
   lod1 = false;
@@ -1925,8 +1999,12 @@ export class GltfPuppet implements PuppetLike {
     for (const [name, n] of this.nodes) {
       if (/^(Gear_Glove|Gear_Number_|Gear_Belt|Gear_EyeBlack|Gear_Helmet|Gear_Wristband|Gear_ArmSleeve|Gear_CatcherMask|Gear_ChestProtector|Gear_ShinGuard|Gear_LineupCard|Gear_Jacket|Hand_L_Open|Hand_R_Ball|Jersey_.*Decal|Gear_Hair)/.test(name)) n.visible = false;
     }
-    show('Hand_L', true);
-    show('Hand_R', true);
+    // fans' hands hang relaxed (the fists are bat grips)
+    const relaxed = !!this.nodes.get('Hand_R_Relaxed');
+    show('Hand_L', !relaxed);
+    show('Hand_R', !relaxed);
+    show('Hand_L_Relaxed', relaxed);
+    show('Hand_R_Relaxed', relaxed);
     show('Gear_Cap', o.cap);
     if (!o.cap) show(o.hair ?? this.look?.hairNode ?? 'Gear_Hair', true);
     if (o.jersey) for (const n of JERSEY_NODES) show(n, n === o.jersey);

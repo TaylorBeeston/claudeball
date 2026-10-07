@@ -48,19 +48,19 @@ def _ondeck_stretch():
     return rows
 _creg("ondeck_stretch", 72, _ondeck_stretch())
 
-# ---------------------------------------------------------------- dugout bench: sitting (root = the ground below the seat centre; seat height 0.45 m)
-SIT = dict(STAND, hips=(0, .02, -.37), lean=24, lfoot=(.17, -.36, .085), rfoot=(-.17, -.36, .085), lfoot_o=(8, 0), rfoot_o=(-8, 0), lknee=(.12, -1, .2), rknee=(-.12, -1, .2), head_pitch=-14, head_yaw=0,
+# ---------------------------------------------------------------- dugout bench: sitting (root = the ground below the seat centre; seat height 0.45 m: the seat of the pants rests at 0.45 m, hips were 4.4 cm too low)
+SIT = dict(STAND, hips=(0, .02, -.326), lean=24, lfoot=(.17, -.36, .085), rfoot=(-.17, -.36, .085), lfoot_o=(8, 0), rfoot_o=(-8, 0), lknee=(.12, -1, .2), rknee=(-.12, -1, .2), head_pitch=-14, head_yaw=0,
            lhand=(.16, -.37, .66), rhand=(-.16, -.37, .66), lpole=(.7, .4, -.3), rpole=(-.7, .4, -.3))
 for _k in ('lhand_rel', 'rhand_rel'): SIT.pop(_k)
 def _bench_sit():
-    rows = [(0, dict()), (18, dict(lean=18, head_yaw=-35, head_pitch=-8, hips=(0, .02, -.36))), (36, dict(lean=30, head_yaw=-10, head_pitch=-20, lhand=(.17, -.34, .65))),
-            (54, dict(lean=21, head_yaw=30, head_pitch=-10, rfoot=(-.20, -.40, .085), hips=(.01, .03, -.37))), (72, dict())]
+    rows = [(0, dict()), (18, dict(lean=18, head_yaw=-35, head_pitch=-8, hips=(0, .02, -.316))), (36, dict(lean=30, head_yaw=-10, head_pitch=-20, lhand=(.17, -.34, .65))),
+            (54, dict(lean=21, head_yaw=30, head_pitch=-10, rfoot=(-.20, -.40, .085), hips=(.01, .03, -.326))), (72, dict())]
     return [(f, SIT, kw) for f, kw in rows]
 _creg("bench_sit", 72, _bench_sit())
 STAND_AT_BENCH = dict(STAND, hips=(0, -.30, 0), lean=4, lfoot=(.16, -.34, .085), rfoot=(-.16, -.34, .085), head_pitch=-4)
 SAB_ABS = {k: v for k, v in STAND_AT_BENCH.items() if k not in ('lhand_rel', 'rhand_rel')}
 def _bench_stand_up():
-    return [(0, SIT, {}), (5, SIT, dict(hips=(0, -.06, -.34), lean=44, head_pitch=-28, lfoot=(.17, -.30, .085), rfoot=(-.17, -.30, .085), lhand=(.17, -.36, .62), rhand=(-.17, -.36, .62))),
+    return [(0, SIT, {}), (5, SIT, dict(hips=(0, -.06, -.296), lean=44, head_pitch=-28, lfoot=(.17, -.30, .085), rfoot=(-.17, -.30, .085), lhand=(.17, -.36, .62), rhand=(-.17, -.36, .62))),
             (10, SIT, dict(hips=(0, -.20, -.22), lean=50, head_pitch=-30, lfoot=(.17, -.32, .085), rfoot=(-.17, -.32, .085), lhand=(.19, -.45, .55), rhand=(-.19, -.45, .55))),
             (16, SAB_ABS, dict(hips=(0, -.28, -.08), lean=26, lfoot=(.16, -.33, .085), rfoot=(-.16, -.33, .085), head_pitch=-12, lhand=(.27, -.52, .86), rhand=(-.27, -.52, .86))),
             (22, SAB_ABS, dict(lean=8, lhand=(.27, -.38, .90), rhand=(-.27, -.38, .90))), (28, SAB_ABS, dict(lhand=(.27, -.33, .92), rhand=(-.27, -.33, .92)))]

@@ -3,7 +3,7 @@
  * puppet is doing and frame chosen players' whole bodies, so a glitch seen in the broadcast can be pinned to sim data vs engine vs asset.
  *
  *   npx tsx tools/visual/jank.ts --out DIR --at 6,26 [--seed 15] [--cams body:ump-1b,body:catcher:2.5,face:batter,<look.ts spec>]
- *                                [--dump] [--eval "<js run at every stop, result printed>"] [--until "<js condition>"] [--variants "js1;;js2"]
+ *                                [--dump] [--eval "<js run at every stop, result printed>"] [--until "<js condition>" [--after S]] [--variants "js1;;js2"]
  *                                [--no-build] [--dist DIR] [--quality high]
  *
  * cams: `body:<id|role>[:dist[:yawDeg]]` = the whole player from in front (yaw rotates around him), `face:<id|role>[:dist]` = his head,
@@ -55,14 +55,22 @@ async function main() {
     const frames = (n: number) => page.evaluate((k) => new Promise<void>((r) => { let i = 0; const f = () => (++i >= k ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
     for (const t of times) {
       // --until "<js expression>": after time t, keep going until it is true (e.g. "engine.sim.sim._world.phase === 'windup'")
-      await page.evaluate(([target, until]) => new Promise<void>((res) => {
+      await page.evaluate(([target, until, after]) => new Promise<void>((res) => {
         const e = (window as any).engine;
         e.sim.paused = false;
         e.director.bench = null;
         const cond = until ? new Function(`return (${until});`) : () => true;
-        const f = () => (e.liveState.time >= target && (cond() || e.liveState.time > target + 120) ? ((e.sim.paused = true), res()) : requestAnimationFrame(f));
+        // --after S: once the condition holds, S more seconds of game time
+        let hit = -1;
+        const f = () => {
+          if (hit < 0 && e.liveState.time >= target && (cond() || e.liveState.time > target + 120)) hit = e.liveState.time;
+          if (hit >= 0 && e.liveState.time >= hit + after) {
+            e.sim.paused = true;
+            res();
+          } else requestAnimationFrame(f);
+        };
         f();
-      }), [t, opt('until', '')] as [number, string]);
+      }), [t, opt('until', ''), +opt('after', '0')] as [number, string, number]);
       const now = await page.evaluate(() => (window as any).engine.liveState.time as number);
       const tag = `t${now.toFixed(1).padStart(6, '0')}`;
       if (flag('dump')) {

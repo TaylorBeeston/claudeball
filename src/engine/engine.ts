@@ -215,6 +215,10 @@ export class Engine {
       this.side.note(te.event);
       if (te.event.type === 'ball_tossed_to_fan') this.stadium.crowd.excite(0.55); // the stands go for it
       if (te.event.type === 'ball_kid_retrieve') this.stadium.crowd.excite(0.12);
+      if (te.event.type === 'signs_given' && te.event.playerId) {
+        const d = te.event.data as { catcherId?: string; seq?: number[] } | undefined;
+        if (d?.catcherId && Array.isArray(d.seq)) this.players.setSigns(d.catcherId, d.seq);
+      }
     });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
     this.sim.onPitchCross((x, y, inZone) => this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b'));

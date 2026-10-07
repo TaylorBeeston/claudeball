@@ -346,6 +346,11 @@ export class PlayerManager {
   /** latest tag per fielder (from the sim's tag events), for a short while */
   private tags = new Map<string, { result: 'tag' | 'avoided' | 'attempt'; until: number; runner: string | null }>();
   readonly anims = new Map<string, string>();
+  /** the sim's sign sequence (`signs_given`) for the catcher's fingers */
+  setSigns(catcherId: string, seq: number[]) {
+    this.puppets.get(catcherId)?.setSigns?.(seq);
+  }
+
   noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number, runnerId?: string) {
     const prev = this.tags.get(fielderId);
     this.tags.set(fielderId, { result, until: simTime + 1.6, runner: runnerId ?? prev?.runner ?? null });
