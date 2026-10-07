@@ -122,6 +122,9 @@ export interface TextureKey {
   mirror?: boolean;
 }
 
+/** canvas textures on the decal meshes: glTF UV convention (row 0 of the canvas at v = 0), not three's flipped default */
+export const DECAL_FLIP_Y = false;
+
 export const keyString = (k: TextureKey) => `${k.kind}|${k.text}|${k.fill}|${k.outline}|${k.w}x${k.h}|${k.mirror ? 'm' : ''}`;
 
 /** The shared cache. Textures live across games; the least recently used are disposed beyond `limit`. */
@@ -186,6 +189,9 @@ export class JerseyTextures {
     const g = c.getContext('2d');
     if (g) drawJerseyText(g, k);
     const t = new CanvasTexture(c);
+    // the decal meshes carry glTF UVs (v = 0 at the top of the image, `DECAL_FLIP_Y`): three's default flipY for canvas textures printed every name
+    // and number upside down (vertically mirrored: N read as a backwards N)
+    t.flipY = DECAL_FLIP_Y;
     t.colorSpace = SRGBColorSpace;
     t.wrapS = t.wrapT = ClampToEdgeWrapping;
     t.generateMipmaps = true;
