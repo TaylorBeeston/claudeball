@@ -180,13 +180,16 @@ export function pickupOne(m: MicDef, src: Vec3): Pickup {
 }
 
 /**
- * The pickups that matter for a source: every mic, the `k` strongest kept (and none more than `floorDb` under the strongest), delays
- * relative to the earliest kept mic.
+ * The pickups that matter for a source: every mic, the `k` strongest kept (plus any within 1 dB of the last one kept, so a mirrored
+ * pair is never split; none more than `floorDb` under the strongest), delays relative to the earliest kept mic.
  */
 export function pickups(src: Vec3, mics: MicDef[] = MICS, k = 3, floorDb = -30): Pickup[] {
   const all = mics.map((m) => pickupOne(m, src)).sort((a, b) => b.gain - a.gain);
   const top = all[0]?.gain ?? 0;
-  const kept = all.slice(0, k).filter((p) => p.gain > 0 && p.gain >= top * dbToGain(floorDb));
+  let n = Math.min(k, all.length);
+  // a tie at the cut (a source on the centre line between a mirrored pair) keeps both: the image must not lean to one side
+  while (n < all.length && n > 0 && all[n].gain >= all[n - 1].gain * dbToGain(-1)) n++;
+  const kept = all.slice(0, n).filter((p) => p.gain > 0 && p.gain >= top * dbToGain(floorDb));
   const t0 = Math.min(...kept.map((p) => p.delay));
   return kept.map((p) => ({ ...p, delay: p.delay - t0 }));
 }

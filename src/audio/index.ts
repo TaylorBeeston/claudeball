@@ -164,6 +164,7 @@ export class AudioController {
   private phase: Phase | null = null;
   private lastPlayText = '';
   private offs: (() => void)[] = [];
+  private debugPanel: { dispose(): void } | null = null;
 
   readonly debug = {
     cues: [] as DebugCue[],
@@ -181,6 +182,14 @@ export class AudioController {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
     this.mixer.lowPower = this.lowPower;
+    let audioDebug = false;
+    try {
+      audioDebug = new URLSearchParams(location.search).get('audiodebug') === '1';
+    } catch {
+      /* no location */
+    }
+    // ?audiodebug=1: level meters on every mic strip and a live panel (meters, duck, zones, venue)
+    this.mixer.meters = audioDebug;
     this.music = new ParkMusic({
       backend: new WebAudioMusic(this.mixer),
       base: `${import.meta.env?.BASE_URL ?? '/'}audio/music/`,
@@ -196,6 +205,7 @@ export class AudioController {
     }
     this.crowd = new CrowdModel({ rng: Math.random, lowPower: this.lowPower });
     this.ambience = new Ambience(this.mixer);
+    if (audioDebug) void import('./debugPanel').then((d) => (this.debugPanel = new d.AudioDebugPanel(this.mixer, this.ambience, root)));
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
     // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
@@ -793,6 +803,7 @@ export class AudioController {
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     for (const o of this.offs) o();
+    this.debugPanel?.dispose();
     this.speech.clear();
     this.ambience.stop();
     this.organ.stop();

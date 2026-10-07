@@ -139,4 +139,38 @@ describe('mixer', () => {
     m.applySettings();
     expect(m.master.gain.setTargetAtTime).toHaveBeenLastCalledWith(0, expect.any(Number), expect.any(Number));
   });
+
+  it('the park is mixed from fixed mics: no camera listener; venue, perspective and duck settings reach the graph; phones get the small array', async () => {
+    const { m } = await readyMixer();
+    expect('setListener' in m).toBe(false);
+    expect(m.graph!.mics.length).toBe(16);
+    m.settings.venue = 'big';
+    m.settings.micPerspective = 'close';
+    m.settings.duck = 'strong';
+    m.applySettings();
+    expect(m.graph!.venue).toBe('big');
+    expect(m.graph!.perspective).toBe('close');
+    expect(m.graph!.duck.depth).toBe(10);
+    const f = fakeCtx();
+    const low = new Mixer({ ...DEFAULT_SETTINGS }, () => f.ctx);
+    low.lowPower = true;
+    await low.unlock();
+    expect(low.graph!.mics.length).toBe(9);
+  });
+
+  it('a crowd shot plays in its zone (a couple of mics), a big roar in the whole bowl, the wave section by section', async () => {
+    const { m, f } = await readyMixer();
+    let n0 = f.ctx.sources.length;
+    expect(m.playCrowdShot({ id: 'cheer_short', gain: 0.5, delay: 0, zone: 'line_1b' })).toBe(true);
+    const zoneCopies = f.ctx.sources.length - n0;
+    expect(zoneCopies).toBeGreaterThanOrEqual(1);
+    expect(zoneCopies).toBeLessThanOrEqual(3);
+    n0 = f.ctx.sources.length;
+    expect(m.playCrowd('roar_big', 1)).toBe(true);
+    expect(f.ctx.sources.length - n0).toBeGreaterThanOrEqual(2);
+    n0 = f.ctx.sources.length;
+    expect(m.playCrowd('whoop', 0.5, 0, { sweep: { from: -0.9, to: 0.9, dur: 6 } })).toBe(true);
+    const wave = f.ctx.sources.slice(n0).map((x: any) => x.start.mock.calls[0][0]);
+    expect(Math.max(...wave) - Math.min(...wave)).toBeGreaterThan(3); // goes round the bowl over seconds
+  });
 });

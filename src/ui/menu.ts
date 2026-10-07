@@ -144,6 +144,45 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     ),
     () => a().chatter,
   );
+  // the park's sound: its acoustics, the A1's mic balance, how far the park sits back under the booth
+  const venue = reg(
+    segmented<AudioSettings['venue']>(
+      'Venue acoustics',
+      [
+        { value: 'dry', label: 'Dry', hint: 'A small open park: a short tail and little echo.' },
+        { value: 'normal', label: 'Normal', hint: 'A big-league bowl: the organ, the PA and the crowd ring around the stands (about 2 s).' },
+        { value: 'big', label: 'Big', hint: 'An enclosed giant: a long, lush tail and a strong slap-back off the upper deck.' },
+      ],
+      a().venue,
+      (v) => ctx.audio.set({ venue: v }),
+    ),
+    () => a().venue,
+  );
+  const micMix = reg(
+    segmented<AudioSettings['micPerspective']>(
+      'Mic perspective',
+      [
+        { value: 'broadcast', label: 'Broadcast mix', hint: 'The TV balance of the field mics, the crowd mics and the house pair.' },
+        { value: 'close', label: 'Close', hint: 'The field mics up, the crowd and the stadium further back: the crack of the bat and the mitt up front.' },
+      ],
+      a().micPerspective,
+      (v) => ctx.audio.set({ micPerspective: v }),
+    ),
+    () => a().micPerspective,
+  );
+  const duck = reg(
+    segmented<AudioSettings['duck']>(
+      'Under the commentary',
+      [
+        { value: 'light', label: 'Light', hint: 'The park dips about 4 dB while the booth talks.' },
+        { value: 'normal', label: 'Normal', hint: 'The park dips about 7 dB while the booth talks (and its voice band a little more).' },
+        { value: 'strong', label: 'Strong', hint: 'The park dips about 10 dB: the voices always on top.' },
+      ],
+      a().duck,
+      (v) => ctx.audio.set({ duck: v }),
+    ),
+    () => a().duck,
+  );
   // optional neural voices: nothing is downloaded until the button is pressed
   const hdNote = h('div', { class: 'cb-hint' });
   const hdBtn = button('', () => ctx.audio.hd?.toggle(), 'ghost');
@@ -284,7 +323,7 @@ export function settingsView(ctx: AppCtx): { el: HTMLElement; sync(): void } {
     'div',
     { class: 'cb-stack' },
     section('Graphics', field('Quality', quality.el, undefined), quality.hintEl, field('Time of day', tod.el)),
-    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), vol('Park music volume', 'musicVolume', 'Stadium music after runs and home runs, walk-ups and between innings.'), sw('Play park music', 'music'), vol('Broadcast effects', 'fxVolume', 'Soft whooshes and stings for replays, dissolves and graphics.'), field('Voices', voicesBox), muteField),
+    section('Sound', vol('Master volume', 'master'), vol('Effects', 'sfx', 'Bat, ball and glove.'), vol('Crowd', 'crowd'), vol('Organ volume', 'organVolume'), vol('Announcers', 'announcer', 'Commentary and PA voices.'), vol('PA announcer', 'paVolume', 'The stadium announcer and umpire calls, on top of Announcers.'), sw('PA announcer & umpire', 'pa'), sw('Commentary', 'commentary'), field('Chatter', chatter.el), chatter.hintEl, sw('Stadium organ', 'organ'), vol('Park music volume', 'musicVolume', 'Stadium music after runs and home runs, walk-ups and between innings.'), sw('Play park music', 'music'), vol('Broadcast effects', 'fxVolume', 'Soft whooshes and stings for replays, dissolves and graphics.'), field('Venue acoustics', venue.el), venue.hintEl, field('Mic perspective', micMix.el), micMix.hintEl, field('Under the commentary', duck.el), duck.hintEl, field('Voices', voicesBox), muteField),
     section('Subtitles', field('Captions for the announcers', subs.el), subs.hintEl, field('Size', subSize.el), field('Background', subBg.el), inl('Speaker labels', subLabels.el, 'PLAY-BY-PLAY, COLOR, PA, UMPIRE.'), field('Position', subPos.el)),
     section('Camera & game', field('Camera', camera.el), camera.hintEl, inl('Replays', replays.el), field('Pace of play', tempo.el, TEMPO_NOTE), tempo.hintEl, field('Game speed', speed.el), speed.hintEl, inl('Broadcast graphics', hud.el, 'Scorebug, name cards, pitch tracker, ticker.'), inl('Box score at start', box.el)),
     h('hr', { class: 'cb-sep' }),

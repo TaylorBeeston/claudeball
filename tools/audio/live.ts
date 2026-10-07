@@ -17,6 +17,7 @@ const opt = (k: string, d: string) => {
 const secs = Number(opt('secs', '60'));
 const cpu = Number(opt('cpu', '1'));
 const lowPower = args.includes('--lowpower');
+const audioDebug = args.includes('--audiodebug');
 
 async function main() {
   const port = await freePort();
@@ -36,7 +37,7 @@ async function main() {
     const errs: string[] = [];
     page.on('pageerror', (e) => errs.push(e.message));
     page.on('console', (m) => (m.type() === 'error' || /\[audio\]/.test(m.text())) && errs.push(m.text().slice(0, 200)));
-    await page.goto(`${base}?quality=low&seed=${opt('seed', '12')}${lowPower ? '&lowpower=1' : '&lowpower=0'}&autostart=1`);
+    await page.goto(`${base}?quality=low&seed=${opt('seed', '12')}${lowPower ? '&lowpower=1' : '&lowpower=0'}&autostart=1${audioDebug ? '&audiodebug=1' : ''}`);
     await page.waitForFunction(() => (window as unknown as { __audioDebug?: unknown }).__audioDebug, null, { timeout: 120000 }).catch(async () => {
       // the start menu: press the start button
       await page.getByText(/start game|play ball/i).first().click({ timeout: 10000 }).catch(() => page.mouse.click(640, 360));
@@ -64,6 +65,7 @@ async function main() {
       const c = (window as unknown as { __audioDebug: { controller: any } }).__audioDebug.controller;
       return { lowPower: c.lowPower, ctx: c.mixer.state, ready: c.mixer.ready, debug: typeof c.mixer.debugInfo === 'function' ? c.mixer.debugInfo() : null };
     });
+    if (audioDebug) console.log(await page.evaluate(() => document.querySelector('.cb-audiodebug')?.textContent ?? '(no panel)'));
     console.log(JSON.stringify({ secs, cpu, ...extra, tickMsAvg: avg((s) => s.tickMs), tickMsMedian: [...st].sort((a, b) => a.tickMs - b.tickMs)[st.length >> 1]?.tickMs, tickMsMax: Math.max(...st.map((s) => s.tickMs)), voicesMax: Math.max(...st.map((s) => s.voices)), rmsAvg: avg((s) => s.rms), errors: errs.slice(0, 10) }, null, 1));
   } finally {
     await browser.close();
