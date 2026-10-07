@@ -171,6 +171,17 @@ export class Game {
     return e;
   }
 
+  /** The next `n` hitters due up for a side (from its batting order and the lineup as it stands now: substitutions included). */
+  dueUp(side: TeamSide, n = 3): { id: string; name: string }[] {
+    const t = this.w.teams[side];
+    const out: { id: string; name: string }[] = [];
+    for (let k = 0; k < Math.min(n, t.lineup.length); k++) {
+      const p = t.lineup[(t.batIdx + k) % t.lineup.length]?.player;
+      if (p) out.push({ id: p.info.id, name: p.info.name });
+    }
+    return out;
+  }
+
   getTeams(): { home: Team; away: Team } {
     return { home: this.w.teams.home.team, away: this.w.teams.away.team };
   }

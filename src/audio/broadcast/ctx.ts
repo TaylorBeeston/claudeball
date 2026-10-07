@@ -39,6 +39,8 @@ export interface BoothCtx extends ChatCtx {
   person?(id: unknown): { name: string; role?: string; number?: number } | undefined;
   /** sim time, seconds */
   time?: number;
+  /** live queries to the sim: who is due up for a side, the box score */
+  sim?: { dueUp?(side: 'home' | 'away', n: number): { id: string; name: string }[]; box?(): unknown };
   /** the sim's lull (non-pitch time: a break, a mound visit ...): its kind, planned length and what is left (seconds) */
   lull?: { kind: string; sec: number; remaining?: number } | null;
 }
@@ -52,7 +54,7 @@ const POS_ROLE: Record<string, string> = { P: 'pitcher', C: 'catcher', '1B': 'fi
 
 /** Build the booth's context from the sim's own state snapshot (`game.getState()`); `extra` carries what the sim does not know. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function ctxFromRaw(rs: any, extra: { crowd?: number; lastPlay?: string } = {}): BoothCtx {
+export function ctxFromRaw(rs: any, extra: { crowd?: number; lastPlay?: string; game?: any } = {}): BoothCtx {
   const byId = new Map<string, { name: string; role?: string; number?: number; ratings?: Record<string, number> }>();
   for (const p of rs.players ?? []) byId.set(p.id, { name: p.name, role: POS_ROLE[p.position], number: p.jersey, ratings: p.ratings });
   const bi = rs.batter?.info;
@@ -70,6 +72,7 @@ export function ctxFromRaw(rs: any, extra: { crowd?: number; lastPlay?: string }
     lastPlay: extra.lastPlay,
     person: (id) => byId.get(String(id)),
     time: rs.time,
+    sim: extra.game ? { dueUp: (side, n) => extra.game.dueUp?.(side, n) ?? [], box: () => extra.game.getBoxScore?.() ?? null } : undefined,
     lull: rs.lull && rs.lullKind ? { kind: String(rs.lullKind), sec: Number(rs.lullSec ?? 0), remaining: rs.lullRemaining != null ? Number(rs.lullRemaining) : undefined } : null,
   };
 }

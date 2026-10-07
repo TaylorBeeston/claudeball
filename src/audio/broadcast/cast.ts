@@ -104,7 +104,7 @@ export interface Catchphrase {
 export const CATCHPHRASES: Catchphrase[] = [
   { id: 'lyle.hr', who: 'pbp', trigger: 'homeRun', lines: ['Pack a lunch, that one is going a long way!', 'Pack a lunch!'], max: 2, cooldown: 600 },
   { id: 'lyle.k', who: 'pbp', trigger: 'strikeout', lines: ['Sit down, son.', 'And he can go sit down.'], max: 2, cooldown: 900 },
-  { id: 'lyle.dp', who: 'pbp', trigger: 'doublePlay', lines: ['Two for the price of one!', 'Two for one, and the shelves are empty.'], max: 1, cooldown: 900 },
+  { id: 'lyle.dp', who: 'pbp', trigger: 'doublePlay', lines: ['Two for the price of one!', 'Two for one. Everything must go!'], max: 1, cooldown: 900 },
   { id: 'lyle.win', who: 'pbp', trigger: 'win', lines: ['Put this one in the books.'], max: 1, cooldown: 0 },
   { id: 'bis.k', who: 'color', trigger: 'strikeout', lines: ['Mm-hmm. Biscuits and gravy.', 'That is biscuits and gravy right there.'], max: 1, cooldown: 900 },
   { id: 'bis.hr', who: 'color', trigger: 'homeRun', lines: ['That is a grown-man swing.', 'Grown-man swing.'], max: 2, cooldown: 600 },
@@ -187,7 +187,7 @@ export const RUNNING_JOKES: RunningJoke[] = [
 
 /** fictional park promotions and features the booth may mention in long lulls (the park and the mascot are the game's own) */
 export const PROMOS: string[] = [
-  'Kids run the bases after the game today, so stick around.',
+  'Kids run the bases after the game, so stick around.',
   'It is two-dollar hot dog night at $park, and judging by the line, word got out.',
   '$mascot has been working the crowd behind the home dugout all night.',
   'The dot race is coming up on the big board in a couple of innings, and $color has a favourite.',

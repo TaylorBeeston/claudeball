@@ -564,7 +564,8 @@ export class AudioController {
     if (!force && this.bctx && now - this.bctxAt < 250) return this.bctx;
     const rs = this.raw?.getState?.();
     if (!rs) return null;
-    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText, game: (this.host.sim.game as any)?.game });
     this.bctxAt = now;
     return this.bctx;
   }

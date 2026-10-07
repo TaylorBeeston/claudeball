@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame } from '../../../sim/index';
 import { DENY, buildGameInfo } from '../../../sim/gameinfo';
 import { Director, type Action, type Segment, type StartAction } from '../director';
@@ -303,5 +303,136 @@ describe('stable voices per character (browser speech)', () => {
     expect(v['Two.']).toBe(v['Four.']);
     expect(v['One.']).not.toBe(v['Two.']);
     expect(v['Two.']).not.toMatch(/Zira/);
+  });
+});
+
+describe('stage 2: breaks, the closing, the booth\'s own stories', () => {
+  /** a whole game through the booth with a fake clock (quick tempo); returns what was said */
+  function game(seed: number, tempo: 'quick' | 'standard' = 'quick') {
+    const g: any = createGame({ seed, tempo, innings: 6 });
+    const booth = new Booth({ rng: mulberry32(seed), level: 'normal' });
+    booth.setFacts(factsFromGame(g, String(seed), 'night', false) as OpeningFacts, 9);
+    const q: any[] = [];
+    g.on('*', (e: any) => q.push(e));
+    const said: { t: number; text: string; tag?: string; voice: string; imp: string }[] = [];
+    const breaks: { t: number; sec: number }[] = [];
+    let t = 0;
+    let over = -1;
+    let rs = g.getState();
+    while ((over < 0 || t - over < 60) && t < 4 * 3600) {
+      g.step(0.1);
+      t += 0.1;
+      rs = g.getState();
+      if (rs.gameOver && over < 0) over = t;
+      const c = ctxFromRaw(rs, { game: g });
+      for (const e of q.splice(0)) {
+        if (e.type === 'breakStart' && !e.pregame) breaks.push({ t, sec: e.sec });
+        booth.observe(e, c, t);
+      }
+      for (const a of booth.tick(t, c, { suppressed: false })) if (a.type === 'start') said.push({ t, text: a.clauses.map((x) => x.text).join(' '), tag: a.item.tag, voice: a.voice, imp: a.item.importance });
+    }
+    return { said, breaks, over, booth, g };
+  }
+  let runs: ReturnType<typeof game>[] = [];
+  beforeAll(() => {
+    runs = [game(42), game(7)];
+  }, 240_000);
+
+  it('every break turn ends before the next half starts, with the due-up hitters last', () => {
+    for (const { said, breaks } of runs) {
+      expect(said.filter((s) => s.tag === 'break.recap').length).toBeGreaterThanOrEqual(2);
+      for (const b of breaks) {
+        const inB = said.filter((s) => s.tag?.startsWith('break.') && s.t >= b.t && s.t < b.t + b.sec);
+        for (const s of inB) expect(s.t + estimateDuration(s.text, 1), s.text).toBeLessThanOrEqual(b.t + b.sec + 0.5);
+        const due = inB.findIndex((s) => s.tag === 'break.due');
+        if (due >= 0) expect(due).toBe(inB.length - 1);
+      }
+      // the break says the new half: the generic "the bottom of the fourth" call is not said on top of it
+      const dueTimes = said.filter((s) => s.tag === 'break.due').map((s) => s.t);
+      for (const d of dueTimes) expect(said.some((s) => s.tag === 'half.start' && Math.abs(s.t - d) < 15)).toBe(false);
+    }
+  });
+
+  it('closes after the final call with the decisive moment and a sign-off by name, then stays quiet', () => {
+    for (const { said, over } of runs) {
+      const end = said.findIndex((s) => s.tag === 'end' || s.tag === 'end.tie');
+      expect(end).toBeGreaterThanOrEqual(0);
+      const after = said.slice(end + 1);
+      expect(after[0].tag).toBe('close.final');
+      const last = after[after.length - 1];
+      expect(last.tag).toBe('close.signoff');
+      expect(last.text).toContain(CAST.pbp.last);
+      expect(last.text).toContain(CAST.color.last);
+      expect(after.every((s) => s.tag?.startsWith('close.'))).toBe(true);
+      expect(said[end].t).toBeGreaterThanOrEqual(over - 1);
+    }
+  });
+
+  it('rations catchphrases and tells a running joke\'s stages in order', () => {
+    for (const { said } of runs) {
+      for (const c of CATCHPHRASES) {
+        const n = said.filter((s) => c.lines.some((l) => s.text.includes(l))).length;
+        expect(n, c.id).toBeLessThanOrEqual(c.max);
+      }
+      for (const j of RUNNING_JOKES) {
+        const told = said.filter((s) => s.tag === `joke.${j.id}`);
+        const firstLines = j.stages.map((st) => st[0].t);
+        let last = -1;
+        for (const s of told) {
+          const stage = firstLines.findIndex((ls) => ls.some((l) => s.text.startsWith(l.replace(/\$pbp|\$color/g, '').slice(0, 12))));
+          if (stage >= 0) {
+            expect(stage).toBeGreaterThanOrEqual(last);
+            last = stage;
+          }
+        }
+      }
+    }
+  });
+
+  it('never repeats a line word for word within a short window, and calls the partner by name only now and then', () => {
+    for (const { said } of runs) {
+      // (the conversation and the segments; the calls of the play have fewer ways to say a foul ball)
+      const longLines = said.filter((s) => s.imp === 'could' && s.text.split(' ').length >= 6);
+      for (let i = 0; i < longLines.length; i++) {
+        const near = longLines.slice(Math.max(0, i - 25), i).map((s) => s.text);
+        expect(near.includes(longLines[i].text), longLines[i].text).toBe(false);
+      }
+      const named = said.filter((s) => /^(Well|Yeah), (Lyle|Biscuit|Hollis),/.test(s.text) || /, (Lyle|Biscuit|Hollis)\?$/.test(s.text)).length;
+      const topics = said.filter((s) => s.tag && !/^(open|break|close|phrase|react|joke)/.test(s.tag) && s.voice).length;
+      expect(named).toBeGreaterThan(0);
+      expect(named / Math.max(1, topics)).toBeLessThan(0.12);
+    }
+  });
+
+  it('says no real person\'s name and no "she / her"', () => {
+    for (const { said } of runs) for (const s of said) {
+      expect(s.text).not.toMatch(/\b(she|her|hers)\b/i);
+      for (const d of DENY) expect(s.text.toLowerCase()).not.toContain(d);
+    }
+  });
+});
+
+describe('the seventh-inning stretch', () => {
+  it('the booth waits out the organ, then comes back to a word about the stretch and the due-up hitters', () => {
+    const g: any = createGame({ seed: 5, pace: 0 });
+    const booth = new Booth({ rng: mulberry32(5), level: 'normal' });
+    booth.setFacts(factsFromGame(g, '5', 'night', false) as OpeningFacts, 0);
+    const base = ctxFromRaw(g.getState(), { game: g });
+    const c = (remaining: number) => ({ ...base, inning: 7, half: 'bottom' as const, lull: { kind: 'break', sec: 60, remaining } });
+    booth.observe({ type: 'breakStart', inning: 1, half: 'top', sec: 70, pregame: true } as never, c(70), 0);
+    booth.pregame = 'done';
+    booth.observe({ type: 'breakStart', inning: 7, half: 'bottom', sec: 60 } as never, c(60), 100);
+    const said: string[] = [];
+    let t = 100;
+    const run = (to: number, suppressed: boolean) => {
+      for (; t < to; t = Math.round((t + 0.05) * 1000) / 1000) for (const a of booth.tick(t, c(160 - t) as never, { suppressed })) if (a.type === 'start') said.push(a.item.text);
+    };
+    run(101.5, false); // the organ starts 1.5 s in: nothing is said before it
+    expect(said).toHaveLength(0);
+    run(140, true); // the stretch
+    run(160, false);
+    expect(said[0]).toMatch(/stretch/i);
+    const due = said.findIndex((x) => /Due up|due up/.test(x));
+    expect(due).toBeGreaterThan(0);
   });
 });

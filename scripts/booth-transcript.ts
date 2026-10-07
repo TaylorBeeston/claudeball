@@ -40,13 +40,15 @@ const lines: string[] = [];
 let lastEnd = 0;
 const stats = { pxp: 0, color: 0, words: 0, must: 0, should: 0, could: 0, cuts: 0 };
 let firstPitch = -1;
+let overAt = -1; // after the last out the booth wraps up: keep the clock running for a minute
 let fieldUntil = 0; // the PA / umpire speaking (browser voices: the booth waits)
-while (!rs.gameOver && t < 3600 && !(openingOnly && firstPitch >= 0)) {
+while ((overAt < 0 || t - overAt < 60) && t < 4 * 3600 && !(openingOnly && firstPitch >= 0)) {
+  if (rs.gameOver && overAt < 0) overAt = t;
   g.step(1 / 120);
   t += 1 / 120;
   if (Math.round(t * 120) % 6 !== 0) continue; // 20 Hz
   rs = g.getState();
-  const c = ctxFromRaw(rs, { lastPlay, crowd: 0.4 });
+  const c = ctxFromRaw(rs, { lastPlay, crowd: 0.4, game: g });
   for (const { ev } of pending.splice(0)) {
     if (ev.type === 'gameStart') {
       lines.push(`${fmt(t + 0.5)} PA      ${welcome}`);

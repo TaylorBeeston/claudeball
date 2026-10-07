@@ -36,12 +36,31 @@ export interface PaRec {
   result?: string;
   /** bases the batter reached (0 for outs) */
   reached: boolean;
+  /** runs that scored during the plate appearance */
+  runs?: number;
+}
+
+/** A moment worth recalling later (callbacks, the break recap, the closing): what happened, to whom, when. */
+export interface Moment {
+  kind: 'hr' | 'rbiHit' | 'robbed' | 'doublePlay' | 'strikeoutRisp' | 'stolenBase';
+  inning: number;
+  half: 'top' | 'bottom';
+  batterId: string;
+  pitcherId?: string;
+  fielderId?: string;
+  /** the PA result ('double', 'home run' ...) */
+  result?: string;
+  runs: number;
+  /** the score after it (home, away) */
+  score: { home: number; away: number };
+  /** the batting side was behind, tied or ahead before it */
+  before: 'behind' | 'tied' | 'ahead';
 }
 
 export const isFastball = (t: string) => t === 'FF' || t === 'FT' || t === 'SI' || t === 'FC';
 export const isBreaking = (t: string) => t === 'SL' || t === 'CU' || t === 'SW';
 export const isOffspeed = (t: string) => t === 'CH' || t === 'FS';
-export const isHit = (r?: string) => !!r && /^(single|double|triple|home run)/.test(r);
+export const isHit = (r?: string) => !!r && /^(single|double|triple|home run)(?! play)/.test(r); // ("double play" is an out)
 export const isK = (r?: string) => !!r && r.startsWith('strikeout');
 export const isWalk = (r?: string) => !!r && /walk|hit by pitch/.test(r);
 export const isOut = (r?: string) => !!r && !isHit(r) && !isWalk(r) && r !== 'reached on error' && r !== "fielder's choice";
@@ -80,6 +99,16 @@ export class GameLog {
   stealing: { id: string; base: number; time: number } | null = null;
   /** pitcher id -> batters faced this game */
   private bf = new Map<string, number>();
+  /** notable plays, in order (at most 60) */
+  moments: Moment[] = [];
+  private scoreBeforePa: { home: number; away: number } | null = null;
+  private rispAtPa = false;
+
+  private moment(m: Omit<Moment, 'before'>, before: { home: number; away: number }) {
+    const bat = m.half === 'top' ? before.away - before.home : before.home - before.away;
+    this.moments.push({ ...m, before: bat < 0 ? 'behind' : bat === 0 ? 'tied' : 'ahead' });
+    if (this.moments.length > 60) this.moments.shift();
+  }
 
   // -- feeding --------------------------------------------------------------------------------------------------------
 
@@ -102,6 +131,8 @@ export class GameLog {
         if (this.pas.length > 200) this.pas.shift();
         this.cur = pa;
         this.pending = null;
+        this.scoreBeforePa = { ...c.score };
+        this.rispAtPa = !!(c.runners[1] || c.runners[2]);
         this.bf.set(pa.pitcherId, (this.bf.get(pa.pitcherId) ?? 0) + 1);
         this.half.batters++;
         break;
@@ -157,6 +188,13 @@ export class GameLog {
         if (pa) {
           pa.result = r;
           pa.reached = !isOut(r);
+          const before = this.scoreBeforePa ?? c.score;
+          const runs = pa.runs ?? 0;
+          const base = { inning: pa.inning, half: pa.half, batterId: pa.batterId, pitcherId: pa.pitcherId, result: r, runs, score: { ...c.score } };
+          if (/^home run/.test(r)) this.moment({ kind: 'hr', ...base }, before);
+          else if (isHit(r) && runs > 0) this.moment({ kind: 'rbiHit', ...base }, before);
+          else if (isK(r) && this.rispAtPa && this.outs >= 3) this.moment({ kind: 'strikeoutRisp', ...base }, before);
+          else if (r === 'double play') this.moment({ kind: 'doublePlay', ...base }, before);
         }
         if (isHit(r)) this.half.hits++;
         if (isWalk(r)) this.half.walks++;
@@ -167,6 +205,7 @@ export class GameLog {
         const k = `${c.inning}${c.half === 'top' ? 't' : 'b'}`;
         this.runsByHalf.set(k, (this.runsByHalf.get(k) ?? 0) + 1);
         this.half.runs++;
+        if (this.cur) this.cur.runs = (this.cur.runs ?? 0) + 1;
         this.trackScore(c);
         break;
       }
@@ -176,6 +215,9 @@ export class GameLog {
         if (p && typeof p.x === 'number' && typeof p.z === 'number' && (!this.landing || time - this.landing.time > 6)) this.landing = { x: p.x, z: p.z, air: ev.type === 'catch' && !!ev.fly, time, fielderId: String(ev.fielderId ?? '') };
         break;
       }
+      case 'robbedHomeRun':
+        this.moment({ kind: 'robbed', inning: c.inning, half: c.half, batterId: String(ev.batterId ?? this.cur?.batterId ?? ''), fielderId: String(ev.fielderId ?? ''), runs: 0, score: { ...c.score } }, c.score);
+        break;
       case 'wallContact':
         this.lastWall = time;
         break;
@@ -232,6 +274,7 @@ export class GameLog {
     this.stealing = null;
     this.bf.clear();
     this.half = { hits: 0, walks: 0, ks: 0, runs: 0, batters: 0 };
+    this.moments = [];
   }
 
   // -- queries --------------------------------------------------------------------------------------------------------

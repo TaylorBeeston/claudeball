@@ -194,11 +194,13 @@ function recordLine(c: ClubFacts, r: () => number): string | null {
 
 // ---- the segment ------------------------------------------------------------------------------------------------------------------------
 
-interface Block {
+export interface Block {
   id: string;
   /** lower = more important; essential blocks are always said */
   pri: number;
   essential?: boolean;
+  /** all turns or none (a joke's setup without its punchline is no joke) */
+  whole?: boolean;
   turns: { speaker: VoiceId; text: string | null; excited?: boolean }[];
 }
 
@@ -360,10 +362,18 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
   r = R('pa');
   add({ id: 'pa', pri: 12, turns: [{ speaker: 'color', text: say([`And ${CAST.pa.name} on the public address, the best voice in the ballpark, ${P.first}. Present company included.`, `Love hearing ${CAST.pa.first} ${CAST.pa.last} on the PA. That voice was made for this.`], {}, r) }, { speaker: 'pxp', text: say(['No argument from me.', 'I will take that personally.'], {}, r) }] });
 
+  return fitBlocks('open', blocks, o.budget, o.level === 'low', dur);
+}
+
+/**
+ * Fit blocks into `budget` seconds: the essential ones, then by importance while the estimate fits (3 % margin), then the opening line of blocks that
+ * did not fit whole; the rest waits at the end as extras the director says only if there is time (never the `earlyOnly` ones). Output in block order.
+ */
+export function fitBlocks(tag: string, blocks: Block[], budget: number, low: boolean, dur: (text: string) => number, earlyOnly: Set<string> = EARLY_ONLY): Segment {
+  const o = { budget };
   // fit: essential blocks, then by importance while the estimate fits (15 % margin)
   const pause = 0.45;
   const est = (b: Block) => b.turns.reduce((a, t) => a + (t.text ? dur(t.text) + pause : 0), 0);
-  const low = o.level === 'low';
   const chosen = new Map<Block, number>(); // block -> how many of its turns
   let used = 0;
   const fits = (e: number) => (used + e) * 1.03 <= o.budget;
@@ -377,7 +387,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
   // fill what is left with the opening line of blocks that did not fit whole (each stands on its own)
   if (!low)
     for (const b of [...blocks].sort((a, b) => a.pri - b.pri)) {
-      if (chosen.has(b) || !b.turns[0]?.text) continue;
+      if (chosen.has(b) || b.whole || !b.turns[0]?.text) continue;
       const e = dur(b.turns[0].text) + pause;
       if (fits(e)) {
         chosen.set(b, 1);
@@ -394,9 +404,10 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
   if (!low)
     for (const b of [...blocks].sort((a, b) => a.pri - b.pri)) {
       const n = chosen.get(b) ?? 0;
-      if (n === 0 && !EARLY_ONLY.has(b.id)) for (const t of b.turns) if (t.text) turns.push({ speaker: t.speaker, text: t.text, block: `${b.id}+`, optional: true, excited: t.excited });
+      if (n === 0 && !earlyOnly.has(b.id)) for (const t of b.turns) if (t.text) turns.push({ speaker: t.speaker, text: t.text, block: `${b.id}+`, optional: true, excited: t.excited });
     }
-  return { tag: 'open', turns };
+  return { tag, turns };
+
 }
 
 /** The handoff when the umpire calls play ball: the leadoff man, the pitcher, and the short tag for the top of the first. */
