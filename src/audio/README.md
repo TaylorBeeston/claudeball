@@ -228,10 +228,14 @@ Measured (T30 / per octave): **Dry** ~1.0 s, **Normal** 2.1 s mid (250 Hz 2.35 s
 **Big** ~2.5 s; wet return 0.16 / 0.30 / 0.38; the slap-backs scale 0.4x / 1x / 1.25x.
 
 **Levels** (set by measurement: `render.ts --stems`, each family alone through the whole chain; the booth is the anchor). Game scene at the
-default settings: master **-16.8 LUFS integrated, true peak -2.4 dBTP, no clipping**; booth -12.8 LUFS while talking, organ -18,
-PA voice -19, crowd -18.5 (calm bed about 11 dB under the booth, a home-run roar ~3 dB under the booth's peaks), field effects -19.7
-(bat crack momentary max -15). The knobs: `MAKEUP` (master), `BOOTH_LEVEL`, `ORGAN_LEVEL`, `MUSIC_LEVEL`, `PA_LEVEL` in `mixer.ts`;
-`TRIM` (sfx / crowd one-shots / beds / PA into the mics / umpire) in `venue/graph.ts`; mic faders in `MICS`.
+default settings: master **-16.6 LUFS integrated, true peak -3.5 dBTP, no clipping** (phones -16.2 LUFS, -2.0 dBTP); booth -13 LUFS while
+talking, organ -18, PA voice -19, crowd -18 (calm bed about 11 dB under the booth, a home-run roar ~2 dB under the booth's peaks), field
+effects -19 (bat crack momentary max -15). **Gain staging**: Chrome's DynamicsCompressor adds automatic makeup gain (~+11 dB on the booth
+compressor, ~+2 dB on the limiter), so the booth's own makeup is -6 dB and its level sits in its fader, and the master's output trim keeps
+the limiter's peaks ~2 dB under the soft clipper's knee: the clippers are a safety net that does not act (`render.ts --null-clip`: the
+render with linear clippers differs by -92 dB, phones -61 dB). The knobs: `MAKEUP` (master), `BOOTH_LEVEL`, `ORGAN_LEVEL`, `MUSIC_LEVEL`,
+`PA_LEVEL` in `mixer.ts`; `TRIM` (sfx / crowd one-shots / beds / PA into the mics / umpire) in `venue/graph.ts`; mic faders in `MICS`.
+Park music cannot be rendered offline (it streams): `MUSIC_LEVEL` matches the organ's and was not measured.
 
 **Duck** (`venue/duck.ts`): `duckStep` follows the booth bus (mean square per 128-sample block, 5 ms up / 120 ms down detector), a gain
 computer (threshold -50 dBFS, 14 dB range to full depth), attack 50 ms, hold 250 ms (bridges the gaps between words), release 500 ms;
@@ -255,7 +259,7 @@ at full duck (gain plus presence cut, RMS of the park), 90 % in ~100 ms, back wi
 ### Verifying without ears
 
 - `?audiodebug=1`: the live panel.
-- `npx tsx tools/audio/render.ts [--tag NAME] [--scenes game,impulse,duck,organ,pa-noise] [--venue big] [--lowpower] [--stems] [--reps 3]`
+- `npx tsx tools/audio/render.ts [--tag NAME] [--scenes game,impulse,duck,organ,pa-noise] [--venue big] [--lowpower] [--stems] [--reps 3] [--null-clip] [--determinism] [--bench]`
   renders the real graph on an OfflineAudioContext (headless Chrome via the dev server) to `~/claudeball-audio-renders/<tag>-<scene>.wav`
   (never in the repo) with `<tag>-analysis.json`: integrated / momentary loudness, loudness range, true peak, clipping, CPU ms per audio
   second, the venue's RT60 from the rendered tail and from the IR (per octave), the duck's depth over time (the park with the booth muted
