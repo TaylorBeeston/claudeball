@@ -6,6 +6,7 @@
  *    a time, the field channel first, a line that waited too long is dropped. That sequential fallback is the only way browser voices can work.
  * Each view cancels only its own lines, and the gate counts how many lines each side has running (for the PA/booth ducking).
  */
+import { speakerLabel, speakerName } from './cast';
 import type { SpeakHandle, SpeakOptions, SpeechEngine } from '../speech';
 import { estimateSpokenChars, type SpeechChannel, type SpeechEvent, type SpeechSpeaker } from '../captions';
 import { clauseEnds, estimateDuration } from './text';
@@ -66,7 +67,8 @@ export class SpeechGate {
     req.t0 = this.clock();
     if (info?.expectedMs) req.expectedMs = info.expectedMs;
     this.started.set(req.id, { req, text: req.text });
-    this.emit({ type: 'speechStart', id: req.id, channel: channelOf(req), speaker: speakerOf(req), text: req.text, startMs: req.t0, expectedDurationMs: Math.round(req.expectedMs), excited: (req.o.shift ?? 1) > 1.01 });
+    const speaker = speakerOf(req);
+    this.emit({ type: 'speechStart', id: req.id, channel: channelOf(req), speaker, text: req.text, startMs: req.t0, expectedDurationMs: Math.round(req.expectedMs), excited: (req.o.shift ?? 1) > 1.01, label: speakerLabel(speaker), name: speakerName(speaker) });
   }
 
   private finishCaption(req: Req, reason: 'finished' | 'cut' | 'cancelled' | 'error') {

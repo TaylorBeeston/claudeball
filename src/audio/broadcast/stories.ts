@@ -13,6 +13,10 @@ import { isBreaking, isFastball, isHit, isK, isOffspeed, type GameLog } from './
 import { pitchName } from '../commentary';
 import { numWord, ordWord } from './lexicon';
 import type { Topic, TopicTurn, VoiceId } from './director';
+import { CAST } from './cast';
+
+/** how a voice is addressed by his partner (the analyst is mostly "Biscuit", now and then "Hollis") */
+export const addressOf = (v: VoiceId, rng: Rng) => (v === 'pxp' ? CAST.pbp.calledBy[0] : rng() < 0.8 ? CAST.color.calledBy[0] : CAST.color.calledBy[1] ?? CAST.color.calledBy[0]);
 
 type Rng = () => number;
 
@@ -44,7 +48,9 @@ function script(lines: Line[], slots: Slots, rng: Rng, opener: VoiceId): TopicTu
   const other: VoiceId = opener === 'pxp' ? 'color' : 'pxp';
   const turns: TopicTurn[] = [];
   for (const l of lines) {
-    const text = say(l.t, slots, rng);
+    const me: VoiceId = l.who === 'A' ? opener : other;
+    // $other: what this speaker calls his partner (the cast's names), $me: his own first name
+    const text = say(l.t, { ...slots, other: addressOf(me === 'pxp' ? 'color' : 'pxp', rng), me: me === 'pxp' ? CAST.pbp.first : CAST.color.first }, rng);
     if (!text) {
       if (l.opt) continue;
       return null;
@@ -237,7 +243,7 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
     const pr = pit?.ratings;
     if (pr?.control && pr.control >= 65) {
       add({ id: 'controlGrade', key: `ctl:${pid}`, salience: 0.35, relevance: 0.3, opener: 'color', build: (rng, o) => script([
-        { who: 'A', t: ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p, and it {shows|has shown} tonight.'] },
+        { who: 'A', t: mix.total >= 20 ? ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p, and it {shows|has shown} tonight.'] : ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p. He lives on the edges.'] },
         { who: 'B', t: ['That is why the walks are {rare|so few}.', 'Painting the corners.', 'That is why he does not walk many.'], opt: true },
       ], { ...S, g: grade(pr.control) }, rng, o) });
     }
@@ -390,7 +396,7 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
   if (bat && pit && bat.hand && pit.hand && bat.hand !== 'S' && pit.hand !== 'S' && bat.hand === pit.hand) {
     add({ id: 'sameHand', key: `hand:${bat.hand}${pit.hand}:${c.inning}`, salience: 0.22, relevance: 0.4, opener: 'color', build: (rng, o) => script([
       { who: 'A', t: ['$h against $h2 here.', 'It is $h on $h2 in this matchup.'] },
-      { who: 'B', t: ['That {usually|tends to} {favors|helps} the pitcher.', '{The break|The angle} {works|plays} for $p.'], opt: true },
+      { who: 'B', t: ['That {usually favors|tends to favor|helps} the pitcher.', '{The break|The angle} {works|plays} for $p.'], opt: true },
     ], { ...S, h: bat.hand === 'L' ? 'lefty' : 'righty', h2: bat.hand === 'L' ? 'lefty' : 'righty' }, rng, o) });
   }
   return stories;
@@ -401,11 +407,11 @@ export function neutralStories(c: BoothCtx): Story[] {
   const S = slotsOf(c);
   const out: Story[] = [];
   const add = (id: string, lines: Line[], ok = true, tense = false) => ok && out.push({ id, key: `n:${id}`, salience: 0.1, relevance: 0.2, tense, opener: 'either', build: (rng, o) => script(lines, S, rng, o) });
-  add('n.inning', [{ who: 'A', t: ['We are in the $half of the $ord.', 'It is the $half of the $ord inning.'] }, { who: 'B', t: ['Plenty of baseball left.', 'Still a lot of game ahead.'], opt: true }], c.inning <= 6);
-  add('n.score', [{ who: 'A', t: ['It is $score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['A game that is still up for grabs.', 'Anybody\'s ballgame.', 'Nothing decided yet.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2);
-  add('n.tied', [{ who: 'A', t: ['All tied up at $tiescore.', 'Tied at $tiescore.'] }, { who: 'B', t: ['And the next run could matter a lot.', 'Somebody is going to have to break it open.'], opt: true }], c.score.home === c.score.away);
+  add('n.inning', [{ who: 'A', t: ['We are in the $half of the $ord.', 'It is the $half of the $ord inning.'] }, { who: 'B', t: ['Plenty of baseball left.', 'Still a lot of game ahead.'], opt: true }], c.inning >= 2 && c.inning <= 6);
+  add('n.score', [{ who: 'A', t: ['It is $score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['A game that is still up for grabs.', 'Anybody\'s ballgame.', 'Nothing decided yet.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2 && c.score.home + c.score.away > 0);
+  add('n.tied', [{ who: 'A', t: ['All tied up at $tiescore.', 'Tied at $tiescore.'] }, { who: 'B', t: ['And the next run could matter a lot.', 'Every run counts double in a tie game, $other.'], opt: true }], c.score.home === c.score.away && c.score.home > 0 && c.inning >= 4);
   add('n.lead', [{ who: 'A', t: ['$lead lead by $diffw.', '$lead are up $diffw.'] }, { who: 'B', t: ['Not a safe margin.', 'That can disappear in a hurry.', 'One swing changes that.'], opt: true }], S.lead !== undefined && Number(S.diff) > 0 && Number(S.diff) <= 3);
-  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : c.outs === 1 ? ['One out.', 'One down, two to go.'] : ['Nobody out yet.', 'No outs so far this half.'] }]);
+  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : ['One out.', 'One down, two to go.'] }], c.outs > 0);
   return out;
 }
 

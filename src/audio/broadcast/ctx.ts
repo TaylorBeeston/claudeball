@@ -39,6 +39,8 @@ export interface BoothCtx extends ChatCtx {
   person?(id: unknown): { name: string; role?: string; number?: number } | undefined;
   /** sim time, seconds */
   time?: number;
+  /** the sim's lull (non-pitch time: a break, a mound visit ...): its kind, planned length and what is left (seconds) */
+  lull?: { kind: string; sec: number; remaining?: number } | null;
 }
 
 export const lastNameOf = (full: string) => {
@@ -68,5 +70,6 @@ export function ctxFromRaw(rs: any, extra: { crowd?: number; lastPlay?: string }
     lastPlay: extra.lastPlay,
     person: (id) => byId.get(String(id)),
     time: rs.time,
+    lull: rs.lull && rs.lullKind ? { kind: String(rs.lullKind), sec: Number(rs.lullSec ?? 0), remaining: rs.lullRemaining != null ? Number(rs.lullRemaining) : undefined } : null,
   };
 }

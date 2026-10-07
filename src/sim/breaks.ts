@@ -14,6 +14,7 @@ import { warmTick, type WarmCtx } from './visits';
 import type { PlayerRT, World } from './world';
 import { secToTicks } from './world';
 import { sendHome } from './handling';
+import { scheduleCall } from './umpires';
 
 interface Pair {
   a: PlayerRT;
@@ -32,12 +33,15 @@ export interface BreakShow {
   hardEnd: number;
   warm: WarmCtx;
   pairs: Pair[];
+  /** the pregame (before the first pitch): it ends with the plate umpire's "Play ball!" */
+  pregame: boolean;
 }
 
 /** Start the show for the half-inning that begins now (called from `startHalfInning`); returns the length of the break in ticks. */
 export function beginBreak(w: World): number {
-  const first = w.tick === 0;
-  const sec = first ? 22 + 6 * w.propRng.next() : 26 + 34 * w.propRng.next();
+  const first = w.inning === 1 && w.half === 'top' && w.tick <= 1; // (startGame runs on tick 1)
+  // the pregame is longer (60-90 s at `broadcast`, ~36-54 s at `standard`, ~15-22 s at `quick`): the booth's opening segment fits into it
+  const sec = first ? 60 + 30 * w.propRng.next() : 26 + 34 * w.propRng.next();
   const planned = lticks(w, sec);
   const P = w.pitcher;
   const warmTotal = Math.max(2, Math.round(8 * clamp(lullScale(w), 0, 1)));
@@ -48,11 +52,12 @@ export function beginBreak(w: World): number {
     hardEnd: w.tick + planned + secToTicks(25),
     warm: { np: P, cover: w.fieldingTeam.defense.get('SS') ?? null, warmTotal, warmDone: 0, wstep: 'start', wuntil: 0, deadline: w.tick + planned + secToTicks(120) },
     pairs: [],
+    pregame: first,
   };
   w.breakShow = show;
   w.extraBalls = [];
   setLull(w, 'break', 'break', planned / 240);
-  emit(w, { type: 'breakStart', inning: w.inning, half: w.half, sec: planned / 240 });
+  emit(w, { type: 'breakStart', inning: w.inning, half: w.half, sec: planned / 240, ...(first ? { pregame: true } : {}) });
   return planned;
 }
 
@@ -159,6 +164,7 @@ export function breakFinished(w: World): boolean {
     sendHome(w, p.b, false);
   }
   w.extraBalls = [];
+  if (s.pregame) scheduleCall(w, 'plate', 'play_ball', 0.2);
   w.breakShow = null;
   clearLull(w);
   void DEFAULT_SPOTS;

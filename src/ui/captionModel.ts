@@ -14,6 +14,8 @@ export interface SpeechStartEvent {
   channel?: string;
   /** who speaks ('play-by-play' | 'color' | 'pa' | 'umpire' ...) */
   speaker?: string;
+  /** the speaker's caption label when the audio layer names its cast ('LYLE', 'BISCUIT'); preferred over the role */
+  label?: string;
   text: string;
   startMs?: number;
   expectedDurationMs?: number;
@@ -28,6 +30,9 @@ export interface SpeechEndEvent {
 export type CaptionKind = 'pbp' | 'color' | 'pa' | 'umpire' | 'other';
 
 export const CAPTION_LABELS: Record<CaptionKind, string> = { pbp: 'PLAY-BY-PLAY', color: 'COLOR', pa: 'PA', umpire: 'UMPIRE', other: '' };
+
+/** The label shown before a line: the speaker's name from the audio layer's cast ('LYLE', 'BISCUIT') when it sends one, else the role. */
+const labelOf = (ev: { label?: string; speaker?: string }, kind: CaptionKind) => (ev.label ? ev.label.toUpperCase() : CAPTION_LABELS[kind] || (ev.speaker ?? '').toUpperCase());
 
 /** Which kind of voice a speech event is, from its `speaker` (preferred) or `channel`. */
 export function captionKind(e: { speaker?: string; channel?: string }): CaptionKind {
@@ -66,6 +71,7 @@ export function normalizeSpeech(raw: unknown): SpeechEvent | null {
         id,
         channel: typeof e.channel === 'string' ? e.channel : undefined,
         speaker: typeof e.speaker === 'string' ? e.speaker : undefined,
+        label: typeof e.label === 'string' && e.label ? e.label : undefined,
         text: e.text,
         startMs: typeof e.startMs === 'number' ? e.startMs : undefined,
         expectedDurationMs: typeof e.expectedDurationMs === 'number' ? e.expectedDurationMs : undefined,
@@ -139,10 +145,10 @@ export class CaptionModel {
     const hideAt = now + exp + this.t.graceMs;
     const old = this.entries.find((e) => e.id === ev.id);
     if (old) {
-      Object.assign(old, { text, kind, label: CAPTION_LABELS[kind] || (ev.speaker ?? '').toUpperCase(), truncated: false, phase: 'on' as const, hideAt, ended: false });
+      Object.assign(old, { text, kind, label: labelOf(ev, kind), truncated: false, phase: 'on' as const, hideAt, ended: false });
       return true;
     }
-    this.entries.push({ id: ev.id, kind, label: CAPTION_LABELS[kind] || (ev.speaker ?? '').toUpperCase(), text, truncated: false, phase: 'on', startAt: now, hideAt, removeAt: Infinity, ended: false });
+    this.entries.push({ id: ev.id, kind, label: labelOf(ev, kind), text, truncated: false, phase: 'on', startAt: now, hideAt, removeAt: Infinity, ended: false });
     this.trim(now);
     return true;
   }

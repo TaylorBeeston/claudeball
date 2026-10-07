@@ -554,7 +554,9 @@ export type UmpireCallKind =
   | 'foul_tip'
   | 'time'
   | 'ball_four'
-  | 'strikeout';
+  | 'strikeout'
+  /** the plate umpire starts the game (at the end of the pregame) */
+  | 'play_ball';
 
 export type GameEvent =
   | (EBase & { type: 'gameStart' })
@@ -610,7 +612,7 @@ export type GameEvent =
   | (EBase & { type: 'pitchingChangeStart'; team: TeamSide; outId: string; inId: string; managerId: string })
   | (EBase & { type: 'challenge'; team: TeamSide; managerId: string; base: number; runnerId: string; call: 'out' | 'safe'; margin: number })
   | (EBase & { type: 'challengeResult'; team: TeamSide; overturned: boolean; runnerId: string; margin: number })
-  | (EBase & { type: 'breakStart'; inning: number; half: 'top' | 'bottom'; sec: number })
+  | (EBase & { type: 'breakStart'; inning: number; half: 'top' | 'bottom'; sec: number; /** the pregame: the teams take the field before the first pitch */ pregame?: boolean })
   | (EBase & { type: 'coachSignal'; coachId: string; kind: CoachSignalKind; runnerId?: string; base?: number })
   | (EBase & { type: 'ballKidRetrieve'; ballKidId: string; pos: Vec3 })
   | (EBase & { type: 'ballTossedToFan'; ballKidId: string; pos: Vec3 })

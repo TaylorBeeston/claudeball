@@ -28,6 +28,7 @@ export const HINT_OF: Record<UmpireCallKind, AnimHint> = {
   out: 'ump_out',
   homerun: 'ump_homerun',
   time: 'ump_time',
+  play_ball: 'ump_fair', // a point toward the pitcher: "Play ball!"
 };
 
 export const umpFor = (w: World, key: UmpKey): UmpireRT => w.umpires.find((u) => u.key === key)!;

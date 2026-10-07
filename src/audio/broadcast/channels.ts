@@ -3,7 +3,7 @@
  * `SpeechQueue` on the gate's other view; see `gate.ts`.) Reports back when a voice really finished, applies the excited delivery
  * (faster, higher) and cuts a running line at a clause boundary when told to.
  */
-import type { SpeakHandle, SpeechEngine } from '../speech';
+import { pickVoices, type SpeakHandle, type SpeechEngine, type VoiceChoice } from '../speech';
 import type { Action, StartAction, VoiceId } from './director';
 
 export interface BoothSinkOpts {
@@ -36,6 +36,17 @@ export class BoothSink {
     }
   }
 
+  /** browser voices: each booth character keeps one voice for the game (the same picks as the PA queue: two different male-ish voices when there are) */
+  private choice: VoiceChoice | null = null;
+  private browserVoice(role: 'pbp' | 'color'): string | undefined {
+    if (!this.choice?.pbp) {
+      const list = this.engine.voices?.() ?? [];
+      if (!list.length) return undefined;
+      this.choice = pickVoices(list);
+    }
+    return this.choice[role];
+  }
+
   private start(a: StartAction) {
     const text = a.clauses.map((c) => c.text).join(' ');
     const ex = !!a.item.excited;
@@ -52,7 +63,7 @@ export class BoothSink {
     const role = a.voice === 'pxp' ? 'pbp' : 'color';
     const handle = this.engine.speak(text, {
       role,
-      voiceName: this.engine.voiceFor?.(role),
+      voiceName: this.engine.voiceFor?.(role) ?? this.browserVoice(role),
       pitch: ex ? EXCITED.pitch : d.pitch,
       shift: ex ? EXCITED.shift : 1,
       rate: ex ? EXCITED.rate : d.rate,
