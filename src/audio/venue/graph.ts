@@ -40,8 +40,15 @@ export interface Strip {
   meter: AnalyserNode | null;
 }
 
+/** a one-shot as played: its sources (copies at different mics), the nodes to clean up, and when its last copy ends (audio clock) */
+export interface Played {
+  srcs: AudioBufferSourceNode[];
+  nodes: AudioNode[];
+  end: number;
+}
+
 /** loudness trims of the park's source families into the mic array (set by measurement, see the README's tuning guide) */
-export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 1.0, pa: 0.5, ump: 0.55 };
+export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 0.85, pa: 0.5, ump: 0.55 };
 
 const dbToGain = (d: number) => Math.pow(10, d / 20);
 
@@ -151,7 +158,7 @@ export class VenueGraph {
     lim.ratio.value = 20;
     lim.attack.value = 0.001;
     lim.release.value = 0.1;
-    const trim = gain(0.85);
+    const trim = gain(this.lowPower ? 1.07 : 0.85); // phones: +2 dB for the glue compressor's makeup they skip
     const clip = count(ctx.createWaveShaper());
     clip.curve = softClipCurve(0.891);
     // the limiter ahead (with its look-ahead) holds the peaks: the clipper is a last safety net, not oversampled (measured: true peak
@@ -333,9 +340,10 @@ export class VenueGraph {
    * One-shot at a position: K buffer sources (the same buffer and rate: the copies are the same sound arriving at different mics), each
    * started at the trigger time + its pickup delay, each through one gain into its mic strip. Returns the sources and nodes to clean up.
    */
-  playAt(buffer: AudioBuffer, pos: Vec3, gain: number, when: number, rate: number, k = this.lowPower ? 2 : 3): { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] } {
+  playAt(buffer: AudioBuffer, pos: Vec3, gain: number, when: number, rate: number, k = this.lowPower ? 2 : 3): Played {
     const srcs: AudioBufferSourceNode[] = [];
     const nodes: AudioNode[] = [];
+    let end = when;
     for (const p of pickups(pos, this.mics, k)) {
       const s = this.strips.get(p.mic);
       if (!s) continue;
@@ -366,16 +374,18 @@ export class VenueGraph {
       }
       tail.connect(s.input);
       src.start(when + p.delay);
+      end = Math.max(end, when + p.delay + (buffer.duration || 0) / rate);
       srcs.push(src);
       nodes.push(g);
     }
-    return { srcs, nodes };
+    return { srcs, nodes, end };
   }
 
   /** a stadium-wide sound (a big roar, the whole crowd): into the house pair and the crowd mics, no single position */
-  playDiffuse(buffer: AudioBuffer, gain: number, when: number, rate: number, wet = 0.3): { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] } {
+  playDiffuse(buffer: AudioBuffer, gain: number, when: number, rate: number, wet = 0.3): Played {
     const srcs: AudioBufferSourceNode[] = [];
     const nodes: AudioNode[] = [];
+    let end = when;
     const targets = this.mics.filter((m) => m.group === 'house' || (!this.lowPower && (m.id === 'crowd_3b' || m.id === 'crowd_1b')));
     targets.forEach((m, i) => {
       const s = this.strips.get(m.id)!;
@@ -392,11 +402,13 @@ export class VenueGraph {
         nodes.push(w);
       }
       // the copies start a few ms apart (different mics, different seats): a wide, unfocused sound
-      src.start(when + i * 0.011, i ? Math.min(0.05 * i, Math.max(0, buffer.duration - 0.1)) : 0);
+      const off = i ? Math.min(0.05 * i, Math.max(0, buffer.duration - 0.1)) : 0;
+      src.start(when + i * 0.011, off);
+      end = Math.max(end, when + i * 0.011 + ((buffer.duration || 0) - off) / rate);
       srcs.push(src);
       nodes.push(g);
     });
-    return { srcs, nodes };
+    return { srcs, nodes, end };
   }
 
   /** a per-speaker EQ in front of the booth chain (each announcer's voice and headset are a little different) */

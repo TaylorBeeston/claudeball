@@ -31,7 +31,7 @@ function fakeCtx(state: 'running' | 'suspended' = 'running') {
     createWaveShaper: () => node({ curve: null }),
     createChannelSplitter: () => node(),
     createStereoPanner: () => node({ pan: param() }),
-    createBuffer: (ch: number, len: number, sr: number) => ({ numberOfChannels: ch, length: len, sampleRate: sr, getChannelData: () => new Float32Array(len), copyToChannel: () => {} }),
+    createBuffer: (ch: number, len: number, sr: number) => ({ numberOfChannels: ch, length: len, sampleRate: sr, duration: len / sr, getChannelData: () => new Float32Array(len), copyToChannel: () => {} }),
     createBufferSource: () => {
       const s: any = node({ buffer: null, loop: false, playbackRate: param(), start: vi.fn(), stop: vi.fn(), onended: null });
       ctx.sources.push(s);
@@ -107,6 +107,8 @@ describe('mixer', () => {
     copies[0].onended();
     expect(m.voiceCount).toBe(1);
     for (const c of copies.slice(1)) c.onended();
+    // the nodes are released at once; the voice leaves the count when the audio clock passes its end
+    f.ctx.currentTime = 10;
     expect(m.voiceCount).toBe(0);
     expect(f.live.size).toBe(baseline);
     expect(m.played.bat_crack).toBe(1);

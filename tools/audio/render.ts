@@ -136,6 +136,20 @@ async function main() {
         finite: chs.every((c) => c.every(Number.isFinite)),
         info: r.info,
       };
+      if (flag('determinism')) {
+        // the same scene again: every sample must match (seeded noise, seeded crowd, scheduled on the audio clock)
+        const again = (await run({ scene, voice, settings, lowPower, debug, parts })).channels.map(fromB64);
+        let maxDiff = 0;
+        let first = -1;
+        for (let c = 0; c < chs.length; c++)
+          for (let i = 0; i < chs[c].length; i++) {
+            const d = Math.abs(chs[c][i] - again[c][i]);
+            if (d > 0 && (first < 0 || i < first)) first = i;
+            maxDiff = Math.max(maxDiff, d);
+          }
+        a.determinism = { maxDiff, identical: maxDiff === 0, firstDiffSec: first < 0 ? null : +(first / r.sr).toFixed(4) };
+        console.log(`[render] ${scene} determinism: max sample difference ${maxDiff}, first at ${first < 0 ? '-' : (first / r.sr).toFixed(4) + ' s'}`);
+      }
       if (scene === 'game' && flag('stems')) {
         // each family alone through the whole chain (master dynamics included): integrated and loudest momentary loudness
         const fams = ['organ', 'crowd', 'sfx', 'pa', 'booth'] as const;

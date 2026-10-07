@@ -10,7 +10,7 @@ main.ts:  attachAudio(engine, root, { off: params.has('noaudio') })     // the w
 ```
 
 `attachAudio(engine, root, { ui: false })` skips this layer's own button / panel / prompt: the app (`src/ui`) drives `AudioController` (`settings`, `settingsChanged()`, `unlock()`, `isLocked`, and for HD voices `hdStatus()` / `subscribeHd()` / `hdToggle()` / `removeHd()`) from its menus and attaches it inside the *Start Game* click. One settings store (`Settings` in `mixer.ts`, saved under `claudeball.audio.v1`) serves both UIs:
-`master`, `sfx`, `crowd`, `organVolume` (the organ's own slider), `announcer` (voices), `muted`, `pa` (PA announcer + umpire), `commentary`, `organ` (organ on/off), `chatter` (`low` / `normal` / `high`), `hd` (HD voices on).
+`master`, `sfx`, `crowd`, `organVolume` (the organ's own slider), `announcer` (voices), `muted`, `pa` (PA announcer + umpire), `commentary`, `organ` (organ on/off), `chatter` (`low` / `normal` / `high`), `hd` (HD voices on), `venue` (`dry` / `normal` / `big`: the park's acoustics), `micPerspective` (`broadcast` / `close`), `duck` (`light` / `normal` / `strong`: how far the park sits back under the booth).
 
 Controls: **M** mutes/unmutes (while audio is still locked, M / 🔊 / the prompt unlock it *and* unmute), the 🔊 button (top right, under the engine's control row) mutes, the ⚙ button opens volumes
 (master / effects / crowd & organ / voices) and the **PA announcer & umpire** and **Commentary** toggles (default on). Settings persist
@@ -20,12 +20,14 @@ in `localStorage` (`claudeball.audio.v1`, every access in try/catch). Browsers o
 ## Flow
 
 ```
-sim raw event bus ─┐                       ┌─ sfx   → spatialize(camera) → pan/lowpass/gain → sfx bus ┐
-(or engine events) ─┴→ CueMapper (cues.ts) ─┼─ crowd → crowd bus                                       ├→ master → compressor → out
-   + frame-derived:   Cue[]                 ├─ excite → Excitement → Ambience loops (crowd bus)        │
-   bounces, slides,                         ├─ organ → Organ (organ bus + stadium reverb)             ┘
-   cleats (index.ts)                        └─ speak → SpeechQueue → browser SpeechSynthesis
+sim raw event bus ─┐                       ┌─ sfx   → positioned in the park → mic array ┐
+(or engine events) ─┴→ CueMapper (cues.ts) ─┼─ crowd model (crowd.ts) → zones / one-shots → mic array   ├→ park bus → duck → master chain → out
+   + frame-derived:   Cue[]                 ├─ organ → Organ → PA system → mic array               ┘          ▲ (sidechain key)
+   bounces, slides,                         └─ speak → SpeechGate → PA voice (PA system) / umpire (field mics) / booth chain ─┘
+   cleats (index.ts)
 ```
+The mix is a broadcast's: the park has its own soundscape (everything sounds IN the ballpark, with its reverb and slap-back), picked up by
+fixed microphones and mixed like a TV truck would; the camera never changes it. See **The park soundscape** below.
 
 | file | what |
 |---|---|
@@ -33,10 +35,15 @@ sim raw event bus ─┐                       ┌─ sfx   → spatialize(camer
 | `cues.ts` | **pure** `CueMapper.map(event, ctx) → Cue[]` (sound choice by physics: exit velo/launch angle, pitch mph, throw distance ...), commentary text, speed gating. Unit-tested |
 | `types.ts` | `Cue`, sound ids, `MapCtx` |
 | `synth.ts`, `dsp.ts` | the sound recipes (bat crack in 3 strengths, thud, tick, bunt, whooshes, mitt/glove pops, bounce, dirt, wall, fence rattle, seat thump, throw, tag, slide, footstep, base, HBP, fireworks, PA mic click, crowd one-shots, crowd loops) rendered to Float32Arrays; deterministic per variant |
-| `mixer.ts` | one `AudioContext`, buses, reverb, buffer cache (rendered a few ms per timer tick after unlock, ~80 buffers), voice pool (cap 32, importance-based stealing, per-sound min gap, nodes disconnected `onended`), replay/pause modes |
-| `spatial.ts` | camera-relative pan / distance gain / air-absorption lowpass (gentle roll-off: TV effects mics sit at the plate and bases, not at the camera) |
+| `mixer.ts` | one `AudioContext`, the settings, buffer cache (rendered a few ms per timer tick after unlock, ~80 buffers; park sounds mono at the context rate), voice pool (cap 32 logical voices, each heard by up to 3 mics; importance-based stealing, per-sound min gap, nodes disconnected `onended`), replay/pause modes, crowd shots by zone |
+| `venue/graph.ts` | the park and the broadcast chains as a Web Audio graph: mic strips, PA system, reverb and slap-backs, sidechain duck, booth chain, master chain |
+| `venue/mics.ts` | **pure**: the mic plot, polar patterns, pickup maths (distance, delay, air, proximity), the pan law, crowd zones, PA speakers |
+| `venue/ir.ts` | **pure**: the synthesised stadium impulse response (presets Dry / Normal / Big) |
+| `venue/duck.ts` | **pure**: the sidechain follower (`duckStep`) and the AudioWorklet that runs it |
+| `venue/analysis.ts` | **pure**: LUFS, true peak, RT60, spectra, envelopes (tests and the render tool) |
+| `debugPanel.ts` | `?audiodebug=1`: live meters per mic, duck, zones, venue |
 | `excitement.ts` | crowd level = smoothed (leverage baseline + event pulses); rises fast, calms slowly |
-| `ambience.ts` | murmur + roar loops gained by excitement, plus sparse whoops / clap ripples |
+| `ambience.ts` | the crowd bed by zone: murmur, roar (and applause) loops per section of the stands, levels from the crowd model |
 | `music.ts` | organ pieces as data (pure, tested): melody + chord changes compiled to timed notes. Includes the 7th-inning stretch (the chorus of *Take Me Out to the Ball Game*, 1908, public domain, transcribed note for note: 31 bars of 3/4 played oom-pah-pah), the charge call, a rally build, home-run fanfare, three ditties, the "shave and a haircut" sting, walk-up, dirge, three soft beds |
 | `organ.ts` | the organ: drawbar-style tone (harmonics 1-6 and 8, 16' sub, decaying 2nd-harmonic percussion on lead notes, key click) through a rotary-speaker stage (AM + Doppler delay + stereo sway, ~0.9 Hz chorale or ~6.7 Hz tremolo for fanfares, soft saturation), one piece at a time with priorities (a fanfare cuts the stretch, nothing cuts a fanfare, anything cuts a bed), look-ahead scheduling, real cancellation |
 | `commentary.ts` | the booth: play-by-play + colour analyst chatter grounded in the sim state (see below) |
@@ -68,11 +75,11 @@ No sim event exists for these, so `index.ts` derives them from the snapshot each
 - **Throws**: whip at the thrower, glove pop at the receiver after distance/speed seconds.
 - **Crowd**: leverage baseline (late innings, close score, runners in scoring position, two strikes, two outs) + pulses (ball in the air swells before it lands, then reacts to the outcome). Reactions depend on who is batting: the home crowd roars for its team and is muted or booing for the visitors; strikeouts cheer for the home pitcher; robbed home runs gasp first.
 - **Organ**: charge after home hits, fanfare on a home HR, stinger on outs, ditty between halves, an original waltz for the 7th-inning stretch.
-- **Replay** (director shot `replay`): new effects play at 0.6x speed through a lowpass and quieter, a whoosh marks the cut, the crowd carries on. **Pause**: effects and organ go silent, the murmur stays, speech pauses. **2x/4x**: minor cues (footsteps, base touches, return throws) are dropped at 2x, only key cues at 4x, speech is off above 1x. **Fast-forward (`n`)**: all cues dropped, speech cleared.
+- **Replay** (director shot `replay`): new effects play at 0.6x speed through a produced, low-passed path (not the mics) and quieter, a whoosh marks the cut, the crowd carries on. **Pause**: effects and organ go silent, the murmur stays, speech pauses. **2x/4x**: minor cues (footsteps, base touches, return throws) are dropped at 2x, only key cues at 4x, speech is off above 1x. **Fast-forward (`n`)**: all cues dropped, speech cleared.
 
 ## Organ
 
-Where you hear it: a walk-up riff for every home batter (under the PA), a rally build (`rally`) or `charge` on a home-team hit (rally when runners are on or for extra bases), `charge` on a home run scored / walk, the fanfare on a home-team homer and a win, the "shave and a haircut" sting on a home-pitcher strikeout, a rotating ditty at every half-inning change, the stretch at the 7th-inning break (the booth is held silent for it), and a soft chord-and-arpeggio **bed** in every break between half innings and between batters in every third half inning. Beds stop at the pitcher's windup (never during a pitch). Organ cues have importance >= 2 and survive 2x (off above 2x); it is silent while paused, muted, skipping or switched off, ducks about 8 dB while anyone is speaking, and has its own volume slider (`organVolume`).
+Where you hear it: a walk-up riff for every home batter (under the PA), a rally build (`rally`) or `charge` on a home-team hit (rally when runners are on or for extra bases), `charge` on a home run scored / walk, the fanfare on a home-team homer and a win, the "shave and a haircut" sting on a home-pitcher strikeout, a rotating ditty at every half-inning change, the stretch at the 7th-inning break (the booth is held silent for it), and a soft chord-and-arpeggio **bed** in every break between half innings and between batters in every third half inning. Beds stop at the pitcher's windup (never during a pitch). Organ cues have importance >= 2 and survive 2x (off above 2x); it is silent while paused, muted, skipping or switched off, plays **through the PA system** (it sounds in the park: horns, slap-back, the bowl's reverb), lays out (-6 dB) under the PA announcer, sits under the booth through the sidechain duck, and has its own volume slider (`organVolume`).
 Why it used to be inaudible (the investigation): at 4x the riffs were `imp: 1` and dropped by the speed gate (21 ditties and 44 stings mapped, none played), and at 1x the organ bus sat at crowd² × 0.55 with 0.16 note gain, far under the effects. Measured now with the analyser (headless, 1x, crowd bed + game): baseline RMS 0.047; charge/rally/fanfare/stretch 0.19-0.23; ditty 0.15; bed ~0.05 (soft by design, peaks 0.09); effects peak 0.75; overall peak < 0.8.
 
 ## The broadcast booth (`broadcast/`)
@@ -92,7 +99,7 @@ Two voices, a play-by-play announcer ("pxp") and a colour analyst, behave like a
 
 **Director.** Importance: *MUST* (outs, hits, runs, home runs, errors, K, walks ... never dropped; may cut a filler / colour / SHOULD line at its next clause, or at once if no clause ends within 1.5 s, unless that line has under 1.2 s left; never cuts another MUST; the other voice yields too), *SHOULD* (ball / strike calls, batted-ball calls, tags, steals: said only if the booth is free within 0.7 s, else NOT said over a line; its count is folded into the next batted-ball call as its own clause, "that makes it two and one", resolved when it is spoken, or dropped when stale), *COULD* (conversation topics and colour). One person talks at a time; 0.2-0.6 s beats between turns; short interjections ("Ooh", "Wow", "Nice piece of hitting") may start over the last 0.4 s of the other voice; a topic is dropped (with its remaining turns) when something more important arrives; after a topic the booth breathes (Normal 5-11 s, High 2.5-6 s, Low: calls only, no topics). Silent at 2x and above, while skipping, paused, muted, and during the stretch. The transcript script `npx tsx scripts/booth-transcript.ts [seed] [low|normal|high] [innings]` plays a simulated game through the booth with a fake clock (a 3-inning game at Normal: ~145 utterances, ~1.5 words/s, about half the time speaking; High is denser, Low is calls only).
 
-**PA and booth are separate channels.** The stadium PA announcer and the umpire (the *field* channel, a `SpeechQueue` for roles `pa` / `ump`) and the booth run independently through `SpeechGate`: with the HD voices (Web Audio: any number of lines at once, each routed to its own bus: PA through a band-limited horn, drive, slap-back and the stadium reverb; umpire in the room reverb; booth dry) they overlap, the PA is ducked about 5 dB while the booth talks and the booth about 2 dB under the PA, nothing is muted. **Browser speech synthesis has one global queue and cannot overlap**; with browser voices (and the single-line custom voice) the gate falls back to one line at a time, the field channel first, and a booth line that waited too long is dropped. The PA is about 4-5 dB quieter than before by default; `paVolume` has its own slider ("PA announcer", also in the app menu), umpire calls share it.
+**PA and booth are separate channels.** The stadium PA announcer and the umpire (the *field* channel, a `SpeechQueue` for roles `pa` / `ump`) and the booth run independently through `SpeechGate`: with the HD voices (Web Audio: any number of lines at once, each routed by the mixer: the PA voice through the PA system into the park, the umpire as a source at the plate heard by the field mics, the booth through the broadcast voice chain) they overlap; the park (PA included) ducks under the booth through the sidechain and the booth sits about 2 dB under the PA, nothing is muted. **Browser speech synthesis has one global queue and cannot overlap**; with browser voices (and the single-line custom voice) the gate falls back to one line at a time, the field channel first, and a booth line that waited too long is dropped. The PA is about 4-5 dB quieter than before by default; `paVolume` has its own slider ("PA announcer", also in the app menu), umpire calls share it.
 
 ## Conversation and vocabulary
 
@@ -115,7 +122,7 @@ The crowd reacts to what happens. `crowd.ts` is a pure model (no Web Audio, no c
 | others | walks (aww + boos for the home pitcher), steals (tension swell, then a pop), runs (roar, rally, walk-off: huge), pitching change, mound visit (conversation and quiet clapping), a ball tossed to a fan, game start / end, between-innings chants |
 | life | lone claps, a shout, a whistle, a kid, a distant vendor-style call, a seat banging, pockets of conversation, a chant start, the wave: random, quieter when the game is hot, half as often on a phone |
 
-The camera matters: the listener's distance from the diamond sets the bed's gain and brightness (stands shots are close and loud, wide shots from above are distant). Synthesised in `synth.ts` (nothing sampled, the CC0 applause clips still replace `applause` when present): 12 new sounds (`clap_single`, `clap_burst`, `whistle`, `shout`, `shout2`, `kid`, `vendor`, `chatter`, `chant`, `aww`, `oh_relief`, `boo_few`) and the applause loop. The old crowd cues of `cues.ts` are switched off in the running game (`crowdCues: false`); the model makes every crowd sound from the same events.
+The camera does not matter (a broadcast never mixes camera audio). The bed is seven **zones** (behind home, the home side on third, the third-base line, the visitors' first-base side, both bleachers, the upper deck): each has its own loops and its own level from the model, which keeps energy per side of the fans (home fans weigh the home team's envelopes, the visitors' sections theirs: a visitor's home run lifts the first-base side and the right-field bleachers while the home sections groan). One-shots carry a zone (or a pan that picks one), big roars fill the whole bowl (the house pair, the crowd mics and the reverb), the wave goes section by section; every zone is heard through the mics over it, early and close, and the other mics later and darker. Synthesised in `synth.ts` (nothing sampled, the CC0 applause clips still replace `applause` when present): 12 new sounds (`clap_single`, `clap_burst`, `whistle`, `shout`, `shout2`, `kid`, `vendor`, `chatter`, `chant`, `aww`, `oh_relief`, `boo_few`) and the applause loop. The old crowd cues of `cues.ts` are switched off in the running game (`crowdCues: false`); the model makes every crowd sound from the same events.
 
 **Light on phones** (`perf.ts`, `?lowpower=1|0` forces it): the model advances at 10 Hz (5 Hz on a phone), the bed is three loops, one-shots are capped at 6 voices (3 on a phone), incidental sounds are half as frequent, footsteps are off and the controller tick runs at 15 Hz instead of 30. `__audioDebug.controller.debug.tickMs` is the moving average of one tick (about 0.4 ms measured on a desktop).
 
@@ -135,14 +142,136 @@ Optional stadium music for the big moments, from files in `public/audio/music/` 
 | `director.ts` | pure rules: the home team's good news only; priority finals > home run > rally > run > game start > pitching change > walk-up > break, nothing overlaps (a higher track fades the current one first), cooldowns, walk-ups and the break stop at the windup / when the next batter is called, the break is as long as `breakStart.sec`, the stretch is the organ's, a walk-off run has no stinger |
 | `player.ts` | `ParkMusic`: manifest (fetched once, at app boot), decisions -> files, **streamed** through a media element (no whole-track decode: light on phones), fades, only the next likely files fetched ahead (2 on a phone, none on data saver), a failing file is never retried and the organ stinger plays instead; `WebAudioMusic` is the real backend |
 
-Mixing: music goes through its own bus (level slider **Park music**, switch on/off, default on at a modest level) under the booth (-6 dB while the booth talks, -4 dB under the PA) and under big crowd moments, with a little stadium reverb; it is silent while paused, skipping, at 2x+ or muted, and the organ stays quiet while a track plays. While the break music plays the booth keeps to the calls (chatter `low`). `scripts/music-index.ts` (`npm run audio:music:index`) writes `manifest.json` (durations from `ffprobe`, or the Ogg header). Check with `?musictest=homeRun` (or `a,b`, or `all`); `__audioDebug.state.music` shows what plays and the last decisions.
+Mixing: music plays **through the PA system** into the park (horns, slap-back, the bowl's reverb, picked up by the mics), with its own level slider (**Park music**, switch on/off, default on at a modest level); it sits under the booth through the sidechain duck, about 4 dB under the PA announcer and under big crowd moments; it is silent while paused, skipping, at 2x+ or muted, and the organ stays quiet while a track plays. While the break music plays the booth keeps to the calls (chatter `low`). `scripts/music-index.ts` (`npm run audio:music:index`) writes `manifest.json` (durations from `ffprobe`, or the Ogg header). Check with `?musictest=homeRun` (or `a,b`, or `all`); `__audioDebug.state.music` shows what plays and the last decisions.
+
+## The park soundscape (`venue/`)
+
+The ballpark has its own soundscape: the organ, the PA announcer, the park music, the crowd and every bat crack and glove pop sound
+**in the park** (they ring around the bowl, slap back off the upper deck and the scoreboard), and the broadcast hears them the way a TV
+crew does: through **fixed microphones** around the park, mixed in the truck. The active camera never changes the mix. The announcers are
+separate: close-miked headsets, a broadcast voice chain, and the park ducks out of their way.
+
+```
+ PARK (in the ballpark)                                                         MIC ARRAY (fixed)               TRUCK
+ bat / mitt / glove / bounces / wall / slides / cleats ─ K=3 copies, flight-time ─┐
+ umpire's voice (at the plate) ──────────────────────── delay + gain pairs ──────┤   per mic: input (mono)
+ crowd: 7 zone beds (loops) ─ zone level / low-pass ─── delay + gain pairs ──────┤   -> EQ (the mic's colour)
+ crowd one-shots (a seat in a zone; roars: the whole bowl) ─ K=2 copies ─────────┤   -> static pan -> PARK BUS ─┐
+ PA SYSTEM: PA voice + organ + park music                                        │   -> reverb send ┐          │
+   -> 150 Hz-7 kHz horns, presence, drive -> 4 clusters (0-41 ms) ─ pairs ───────┘                   │          │
+   -> slap-backs 210 / 290 ms (upper deck, scoreboard) ───────────────────────────────────────────────┼─────────┤
+   -> heavy reverb send ──────────────────────────────────────────────> CONVOLVER (stadium IR) ─────┘          │
+                                                                                                                 ▼
+ PARK BUS -> DUCK (gain + dynamic 1-4 kHz cut, keyed by the booth) ─────────────────────────────────────> MASTER ─> HP 60 Hz -> glue
+ BOOTH: per-voice EQ -> HP 90 -> presence +2.5 dB @ 3 kHz -> de-ess shelf -3 dB @ 7.5 kHz -> compressor 3.5:1 ─>     -> limiter -> soft
+        -> makeup -> soft limiter -> announcer fader ─┬────────────────────────────────────────────────> MASTER       clip -1 dBFS -> out
+                                                      └─> sidechain key (AudioWorklet; phones: analyser + timer)
+ BROADCAST FX (camera stings, replay whooshes): dry, centred ──────────────────────────────────────────> MASTER (not ducked)
+ REPLAY (slow-motion SFX): produced path, 0.6x, low-passed ────────────────────────────────────────────> PARK BUS
+```
+
+**Pickup physics** (`venue/mics.ts`, pure, tested). For each source position and mic: inverse-distance attenuation with a floor (`ref`),
+the polar pattern toward the mic's aim (omni, cardioid family, shotgun, parabolic dish, boundary half-space), **propagation delay**
+(343 m/s, relative to the mic that hears it first, so the nearest mic is in sync with the picture: the bat crack reaches the centre-field
+wall mic ~0.3 s after the dish behind home), air absorption (a 4.2 kHz low-pass for pickups beyond 42 m or behind a directional mic's
+axis), and a proximity bass boost for a directional mic within a metre. A one-shot is the same buffer started K times (one per mic, at its
+delay, one gain each; one logical voice against the cap); continuous sources (zone beds, PA clusters, the umpire) are wired once with a
+DelayNode and a gain per pickup. Per-frame JS: none (pickups are computed when a sound is triggered).
+
+**Stereo image** (fixed): it matches the main camera, the centre-field "pitch" shot (telephoto from behind the pitcher). From there
+**third base is on screen right** and first base on the left, and the telephoto view makes screen-x almost exactly sim X, so a mic's pan
+is `PAN_SIGN * x / 62 m` (the plate, the mound, centre field and the crowd behind home are centred). `PAN_SIGN` in `venue/mics.ts`
+flips the whole image in one place (for a high-home main camera, say).
+
+| mic | position (x, y, z m) | aimed at | pattern | fader | pan | reverb send | phones |
+|---|---|---|---|---|---|---|---|
+| `plate` Parabolic, behind home plate | 0, 1.2, -17 | 0, 0.9, 1 | parabolic | +14 dB | 0.00 | 0.05 | yes |
+| `first` Shotgun, first base | -27, 0.6, 15 | -19, 0.0, 19 | shotgun | +9 dB | -0.44 | 0.08 | yes |
+| `third` Shotgun, third base | 27, 0.6, 15 | 19, 0.0, 19 | shotgun | +9 dB | 0.44 | 0.08 | yes |
+| `infield` Boundary, second base / mound | 0, 0.1, 30 | 0, 5.0, 25 | boundary | +6 dB | 0.00 | 0.1 |  |
+| `wall_lf` Boundary, left-field wall | 53, 1.5, 100 | 30, 1.0, 60 | boundary | +4 dB | 0.86 | 0.2 |  |
+| `wall_cf` Boundary, centre-field wall | 0, 1.5, 122 | 0, 1.0, 60 | boundary | +4 dB | 0.00 | 0.2 | yes |
+| `wall_rf` Boundary, right-field wall | -53, 1.5, 100 | -30, 1.0, 60 | boundary | +4 dB | -0.86 | 0.2 |  |
+| `dugout` Shotgun, home dugout (3B side) | 21, 1.6, 1 | 19, 0.6, 3 | shotgun | 0 dB | 0.33 | 0.05 |  |
+| `crowd_home` Crowd, behind home (lower bowl) | 0, 12.0, -28 | 0, 6.0, -36 | cardioid | 0 dB | 0.00 | 0.25 | yes |
+| `crowd_3b` Crowd, third-base side | 40, 12.0, 12 | 48, 6.0, 14 | cardioid | 0 dB | 0.65 | 0.25 | yes |
+| `crowd_1b` Crowd, first-base side | -40, 12.0, 12 | -48, 6.0, 14 | cardioid | 0 dB | -0.65 | 0.25 | yes |
+| `crowd_lf` Crowd, left-field bleachers | 60, 13.0, 100 | 68, 8.0, 112 | cardioid | -1 dB | 0.95 | 0.35 |  |
+| `crowd_rf` Crowd, right-field bleachers | -60, 13.0, 100 | -68, 8.0, 112 | cardioid | -1 dB | -0.95 | 0.35 |  |
+| `crowd_upper` Crowd, upper deck | 0, 30.0, -40 | 0, 26.0, -52 | supercardioid | -2 dB | 0.00 | 0.4 |  |
+| `house_l` House pair, left (1B side) | -4, 22.0, -36 | -30, 0.0, 50 | cardioid | +2 dB | -0.85 | 0.45 | yes |
+| `house_r` House pair, right (3B side) | 4, 22.0, -36 | 30, 0.0, 50 | cardioid | +2 dB | 0.85 | 0.45 | yes |
+
+| zone | centre (x, y, z m) | home fans | size |
+|---|---|---|---|
+| `backstop` Behind home plate | 0, 6.0, -30 | 75 % | 1 |
+| `home_side` Home-side infield (3B) | 34, 7.0, 4 | 92 % | 1 |
+| `line_3b` Third-base line | 52, 8.0, 42 | 85 % | 0.9 |
+| `line_1b` First-base side (visitors) | -40, 7.0, 24 | 50 % | 1 |
+| `lf_bleachers` Left-field bleachers | 64, 9.0, 108 | 80 % | 0.8 |
+| `rf_bleachers` Right-field bleachers | -64, 9.0, 108 | 60 % | 0.8 |
+| `upper_deck` Upper deck | 0, 26.0, -50 | 72 % | 1.1 |
+
+| PA cluster | position | delay | level |
+|---|---|---|---|
+| main | 62, 14.0, 92 | 0 ms | 1 |
+| home | 0, 17.0, -36 | 12 ms | 0.8 |
+| line_3b | 42, 15.0, 14 | 34 ms | 0.55 |
+| line_1b | -42, 15.0, 14 | 41 ms | 0.55 |
+
+Phones (`perf.ts` low power) use the 9 mics marked above, 2 pickups per one-shot (1 for crowd), 4 zones (each folds its neighbours),
+a mono 1.6 s IR spread by a 13 ms offset copy, the analyser-driven duck instead of the worklet, and no glue compressor.
+
+**Venue** (`venue/ir.ts`): one shared convolver with a synthesised IR (deterministic): pre-delay, eight early reflections (lower bowl
+22 ms ... scoreboard 248 ms), a diffuse tail in four bands with their own RT60 (highs die faster), decorrelated stereo, unit energy.
+Measured (T30 / per octave): **Dry** ~1.0 s, **Normal** 2.1 s mid (250 Hz 2.35 s, 1 kHz 2.1 s, 4 kHz 1.44 s, 8 kHz 1.04 s),
+**Big** ~2.5 s; wet return 0.16 / 0.30 / 0.38; the slap-backs scale 0.4x / 1x / 1.25x.
+
+**Levels** (set by measurement: `render.ts --stems`, each family alone through the whole chain; the booth is the anchor). Game scene at the
+default settings: master **-16.8 LUFS integrated, true peak -2.4 dBTP, no clipping**; booth -12.8 LUFS while talking, organ -18,
+PA voice -19, crowd -18.5 (calm bed about 11 dB under the booth, a home-run roar ~3 dB under the booth's peaks), field effects -19.7
+(bat crack momentary max -15). The knobs: `MAKEUP` (master), `BOOTH_LEVEL`, `ORGAN_LEVEL`, `MUSIC_LEVEL`, `PA_LEVEL` in `mixer.ts`;
+`TRIM` (sfx / crowd one-shots / beds / PA into the mics / umpire) in `venue/graph.ts`; mic faders in `MICS`.
+
+**Duck** (`venue/duck.ts`): `duckStep` follows the booth bus (mean square per 128-sample block, 5 ms up / 120 ms down detector), a gain
+computer (threshold -50 dBFS, 14 dB range to full depth), attack 50 ms, hold 250 ms (bridges the gaps between words), release 500 ms;
+depth 4 / 7 / 10 dB (setting) and a further 2.5-5 dB cut of the 1-4 kHz band of the park (a peaking filter at 2.2 kHz driven by the same
+envelope: the crowd stays big, the voice clear). A crowd peak (a home-run roar) shallows the duck to as little as 45 % of its depth.
+Browser speech is outside Web Audio, so then the speech gate's "booth is talking" flag is the key (`ext`). Measured in the render: -8 dB
+at full duck (gain plus presence cut, RMS of the park), 90 % in ~100 ms, back within 1 dB ~1.3 s after the line.
+
+### Tuning guide
+
+- *The organ / PA sounds too far away*: lower `paVerb` (graph.ts, 0.55) or the venue's `wet`; raise `ORGAN_LEVEL`.
+- *Too much echo on the PA*: the slap-back gains (`slap(0.21, ..., 0.2, ...)`), or Venue: Dry.
+- *Bat crack too thin / too boomy*: the `plate` mic's tone (`TONE.parabolic`, a 260 Hz high-pass) and fader; `TRIM.sfx`.
+- *Crowd too loud under the booth*: `TRIM.bed` (the bed), `TRIM.crowd` (one-shots), or the duck setting; `setCrowdEnergy` (mixer)
+  sets how much a big moment shallows the duck.
+- *The image leans*: check mirrored mics in the debug panel; `PAN_WIDTH` sets the spread, `PAN_SIGN` the orientation.
+- *CPU*: every always-on node costs (measured with `render.ts --bench`, ms of CPU per audio second per node on this desktop: convolver
+  12 (mono IR 6), DynamicsCompressor 2.1, a 16 kHz buffer resampled 0.9, a 2x-oversampled WaveShaper 0.9, biquad 0.34, delay 0.19,
+  panner 0.14, gain 0.07). Keep strips to one EQ, park buffers at the context rate, pickups few.
+
+### Verifying without ears
+
+- `?audiodebug=1`: the live panel.
+- `npx tsx tools/audio/render.ts [--tag NAME] [--scenes game,impulse,duck,organ,pa-noise] [--venue big] [--lowpower] [--stems] [--reps 3]`
+  renders the real graph on an OfflineAudioContext (headless Chrome via the dev server) to `~/claudeball-audio-renders/<tag>-<scene>.wav`
+  (never in the repo) with `<tag>-analysis.json`: integrated / momentary loudness, loudness range, true peak, clipping, CPU ms per audio
+  second, the venue's RT60 from the rendered tail and from the IR (per octave), the duck's depth over time (the park with the booth muted
+  but still keying, against no booth), the PA's frequency response (white noise in: -6 dB edges), per-family stems. The scene: an organ
+  phrase, a PA line, a pitch, a hard bat crack at the plate, a fly ball to the left-field fence, a home-run roar, booth lines over it.
+  Booth / PA lines use the owner's first local recording in `~/claudeball-voice/wavs` if present, else a synthetic speech-like signal.
+- `npx tsx tools/audio/live.ts [--cpu 4 --lowpower] [--audiodebug]`: the running game's audio tick cost and the panel.
+
+**Cost** (A/B under the same load, offline render, desktop; the old graph from `ee33acc`): see the report / `docs/soundscape.md`.
 
 ## HD voices (optional neural speech)
 
 `hd.ts` is a manager that outlives games: download, progress, cache check and a *Preview voices* button work from the title menu before any game or `AudioContext` exists (an `AudioBuffer` belongs to no context; the preview makes its own mixer on the click), and a new game just rebinds its mixer, so the model is not reloaded or re-downloaded. Clause-by-clause synthesis for the booth (the first clause plays sooner, a cut happens exactly at a clause), one generation job at a time in priority order (a spoken line > the next queued line > background warm-up of the umpire's calls), concurrent playback for the channels.
 
 Browser speech cannot be routed through Web Audio (no echo, no PA processing) and its voices vary. The **HD voices** option runs Kokoro-82M (Apache-2.0, preset voices, **nobody is cloned**) in the browser: `am_onyx` (PA), `am_adam` (umpire), `am_michael` (play-by-play), `bm_george` (colour). Strictly opt-in: nothing is fetched until the player presses *Download HD voices* in Settings; `neural.ts` and `neuralWorker.ts` are separate lazy chunks (a few KB), the library `kokoro-js@1.2.1` is imported at run time from jsDelivr inside a module worker, and the model comes from the Hugging Face Hub (`onnx-community/Kokoro-82M-v1.0-ONNX`), cached by the browser (Cache API), so later visits start from the cache and the model is never part of the repo or the Pages bundle. (Reason for the CDN: kokoro-js's `phonemizer` embeds eSpeak NG, which is GPL; bundling it would put GPL code in an MIT repo.)
-It sits behind the same `SpeechEngine` interface (`SwitchEngine` in `speech.ts` falls back to the browser voice whenever HD is not ready, a line fails, or the umpire call would arrive late on a slow CPU); the queue prefetches the next line while the current one plays; generation runs in the worker one job at a time; if the estimated backlog exceeds 7 s, chatter is dropped. Played through Web Audio: the PA voice is band-limited (320 Hz-3.4 kHz), driven, given a 190 ms slap-back and the stadium reverb; booth voices stay dry and close-miked. Measured numbers are in the report and below.
+It sits behind the same `SpeechEngine` interface (`SwitchEngine` in `speech.ts` falls back to the browser voice whenever HD is not ready, a line fails, or the umpire call would arrive late on a slow CPU); the queue prefetches the next line while the current one plays; generation runs in the worker one job at a time; if the estimated backlog exceeds 7 s, chatter is dropped. Played through Web Audio: the PA voice goes through the PA system (150 Hz-7 kHz horns, drive, clusters, slap-backs, the bowl's reverb); booth voices go through the broadcast voice chain, dry and close-miked. Measured numbers are in the report and below.
 Measured in headless Chrome (desktop RTX GPU, 32 cores, not cross-origin-isolated so one WASM thread): WebGPU fp32 (326 MB): load 19 s, real-time factor 0.09-0.2 after warm-up (a 6 s line in 0.55 s); WASM q8 (92 MB): load 17 s, **real-time factor ~3** (a 3.5 s line takes 12 s), i.e. too slow for live chatter on the CPU path, which is why the UI warns and the queue sheds filler. Cross-origin isolation (threads) would help but GitHub Pages cannot set the headers. In the running app on the CPU path (forced with `?hdmode=cpu`, game rendering at the same time) the factor was 5-7: of 26 lines only 4 played with HD, 11 fell back to the browser voice (umpire calls go to the browser immediately when the factor is above 1), 34 chatter lines were shed and the backlog reached 18 s. So **the HD option is offered only when WebGPU exists** (`hdSupported()`); on the GPU path in the app (120 s at 1x, 37 lines generated, 39 played, 0 fallbacks, factor 0.16-0.18) it keeps up easily.
 
 ## Voices (SpeechSynthesis)
@@ -156,13 +285,13 @@ Commentary never uses pronouns for players.
 
 ## Debug hook
 
-`window.__audioDebug`: `state` (context state, buffers prepared, live voices, excitement, speech stats, organ riffs, per-sound play counts), `cues` (last 300: kind, id, played, text),
+`?audiodebug=1`: a live panel (master level, the duck's reduction, a meter per mic, the zones' levels, who is talking, voices, the venue's RT60). `window.__audioDebug`: `controller.mixer.debugInfo()` (voices, sources, graph stats: worklet / nodes / mics / venue), `state` (context state, buffers prepared, live voices, excitement, speech stats, organ riffs, per-sound play counts), `cues` (last 300: kind, id, played, text),
 `mapped` / `played` (counters; *mapped* counts every cue before speed gating or voice limits, *played* what actually started), `perHalf` (mapped counts per `1t`, `1b`, `2t` ...),
 `energy` (output RMS/peak every 100 ms from an `AnalyserNode`), `speechLog`, `level()`.
 
 ## Tests
 
-`npm test` runs `src/audio/__tests__`: event → cue mapping (incl. junk input and pronoun check), spatial maths, excitement, the speech queue (fake engine), every synth recipe renders finite/non-silent audio,
+`npm test` runs `src/audio/__tests__` and `src/audio/venue/__tests__`: event → cue mapping (incl. junk input and pronoun check), the mic maths (delays, distance law, polar patterns, pan law), the IR's RT60 per band, the duck follower and its worklet source, excitement, the speech queue (fake engine), every synth recipe renders finite/non-silent audio,
 and the mixer against a fake `AudioContext` (voice cap, stealing, node disconnect on end, mute, replay slow-down, no-op without audio).
 
 ## What audio would like from the sim/engine
@@ -217,6 +346,7 @@ Speed is fine for the LFM2 models (well inside a 1.5 s budget, 100+ tok/s; Qwen 
 
 ## Scripts
 
+`tools/audio/render.ts` (headless render of the whole graph to WAVs + analysis, see below), `tools/audio/live.ts` (the audio layer's tick cost in the running game, `--cpu 4 --lowpower` for a phone, `--audiodebug` prints the panel), `tools/audio/bench.ts` (Web Audio node costs, `render.ts --bench`).
 `scripts/crowd-check.cjs` (a game in headless Chrome: crowd level timeline, which reactions played, music decisions, stings, tick cost), `scripts/music-index.ts`.
 
 `scripts/booth-transcript.ts` (a game through the booth), `scripts/audio-check.cjs` (headless Chrome: fake browser voices or the HD voices, PA/booth overlap, errors), `scripts/modal-shots.cjs` (in-game panels at five viewports), `scripts/lm/` (LM benchmark and evaluation). The browser scripts need Playwright 1.58 (`PLAYWRIGHT_DIR`).

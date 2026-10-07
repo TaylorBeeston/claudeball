@@ -58,7 +58,7 @@ export class Ambience {
         src.buffer = buf;
         src.loop = true;
         src.connect(g).connect(dest);
-        src.start(0, offset % Math.max(0.1, buf.duration)); // decorrelate the sections
+        src.start(ctx.currentTime, offset % Math.max(0.1, buf.duration)); // decorrelate the sections (an explicit time: `0` lets the browser skip ahead by however late the start is handled)
         this.sources.push(src);
         this.nodes.push(g);
         return g;

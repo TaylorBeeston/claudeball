@@ -15,7 +15,7 @@
 import type { Cue, CrowdId, SfxId, Vec3 } from './types';
 import { CROWD_IDS, SFX_DEFS, crowdLoop, renderCrowd, renderSfx } from './synth';
 import { mulberry32, type Rendered } from './dsp';
-import { TRIM, VenueGraph, type Perspective } from './venue/graph';
+import { TRIM, VenueGraph, type Perspective, type Played } from './venue/graph';
 import type { VenuePreset } from './venue/ir';
 import { WAVE_ORDER, LOW_FOLD, zone as zoneOf, zoneForPan, type ZoneId } from './venue/mics';
 import type { CrowdShot } from './crowd';
@@ -77,6 +77,9 @@ interface Voice {
   start: number;
   /** sources still playing */
   left: number;
+  /** when its last copy ends on the audio clock (the cap counts by this, not by when `onended` reaches a busy main thread) */
+  end: number;
+  done?: boolean;
 }
 
 /** Minimum seconds between two plays of the same sound (keeps 2x/4x play and rapid-fire events from turning into a buzz). */
@@ -402,17 +405,34 @@ export class Mixer {
     return true;
   }
 
+  /**
+   * A voice counts until its end on the audio clock (`prune`), not until `onended` reaches the main thread (late on a busy phone, and
+   * the count would then depend on frame timing); `onended` of the last copy only releases the nodes early.
+   */
   private track(set: Set<Voice>, v: Voice) {
     set.add(v);
+    // offline (the render tool) the clean-up waits for `prune` at a fixed audio time: `onended` arrives whenever the main thread gets
+    // to it, and disconnecting a filter then cuts its last few samples of ringing at a different point on every run
+    if (this.offline) return;
     const end = () => {
       if (--v.left > 0) return;
-      set.delete(v);
       this.release(v);
     };
     for (const s of v.srcs) s.onended = end;
   }
 
+  /** voices whose sound is over by the audio clock leave the count now (their `onended` cleans up again, harmlessly) */
+  private prune(set: Set<Voice>, now: number) {
+    for (const v of set)
+      if (v.end <= now) {
+        set.delete(v);
+        this.release(v);
+      }
+  }
+
   private release(v: Voice) {
+    if (v.done) return;
+    v.done = true;
     try {
       for (const s of v.srcs) s.disconnect();
       for (const n of v.nodes) n.disconnect();
@@ -422,7 +442,7 @@ export class Mixer {
   }
 
   /** a single source into one node (broadcast stings, the replay path, the PA) */
-  private single(buffer: AudioBuffer, gain: number, rate: number, when: number, dest: AudioNode): { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] } {
+  private single(buffer: AudioBuffer, gain: number, rate: number, when: number, dest: AudioNode): Played {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
@@ -431,7 +451,7 @@ export class Mixer {
     g.gain.value = gain;
     src.connect(g).connect(dest);
     src.start(when);
-    return { srcs: [src], nodes: [g] };
+    return { srcs: [src], nodes: [g], end: when + (buffer.duration || 0) / rate };
   }
 
   /**
@@ -454,6 +474,7 @@ export class Mixer {
     const alt = Math.floor(this.rnd() * def.alts);
     const buffer = list[bucket * def.alts + alt] ?? list.find(Boolean);
     if (!buffer) return false;
+    this.prune(this.voices, now);
     if (this.voices.size >= MAX_VOICES && !this.stealFor(c.imp)) {
       this.droppedVoices++;
       return false;
@@ -464,13 +485,13 @@ export class Mixer {
     const rate = (c.rate ?? 1) * jitter * slow;
     const when = now + Math.max(0, c.delay ?? 0);
     const s = this.settings;
-    let r: { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] };
+    let r: Played;
     if (fx) r = this.single(buffer, Math.min(1.5, c.gain ?? 1), rate, when, this.fxBus);
     else if (c.id === 'pa_click') r = this.single(buffer, (c.gain ?? 1) * 2, rate, when, this.paBus);
     else if (this.replay) r = this.single(buffer, Math.min(1.5, (c.gain ?? 1) * s.sfx * s.sfx * 0.6), rate, when, g.replayBus);
     else r = g.playAt(buffer, (c.pos as Vec3 | undefined) ?? DEFAULT_POS, Math.min(1.5, c.gain ?? 1) * s.sfx * s.sfx * TRIM.sfx, when, rate);
     if (!r.srcs.length) return false;
-    this.track(this.voices, { srcs: r.srcs, nodes: r.nodes, id: c.id, imp: c.imp, start: now, left: r.srcs.length });
+    this.track(this.voices, { srcs: r.srcs, nodes: r.nodes, id: c.id, imp: c.imp, start: now, left: r.srcs.length, end: r.end });
     this.played[c.id] = (this.played[c.id] ?? 0) + 1;
     return true;
   }
@@ -509,28 +530,30 @@ export class Mixer {
     const now = ctx.currentTime;
     const key = `crowd:${id}`;
     if (now - (this.last.get(key) ?? -9) < (CROWD_GAP[id] ?? 0.8)) return false;
+    this.prune(this.crowdVoices, now);
     const cap = this.lowPower ? 3 : 6;
     if (this.crowdVoices.size >= cap && !(gain > 0.6 && this.crowdVoices.size < cap + 2)) return false;
     this.last.set(key, now);
     const rate = (o.rate ?? 1) * (0.98 + this.rnd() * 0.04);
     const level = Math.min(1.4, gain) * this.crowdLevel() * (TRIM.crowd / TRIM.bed);
     const when = now + Math.max(0, delay);
-    let r: { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] };
+    let r: Played;
     if (o.sweep) {
       // the wave: section after section, a cheer rising and moving on
       const order = o.sweep.from > o.sweep.to ? WAVE_ORDER : [...WAVE_ORDER].reverse();
       const zs = this.lowPower ? order.filter((_, i) => i % 2 === 0) : order;
-      r = { srcs: [], nodes: [] };
+      r = { srcs: [], nodes: [], end: when };
       zs.forEach((z, i) => {
         const p = this.seat(z);
         const part = g.playAt(b, p, level * 0.8, when + (o.sweep!.dur * i) / zs.length, rate, this.lowPower ? 1 : 2);
         r.srcs.push(...part.srcs);
         r.nodes.push(...part.nodes);
+        r.end = Math.max(r.end, part.end);
       });
     } else if (o.diffuse || (o.zone === undefined && o.pan === undefined)) r = g.playDiffuse(b, level, when, rate, 0.15 + 0.25 * Math.min(1, gain));
     else r = g.playAt(b, this.seat(o.zone ?? zoneForPan(o.pan ?? 0, this.rnd() < 0.25)), level, when, rate, this.lowPower ? 1 : 2);
     if (!r.srcs.length) return false;
-    this.track(this.crowdVoices, { srcs: r.srcs, nodes: r.nodes, id, imp: 0, start: now, left: r.srcs.length });
+    this.track(this.crowdVoices, { srcs: r.srcs, nodes: r.nodes, id, imp: 0, start: now, left: r.srcs.length, end: r.end });
     this.played[key] = (this.played[key] ?? 0) + 1;
     return true;
   }
@@ -548,7 +571,11 @@ export class Mixer {
     return this.playCrowd(s.id, s.gain, s.delay, { pan: s.pan, rate: s.rate, sweep: s.sweep, zone: s.zone, diffuse: s.diffuse });
   }
 
+  /** voices sounding now (by the audio clock) */
   get voiceCount() {
+    const now = this.ctx?.currentTime ?? 0;
+    this.prune(this.voices, now);
+    this.prune(this.crowdVoices, now);
     return this.voices.size + this.crowdVoices.size;
   }
 
