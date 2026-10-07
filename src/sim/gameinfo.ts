@@ -178,7 +178,8 @@ export function buildGameInfo(seed: number | string, teams: Record<TeamSide, Tea
   const day = 1 + Math.floor(rng.next() * dim);
   const weekday = new Date(Date.UTC(2026, month - 1, day)).getUTCDay();
   const opening = Date.UTC(2026, 2, 26);
-  const games = Math.max(4, Math.round(((Date.UTC(2026, month - 1, day) - opening) / 86400000) * 0.93));
+  // 162 games between late March and the end of September (~188 days)
+  const games = Math.min(161, Math.max(4, Math.round(((Date.UTC(2026, month - 1, day) - opening) / 86400000) * (162 / 188))));
   const used = new Set<string>();
   const crew = new Rng(`${seed}:umpires`);
   const keys: Official['key'][] = ['plate', 'first', 'second', 'third'];

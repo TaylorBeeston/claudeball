@@ -76,6 +76,7 @@ describe('game info (sim)', () => {
       const a = i.records.away;
       expect(Math.abs(h.w + h.l - (a.w + a.l))).toBeLessThanOrEqual(2);
       for (const r of [h, a]) {
+        expect(r.w + r.l).toBeLessThanOrEqual(162);
         expect(r.last10.filter((x: string) => x === 'W').length).toBeLessThanOrEqual(r.w);
         expect(r.streak.n).toBeGreaterThanOrEqual(1);
       }
@@ -211,6 +212,39 @@ describe('director segments', () => {
     expect(starts[0].item.text).toContain('Turn number 0');
     expect(starts.length).toBeLessThan(6);
     expect(d.stats.segmentSkipped).toBeGreaterThan(0);
+  });
+});
+
+describe('a segment across pause / mute', () => {
+  const seg: Segment = { tag: 'open', turns: Array.from({ length: 5 }, (_, i) => ({ speaker: i % 2 ? 'color' : 'pxp', text: `Opening turn ${i}, a line of a few words.`, block: i ? `b${i}` : 'welcome', optional: i > 0 })) };
+  const ctx = (remaining: number | null) => ({ ...ctxFromRaw(createGame({ seed: 1, pace: 0 }).getState()), lull: remaining === null ? null : { kind: 'break', sec: 80, remaining } });
+  const run = (booth: Booth, from: number, to: number, suppressed: boolean, remaining: (t: number) => number | null) => {
+    const said: string[] = [];
+    for (let t = from; t < to; t = Math.round((t + 0.05) * 1000) / 1000) for (const a of booth.tick(t, ctx(remaining(t)) as never, { suppressed })) if (a.type === 'start') said.push(a.item.text);
+    return said;
+  };
+
+  it('resumes with the turns that are left while the pregame lasts', () => {
+    const booth = new Booth({ rng: mulberry32(2), level: 'normal' });
+    booth.director.runSegment(seg, 0, 80);
+    const a = run(booth, 0, 4, false, (t) => 80 - t);
+    expect(a).toEqual(['Opening turn 0, a line of a few words.']);
+    run(booth, 4, 10, true, (t) => 80 - t); // paused / muted / audio still locked
+    expect(booth.director.parked).toBeTruthy();
+    const b = run(booth, 10, 40, false, (t) => 80 - t);
+    expect(b[0]).toMatch(/Opening turn [12]/);
+    expect(b.length).toBeGreaterThanOrEqual(3);
+    expect(booth.director.stats.segments).toBe(2);
+  });
+
+  it('is dropped when the pregame is over by the time the booth can talk again', () => {
+    const booth = new Booth({ rng: mulberry32(2), level: 'normal' });
+    booth.director.runSegment(seg, 0, 80);
+    run(booth, 0, 2, false, () => 70);
+    run(booth, 2, 5, true, () => 70);
+    const b = run(booth, 5, 30, false, () => null);
+    expect(b.filter((x) => x.startsWith('Opening'))).toHaveLength(0);
+    expect(booth.director.parked).toBeNull();
   });
 });
 

@@ -5,6 +5,7 @@
  */
 import { pickVoices, type SpeakHandle, type SpeechEngine, type VoiceChoice } from '../speech';
 import type { Action, StartAction, VoiceId } from './director';
+import { CAST } from './cast';
 
 export interface BoothSinkOpts {
   /** seconds, the same clock the director uses */
@@ -18,7 +19,7 @@ export interface BoothSinkOpts {
 }
 
 /** delivery per voice: the play-by-play a touch quicker, the analyst relaxed; excited lines faster and higher */
-const BASE = { pxp: { rate: 1.04, pitch: 1 }, color: { rate: 1.0, pitch: 1 } } as const;
+const BASE = { pxp: CAST.pbp.voice.delivery, color: CAST.color.voice.delivery } as const;
 const EXCITED = { rate: 1.12, pitch: 1.1, shift: 1.06 };
 
 export class BoothSink {

@@ -326,7 +326,8 @@ export class CueMapper {
         const kind = str(ev.kind);
         const text = umpireCallText(kind);
         const at = vec(ev.pos);
-        if (text) out.push({ ...cue.speak('ump', text, PRI.ump, 1.5, 0.05, 2), pos: at } as Cue);
+        // "Play ball!" waits behind the PA's pitcher / batter announcements (it must be heard: the booth's handoff answers it); live calls go stale fast
+        if (text) out.push({ ...cue.speak('ump', text, PRI.ump, kind === 'play_ball' ? 10 : 1.5, 0.05, 2), pos: at } as Cue);
         // the close play resolves: relief for one side, groans for the other
         if ((kind === 'safe' || kind === 'out') && this.close && num(ev.time) - this.close.t < 4 && num(ev.time) >= this.close.t) {
           const homeWins = kind === 'out' ? !hb : hb; // out: the fielding side wins the play; safe: the batting side

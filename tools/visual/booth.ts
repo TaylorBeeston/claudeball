@@ -3,7 +3,7 @@
  * audio), lets the pregame play at 1x with fake browser voices (they report start / end like real ones, so the captions run), and prints what the PA,
  * the umpire and the booth said, the booth's own schedule, and a screenshot of the captions with the cast's labels.
  *   npx tsx tools/visual/booth.ts [--seed 42] [--tempo broadcast] [--tod night] [--secs 100] [--out dir] [--no-build] [--enter]
- * (`--enter` starts with the Enter key instead of a click on Start Game.)
+ * (`--enter` starts with the Enter key instead of a click on Start Game; `--pause-at s --resume-at s` pauses the game in between.)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,8 +51,23 @@ async function main() {
     if (argv.includes('--enter')) await page.keyboard.press('Enter'); else await page.click('[data-testid="start"]');
     const t0 = Date.now();
     let shot = false;
+    // --pause-at 20 --resume-at 30: pause the game for a while (the opening must pick up where it stopped)
+    const pauseAt = Number(opt('pause-at', '-1'));
+    const resumeAt = Number(opt('resume-at', '-1'));
+    let paused = false;
     while (Date.now() - t0 < secs * 1000) {
       await page.waitForTimeout(500);
+      const el = (Date.now() - t0) / 1000;
+      if (pauseAt >= 0 && !paused && el >= pauseAt && el < resumeAt) {
+        await page.evaluate(`window.engine.sim.paused = true`);
+        paused = true;
+        console.log(`[booth] paused at ${el.toFixed(1)} s`);
+      }
+      if (paused && el >= resumeAt) {
+        await page.evaluate(`window.engine.sim.paused = false`);
+        paused = false;
+        console.log(`[booth] resumed at ${el.toFixed(1)} s`);
+      }
       // the headed window sits on a shared desktop: a stray real click on the sound button mutes the game; undo it (and say so)
       if (await page.evaluate(`(() => { const c = window.__audioDebug.controller; if (!c.settings.muted) return false; c.settings.muted = false; c.settingsChanged(); return true; })()`)) console.log('[booth] sound was muted by a click on the window: unmuted');
       if (!shot) {

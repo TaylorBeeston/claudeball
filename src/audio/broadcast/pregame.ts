@@ -202,6 +202,9 @@ interface Block {
   turns: { speaker: VoiceId; text: string | null; excited?: boolean }[];
 }
 
+/** blocks that only make sense at the start (a hello, the teams running out): never said late as an extra */
+const EARLY_ONLY = new Set(['hello', 'field']);
+
 const P = CAST.pbp;
 const C = CAST.color;
 
@@ -391,7 +394,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
   if (!low)
     for (const b of [...blocks].sort((a, b) => a.pri - b.pri)) {
       const n = chosen.get(b) ?? 0;
-      if (n === 0) for (const t of b.turns) if (t.text) turns.push({ speaker: t.speaker, text: t.text, block: `${b.id}+`, optional: true, excited: t.excited });
+      if (n === 0 && !EARLY_ONLY.has(b.id)) for (const t of b.turns) if (t.text) turns.push({ speaker: t.speaker, text: t.text, block: `${b.id}+`, optional: true, excited: t.excited });
     }
   return { tag: 'open', turns };
 }

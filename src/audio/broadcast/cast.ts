@@ -26,8 +26,10 @@ export interface CastMember {
   voice: {
     /** Kokoro-82M preset for the HD voices (stable per character) */
     kokoro: string;
-    /** browser speech: a male-ish voice, and the delivery */
-    browser: { prefer: 'male' | 'female'; pitch: number; rate: number };
+    /** which kind of browser voice `pickVoices` looks for first */
+    browser: { prefer: 'male' | 'female' };
+    /** the delivery (speech rate, pitch) every engine gets for his ordinary lines (excited lines go faster and higher) */
+    delivery: { rate: number; pitch: number };
     /** the custom voice pack's speakers (see docs/announcer-voice.md: playbyplay / hype / color) that speak for him */
     packSpeakers: string[];
   };
@@ -45,7 +47,7 @@ export const CAST: Record<CastId, CastMember> = {
     bio: 'Twenty-six seasons behind the microphone; keeps his own scorebook in pencil and knows every ballpark in the league.',
     traits: ['precise', 'dry wit', 'scorebook nerd', 'ballpark history buff', 'teases his partner about his playing days'],
     calledBy: ['Lyle'],
-    voice: { kokoro: 'am_michael', browser: { prefer: 'male', pitch: 0.95, rate: 1.08 }, packSpeakers: ['playbyplay', 'hype'] },
+    voice: { kokoro: 'am_michael', browser: { prefer: 'male' }, delivery: { rate: 1.04, pitch: 1 }, packSpeakers: ['playbyplay', 'hype'] },
   },
   color: {
     id: 'color',
@@ -59,7 +61,7 @@ export const CAST: Record<CastId, CastMember> = {
     bio: 'Eleven seasons as a backup catcher for four clubs; a career .219 hitter who will tell you about every one of his home runs (there were nine).',
     traits: ['sees it from behind the plate', 'self-deprecating', 'loves pitch sequencing', 'not afraid to disagree', 'always hungry'],
     calledBy: ['Biscuit', 'Hollis'],
-    voice: { kokoro: 'bm_george', browser: { prefer: 'male', pitch: 1.05, rate: 1.03 }, packSpeakers: ['color'] },
+    voice: { kokoro: 'bm_george', browser: { prefer: 'male' }, delivery: { rate: 1.0, pitch: 1 }, packSpeakers: ['color'] },
   },
   pa: {
     id: 'pa',
@@ -72,7 +74,7 @@ export const CAST: Record<CastId, CastMember> = {
     bio: 'The voice of the ballpark: unhurried, booming, every name stretched out to the last syllable.',
     traits: ['booming', 'unhurried', 'formal'],
     calledBy: ['Clem'],
-    voice: { kokoro: 'am_onyx', browser: { prefer: 'male', pitch: 0.75, rate: 0.92 }, packSpeakers: ['playbyplay'] },
+    voice: { kokoro: 'am_onyx', browser: { prefer: 'male' }, delivery: { rate: 0.92, pitch: 0.75 }, packSpeakers: ['playbyplay'] },
   },
 };
 
@@ -106,7 +108,7 @@ export const CATCHPHRASES: Catchphrase[] = [
   { id: 'lyle.win', who: 'pbp', trigger: 'win', lines: ['Put this one in the books.'], max: 1, cooldown: 0 },
   { id: 'bis.k', who: 'color', trigger: 'strikeout', lines: ['Mm-hmm. Biscuits and gravy.', 'That is biscuits and gravy right there.'], max: 1, cooldown: 900 },
   { id: 'bis.hr', who: 'color', trigger: 'homeRun', lines: ['That is a grown-man swing.', 'Grown-man swing.'], max: 2, cooldown: 600 },
-  { id: 'bis.sb', who: 'color', trigger: 'stolenBase', lines: ['I would not have thrown him out either. I did not throw anybody out.'], max: 1, cooldown: 0 },
+  { id: 'bis.sb', who: 'color', trigger: 'stolenBase', lines: ['I would not have thrown him out either. Ask any pitcher I ever caught.'], max: 1, cooldown: 0 },
 ];
 
 /**

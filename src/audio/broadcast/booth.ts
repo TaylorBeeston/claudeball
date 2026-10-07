@@ -47,6 +47,7 @@ export class Booth {
   /** the pregame: from gameStart until the handoff into the top of the first */
   pregame: 'none' | 'waiting' | 'opening' | 'done' = 'none';
   private handoffAt: number | null = null;
+  private fieldIdleSince = -99;
 
   constructor(o: BoothOpts) {
     this.rng = o.rng;
@@ -72,7 +73,8 @@ export class Booth {
     const seg = openingSegment(this.facts, { budget: Math.max(4, sec - lead - 1), level: this.userLevel });
     if (seg.turns[0]) seg.turns[0] = { ...seg.turns[0], notBefore: lead };
     this.director.runSegment(seg, t, t + sec - 1);
-    this.pregame = 'opening';
+    // (a quiet booth, e.g. audio not unlocked yet, does not take it: the opening then starts from the lull once it can talk)
+    if (this.director.segmentActive) this.pregame = 'opening';
   }
 
   private handoff(t: number, c: BoothCtx) {
@@ -108,8 +110,8 @@ export class Booth {
     if (this.facts) {
       if (ev.type === 'gameStart' && this.pregame === 'none') this.pregame = 'waiting';
       if (ev.type === 'breakStart' && (ev.pregame || (ev.inning === 1 && ev.half === 'top' && this.log.pitches.length === 0)) && this.pregame === 'waiting') this.startOpening(t, Number(ev.sec) || 20);
-      if (ev.type === 'umpireCall' && ev.kind === 'play_ball') this.handoff(t + 0.3, c);
-      if (ev.type === 'batterUp' && (this.pregame === 'opening' || this.pregame === 'waiting')) this.handoffAt = t + 0.8; // (an older sim without "play ball")
+      if (ev.type === 'umpireCall' && ev.kind === 'play_ball') this.handoffAt = t + 0.3;
+      if (ev.type === 'batterUp' && (this.pregame === 'opening' || this.pregame === 'waiting')) this.handoffAt ??= t + 1.5; // (an older sim without "play ball")
       if (ev.type === 'pitchReleased' && this.pregame !== 'done' && this.pregame !== 'none') this.handoff(t, c);
     }
     if (ev.type === 'call') {
@@ -164,7 +166,11 @@ export class Booth {
   tick(t: number, c: BoothCtx, opts: { suppressed: boolean; fieldHold?: boolean }): Action[] {
     this.ctx = c;
     this.director.holdForField = !!opts.fieldHold;
-    if (this.handoffAt !== null && t >= this.handoffAt) this.handoff(t, c);
+    const out: Action[] = this.director.setSuppressed(opts.suppressed, t);
+    // the handoff answers the umpire's "Play ball!": with voices that cannot overlap it waits until the PA / umpire have been quiet for a moment
+    if (opts.fieldHold) this.fieldIdleSince = Infinity;
+    else if (this.fieldIdleSince === Infinity) this.fieldIdleSince = t;
+    if (this.handoffAt !== null && t >= this.handoffAt && t - this.fieldIdleSince >= 0.8) this.handoff(t, c);
     // a segment that was cut short by a pause / mute resumes while its lull lasts, else it is dropped
     if (this.director.parked && !opts.suppressed) {
       const left = c.lull?.kind === 'break' ? c.lull.remaining ?? 0 : 0;
@@ -176,7 +182,6 @@ export class Booth {
       this.lead = 0;
       this.startOpening(t, c.lull.remaining!);
     }
-    const out: Action[] = this.director.setSuppressed(opts.suppressed, t);
     if (!opts.suppressed) out.push(...this.director.tick(t));
     for (const a of out) if (a.type === 'start') this.recentSaid = [...this.recentSaid, a.clauses.map((x) => x.text).join(' ')].slice(-4);
     for (const a of out) if (a.type === 'start') this.transcript.push({ t, voice: a.voice, text: a.clauses.map((x) => x.text).join(' '), tag: a.item.tag, imp: a.item.importance });
