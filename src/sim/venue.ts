@@ -16,6 +16,13 @@ export const DUG_S = [12, 30] as const;
 export const DUG_O = [8.6, 13.2] as const;
 export const DUG_FLOOR = -1.05;
 export const BENCH_SEATS = 16;
+/** The bench seat's top above the dugout floor (`field.py`: fl + 0.50), the seat height the `bench_sit` clip is made for (its root is the floor below
+ * the seat centre, seat 0.45 m), and so how far a seated player's root is lifted above the floor. */
+export const BENCH_SEAT_TOP = 0.5;
+export const SIT_CLIP_SEAT = 0.45;
+export const BENCH_SIT_LIFT = BENCH_SEAT_TOP - SIT_CLIP_SEAT;
+/** The bench seat's depth (off the base line: `field.py` o1 - 1.25 .. o1 - 0.75, o1 = 13.2) */
+export const BENCH_SEAT_O = [11.95, 12.45] as const;
 
 /** The dugout door at field level (the top of the steps) and the foot of the steps. */
 export const dugDoor = (side: TeamSide) => alongLine(11.0, 9.6, side);
@@ -61,5 +68,14 @@ export const pitchCoachSpot = (side: TeamSide) => alongLine(16.8, 9.2, side);
 /** Where a visitor stands at the mound (between the pitcher and the plate), and the ring spots of the infielders who join. */
 export const moundVisitor = { x: 0.7, z: 17.0 };
 export const moundRing: Record<string, { x: number; z: number }> = { '1B': { x: -2.3, z: 17.6 }, '2B': { x: -2.6, z: 19.6 }, SS: { x: 2.6, z: 19.6 }, '3B': { x: 2.3, z: 17.6 } };
+/**
+ * The umpires' plate meeting before the game (and where they wait out a break's first moments): a loose semicircle in foul ground on the
+ * first-base side of the plate, out of the catcher's and the warm-up pitches' way, each facing the middle of the group.
+ */
+export const CREW_MEETING = { x: -4.2, z: -3.4 };
+export function crewMeetingSpot(position: 'HP' | '1B-U' | '2B-U' | '3B-U'): { x: number; z: number } {
+  const a = { HP: -1.9, '1B-U': -0.7, '2B-U': 0.5, '3B-U': 1.7 }[position];
+  return { x: CREW_MEETING.x + 0.95 * Math.sin(a), z: CREW_MEETING.z + 0.95 * Math.cos(a) };
+}
 /** Where the umpires gather for a review (a huddle in front of the plate, on the first-base side). */
 export const umpHuddle = (k: number) => ({ x: -1.6 + 1.1 * (k % 2), z: 5.0 + 1.1 * Math.floor(k / 2) });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { clipCandidates, stanceYaw } from '../gltfCharacter';
 import { CALL_CAPTIONS } from '../hud';
-import type { AnimHint } from '../types';
+import { readFileSync } from 'node:fs';
+import type { AnimHint, PlayerRole } from '../types';
 
 describe('hint → clip mapping with fallbacks', () => {
   it('prefers the dedicated clip and falls back to an older one', () => {
@@ -46,5 +47,35 @@ describe('umpire captions', () => {
     expect(CALL_CAPTIONS.out).toBe('OUT');
     expect(CALL_CAPTIONS.homerun).toBe('HOME RUN');
     expect(CALL_CAPTIONS.strikeout).toBe('STRIKEOUT');
+  });
+});
+
+describe('every hint resolves to a clip the player files have, in a fitting posture', () => {
+  const src = readFileSync(new URL('../types.ts', import.meta.url), 'utf8');
+  const union = /export type AnimHint =([^;]+);/.exec(src)![1];
+  const hints = [...union.matchAll(/'([a-z_0-9]+)'/g)].map((m) => m[1] as AnimHint);
+  const manifest = JSON.parse(readFileSync(new URL('../../../assets/players/player_manifest.json', import.meta.url), 'utf8')) as { clips: Record<string, unknown> };
+  const has = (c: string) => c in manifest.clips;
+  const resolve = (h: AnimHint, role: PlayerRole) => clipCandidates(h, role).find(has);
+  const roles: PlayerRole[] = ['pitcher', 'catcher', 'first', 'short', 'center', 'batter', 'runner', 'umpire', 'ballkid', 'batboy', 'coach1b', 'bench', 'manager'];
+  const SEATED = new Set(['bench_sit', 'ballkid_sit']);
+
+  it('the union was read', () => expect(hints.length).toBeGreaterThan(80));
+
+  it('every hint has an existing clip for every role', () => {
+    for (const h of hints) for (const r of roles) expect(resolve(h, r), `${h} / ${r}`).toBeDefined();
+  });
+
+  it('a standing hint never falls back to a seated clip (the bat boy sat on thin air with `ballkid_idle` → `ballkid_sit`)', () => {
+    for (const h of hints) {
+      if (SEATED.has(h) || h === 'bench_stand_up' || h === 'bench_cheer') continue;
+      for (const r of roles) expect(SEATED.has(resolve(h, r)!), `${h} / ${r} → ${resolve(h, r)}`).toBe(false);
+    }
+  });
+
+  it('hints without a clip of their own are only these known stand-ins (a new one must be added here on purpose)', () => {
+    const own = hints.filter((h) => !has(h) && resolve(h, 'short') !== h).sort();
+    expect(own).toEqual(['ballkid_idle', 'ballkid_run', 'catch', 'catch_ready', 'field', 'toss', 'transfer', 'umpire_brush_plate']);
+    expect(resolve('umpire_brush_plate', 'umpire')).toBe('ump_brush_plate');
   });
 });

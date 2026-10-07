@@ -113,7 +113,7 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'bench_cheer': case 'bench_stand_up': return [hint, 'bench_sit', 'idle'];
     case 'catch_ready': return ['catch_ready', ...idleFor(role)];
     case 'pitcher_catch_toss': return ['pitcher_catch_toss', 'catch_throw', 'field_catch'];
-    case 'ballkid_idle': return ['ballkid_idle', 'ballkid_sit', 'idle'];
+    case 'ballkid_idle': return ['ballkid_idle', 'idle']; // standing: never a seated clip (that sat the bat boy on thin air)
     case 'coach_slide': return ['coach_slide', 'ump_safe', 'idle'];
     case 'ballkid_sit': return ['ballkid_sit', 'bench_sit', 'idle'];
     case 'ballkid_run': return ['ballkid_run', 'jog', 'run'];
@@ -130,13 +130,19 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'pitcher_handoff': return ['pitcher_handoff', 'idle'];
     case 'warmup_pitch': return ['warmup_pitch', 'throw_casual', 'throw'];
     case 'bullpen_throw': return ['bullpen_throw', 'throw_casual', 'throw'];
-    case 'umpire_brush_plate': return ['umpire_brush_plate', 'ump_set_base', 'idle'];
+    case 'umpire_brush_plate': return ['ump_brush_plate', 'idle'];
     case 'ump_new_ball': return ['ump_new_ball', 'ump_time', 'idle'];
     case 'ump_huddle': return ['ump_huddle', 'idle'];
     case 'ballkid_toss': return ['ballkid_toss', 'throw_casual', 'throw'];
     default: return idleFor(role);
   }
 }
+
+/**
+ * A base umpire while a pitch comes: he stays upright and relaxed. The `ump_set_base` clip holds its hands out in the air in a stiff claw crouch, and the
+ * fielders' hands-on-knees set bends the neck back hard once the head looks up at the ball; neither reads as an umpire.
+ */
+const BASE_UMP_SET = ['idle'];
 
 /** the standing pose of a role between plays (frame 0 of the swing is the batting stance until a `batting_stance` clip exists) */
 function idleFor(role: PlayerRole): string[] {
@@ -900,7 +906,8 @@ export class GltfPuppet implements PuppetLike {
   }
 
   private resolveClip(hint: AnimHint, role: PlayerRole): string {
-    if (role === 'umpire' && hint === 'idle') return this.actions.has(this.umpBase ? 'ump_set_base' : 'ump_ready') ? (this.umpBase ? 'ump_set_base' : 'ump_ready') : 'idle';
+    // the set position: the plate umpire's slot crouch, a base umpire's hands-on-knees set (`idle` is the relaxed stand between pitches)
+    if (role === 'umpire' && hint === 'ump_ready' && this.umpBase) for (const n of BASE_UMP_SET) if (this.actions.has(n)) return n;
     for (const n of clipCandidates(hint, role)) if (this.actions.has(n)) return n;
     return 'idle';
   }
@@ -919,6 +926,9 @@ export class GltfPuppet implements PuppetLike {
     if (this.current) this.current.crossFadeTo(a, stanceBlend ? 0.3 : this.isLoop(name) ? 0.2 : 0.1, false);
     this.current = a;
     this.currentName = name;
+    // the plate umpire's whisk broom is out only while he brushes the plate
+    const broom = this.nodes.get('Umpire_Broom');
+    if (broom) broom.visible = name === 'ump_brush_plate';
   }
 
   /**

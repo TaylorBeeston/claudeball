@@ -435,6 +435,8 @@ export interface UmpireRT {
   animUntil: number;
   /** Where he is told to stand (a huddle, the plate for a brush), null = his usual spot for the play. */
   hold: { x: number; z: number } | null;
+  /** What he is told to face while standing there (the backstop for a brush, the crew in a meeting), null = the ball. */
+  face?: { x: number; z: number } | null;
 }
 
 /** A fielder at a bag with the ball secure and his glove set down where the runner's foot / hand will arrive. */

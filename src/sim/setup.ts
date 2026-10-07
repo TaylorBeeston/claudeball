@@ -1,7 +1,8 @@
 import { DEFAULT_ENV } from './ball';
 import { DEFAULT_FENCE, MOUND_DIST } from './field';
 import { Rng } from './rng';
-import { dugDoor } from './venue';
+import { crewMeetingSpot, dugDoor } from './venue';
+import { TEMPO_LULL } from './tempo';
 import { newDecState } from './dispatch';
 import { createAI } from './ai';
 import { generateTeam } from './roster';
@@ -141,6 +142,9 @@ export function makeTeamRT(team: Team, side: TeamSide, dh: boolean): TeamRT {
   return t;
 }
 
+/** Is there time for the umpires' plate meeting before the first pitch (a pre-game show at `standard` / `broadcast` tempo)? */
+export const crewMeets = (cfg: GameConfig) => (cfg.pace ?? 1) * TEMPO_LULL[cfg.tempo ?? 'quick'] >= 0.5;
+
 export function createWorld(cfg: GameConfig): World {
   const rng = new Rng(cfg.seed);
   const teamSeed = cfg.teamSeed ?? cfg.seed;
@@ -249,7 +253,11 @@ export function createWorld(cfg: GameConfig): World {
         ['ump-2b', 'Second Base Umpire', '2B-U', 'second', 6, 42.0],
         ['ump-3b', 'Third Base Umpire', '3B-U', 'third', 24.5, 24.0],
       ] as const
-    ).map(([id, name, position, key, x, z]) => ({ id, name, position, key, x, z, vx: 0, vz: 0, gx: x, gz: z, goalSince: 0, facing: Math.atan2(-x, position === 'HP' ? 20 : 30 - z), anim: 'ump_ready' as const, animStart: 0, animUntil: 0, hold: null })),
+    ).map(([id, name, position, key, rx, rz]) => {
+      // with a pre-game show the crew starts at its plate meeting and takes the field from there (see breaks.ts), else at their posts
+      const m = crewMeets(cfg) ? crewMeetingSpot(position) : { x: rx, z: rz };
+      return { id, name, position, key, x: m.x, z: m.z, vx: 0, vz: 0, gx: m.x, gz: m.z, goalSince: 0, facing: Math.atan2(-m.x, position === 'HP' ? 20 : 30 - m.z), anim: 'idle' as const, animStart: 0, animUntil: 0, hold: null, face: null };
+    }),
     umpQueue: [],
     staff: [],
     lull: null,

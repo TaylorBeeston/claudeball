@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
 import type { GameEvent } from '../types';
 import { hitBall, lab, ofType } from './helpers';
+import { detour } from '../umpires';
 
 describe('umpires: positions, timed calls and gestures', () => {
   const g = createGame({ seed: 'ump-1', pace: 1 });
@@ -10,6 +11,8 @@ describe('umpires: positions, timed calls and gestures', () => {
   g.on('*', (e) => events.push(e));
   const seenAnims = new Set<string>();
   const posLog: { key: string; x: number; z: number; tick: number }[] = [];
+  /** the umpires' stances (not gestures) seen in each phase */
+  const stanceByPhase = new Map<string, Set<string>>();
   // (the umpires gather at the plate during the break, a visit, a change and a review: those are not the positions this test is about)
   let lastGather = -99999;
   const gathering = () => {
@@ -22,6 +25,12 @@ describe('umpires: positions, timed calls and gestures', () => {
     for (const u of w.umpires) {
       if (!gathering()) posLog.push({ key: u.key, x: u.x, z: u.z, tick: w.tick });
       if (w.tick < u.animUntil) seenAnims.add(u.anim);
+    }
+    if (w.tick % 24 === 0) {
+      const set = stanceByPhase.get(w.phase) ?? new Set<string>();
+      for (const p of g.getState().players) if (p.role === 'umpire' && !String(p.anim).startsWith('ump_') ) set.add(p.anim);
+      for (const p of g.getState().players) if (p.role === 'umpire' && p.anim === 'ump_ready') set.add(p.anim);
+      stanceByPhase.set(w.phase, set);
     }
   }
 
@@ -62,11 +71,15 @@ describe('umpires: positions, timed calls and gestures', () => {
     for (const k of ['ball', 'strike_called', 'strike_swinging', 'foul']) expect(kinds.has(k as never)).toBe(true);
   });
 
-  it('gestures show on the umpire\'s anim (ump_*) and he is otherwise ready', () => {
+  it('gestures show on the umpire\'s anim (ump_*); otherwise he is set (`ump_ready`) only while a pitch is coming, and stands relaxed (`idle`) between pitches', () => {
     for (const a of ['ump_ball', 'ump_strike', 'ump_foul']) expect(seenAnims.has(a)).toBe(true);
     for (const a of seenAnims) expect(a.startsWith('ump')).toBe(true);
-    const s = g.getState();
-    for (const p of s.players.filter((q) => q.role === 'umpire')) expect(String(p.anim).startsWith('ump')).toBe(true);
+    for (const [phase, anims] of stanceByPhase) {
+      if (phase === 'windup' || phase === 'pitch') expect([...anims]).toEqual(['ump_ready']);
+      else expect(anims.has('ump_ready')).toBe(false);
+    }
+    expect(stanceByPhase.get('prePitch')?.has('idle')).toBe(true);
+    expect(stanceByPhase.get('halfBreak')?.has('idle')).toBe(true);
   });
 
   it('the base umpires stay out of the way: foul territory down the lines, beyond the bag at second; the plate umpire behind the plate', () => {
@@ -118,5 +131,17 @@ describe('umpires: positions, timed calls and gestures', () => {
     while (!g.over && seen.k < 6 && n++ < 240 * 3000) g.step(1 / 60);
     expect(seen.k).toBeGreaterThanOrEqual(6);
     expect(seen.sw).toBeGreaterThan(0);
+  });
+});
+
+describe('the plate umpire walks round the catcher', () => {
+  it('detour: a way through the catcher goes 1.4 m beside him; a clear way is left alone', () => {
+    const c = { x: 0, z: -0.7 };
+    const v = detour({ x: 0.25, z: -2.6 }, 0, 0.95, c)!;
+    expect(v).not.toBeNull();
+    expect(Math.hypot(v.x - c.x, v.z - c.z)).toBeCloseTo(1.4, 5);
+    expect(v.x).toBeGreaterThan(1.2); // the side the path leans to (third-base side)
+    expect(detour({ x: 2.5, z: -2.6 }, 2.5, 0.95, c)).toBeNull();
+    expect(detour({ x: 0.25, z: -2.6 }, 0.2, -2.0, c)).toBeNull(); // the catcher is not between
   });
 });

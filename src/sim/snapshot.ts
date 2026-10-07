@@ -1,5 +1,6 @@
 import { groundHeight } from './field';
-import { dugoutFloorY } from './venue';
+import { BENCH_SIT_LIFT, dugoutFloorY } from './venue';
+import { umpStance } from './umpires';
 import { teamStats } from './stats';
 import { routineDetail, ticOf } from './tempo';
 import type { World, PlayerRT } from './world';
@@ -46,7 +47,8 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     role,
     position: (p.fieldPos ?? p.info.primaryPosition) as PlayerSnapshot['position'],
     jersey: p.info.jersey,
-    pos: { x: p.x, y: feetY(w, p), z: p.z },
+    // seated, the root is the floor below the seat centre for a seat of the clip's height: on the taller dugout bench it is lifted by the difference
+    pos: { x: p.x, y: feetY(w, p) + (a.anim === 'bench_sit' ? BENCH_SIT_LIFT : 0), z: p.z },
     vel: { x: p.vx, y: 0, z: p.vz },
     facing: p.facing,
     anim: a.anim,
@@ -116,7 +118,9 @@ export function snapshot(w: World): GameStateSnapshot {
   for (const s of w.staff) {
     if (!s.active) continue;
     const sp = Math.hypot(s.vx, s.vz);
-    const doing = w.tick < s.animUntil;
+    // a ball kid sits only on his chair (standing still at his home spot): anywhere else he would be sitting on air
+    const onChair = s.role === 'ballkid' && sp < 0.05 && Math.hypot(s.x - s.homeX, s.z - s.homeZ) < 0.3;
+    const doing = w.tick < s.animUntil && (s.anim !== 'ballkid_sit' || onChair);
     players.push({
       id: s.id,
       name: s.name,
@@ -127,7 +131,7 @@ export function snapshot(w: World): GameStateSnapshot {
       pos: { x: s.x, y: dugoutFloorY(s.x, s.z) < 0 ? dugoutFloorY(s.x, s.z) : 0, z: s.z },
       vel: { x: s.vx, y: 0, z: s.vz },
       facing: s.facing,
-      anim: doing ? s.anim : (s.role === 'manager' || s.role === 'pitchcoach') ? (sp > 0.4 ? 'walk' : 'idle') : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
+      anim: doing ? s.anim : (s.role === 'manager' || s.role === 'pitchcoach') ? (sp > 0.4 ? 'walk' : 'idle') : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' && onChair ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
       animT: doing ? Math.min(1, (w.tick - s.animStart) / Math.max(1, s.animUntil - s.animStart)) : 0,
       hasBall: false,
       bats: 'R',
@@ -147,7 +151,7 @@ export function snapshot(w: World): GameStateSnapshot {
       pos: { x: u.x, y: 0, z: u.z },
       vel: { x: u.vx, y: 0, z: u.vz },
       facing: u.facing,
-      anim: gesturing ? u.anim : 'ump_ready',
+      anim: gesturing ? u.anim : umpStance(w),
       animT: gesturing ? Math.min(1, (w.tick - u.animStart) / Math.max(1, u.animUntil - u.animStart)) : 0,
       hasBall: false,
       bats: 'R',

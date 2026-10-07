@@ -13,7 +13,16 @@ import { TICK, secToTicks } from './world';
 
 const bpos = (b: number) => BASE_POS[b % 4];
 const KEY_OF_BASE: Record<number, UmpKey> = { 1: 'first', 2: 'second', 3: 'third', 4: 'plate' };
+/** A base umpire runs to see a play (m/s); otherwise the crew walks, or jogs a long way (taking the field at the start of the game). */
 const SPEED = 4.5;
+const WALK = 1.4;
+const JOG = 3.2;
+/**
+ * The plate umpire's spot for brushing the plate: in front of it, his back to the field and facing the backstop as umpires do (the broom strokes
+ * ~0.5 m ahead of his feet, so his head stays well clear of the catcher behind the plate); he walks round the catcher to get there (`detour`).
+ */
+export const BRUSH_SPOT = { x: 0, z: 0.95 };
+export const BRUSH_FACE = { x: 0, z: -10 };
 
 export const HINT_OF: Record<UmpireCallKind, AnimHint> = {
   ball: 'ump_ball',
@@ -48,7 +57,7 @@ export function idealSpot(w: World, b: number): { x: number; z: number } {
   }
 }
 
-function restSpot(u: UmpireRT) {
+export function restSpot(u: Pick<UmpireRT, 'position'>) {
   return u.position === 'HP' ? { x: 0.25, z: -2.6 } : u.position === '1B-U' ? { x: -24.5, z: 24.0 } : u.position === '2B-U' ? { x: 6, z: 42.0 } : { x: 24.5, z: 24.0 };
 }
 
@@ -88,6 +97,37 @@ export function nearestUmp(w: World, x: number, z: number): UmpKey {
   return best;
 }
 
+/**
+ * The umpire's stance when he is not gesturing: set (`ump_ready`: the plate umpire in the slot behind the catcher, a base umpire hands on knees)
+ * only while a pitch is coming (the windup until the ball is caught or hit) or a pickoff throw; otherwise he stands relaxed (`idle`).
+ */
+export function umpStance(w: World): AnimHint {
+  return w.phase === 'windup' || w.phase === 'pitch' || w.phase === 'pickoff' ? 'ump_ready' : 'idle';
+}
+
+/** A point beside `c` to walk through when the straight way from `u` to the goal passes within 1.2 m of him (a crouched catcher with his mitt out is ~1 m wide) (null: the way is clear). */
+export function detour(u: { x: number; z: number }, gx: number, gz: number, c: { x: number; z: number }): { x: number; z: number } | null {
+  const dx = gx - u.x;
+  const dz = gz - u.z;
+  const L2 = dx * dx + dz * dz;
+  if (L2 < 1e-6) return null;
+  const t = ((c.x - u.x) * dx + (c.z - u.z) * dz) / L2;
+  if (t <= 0.05 || t >= 0.95) return null;
+  const px = u.x + dx * t - c.x;
+  const pz = u.z + dz * t - c.z;
+  if (Math.hypot(px, pz) > 1.2) return null;
+  // pass on the side the path already leans to (the third-base side when it goes straight through), 1.4 m out, perpendicular to the way
+  const L = Math.sqrt(L2);
+  let nx = -dz / L;
+  let nz = dx / L;
+  const side = px * nx + pz * nz;
+  if (side < 0 || (Math.abs(side) < 1e-3 && nx < 0)) {
+    nx = -nx;
+    nz = -nz;
+  }
+  return { x: c.x + nx * 1.4, z: c.z + nz * 1.4 };
+}
+
 export function tickUmpires(w: World): void {
   // goals: the bases the play is at, or back to rest
   const bases = playBases(w);
@@ -100,7 +140,7 @@ export function tickUmpires(w: World): void {
       u.gz = goal.z;
       u.goalSince = w.tick;
     }
-    // he reacts a moment after the play changes, then walks / jogs there
+    // he reacts a moment after the play changes, then runs there for a live play, else walks (jogs a long way)
     let vx = 0;
     let vz = 0;
     if (w.tick >= u.goalSince + secToTicks(0.3)) {
@@ -108,24 +148,34 @@ export function tickUmpires(w: World): void {
       const dz = u.gz - u.z;
       const d = Math.hypot(dx, dz);
       if (d > 0.05) {
-        const sp = Math.min(SPEED, Math.sqrt(2 * 3.5 * d));
-        vx = (dx / d) * sp;
-        vz = (dz / d) * sp;
+        const live = bases.length > 0 && !u.hold;
+        const top = live ? SPEED : d > 9 || Math.hypot(u.vx, u.vz) > 2.5 ? JOG : WALK;
+        const sp = Math.min(top, Math.sqrt(2 * 3.5 * d));
+        // the plate umpire walks round the catcher (to the plate and back for a brush), not through him
+        const via = u.key === 'plate' && !live ? detour(u, u.gx, u.gz, w.catcher) : null;
+        const hx = via ? via.x - u.x : dx;
+        const hz = via ? via.z - u.z : dz;
+        const hd = Math.hypot(hx, hz) || 1;
+        vx = (hx / hd) * sp;
+        vz = (hz / hd) * sp;
       }
     }
     u.vx = vx;
     u.vz = vz;
     u.x += vx * TICK;
     u.z += vz * TICK;
-    // he watches the ball (the plate umpire the pitcher / catcher)
+    // he faces where he walks; standing, he watches the ball (the plate umpire the pitcher / catcher), or what he was told to face
     const bx = w.ball.body.x;
     const bz = w.ball.body.z;
-    const target = u.key === 'plate' && w.phase !== 'inPlay' ? { x: 0, z: 18 } : { x: bx, z: bz };
+    const walking = Math.hypot(vx, vz) > 0.6 && Math.hypot(u.gx - u.x, u.gz - u.z) > 1.0;
+    const target = walking ? { x: u.gx, z: u.gz } : u.face ? u.face : u.key === 'plate' && w.phase !== 'inPlay' ? { x: 0, z: 18 } : { x: bx, z: bz };
     const want = Math.atan2(target.x - u.x, target.z - u.z);
     let dth = want - u.facing;
     while (dth > Math.PI) dth -= 2 * Math.PI;
     while (dth < -Math.PI) dth += 2 * Math.PI;
     u.facing += clamp(dth, -6 * TICK, 6 * TICK);
+    if (u.facing > Math.PI) u.facing -= 2 * Math.PI;
+    else if (u.facing < -Math.PI) u.facing += 2 * Math.PI;
   }
   // calls whose moment has come
   if (w.umpQueue.length) {
