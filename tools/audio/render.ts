@@ -27,7 +27,7 @@ const out = opt('out', path.join(os.homedir(), 'claudeball-audio-renders'))!;
 const scenes = (opt('scenes', 'game,impulse,duck,organ') ?? '').split(',').filter(Boolean);
 const venue = opt('venue');
 const lowPower = flag('lowpower');
-const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet'), noBeds: flag('no-beds'), noShots: flag('no-shots') };
+const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet'), noBeds: flag('no-beds'), noShots: flag('no-shots'), linearShapers: false };
 const reps = Number(opt('reps', '1'));
 const partsArg = opt('parts');
 const parts = partsArg ? Object.fromEntries(['organ', 'crowd', 'sfx', 'pa', 'booth'].map((k) => [k, partsArg.split(',').includes(k)])) : undefined;
@@ -136,6 +136,26 @@ async function main() {
         finite: chs.every((c) => c.every(Number.isFinite)),
         info: r.info,
       };
+      if (flag('null-clip')) {
+        // the same render with the soft clippers made linear: what the clippers did (the residual, relative to the signal)
+        const lin = (await run({ scene, voice, settings, lowPower, debug: { ...debug, linearShapers: true }, parts })).channels.map(fromB64);
+        let es = 0, er = 0, worst = -200;
+        const win = Math.round(r.sr * 0.4);
+        for (let c = 0; c < chs.length; c++)
+          for (let s0 = 0; s0 + win <= chs[c].length; s0 += win) {
+            let a1 = 0, a2 = 0;
+            for (let i = s0; i < s0 + win; i++) {
+              const d = chs[c][i] - lin[c][i];
+              a1 += lin[c][i] * lin[c][i];
+              a2 += d * d;
+            }
+            es += a1;
+            er += a2;
+            if (a1 > 1e-6) worst = Math.max(worst, 10 * Math.log10((a2 + 1e-20) / a1));
+          }
+        a.clipNull = { residualDb: +(10 * Math.log10((er + 1e-20) / (es + 1e-20))).toFixed(1), worst400msDb: +worst.toFixed(1) };
+        console.log(`[render] ${scene} clipper null test: residual ${JSON.stringify(a.clipNull)} dB`);
+      }
       if (flag('determinism')) {
         // the same scene again: every sample must match (seeded noise, seeded crowd, scheduled on the audio clock)
         const again = (await run({ scene, voice, settings, lowPower, debug, parts })).channels.map(fromB64);

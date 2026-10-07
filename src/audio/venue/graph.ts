@@ -112,7 +112,7 @@ export class VenueGraph {
   readonly meters: boolean;
   readonly stats = { worklet: 'none' as 'none' | 'loading' | 'on' | 'failed', irMs: 0, nodes: 0 };
 
-  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean } } = {}) {
+  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean; linearShapers?: boolean } } = {}) {
     this.ctx = ctx;
     this.lowPower = !!o.lowPower;
     this.venue = o.venue ?? 'normal';
@@ -158,9 +158,11 @@ export class VenueGraph {
     lim.ratio.value = 20;
     lim.attack.value = 0.001;
     lim.release.value = 0.1;
-    const trim = gain(this.lowPower ? 1.07 : 0.85); // phones: +2 dB for the glue compressor's makeup they skip
+    // the limiter's output (its automatic makeup included) peaks ~2 dB under the clipper's knee: the clipper only catches strays
+    // (render.ts --null-clip measures what it changes); phones +2 dB for the glue compressor's makeup they skip
+    const trim = gain(this.lowPower ? 0.88 : 0.7);
     const clip = count(ctx.createWaveShaper());
-    clip.curve = softClipCurve(0.891);
+    clip.curve = o.profile?.linearShapers ? LINEAR : softClipCurve(0.891);
     // the limiter ahead (with its look-ahead) holds the peaks: the clipper is a last safety net, not oversampled (measured: true peak
     // stays under -1 dBTP, see the README)
     clip.oversample = 'none';
@@ -295,11 +297,12 @@ export class VenueGraph {
     comp.ratio.value = 3.5;
     comp.attack.value = 0.003;
     comp.release.value = 0.16;
-    const makeup = gain(dbToGain(4));
+    // Chrome's compressor already adds ~+11 dB of automatic makeup here: this trims it so the soft limiter after it rarely acts
+    const makeup = gain(dbToGain(-6));
     // the booth's limiter: a soft-knee peak limiter as a static curve (the compressor's attack lets a few ms through; a second
     // DynamicsCompressor would cost ~2 ms per audio second; the master limiter is behind it anyway)
     const blim = count(ctx.createWaveShaper());
-    blim.curve = softClipCurve(0.9, 0.7);
+    blim.curve = o.profile?.linearShapers ? LINEAR : softClipCurve(0.9, 0.7);
     this.boothFader = gain(1);
     this.boothOut = gain(1);
     this.boothBus.connect(bhp).connect(pres).connect(tame).connect(comp).connect(makeup).connect(blim).connect(this.boothFader).connect(this.boothOut).connect(this.master);
@@ -549,6 +552,11 @@ export class VenueGraph {
     }
   }
 
+  /** the analyser path is in use (phones, or the worklet could not load): the mixer runs `pumpDuck` on a timer */
+  get needsPump(): boolean {
+    return !!this.keyTap && !this.duckNode;
+  }
+
   /** the analyser path's step (the mixer calls it ~50 times a second): the same `duckStep` the worklet runs, applied as gain targets */
   pumpDuck(dt?: number) {
     const a = this.keyTap;
@@ -651,6 +659,9 @@ export class VenueGraph {
     return out;
   }
 }
+
+/** an identity curve (the render tool's null test: what do the clippers change?) */
+const LINEAR = new Float32Array([-1, 0, 1]);
 
 /** linear below `k * ceiling`, then a tanh knee that never passes `ceiling` */
 export function softClipCurve(ceiling: number, k = 0.75, n = 4096): Float32Array<ArrayBuffer> {

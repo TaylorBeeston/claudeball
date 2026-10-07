@@ -22,15 +22,15 @@ import type { CrowdShot } from './crowd';
 
 export const MAX_VOICES = 32;
 /** master gain at the full slider, ahead of the master chain (sets the loudness: about -16 LUFS integrated at the default volume) */
-const MAKEUP = 3.2;
+const MAKEUP = 4.9;
 /** park music at the full slider (into the PA system) */
-const MUSIC_LEVEL = 0.13;
+const MUSIC_LEVEL = 0.1;
 /** the organ at the full slider (into the PA system) */
-const ORGAN_LEVEL = 0.13;
+const ORGAN_LEVEL = 0.1;
 /** PA voice at slider 1 (into the PA system) */
-const PA_LEVEL = 0.85;
+const PA_LEVEL = 0.72;
 /** booth voices at the full announcer slider (after the booth's compressor) */
-const BOOTH_LEVEL = 0.39;
+const BOOTH_LEVEL = 1.23;
 /** duck depth (dB) and presence cut (dB) per setting */
 export const DUCK_LEVELS = { light: { depth: 4, eqDepth: 2.5 }, normal: { depth: 7, eqDepth: 4 }, strong: { depth: 10, eqDepth: 5 } } as const;
 
@@ -153,7 +153,7 @@ export class Mixer {
   /** rendering offline (the render tool): no real-time timers */
   private offline = false;
   private duckTimer: ReturnType<typeof setInterval> | null = null;
-  private debugFlags = { boothSilent: false, noReverb: false, noConvolver: false, noOversample: false, noWorklet: false };
+  private debugFlags = { boothSilent: false, noReverb: false, noConvolver: false, noOversample: false, noWorklet: false, linearShapers: false };
   /** counters per sound id, for debug and tests */
   readonly played: Record<string, number> = {};
 
@@ -181,7 +181,7 @@ export class Mixer {
   }
 
   private build(ctx: AudioContext) {
-    const g = new VenueGraph(ctx, { lowPower: this.lowPower, venue: this.settings.venue, perspective: this.settings.micPerspective, meters: this.meters, profile: { noConvolver: this.debugFlags.noConvolver, noOversample: this.debugFlags.noOversample, noWorklet: this.debugFlags.noWorklet } });
+    const g = new VenueGraph(ctx, { lowPower: this.lowPower, venue: this.settings.venue, perspective: this.settings.micPerspective, meters: this.meters, profile: { noConvolver: this.debugFlags.noConvolver, noOversample: this.debugFlags.noOversample, noWorklet: this.debugFlags.noWorklet, linearShapers: this.debugFlags.linearShapers } });
     this.graph = g;
     const gain = () => ctx.createGain();
     // the master volume is the master chain's input: the park bus, the booth and the stings all sum there
@@ -197,8 +197,11 @@ export class Mixer {
     this.umpireBus = gain();
     this.umpireBus.connect(g.umpireIn);
     this.boothBus = g.boothBus;
-    // the analyser duck (phones / no worklet) reads the booth ~50 times a second (a few microseconds; nothing to do when quiet)
-    if (!this.offline && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => this.graph?.pumpDuck(), 20);
+    // the analyser duck (phones / no worklet) reads the booth ~50 times a second (a few microseconds; nothing to do when quiet); with
+    // the worklet there is no timer at all
+    void g.ready.then(() => {
+      if (g.needsPump && !this.offline && this.graph === g && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => this.graph?.pumpDuck(), 20);
+    });
     this.voiceBus = g.boothFader;
     this.reverbIn = g.reverbIn;
     // crowd bed (diffuse): the house pair and the side crowd mics
@@ -226,7 +229,7 @@ export class Mixer {
     for (let t = 0; t < dt - 1e-6; t += 0.02) this.graph?.pumpDuck(0.02);
   }
 
-  setDebug(f: Partial<{ boothSilent: boolean; noReverb: boolean; noConvolver: boolean; noOversample: boolean; noWorklet: boolean }>) {
+  setDebug(f: Partial<{ boothSilent: boolean; noReverb: boolean; noConvolver: boolean; noOversample: boolean; noWorklet: boolean; linearShapers: boolean }>) {
     this.debugFlags = { ...this.debugFlags, ...f };
     this.applySettings();
   }
@@ -468,7 +471,8 @@ export class Mixer {
     if (!list || !def) return false;
     const now = ctx.currentTime;
     if (!this.allow(c.id, now)) return false;
-    const fx = c.id.startsWith('bfx_');
+    // broadcast-layer sounds (camera stings, the replay whoosh): dry, centred, not in the park
+    const fx = c.id.startsWith('bfx_') || c.id === 'replay_whoosh';
     if (this.paused && !fx) return false;
     const bucket = Math.min(def.buckets - 1, Math.max(0, c.bucket ?? 0));
     const alt = Math.floor(this.rnd() * def.alts);

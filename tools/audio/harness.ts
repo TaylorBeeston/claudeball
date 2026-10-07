@@ -35,7 +35,7 @@ export interface RenderOpts {
   scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise';
   lowPower?: boolean;
   /** profiling: build without parts of the graph */
-  debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noBeds?: boolean; noShots?: boolean };
+  debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noBeds?: boolean; noShots?: boolean; linearShapers?: boolean };
 }
 
 export interface RenderOut {
