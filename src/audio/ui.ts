@@ -32,6 +32,9 @@ export function loadSettings(): Settings {
       organVolume: num(o.organVolume, DEFAULT_SETTINGS.organVolume),
       chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
       hd: o.hd === true,
+      venue: o.venue === 'dry' || o.venue === 'big' ? o.venue : 'normal',
+      micPerspective: o.micPerspective === 'close' ? 'close' : 'broadcast',
+      duck: o.duck === 'light' || o.duck === 'strong' ? o.duck : 'normal',
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

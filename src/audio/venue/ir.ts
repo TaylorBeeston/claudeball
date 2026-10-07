@@ -46,11 +46,11 @@ const EARLY: VenueParams['early'] = [
 
 export const VENUES: Record<VenuePreset, VenueParams> = {
   // a small, open park: short tail, little slap
-  dry: { preDelay: 0.035, rt60: [1.3, 1.1, 0.8, 0.5], early: EARLY.slice(0, 5).map((e) => ({ ...e, g: e.g * 0.7 })), tail: 0.6, bloom: 0.06, length: 1.6, wet: 0.16 },
+  dry: { preDelay: 0.035, rt60: [1.3, 1.1, 0.8, 0.5], early: EARLY.slice(0, 5).map((e) => ({ ...e, g: e.g * 0.7 })), tail: 0.6, bloom: 0.06, length: 1.3, wet: 0.16 },
   // a big-league bowl: the default
-  normal: { preDelay: 0.07, rt60: [2.6, 2.2, 1.6, 0.95], early: EARLY, tail: 1, bloom: 0.09, length: 2.8, wet: 0.3 },
+  normal: { preDelay: 0.07, rt60: [2.6, 2.2, 1.6, 0.95], early: EARLY, tail: 1, bloom: 0.09, length: 2.3, wet: 0.3 },
   // a domed / enclosed giant: long and lush
-  big: { preDelay: 0.095, rt60: [3.2, 2.7, 2.0, 1.2], early: EARLY.map((e) => ({ ...e, t: e.t * 1.25, g: e.g * 1.1 })), tail: 1.2, bloom: 0.12, length: 3.4, wet: 0.38 },
+  big: { preDelay: 0.095, rt60: [3.2, 2.7, 2.0, 1.2], early: EARLY.map((e) => ({ ...e, t: e.t * 1.25, g: e.g * 1.1 })), tail: 1.2, bloom: 0.12, length: 2.8, wet: 0.38 },
 };
 
 export interface IR {
@@ -73,7 +73,7 @@ export function stadiumIR(sr: number, preset: VenuePreset | string = 'normal'): 
     for (let i = pre; i < n; i++) noise[i] = rng() * 2 - 1;
     const tail = new Float32Array(n);
     for (let b = 0; b < 4; b++) {
-      let band = noise;
+      let band: Float32Array = noise;
       if (b > 0) band = filt(filt(band, rbj('highpass', edges[b - 1], sr)), rbj('highpass', edges[b - 1], sr));
       if (b < 3) band = filt(filt(band, rbj('lowpass', edges[b], sr)), rbj('lowpass', edges[b], sr));
       // amplitude falls 60 dB over RT60: 10^(-3 t / RT60), as a per-sample factor

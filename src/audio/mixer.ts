@@ -1,29 +1,38 @@
 /**
- * The Web Audio side: one AudioContext, four buses (sfx, crowd, organ+PA, master), a stadium reverb send, a capped voice pool and
- * cached AudioBuffers rendered once from `synth.ts` (a few variants per sound, generated a chunk at a time after unlock so no
- * frame ever stalls for long).
+ * The Web Audio side: one AudioContext, the park soundscape picked up by a fixed microphone array and the broadcast mix
+ * (`venue/graph.ts`), a capped voice pool and cached AudioBuffers rendered once from `synth.ts` (a few variants per sound, generated a
+ * chunk at a time after unlock so no frame ever stalls for long).
  *
- *   sfx voices -> [pan] -> [lowpass] -> sfxBus -> sfxFilter -> master
- *   crowd bed / reactions -> crowdBus -> master           organ / PA chime -> organBus -> master (+ reverb send)
- *   master -> compressor -> analyser -> destination
+ *   field effects (positional) -> mic array (K pickups with propagation delays) -> park bus -> duck -> master
+ *   crowd (zones, diffuse roars) -> mic array                organ / park music / PA voice -> organBus / musicBus / paBus -> PA system -> mic array
+ *   umpire voice -> umpireBus (at the plate) -> mic array    booth voices -> boothIn(role) -> booth chain -> voiceBus (announcer) -> master
+ *   broadcast stings -> fxBus -> master (dry)                replay effects -> replay path (slowed, dulled) -> park bus
+ *   master -> HP 60 Hz -> glue -> limiter -> soft clip -> analyser -> destination
  *
+ * The active camera does not change the mix: a broadcast never uses camera audio.
  * Everything is optional: with no AudioContext (old browser, node) `unlock()` returns false and every play call is a no-op.
  */
 import type { Cue, CrowdId, SfxId, Vec3 } from './types';
-import { DEFAULT_LISTENER, spatialize, type Listener } from './spatial';
 import { CROWD_IDS, SFX_DEFS, crowdLoop, renderCrowd, renderSfx } from './synth';
 import { mulberry32, type Rendered } from './dsp';
+import { TRIM, VenueGraph, type Perspective } from './venue/graph';
+import type { VenuePreset } from './venue/ir';
+import { WAVE_ORDER, LOW_FOLD, zone as zoneOf, zoneForPan, type ZoneId } from './venue/mics';
+import type { CrowdShot } from './crowd';
 
 export const MAX_VOICES = 32;
-/** output makeup gain ahead of the compressor (the synthesised buffers are normalised conservatively) */
+/** master gain at the full slider, ahead of the master chain (sets the loudness: about -16 LUFS integrated at the default volume) */
 const MAKEUP = 2;
-/** park music at the full slider: sits a little under the crowd bed and the PA */
+/** park music at the full slider (into the PA system) */
 const MUSIC_LEVEL = 1.0;
-
-/** the organ bus at full slider: organ notes are summed chords, so this sits them level with the crowd bed and effects */
+/** the organ at the full slider (into the PA system) */
 const ORGAN_LEVEL = 1.0;
-/** PA bus gain at slider 1 (the default slider 0.55 is about 4-5 dB under the old fixed level) */
+/** PA voice at slider 1 (into the PA system) */
 const PA_LEVEL = 2.0;
+/** booth voices at the full announcer slider (after the booth's compressor) */
+const BOOTH_LEVEL = 1.6;
+/** duck depth (dB) and presence cut (dB) per setting */
+export const DUCK_LEVELS = { light: { depth: 4, eqDepth: 2.5 }, normal: { depth: 7, eqDepth: 4 }, strong: { depth: 10, eqDepth: 5 } } as const;
 
 export interface Settings {
   master: number;
@@ -50,16 +59,24 @@ export interface Settings {
   chatter: 'low' | 'normal' | 'high';
   /** HD (neural) voices switched on (the model must have been downloaded) */
   hd: boolean;
+  /** the ballpark's acoustics: reverb length and level, slap-back (`venue/ir.ts`) */
+  venue: VenuePreset;
+  /** the A1's balance: the broadcast mix, or the field mics up and the crowd back ("close") */
+  micPerspective: Perspective;
+  /** how far the park sits back under the booth (4 / 7 / 10 dB) */
+  duck: 'light' | 'normal' | 'strong';
 }
 
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, fxVolume: 0.5, musicVolume: 0.5, music: true, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, sfx: 0.8, crowd: 0.7, organVolume: 0.85, announcer: 0.7, paVolume: 0.55, fxVolume: 0.5, musicVolume: 0.5, music: true, muted: false, pa: true, commentary: true, organ: true, chatter: 'normal', hd: false, venue: 'normal', micPerspective: 'broadcast', duck: 'normal' };
 
 interface Voice {
-  src: AudioBufferSourceNode;
+  srcs: AudioBufferSourceNode[];
   nodes: AudioNode[];
   id: string;
   imp: number;
   start: number;
+  /** sources still playing */
+  left: number;
 }
 
 /** Minimum seconds between two plays of the same sound (keeps 2x/4x play and rapid-fire events from turning into a buzz). */
@@ -81,43 +98,58 @@ const CROWD_GAP: Partial<Record<string, number>> = { clap_burst: 0.1, clap_singl
 export class Mixer {
   ctx: AudioContext | null = null;
   settings: Settings;
-  listener: Listener = DEFAULT_LISTENER;
   readonly buffers = new Map<string, AudioBuffer[]>();
   private voices = new Set<Voice>();
-  private crowdVoices = new Set<AudioBufferSourceNode>();
+  private crowdVoices = new Set<Voice>();
   private last = new Map<string, number>();
   private rnd = mulberry32(1234);
+  /** the park, the mic array and the broadcast chains (`venue/graph.ts`) */
+  graph: VenueGraph | null = null;
+  /** the master volume (into the master chain) */
   master!: GainNode;
-  sfxBus!: GainNode;
-  crowdBus!: GainNode;
-  /** broadcast stings (camera whooshes, replay sting, graphic blips): their own level, unaffected by the replay filter */
+  /** broadcast stings (camera whooshes, replay sting, graphic blips): dry and centred, straight to the master, not ducked */
   fxBus!: GainNode;
-  /** park music (`park/player.ts`): the stadium PA layer's music, under the voices */
+  /** park music (`park/player.ts`): plays through the PA system */
   musicBus!: GainNode;
   private musicDuck = 1;
-  /** the bed and the one-shots of the crowd enter here; the camera's distance to the stands sets its gain */
+  /** a stadium-wide crowd input (the diffuse bed / old callers): the house pair and the crowd mics */
+  crowdBus!: GainNode;
+  /** kept for older callers: same as `crowdBus` (the camera no longer changes the crowd) */
   crowdProx!: GainNode;
-  /** phone-class device: fewer simultaneous crowd voices */
+  /** phone-class device: fewer mics, pickups, zones and simultaneous crowd voices */
   lowPower = false;
+  /** the organ (plays through the PA system) */
   organBus!: GainNode;
-  private sfxFilter!: BiquadFilterNode;
   reverbIn!: GainNode;
-  /** neural (HD) voices: dry booth voices and the processed PA voice come in here */
+  /** booth voices after their dynamics: the announcer slider (and the sidechain key is taken here) */
   voiceBus!: GainNode;
-  /** the stadium PA and the umpire (field channel) and the broadcast booth, separate so they can overlap and duck each other */
+  /** the PA announcer's raw voice: into the PA system (band-limited horns, clusters, slap-back, the bowl's reverb) */
   paBus!: GainNode;
+  /** the umpire's raw voice: a source at the plate, heard by the field mics */
+  umpireBus!: GainNode;
+  /** the booth chain's input (per-voice EQ first: use `boothIn(role)`) */
   boothBus!: GainNode;
   private duck = { pa: 1, booth: 1 };
-  analyser: AnalyserNode | null = null;
+  /** booth / PA activity from the speech gate (`setVoices`) */
+  private talk = { pa: false, booth: false, routed: false };
+  private crowdEnergy = 0;
+  get analyser(): AnalyserNode | null {
+    return this.graph?.analyser ?? null;
+  }
   ready = false;
   prepared = 0;
   totalToPrepare = 0;
   replay = false;
   paused = false;
-  /** someone is speaking: the organ and crowd sit back */
+  /** someone is speaking (older callers): the organ sits back under the PA */
   speaking = false;
   droppedVoices = 0;
   stolenVoices = 0;
+  /** level meters on every mic strip (`?audiodebug=1`) */
+  meters = false;
+  /** rendering offline (the render tool): no real-time timers */
+  private offline = false;
+  private debugFlags = { boothSilent: false, noReverb: false, noConvolver: false, noOversample: false, noWorklet: false };
   /** counters per sound id, for debug and tests */
   readonly played: Record<string, number> = {};
 
@@ -145,120 +177,113 @@ export class Mixer {
   }
 
   private build(ctx: AudioContext) {
-    this.master = ctx.createGain();
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14;
-    comp.knee.value = 12;
-    comp.ratio.value = 4;
-    comp.attack.value = 0.004;
-    comp.release.value = 0.2;
-    this.master.connect(comp);
-    try {
-      this.analyser = ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
-      comp.connect(this.analyser);
-      this.analyser.connect(ctx.destination);
-    } catch {
-      comp.connect(ctx.destination);
-    }
-    this.sfxBus = ctx.createGain();
-    this.sfxFilter = ctx.createBiquadFilter();
-    this.sfxFilter.type = 'lowpass';
-    this.sfxFilter.frequency.value = 20000;
-    this.sfxBus.connect(this.sfxFilter);
-    this.sfxFilter.connect(this.master);
-    this.crowdBus = ctx.createGain();
-    this.crowdBus.connect(this.master);
-    this.fxBus = ctx.createGain();
-    this.fxBus.connect(this.master);
-    this.musicBus = ctx.createGain();
-    this.musicBus.connect(this.master);
-    this.crowdProx = ctx.createGain();
-    this.crowdProx.connect(this.crowdBus);
-    this.organBus = ctx.createGain();
-    this.organBus.connect(this.master);
-    this.voiceBus = ctx.createGain();
-    this.voiceBus.connect(this.master);
-    this.paBus = ctx.createGain();
-    this.paBus.connect(this.voiceBus);
-    this.boothBus = ctx.createGain();
-    this.boothBus.connect(this.voiceBus);
-    // stadium reverb: a synthetic decaying-noise impulse
-    this.reverbIn = ctx.createGain();
-    this.reverbIn.gain.value = 1;
-    try {
-      const conv = ctx.createConvolver();
-      conv.buffer = this.impulse(ctx, 1.9);
-      const ret = ctx.createGain();
-      ret.gain.value = 0.32;
-      this.reverbIn.connect(conv);
-      conv.connect(ret);
-      ret.connect(this.master);
-      this.organBus.connect(this.reverbIn);
-      const msend = ctx.createGain();
-      msend.gain.value = 0.12; // a little stadium room on the music
-      this.musicBus.connect(msend);
-      msend.connect(this.reverbIn);
-    } catch {
-      /* no reverb */
+    const g = new VenueGraph(ctx, { lowPower: this.lowPower, venue: this.settings.venue, perspective: this.settings.micPerspective, meters: this.meters, profile: { noConvolver: this.debugFlags.noConvolver, noOversample: this.debugFlags.noOversample, noWorklet: this.debugFlags.noWorklet } });
+    this.graph = g;
+    const gain = () => ctx.createGain();
+    // the master volume is the master chain's input: the park bus, the booth and the stings all sum there
+    this.master = g.master;
+    this.fxBus = gain();
+    this.fxBus.connect(g.master);
+    this.organBus = gain();
+    this.organBus.connect(g.paIn);
+    this.musicBus = gain();
+    this.musicBus.connect(g.paIn);
+    this.paBus = gain();
+    this.paBus.connect(g.paIn);
+    this.umpireBus = gain();
+    this.umpireBus.connect(g.umpireIn);
+    this.boothBus = g.boothBus;
+    this.voiceBus = g.boothFader;
+    this.reverbIn = g.reverbIn;
+    // crowd bed (diffuse): the house pair and the side crowd mics
+    this.crowdBus = gain();
+    this.crowdProx = this.crowdBus;
+    for (const id of ['house_l', 'house_r', 'crowd_3b', 'crowd_1b'] as const) {
+      const s = g.strips.get(id);
+      if (s) this.crowdBus.connect(s.near);
     }
     this.applySettings();
   }
 
-  private impulse(ctx: AudioContext, seconds: number): AudioBuffer {
-    const sr = ctx.sampleRate;
-    const n = Math.floor(sr * seconds);
-    const b = ctx.createBuffer(2, n, sr);
-    const r = mulberry32(99);
-    for (let c = 0; c < 2; c++) {
-      const d = b.getChannelData(c);
-      let lp = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        const k = 0.5 + 0.45 * Math.exp(-t * 2.2); // darker as it decays
-        lp += (r() * 2 - 1 - lp) * k;
-        d[i] = lp * Math.exp(-t * 2.6) * (i < 200 ? i / 200 : 1);
-      }
-    }
-    return b;
+  /** resolves when the reverb IR and the duck worklet are in place */
+  whenReady(): Promise<void> {
+    return this.graph?.ready ?? Promise.resolve();
+  }
+
+  /** the render tool: an OfflineAudioContext, stepped by the caller */
+  setOffline(on: boolean) {
+    this.offline = on;
+  }
+
+  setDebug(f: Partial<{ boothSilent: boolean; noReverb: boolean; noConvolver: boolean; noOversample: boolean; noWorklet: boolean }>) {
+    this.debugFlags = { ...this.debugFlags, ...f };
+    this.applySettings();
   }
 
   applySettings() {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.graph) return;
     const s = this.settings;
+    const g = this.graph;
     const t = this.ctx.currentTime;
     const m = s.muted ? 0 : s.master * s.master * MAKEUP;
     this.master.gain.setTargetAtTime(m, t, 0.03);
-    this.sfxBus.gain.setTargetAtTime(this.paused ? 0 : s.sfx * s.sfx * (this.replay ? 0.6 : 1), t, 0.05);
     this.musicBus.gain.setTargetAtTime(this.paused || !s.music ? 0 : s.musicVolume * s.musicVolume * MUSIC_LEVEL * this.musicDuck, t, 0.15);
     this.fxBus.gain.setTargetAtTime(this.paused ? 0 : s.fxVolume * s.fxVolume * 1.3, t, 0.05);
-    this.crowdBus.gain.setTargetAtTime(s.crowd * s.crowd * (this.paused ? 0.5 : this.speaking ? 0.8 : 1), t, 0.25);
-    this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (this.speaking ? 0.4 : 1), t, this.speaking ? 0.15 : 0.4);
-    this.sfxFilter.frequency.setTargetAtTime(this.replay ? 900 : 20000, t, 0.08);
-    this.voiceBus.gain.setTargetAtTime(s.announcer * 1.6, t, 0.05);
-    this.paBus.gain.setTargetAtTime(s.paVolume * s.paVolume * PA_LEVEL * this.duck.pa, t, 0.12);
-    this.boothBus.gain.setTargetAtTime(this.duck.booth, t, 0.12);
+    this.crowdBus.gain.setTargetAtTime(this.crowdLevel(), t, 0.25);
+    // the organist lays out under the PA announcer (the booth is handled by the sidechain duck)
+    const paTalking = this.talk.pa || (this.speaking && !this.talk.booth);
+    this.organBus.gain.setTargetAtTime(this.paused ? 0 : (s.organ ? s.organVolume * s.organVolume : 0) * ORGAN_LEVEL * (paTalking ? 0.5 : 1), t, paTalking ? 0.15 : 0.4);
+    const pa = s.paVolume * s.paVolume * PA_LEVEL * s.announcer;
+    this.paBus.gain.setTargetAtTime(pa, t, 0.12);
+    this.umpireBus.gain.setTargetAtTime(pa, t, 0.12);
+    this.voiceBus.gain.setTargetAtTime(s.announcer * BOOTH_LEVEL * this.duck.booth, t, 0.05);
+    g.boothOut.gain.setValueAtTime(this.debugFlags.boothSilent ? 0 : 1, t);
+    g.setVenue(s.venue);
+    g.setPerspective(s.micPerspective);
+    g.setDuck(DUCK_LEVELS[s.duck] ?? DUCK_LEVELS.normal);
+    if (this.debugFlags.noReverb) g.reverbRet.gain.setValueAtTime(0, t);
   }
 
-  /** the PA is ducked (about -5 dB) while the booth talks, the booth a little (about -2 dB) under the PA: neither is muted */
+  /** the crowd's level into the mic array (slider, pause) */
+  crowdLevel(): number {
+    const s = this.settings;
+    return s.crowd * s.crowd * TRIM.bed * (this.paused ? 0.5 : 1);
+  }
+
+  /** the booth sits a little (about -2 dB) under the PA; the PA's duck under the booth is the sidechain's (`setVoices`) */
   setVoiceDuck(pa: number, booth: number) {
     if (pa === this.duck.pa && booth === this.duck.booth) return;
     this.duck = { pa, booth };
     this.applySettings();
   }
 
-  /** the music sits under the booth (-6 dB) and the PA, and under big crowd moments: 0..1 (the controller works it out) */
+  /**
+   * Who is talking (from the speech gate). `routed`: the voices play through Web Audio (HD / custom voice), so the duck follows the
+   * booth's real envelope; browser speech is outside Web Audio, so the gate's flag keys the duck instead.
+   */
+  setVoices(v: { pa: boolean; booth: boolean; routed: boolean }) {
+    const changed = v.pa !== this.talk.pa || v.booth !== this.talk.booth || v.routed !== this.talk.routed;
+    this.talk = { ...v };
+    if (!this.graph) return;
+    this.graph.setKey(v.booth && !v.routed ? 1 : 0);
+    if (changed) this.applySettings();
+  }
+
+  /** big crowd moments: the music sits back and the duck under the booth gets shallower (a home-run roar stays big under the call) */
+  setCrowdEnergy(e: number) {
+    this.crowdEnergy = e;
+    this.graph?.setDuckScale(1 - 0.55 * Math.min(1, Math.max(0, (e - 0.55) / 0.4)));
+  }
+
+  /** the music sits under big crowd moments: 0..1 (the controller works it out) */
   setMusicDuck(d: number) {
     if (Math.abs(d - this.musicDuck) < 0.01) return;
     this.musicDuck = d;
     this.applySettings();
   }
 
-  /** camera closer to the stands = a louder crowd (0.7 .. 1.4, smoothed) */
-  setCrowdProximity(g: number) {
-    if (!this.ctx) return;
-    this.crowdProx.gain.setTargetAtTime(g, this.ctx.currentTime, 0.6);
-  }
+  /** no-op: the camera does not change the mix (kept for older callers) */
+  setCrowdProximity(_g: number) {}
 
   /** slow-motion replay: SFX go dull and slow, the crowd carries on. Pause: the field goes quiet, the murmur stays. */
   setMode(o: { replay?: boolean; paused?: boolean; speaking?: boolean }) {
@@ -268,8 +293,9 @@ export class Mixer {
     this.applySettings();
   }
 
-  setListener(l: Listener) {
-    this.listener = l;
+  /** a booth voice's way in: its own EQ, then the booth chain */
+  boothIn(role: string): AudioNode {
+    return this.graph ? this.graph.boothIn(role) : this.boothBus;
   }
 
   // ---- buffers -------------------------------------------------------------------------------------------------------
@@ -329,7 +355,7 @@ export class Mixer {
 
   async loadSamples(base: string = import.meta.env?.BASE_URL ?? '/'): Promise<void> {
     const ctx = this.ctx;
-    if (!ctx || typeof fetch === 'undefined') return;
+    if (!ctx || typeof fetch === 'undefined' || this.offline) return;
     try {
       const res = await fetch(`${base}audio/manifest.json`);
       if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return;
@@ -365,15 +391,54 @@ export class Mixer {
     return true;
   }
 
-  /** Play a positional sound effect cue. Returns true if a voice was started. */
+  private track(set: Set<Voice>, v: Voice) {
+    set.add(v);
+    const end = () => {
+      if (--v.left > 0) return;
+      set.delete(v);
+      this.release(v);
+    };
+    for (const s of v.srcs) s.onended = end;
+  }
+
+  private release(v: Voice) {
+    try {
+      for (const s of v.srcs) s.disconnect();
+      for (const n of v.nodes) n.disconnect();
+    } catch {
+      /* already gone */
+    }
+  }
+
+  /** a single source into one node (broadcast stings, the replay path, the PA) */
+  private single(buffer: AudioBuffer, gain: number, rate: number, when: number, dest: AudioNode): { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] } {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(dest);
+    src.start(when);
+    return { srcs: [src], nodes: [g] };
+  }
+
+  /**
+   * Play a sound effect cue. Field sounds are positioned in the park and picked up by the mic array (`venue/mics.ts`): the same buffer
+   * reaches up to three mics, each after its own flight time. One logical voice counts against the cap however many mics hear it.
+   * Returns true if a voice was started.
+   */
   playSfx(c: Extract<Cue, { kind: 'sfx' }>): boolean {
     const ctx = this.ctx;
-    if (!ctx || !this.ready || ctx.state !== 'running') return false;
+    const g = this.graph;
+    if (!ctx || !g || !this.ready || ctx.state !== 'running') return false;
     const list = this.buffers.get(c.id);
     const def = SFX_DEFS[c.id];
     if (!list || !def) return false;
     const now = ctx.currentTime;
     if (!this.allow(c.id, now)) return false;
+    const fx = c.id.startsWith('bfx_');
+    if (this.paused && !fx) return false;
     const bucket = Math.min(def.buckets - 1, Math.max(0, c.bucket ?? 0));
     const alt = Math.floor(this.rnd() * def.alts);
     const buffer = list[bucket * def.alts + alt] ?? list.find(Boolean);
@@ -382,45 +447,19 @@ export class Mixer {
       this.droppedVoices++;
       return false;
     }
-    const sp = c.pos ? spatialize(this.listener, c.pos as Vec3) : { gain: 1, pan: 0, cutoff: 20000, dist: 0 };
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const fx = c.id.startsWith('bfx_');
+    // one buffer, one rate for every copy (the copies are the same sound at different mics)
+    const jitter = 0.96 + this.rnd() * 0.08;
     const slow = this.replay && !fx ? 0.6 : 1;
-    src.playbackRate.value = (c.rate ?? 1) * (0.96 + this.rnd() * 0.08) * slow;
-    const gain = ctx.createGain();
-    gain.gain.value = Math.min(1.5, (c.gain ?? 1) * sp.gain);
-    const nodes: AudioNode[] = [gain];
-    let tail: AudioNode = gain;
-    src.connect(gain);
-    if (sp.cutoff < 15000) {
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = sp.cutoff;
-      tail.connect(lp);
-      tail = lp;
-      nodes.push(lp);
-    }
-    if (ctx.createStereoPanner && Math.abs(sp.pan) > 0.01) {
-      const p = ctx.createStereoPanner();
-      p.pan.value = sp.pan;
-      tail.connect(p);
-      tail = p;
-      nodes.push(p);
-    }
-    tail.connect(fx ? this.fxBus : this.sfxBus);
-    const v: Voice = { src, nodes, id: c.id, imp: c.imp, start: now };
-    this.voices.add(v);
-    src.onended = () => {
-      this.voices.delete(v);
-      try {
-        src.disconnect();
-        for (const n of nodes) n.disconnect();
-      } catch {
-        /* already gone */
-      }
-    };
-    src.start(now + Math.max(0, c.delay ?? 0));
+    const rate = (c.rate ?? 1) * jitter * slow;
+    const when = now + Math.max(0, c.delay ?? 0);
+    const s = this.settings;
+    let r: { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] };
+    if (fx) r = this.single(buffer, Math.min(1.5, c.gain ?? 1), rate, when, this.fxBus);
+    else if (c.id === 'pa_click') r = this.single(buffer, (c.gain ?? 1) * 2, rate, when, this.paBus);
+    else if (this.replay) r = this.single(buffer, Math.min(1.5, (c.gain ?? 1) * s.sfx * s.sfx * 0.6), rate, when, g.replayBus);
+    else r = g.playAt(buffer, (c.pos as Vec3 | undefined) ?? DEFAULT_POS, Math.min(1.5, c.gain ?? 1) * s.sfx * s.sfx * TRIM.sfx, when, rate);
+    if (!r.srcs.length) return false;
+    this.track(this.voices, { srcs: r.srcs, nodes: r.nodes, id: c.id, imp: c.imp, start: now, left: r.srcs.length });
     this.played[c.id] = (this.played[c.id] ?? 0) + 1;
     return true;
   }
@@ -430,29 +469,29 @@ export class Mixer {
     let victim: Voice | null = null;
     for (const v of this.voices) if (v.imp < imp && (!victim || v.imp < victim.imp || (v.imp === victim.imp && v.start < victim.start))) victim = v;
     if (!victim) return false;
-    try {
-      victim.src.stop();
-    } catch {
-      /* not started yet */
+    for (const s of victim.srcs) {
+      try {
+        s.onended = null;
+        s.stop();
+      } catch {
+        /* not started yet */
+      }
     }
     this.voices.delete(victim);
-    try {
-      victim.src.disconnect();
-      for (const n of victim.nodes) n.disconnect();
-    } catch {
-      /* ignore */
-    }
+    this.release(victim);
     this.stolenVoices++;
     return true;
   }
 
   /**
-   * Non-positional crowd reaction (stereo one-shot on the crowd bus). `o.pan` places it in the stands, `o.sweep` moves it across them
-   * (the wave), `o.rate` changes pitch and length. At the voice cap only louder sounds get through.
+   * A crowd one-shot in the stands: `zone` places it (one section of seats, picked up by the crowd mic over it and, later and darker, by
+   * the others); `diffuse` is the whole bowl (big roars: the house pair, the crowd mics and the reverb). With neither, `pan` picks the
+   * zone; a `sweep` (the wave) becomes the same sound section after section around the bowl. At the voice cap only louder sounds get in.
    */
-  playCrowd(id: CrowdId, gain = 1, delay = 0, o: { pan?: number; rate?: number; sweep?: { from: number; to: number; dur: number } } = {}): boolean {
+  playCrowd(id: CrowdId, gain = 1, delay = 0, o: { pan?: number; rate?: number; sweep?: { from: number; to: number; dur: number }; zone?: ZoneId; diffuse?: boolean } = {}): boolean {
     const ctx = this.ctx;
-    if (!ctx || !this.ready || ctx.state !== 'running') return false;
+    const g = this.graph;
+    if (!ctx || !g || !this.ready || ctx.state !== 'running') return false;
     const list = this.buffers.get(`crowd:${id}`);
     const b = list?.[Math.floor(this.rnd() * list.length)];
     if (!b) return false;
@@ -462,35 +501,40 @@ export class Mixer {
     const cap = this.lowPower ? 3 : 6;
     if (this.crowdVoices.size >= cap && !(gain > 0.6 && this.crowdVoices.size < cap + 2)) return false;
     this.last.set(key, now);
-    const src = ctx.createBufferSource();
-    src.buffer = b;
-    src.playbackRate.value = (o.rate ?? 1) * (0.98 + this.rnd() * 0.04);
-    const g = ctx.createGain();
-    g.gain.value = Math.min(1.4, gain);
-    src.connect(g);
-    let pan: StereoPannerNode | null = null;
-    if ((o.pan !== undefined || o.sweep) && typeof ctx.createStereoPanner === 'function') {
-      pan = ctx.createStereoPanner();
-      const from = o.sweep ? o.sweep.from : o.pan!;
-      pan.pan.setValueAtTime(Math.max(-1, Math.min(1, from)), now + Math.max(0, delay));
-      if (o.sweep) pan.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, o.sweep.to)), now + Math.max(0, delay) + o.sweep.dur);
-      g.connect(pan);
-      pan.connect(this.crowdProx);
-    } else g.connect(this.crowdProx);
-    this.crowdVoices.add(src);
-    src.onended = () => {
-      this.crowdVoices.delete(src);
-      try {
-        src.disconnect();
-        g.disconnect();
-        pan?.disconnect();
-      } catch {
-        /* ignore */
-      }
-    };
-    src.start(now + Math.max(0, delay));
+    const rate = (o.rate ?? 1) * (0.98 + this.rnd() * 0.04);
+    const level = Math.min(1.4, gain) * this.crowdLevel() * (TRIM.crowd / TRIM.bed);
+    const when = now + Math.max(0, delay);
+    let r: { srcs: AudioBufferSourceNode[]; nodes: AudioNode[] };
+    if (o.sweep) {
+      // the wave: section after section, a cheer rising and moving on
+      const order = o.sweep.from > o.sweep.to ? WAVE_ORDER : [...WAVE_ORDER].reverse();
+      const zs = this.lowPower ? order.filter((_, i) => i % 2 === 0) : order;
+      r = { srcs: [], nodes: [] };
+      zs.forEach((z, i) => {
+        const p = this.seat(z);
+        const part = g.playAt(b, p, level * 0.8, when + (o.sweep!.dur * i) / zs.length, rate, this.lowPower ? 1 : 2);
+        r.srcs.push(...part.srcs);
+        r.nodes.push(...part.nodes);
+      });
+    } else if (o.diffuse || (o.zone === undefined && o.pan === undefined)) r = g.playDiffuse(b, level, when, rate, 0.15 + 0.25 * Math.min(1, gain));
+    else r = g.playAt(b, this.seat(o.zone ?? zoneForPan(o.pan ?? 0, this.rnd() < 0.25)), level, when, rate, this.lowPower ? 1 : 2);
+    if (!r.srcs.length) return false;
+    this.track(this.crowdVoices, { srcs: r.srcs, nodes: r.nodes, id, imp: 0, start: now, left: r.srcs.length });
     this.played[key] = (this.played[key] ?? 0) + 1;
     return true;
+  }
+
+  /** a seat somewhere in a zone (on phones, the zone it folds into) */
+  private seat(z: ZoneId): Vec3 {
+    const zz = zoneOf(this.lowPower ? LOW_FOLD[z] : z);
+    const r = () => (this.rnd() * 2 - 1) * zz.spread * 0.5;
+    return { x: zz.pos.x + r(), y: zz.pos.y + Math.abs(r()) * 0.3, z: zz.pos.z + r() };
+  }
+
+  /** a crowd model shot (`crowd.ts`): its zone / pan / sweep, or a seat banging somewhere */
+  playCrowdShot(s: CrowdShot): boolean {
+    if (s.id === 'seat_thump') return this.playSfx({ kind: 'sfx', id: 'seat_thump', pos: this.seat(s.zone ?? zoneForPan(s.pan ?? 0)), gain: s.gain, imp: 0, delay: s.delay });
+    return this.playCrowd(s.id, s.gain, s.delay, { pan: s.pan, rate: s.rate, sweep: s.sweep, zone: s.zone, diffuse: s.diffuse });
   }
 
   get voiceCount() {
@@ -512,15 +556,35 @@ export class Mixer {
     return { rms: Math.sqrt(s / d.length), peak: p };
   }
 
+  /** for the debug panel / render tool */
+  debugInfo() {
+    const g = this.graph;
+    return {
+      voices: this.voices.size,
+      crowdVoices: this.crowdVoices.size,
+      sources: [...this.voices, ...this.crowdVoices].reduce((n, v) => n + v.left, 0),
+      dropped: this.droppedVoices,
+      stolen: this.stolenVoices,
+      played: this.played,
+      graph: g ? { ...g.stats, mics: g.mics.length, venue: g.venue, perspective: g.perspective, duck: g.duck } : null,
+      talk: this.talk,
+      crowdEnergy: this.crowdEnergy,
+    };
+  }
+
   /** stop everything and release the context */
   dispose() {
-    for (const v of [...this.voices]) this.stealFor(99);
+    for (const _ of [...this.voices]) this.stealFor(99);
     try {
       void this.ctx?.close();
     } catch {
       /* ignore */
     }
     this.ctx = null;
+    this.graph = null;
     this.ready = false;
   }
 }
+
+/** where an effect with no position is: the plate */
+const DEFAULT_POS: Vec3 = { x: 0, y: 1, z: 0 };

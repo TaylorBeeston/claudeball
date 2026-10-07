@@ -21,6 +21,7 @@
  */
 import type { CrowdId, RawEvent } from './types';
 import { baseline } from './excitement';
+import type { ZoneId } from './venue/mics';
 
 export type ShotId = CrowdId | 'seat_thump';
 
@@ -35,6 +36,10 @@ export interface CrowdShot {
   rate?: number;
   /** a pan that moves across the stands over `dur` seconds (the wave) */
   sweep?: { from: number; to: number; dur: number };
+  /** the section of the stands it comes from (else `pan` picks one) */
+  zone?: ZoneId;
+  /** the whole bowl at once (a big roar): no single section */
+  diffuse?: boolean;
 }
 
 /** what the bed loops should do right now */

@@ -33,6 +33,8 @@ export interface RenderOpts {
   /** the scene: 'game' (default), 'impulse' (one click at the plate, for the venue response), 'duck' (steady bed + booth line) */
   scene?: 'game' | 'impulse' | 'duck' | 'organ';
   lowPower?: boolean;
+  /** profiling: build without parts of the graph */
+  debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean };
 }
 
 export interface RenderOut {
@@ -106,6 +108,7 @@ function fakeSpeech(sr: number, seconds: number, f0 = 115): Float32Array {
 class FakeSynth implements Synth {
   constructor(private voice: Float32Array, private sr: number) {}
   async init() {}
+  dispose() {}
   async generate(): Promise<{ samples: Float32Array; sr: number }> {
     return { samples: this.voice, sr: this.sr };
   }
@@ -126,6 +129,7 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
   m.lowPower = !!o.lowPower;
   const mx = m as unknown as Record<string, any>;
   if (typeof mx.setOffline === 'function') mx.setOffline(true);
+  if (o.debug && typeof mx.setDebug === 'function') mx.setDebug(o.debug);
   await m.unlock();
   if (typeof mx.whenReady === 'function') await mx.whenReady();
   const t0 = performance.now();

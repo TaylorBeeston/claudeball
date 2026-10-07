@@ -27,6 +27,8 @@ const out = opt('out', path.join(os.homedir(), 'claudeball-audio-renders'))!;
 const scenes = (opt('scenes', 'game,impulse,duck,organ') ?? '').split(',').filter(Boolean);
 const venue = opt('venue');
 const lowPower = flag('lowpower');
+const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet') };
+const reps = Number(opt('reps', '1'));
 
 function pickVoice(): string | null {
   if (flag('no-voice')) return null;
@@ -104,7 +106,12 @@ async function main() {
     const run = async (o: Record<string, unknown>) =>
       page.evaluate((o) => (window as unknown as { cbAudio: { render: (o: unknown) => Promise<{ sr: number; channels: string[]; renderMs: number; seconds: number; info: Record<string, unknown> }> } }).cbAudio.render(o), o);
     for (const scene of scenes) {
-      const r = await run({ scene, voice, settings, lowPower });
+      let r = await run({ scene, voice, settings, lowPower, debug });
+      // CPU: the fastest of `reps` renders (the machine is shared: the minimum is the graph's own cost)
+      for (let i = 1; i < reps; i++) {
+        const again = await run({ scene, voice, settings, lowPower, debug });
+        if (again.renderMs < r.renderMs) r = again;
+      }
       const chs = r.channels.map(fromB64);
       const file = path.join(out, `${tag}-${scene}.wav`);
       writeWav(file, chs, r.sr);

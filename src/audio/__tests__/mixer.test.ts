@@ -25,8 +25,11 @@ function fakeCtx(state: 'running' | 'suspended' = 'running') {
     createGain: () => node({ gain: param() }),
     createDynamicsCompressor: () => node({ threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }),
     createAnalyser: () => node({ fftSize: 2048, getFloatTimeDomainData: (a: Float32Array) => a.fill(0.1) }),
-    createBiquadFilter: () => node({ frequency: param(), type: '' }),
+    createBiquadFilter: () => node({ frequency: param(), Q: param(), gain: param(), type: '' }),
     createConvolver: () => node({ buffer: null }),
+    createDelay: () => node({ delayTime: param() }),
+    createWaveShaper: () => node({ curve: null }),
+    createChannelSplitter: () => node(),
     createStereoPanner: () => node({ pan: param() }),
     createBuffer: (ch: number, len: number, sr: number) => ({ numberOfChannels: ch, length: len, sampleRate: sr, getChannelData: () => new Float32Array(len), copyToChannel: () => {} }),
     createBufferSource: () => {
@@ -90,11 +93,20 @@ describe('mixer', () => {
   it('plays a cue, disconnects its nodes when it ends, and does not leak', async () => {
     const { m, f } = await readyMixer();
     const baseline = f.live.size;
+    const n0 = f.ctx.sources.length;
     expect(m.playSfx({ kind: 'sfx', id: 'bat_crack', bucket: 2, pos: { x: 0, y: 1, z: 0 }, gain: 1, imp: 2 })).toBe(true);
+    // one logical voice, heard by several mics: the same buffer and rate, each copy later by its extra flight time
     expect(m.voiceCount).toBe(1);
-    const src = f.ctx.sources.at(-1);
-    expect(src.start).toHaveBeenCalled();
-    src.onended();
+    const copies = f.ctx.sources.slice(n0);
+    expect(copies.length).toBeGreaterThan(1);
+    expect(new Set(copies.map((c: any) => c.buffer)).size).toBe(1);
+    expect(new Set(copies.map((c: any) => c.playbackRate.value)).size).toBe(1);
+    const starts = copies.map((c: any) => c.start.mock.calls[0][0]).sort((a: number, b: number) => a - b);
+    expect(starts[0]).toBeCloseTo(f.ctx.currentTime, 6);
+    expect(starts.at(-1)).toBeGreaterThan(starts[0]);
+    copies[0].onended();
+    expect(m.voiceCount).toBe(1);
+    for (const c of copies.slice(1)) c.onended();
     expect(m.voiceCount).toBe(0);
     expect(f.live.size).toBe(baseline);
     expect(m.played.bat_crack).toBe(1);
