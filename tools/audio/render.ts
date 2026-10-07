@@ -27,8 +27,10 @@ const out = opt('out', path.join(os.homedir(), 'claudeball-audio-renders'))!;
 const scenes = (opt('scenes', 'game,impulse,duck,organ') ?? '').split(',').filter(Boolean);
 const venue = opt('venue');
 const lowPower = flag('lowpower');
-const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet') };
+const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet'), noBeds: flag('no-beds'), noShots: flag('no-shots') };
 const reps = Number(opt('reps', '1'));
+const partsArg = opt('parts');
+const parts = partsArg ? Object.fromEntries(['organ', 'crowd', 'sfx', 'pa', 'booth'].map((k) => [k, partsArg.split(',').includes(k)])) : undefined;
 
 function pickVoice(): string | null {
   if (flag('no-voice')) return null;
@@ -99,6 +101,12 @@ async function main() {
     await page.waitForFunction(() => (window as unknown as { cbAudio?: unknown }).cbAudio, null, { timeout: 60000 }).catch((e) => {
       throw new Error(`harness did not load: ${errs.join(' | ')} ${e}`);
     });
+    if (flag('bench')) {
+      const b = await page.evaluate((k) => (window as unknown as { cbAudio: { bench: (k?: string[]) => Promise<Record<string, number>> } }).cbAudio.bench(k), opt('bench-kinds')?.split(','));
+      console.log('[bench] ms of CPU per second of audio, per node:', JSON.stringify(b));
+      result.bench = b;
+      scenes.length = 0;
+    }
     const vf = pickVoice();
     const voice = vf ? fs.readFileSync(vf).toString('base64') : null;
     result.voice = vf ? `recording (${path.basename(vf)})` : 'synthetic';
@@ -106,10 +114,10 @@ async function main() {
     const run = async (o: Record<string, unknown>) =>
       page.evaluate((o) => (window as unknown as { cbAudio: { render: (o: unknown) => Promise<{ sr: number; channels: string[]; renderMs: number; seconds: number; info: Record<string, unknown> }> } }).cbAudio.render(o), o);
     for (const scene of scenes) {
-      let r = await run({ scene, voice, settings, lowPower, debug });
+      let r = await run({ scene, voice, settings, lowPower, debug, parts });
       // CPU: the fastest of `reps` renders (the machine is shared: the minimum is the graph's own cost)
       for (let i = 1; i < reps; i++) {
-        const again = await run({ scene, voice, settings, lowPower, debug });
+        const again = await run({ scene, voice, settings, lowPower, debug, parts });
         if (again.renderMs < r.renderMs) r = again;
       }
       const chs = r.channels.map(fromB64);

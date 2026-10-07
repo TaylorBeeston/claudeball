@@ -149,6 +149,7 @@ export class Mixer {
   meters = false;
   /** rendering offline (the render tool): no real-time timers */
   private offline = false;
+  private duckTimer: ReturnType<typeof setInterval> | null = null;
   private debugFlags = { boothSilent: false, noReverb: false, noConvolver: false, noOversample: false, noWorklet: false };
   /** counters per sound id, for debug and tests */
   readonly played: Record<string, number> = {};
@@ -193,6 +194,8 @@ export class Mixer {
     this.umpireBus = gain();
     this.umpireBus.connect(g.umpireIn);
     this.boothBus = g.boothBus;
+    // the analyser duck (phones / no worklet) reads the booth ~50 times a second (a few microseconds; nothing to do when quiet)
+    if (!this.offline && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => this.graph?.pumpDuck(), 20);
     this.voiceBus = g.boothFader;
     this.reverbIn = g.reverbIn;
     // crowd bed (diffuse): the house pair and the side crowd mics
@@ -200,7 +203,7 @@ export class Mixer {
     this.crowdProx = this.crowdBus;
     for (const id of ['house_l', 'house_r', 'crowd_3b', 'crowd_1b'] as const) {
       const s = g.strips.get(id);
-      if (s) this.crowdBus.connect(s.near);
+      if (s) this.crowdBus.connect(s.input);
     }
     this.applySettings();
   }
@@ -213,6 +216,11 @@ export class Mixer {
   /** the render tool: an OfflineAudioContext, stepped by the caller */
   setOffline(on: boolean) {
     this.offline = on;
+  }
+
+  /** the render tool's step (offline: no timers): the analyser duck in `dt` slices of 20 ms */
+  offlineTick(dt: number) {
+    for (let t = 0; t < dt - 1e-6; t += 0.02) this.graph?.pumpDuck(0.02);
   }
 
   setDebug(f: Partial<{ boothSilent: boolean; noReverb: boolean; noConvolver: boolean; noOversample: boolean; noWorklet: boolean }>) {
@@ -319,14 +327,17 @@ export class Mixer {
         for (let a = 0; a < d.alts; a++)
           jobs.push(() => {
             const list = this.buffers.get(id) ?? [];
-            list[b * d.alts + a] = this.toBuffer(renderSfx(id, b, a));
+            // park sounds go into mono mic strips: mono at the context's rate (no resampling per copy on the audio thread); the
+            // broadcast stings stay as rendered (stereo, dry)
+            const r = renderSfx(id, b, a);
+            list[b * d.alts + a] = this.toBuffer(id.startsWith('bfx_') ? r : monoAt(r, this.ctx!.sampleRate));
             this.buffers.set(id, list);
           });
     }
-    for (const id of CROWD_IDS) jobs.push(() => this.buffers.set(`crowd:${id}`, [this.toBuffer(renderCrowd(id))]));
-    jobs.push(() => this.buffers.set('loop:murmur', [this.toBuffer(crowdLoop('murmur'))]));
-    jobs.push(() => this.buffers.set('loop:roar', [this.toBuffer(crowdLoop('roar'))]));
-    jobs.push(() => this.buffers.set('loop:claps', [this.toBuffer(crowdLoop('claps'))]));
+    for (const id of CROWD_IDS) jobs.push(() => this.buffers.set(`crowd:${id}`, [this.toBuffer(monoAt(renderCrowd(id), this.ctx!.sampleRate))]));
+    // the bed loops play all the time in every zone: mono (the zones and the mics make the width) at the context's own rate, so their
+    // sources need no resampling on the audio thread
+    for (const k of ['murmur', 'roar', 'claps'] as const) jobs.push(() => this.buffers.set(`loop:${k}`, [this.toBuffer(monoAt(crowdLoop(k), this.ctx!.sampleRate))]));
     this.totalToPrepare = jobs.length;
     let i = 0;
     const next = () => {
@@ -574,6 +585,8 @@ export class Mixer {
 
   /** stop everything and release the context */
   dispose() {
+    if (this.duckTimer) clearInterval(this.duckTimer);
+    this.duckTimer = null;
     for (const _ of [...this.voices]) this.stealFor(99);
     try {
       void this.ctx?.close();
@@ -584,6 +597,26 @@ export class Mixer {
     this.graph = null;
     this.ready = false;
   }
+}
+
+/** a rendered sound folded to mono and resampled (cubic Hermite) to `sr`; a loop stays seamless (the interpolation wraps) */
+export function monoAt(r: Rendered, sr: number): Rendered {
+  const n = r.ch[0].length;
+  const m = new Float32Array(n);
+  for (const c of r.ch) for (let i = 0; i < n; i++) m[i] += c[i] / r.ch.length;
+  if (r.sr === sr) return { sr, ch: [m] };
+  const ratio = r.sr / sr;
+  const out = new Float32Array(Math.floor(n / ratio));
+  const at = (i: number) => m[((i % n) + n) % n];
+  for (let j = 0; j < out.length; j++) {
+    const x = j * ratio;
+    const i = Math.floor(x);
+    const f = x - i;
+    const y0 = at(i - 1), y1 = at(i), y2 = at(i + 1), y3 = at(i + 2);
+    const c1 = 0.5 * (y2 - y0), c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3, c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+    out[j] = ((c3 * f + c2) * f + c1) * f + y1;
+  }
+  return { sr, ch: [out] };
 }
 
 /** where an effect with no position is: the plate */

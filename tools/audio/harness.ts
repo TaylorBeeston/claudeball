@@ -14,6 +14,7 @@ import { CrowdModel, type CrowdCtx, type CrowdShot } from '../../src/audio/crowd
 import { NeuralSpeechEngine, type Synth } from '../../src/audio/neural';
 import { mulberry32 } from '../../src/audio/dsp';
 import type { Cue, RawEvent } from '../../src/audio/types';
+import { bench } from './bench';
 
 type Sfx = Extract<Cue, { kind: 'sfx' }>;
 
@@ -34,7 +35,7 @@ export interface RenderOpts {
   scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise';
   lowPower?: boolean;
   /** profiling: build without parts of the graph */
-  debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean };
+  debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noBeds?: boolean; noShots?: boolean };
 }
 
 export interface RenderOut {
@@ -255,10 +256,10 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
     void ctx.suspend(at).then(async () => {
       const c0 = performance.now();
       if (parts.crowd) {
-        if (!ambience.started) ambience.start();
+        if (!ambience.started && !o.debug?.noBeds) ambience.start();
         const bed = crowd.update(step, true);
         ambience.apply(bed);
-        for (const s of crowd.take()) playShot(s);
+        for (const s of crowd.take()) if (!o.debug?.noShots) playShot(s);
       }
       while (si < script.length && script[si][0] <= at + 1e-6) await script[si++][1]();
       const om = organ as unknown as { pump?: () => void; playing: string | null };
@@ -286,4 +287,4 @@ export async function venueIr(o: { sr?: number; venue?: string } = {}): Promise<
   return { sr: ir.sr, channels: ir.ch.map(f32ToB64) };
 }
 
-(window as unknown as Record<string, unknown>).cbAudio = { render, venueIr };
+(window as unknown as Record<string, unknown>).cbAudio = { render, venueIr, bench: (...a: Parameters<typeof bench>) => bench(...a) };

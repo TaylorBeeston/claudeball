@@ -21,18 +21,21 @@
  *
  * Per-frame JS is zero: one-shot pickups are computed when a sound is triggered (`mics.ts`), continuous sources are wired once.
  */
-import { DUCK_DEFAULTS, PROCESSOR_NAME, workletSource, type DuckParams } from './duck';
+import { DUCK_DEFAULTS, PROCESSOR_NAME, duckStep, newDuckState, workletSource, type DuckParams } from './duck';
 import { stadiumIR, VENUES, type VenuePreset } from './ir';
 import { MICS, PLACES, SPEAKERS, micPan, micsFor, pickupOne, pickups, type MicDef, type MicId, type Pickup } from './mics';
 import type { Vec3 } from '../types';
 
 export type Perspective = 'broadcast' | 'close';
 
+/**
+ * One mic's channel strip, kept small because every node costs on the audio thread (measured, `tools/audio/bench.ts`): a mono input
+ * (which is also the fader: the mic's own level is in its pickup gains, the input holds the perspective offset) -> one EQ biquad (the
+ * mic's colour) -> static pan -> park bus, and a reverb send. Air absorption is not in the strip: far pickups get a low-pass of their own.
+ */
 export interface Strip {
   def: MicDef;
-  near: GainNode;
-  far: GainNode;
-  fader: GainNode;
+  input: GainNode;
   send: GainNode;
   meter: AnalyserNode | null;
 }
@@ -42,15 +45,17 @@ export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 1.0, pa: 0.5, ump: 0.55 };
 
 const dbToGain = (d: number) => Math.pow(10, d / 20);
 
-/** per mic tone: a high-pass (Hz) and one shaping filter */
-const TONE: Record<MicDef['tone'], { hp: number; shape: { type: BiquadFilterType; f: number; q: number; g: number } }> = {
-  parabolic: { hp: 220, shape: { type: 'peaking', f: 2500, q: 0.9, g: 3 } }, // dishes are thin and bright
-  shotgun: { hp: 120, shape: { type: 'peaking', f: 4500, q: 0.8, g: 2 } },
-  boundary: { hp: 60, shape: { type: 'lowshelf', f: 160, q: 0.7, g: 2 } }, // boundary loading
-  crowd: { hp: 140, shape: { type: 'highshelf', f: 7000, q: 0.7, g: -3 } },
-  dugout: { hp: 150, shape: { type: 'peaking', f: 420, q: 1.2, g: -3 } }, // a boxy concrete bench
-  house: { hp: 90, shape: { type: 'highshelf', f: 6000, q: 0.7, g: -2 } },
+/** per mic tone: one biquad */
+const TONE: Record<MicDef['tone'], { type: BiquadFilterType; f: number; q: number; g: number }> = {
+  parabolic: { type: 'highpass', f: 260, q: 1.2, g: 0 }, // a dish is thin, with a little bump above its cut-off
+  shotgun: { type: 'highpass', f: 120, q: 0.9, g: 0 },
+  boundary: { type: 'lowshelf', f: 160, q: 0.7, g: 2 }, // boundary loading
+  crowd: { type: 'highpass', f: 150, q: 0.7, g: 0 },
+  dugout: { type: 'peaking', f: 420, q: 1.2, g: -3 }, // a boxy concrete bench
+  house: { type: 'highpass', f: 90, q: 0.7, g: 0 },
 };
+/** air absorption of a far pickup (also the colour of a directional mic off its axis) */
+const AIR_HZ = 4200;
 
 /** the PA loudspeakers: band-limited and a little horny (150 Hz - 7 kHz) */
 export const PA_BAND = { lo: 150, hi: 7000 };
@@ -152,7 +157,9 @@ export class VenueGraph {
     // the limiter ahead (with its look-ahead) holds the peaks: the clipper is a last safety net, not oversampled (measured: true peak
     // stays under -1 dBTP, see the README)
     clip.oversample = 'none';
-    this.master.connect(hp).connect(glue).connect(lim).connect(trim).connect(clip);
+    // phones skip the glue compressor (~2 ms per audio second); the limiter still holds the peaks
+    if (this.lowPower) this.master.connect(hp).connect(lim).connect(trim).connect(clip);
+    else this.master.connect(hp).connect(glue).connect(lim).connect(trim).connect(clip);
     let tail: AudioNode = clip;
     try {
       this.analyser = count(ctx.createAnalyser());
@@ -178,7 +185,18 @@ export class VenueGraph {
       if (o.profile?.noConvolver) throw new Error('profiling');
       this.conv = count(ctx.createConvolver());
       this.conv.normalize = false;
-      this.reverbIn.connect(this.conv).connect(this.reverbRet).connect(this.parkBus);
+      this.reverbIn.connect(this.conv).connect(this.reverbRet);
+      if (this.lowPower && ctx.createStereoPanner) {
+        // phones: a mono IR (half the convolution work) spread by a 13 ms offset copy on the other side
+        const l = count(ctx.createStereoPanner());
+        const r = count(ctx.createStereoPanner());
+        const d = count(ctx.createDelay(0.05));
+        l.pan.value = -0.8;
+        r.pan.value = 0.8;
+        d.delayTime.value = 0.013;
+        this.reverbRet.connect(l).connect(this.parkBus);
+        this.reverbRet.connect(d).connect(r).connect(this.parkBus);
+      } else this.reverbRet.connect(this.parkBus);
     } catch {
       this.conv = null;
     }
@@ -186,29 +204,23 @@ export class VenueGraph {
     // ---- mic strips
     for (const def of this.mics) {
       const t = TONE[def.tone];
-      const near = monoIn(1);
-      const far = monoIn(1);
-      const air = bq('lowpass', 4200, 0.6);
-      const hpf = bq('highpass', t.hp, 0.7);
-      const shape = bq(t.shape.type, t.shape.f, t.shape.q, t.shape.g);
-      const fader = gain(1);
-      const pan = ctx.createStereoPanner ? count(ctx.createStereoPanner()) : null;
+      const input = monoIn(1);
+      const tone = bq(t.type, t.f, t.q, t.g);
       const send = gain(0);
-      far.connect(air).connect(hpf);
-      near.connect(hpf);
-      hpf.connect(shape).connect(fader);
-      if (pan) {
+      input.connect(tone);
+      if (ctx.createStereoPanner) {
+        const pan = count(ctx.createStereoPanner());
         pan.pan.value = micPan(def);
-        fader.connect(pan).connect(this.parkBus);
-      } else fader.connect(this.parkBus);
-      fader.connect(send).connect(this.reverbIn);
+        tone.connect(pan).connect(this.parkBus);
+      } else tone.connect(this.parkBus);
+      tone.connect(send).connect(this.reverbIn);
       let meter: AnalyserNode | null = null;
       if (this.meters) {
         meter = count(ctx.createAnalyser());
         meter.fftSize = 512;
-        fader.connect(meter);
+        tone.connect(meter);
       }
-      this.strips.set(def.id, { def, near, far, fader, send, meter });
+      this.strips.set(def.id, { def, input, send, meter });
     }
 
     // ---- PA system: band-limited horns with a little drive, a few clusters around the bowl
@@ -222,13 +234,13 @@ export class VenueGraph {
     const box = bq('peaking', 320, 0.8, -2.5);
     const drive = count(ctx.createWaveShaper());
     drive.curve = driveCurve(1.6);
-    drive.oversample = o.profile?.noOversample ? 'none' : '2x';
+    drive.oversample = 'none'; // gentle drive on a 7 kHz band: its aliasing is far down (and 2x costs ~0.9 ms per audio second)
     this.paOut = gain(1);
     this.paIn.connect(pa1).connect(pa2).connect(pa3).connect(pa4).connect(horn).connect(box).connect(drive).connect(this.paOut);
     // every cluster heard by the mics near it, with its electronic delay plus the flight time to each mic
     const paPairs: { sp: (typeof SPEAKERS)[0]; p: Pickup; abs: number }[] = [];
     for (const sp of SPEAKERS) {
-      const ps = this.mics.map((m) => pickupOne(m, sp.pos)).sort((a, b) => b.gain - a.gain).slice(0, this.lowPower ? 2 : 3);
+      const ps = this.mics.map((m) => pickupOne(m, sp.pos)).sort((a, b) => b.gain - a.gain).slice(0, this.lowPower ? 1 : 2);
       for (const p of ps) paPairs.push({ sp, p, abs: sp.delay + p.delay });
     }
     const t0 = Math.min(...paPairs.map((x) => x.abs));
@@ -256,7 +268,7 @@ export class VenueGraph {
 
     // ---- umpire: at the plate, heard by the field mics
     this.umpireIn = monoIn(1);
-    this.wireContinuous(this.umpireIn, PLACES.umpire, TRIM.ump, 3, count);
+    this.wireContinuous(this.umpireIn, PLACES.umpire, TRIM.ump, this.lowPower ? 1 : 2, count);
 
     // ---- replay: a produced path (slowed and dulled SFX), centred, a little room
     this.replayBus = monoIn(1);
@@ -277,12 +289,10 @@ export class VenueGraph {
     comp.attack.value = 0.003;
     comp.release.value = 0.16;
     const makeup = gain(dbToGain(4));
-    const blim = count(ctx.createDynamicsCompressor());
-    blim.threshold.value = -5;
-    blim.knee.value = 0;
-    blim.ratio.value = 20;
-    blim.attack.value = 0.001;
-    blim.release.value = 0.06;
+    // the booth's limiter: a soft-knee peak limiter as a static curve (the compressor's attack lets a few ms through; a second
+    // DynamicsCompressor would cost ~2 ms per audio second; the master limiter is behind it anyway)
+    const blim = count(ctx.createWaveShaper());
+    blim.curve = softClipCurve(0.9, 0.7);
     this.boothFader = gain(1);
     this.boothOut = gain(1);
     this.boothBus.connect(bhp).connect(pres).connect(tame).connect(comp).connect(makeup).connect(blim).connect(this.boothFader).connect(this.boothOut).connect(this.master);
@@ -305,7 +315,13 @@ export class VenueGraph {
       d.delayTime.value = Math.min(0.99, delay);
       from.connect(d).connect(gg);
     } else from.connect(gg);
-    gg.connect(p.far ? s.far : s.near);
+    if (p.far) {
+      const air = count(this.ctx.createBiquadFilter());
+      air.type = 'lowpass';
+      air.frequency.value = AIR_HZ;
+      air.Q.value = 0.6;
+      gg.connect(air).connect(s.input);
+    } else gg.connect(s.input);
   }
 
   /** a continuous source at a fixed place: its top `k` mics, each through a delay (relative flight time) and a gain */
@@ -330,16 +346,25 @@ export class VenueGraph {
       g.gain.value = Math.min(4, gain * p.gain);
       src.connect(g);
       let tail: AudioNode = g;
+      if (p.far) {
+        const air = this.ctx.createBiquadFilter();
+        air.type = 'lowpass';
+        air.frequency.value = AIR_HZ;
+        air.Q.value = 0.6;
+        g.connect(air);
+        tail = air;
+        nodes.push(air);
+      }
       if (p.proximityDb > 1) {
         const ls = this.ctx.createBiquadFilter();
         ls.type = 'lowshelf';
         ls.frequency.value = 200;
         ls.gain.value = p.proximityDb;
-        g.connect(ls);
+        tail.connect(ls);
         tail = ls;
         nodes.push(ls);
       }
-      tail.connect(p.far ? s.far : s.near);
+      tail.connect(s.input);
       src.start(when + p.delay);
       srcs.push(src);
       nodes.push(g);
@@ -359,7 +384,7 @@ export class VenueGraph {
       src.playbackRate.value = rate;
       const g = this.ctx.createGain();
       g.gain.value = gain / Math.sqrt(targets.length);
-      src.connect(g).connect(s.near);
+      src.connect(g).connect(s.input);
       if (wet > 0 && i === 0) {
         const w = this.ctx.createGain();
         w.gain.value = gain * wet;
@@ -426,7 +451,7 @@ export class VenueGraph {
     for (const s of this.strips.values()) {
       const d = s.def;
       const off = close ? (d.group === 'field' ? 4 : d.group === 'house' ? -5 : -3) : 0;
-      s.fader.gain.setTargetAtTime(dbToGain(off), t, 0.1); // the mic's own fader is in its pickup gains (`mics.ts`)
+      s.input.gain.setTargetAtTime(dbToGain(off), t, 0.1); // the mic's own fader is in its pickup gains (`mics.ts`)
       s.send.gain.setTargetAtTime(d.reverb * (close ? 0.6 : 1), t, 0.1);
     }
   }
@@ -439,10 +464,22 @@ export class VenueGraph {
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
       const ir = stadiumIR(this.ctx.sampleRate, this.venue);
-      const b = this.ctx.createBuffer(2, ir.ch[0].length, this.ctx.sampleRate);
-      b.copyToChannel(ir.ch[0] as Float32Array<ArrayBuffer>, 0);
-      b.copyToChannel(ir.ch[1] as Float32Array<ArrayBuffer>, 1);
-      conv.buffer = b;
+      if (this.lowPower) {
+        // phones: one channel, at most 1.6 s (faded): ~1/3 of the stereo 2.3 s convolution
+        const n = Math.min(ir.ch[0].length, Math.floor(1.6 * this.ctx.sampleRate));
+        const x = ir.ch[0].slice(0, n);
+        const fade = Math.floor(0.3 * this.ctx.sampleRate);
+        for (let i = n - fade; i < n; i++) x[i] *= (n - i) / fade;
+        for (let i = 0; i < n; i++) x[i] = (x[i] + ir.ch[1][i]) * Math.SQRT1_2;
+        const b = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+        b.copyToChannel(x as Float32Array<ArrayBuffer>, 0);
+        conv.buffer = b;
+      } else {
+        const b = this.ctx.createBuffer(2, ir.ch[0].length, this.ctx.sampleRate);
+        b.copyToChannel(ir.ch[0] as Float32Array<ArrayBuffer>, 0);
+        b.copyToChannel(ir.ch[1] as Float32Array<ArrayBuffer>, 1);
+        conv.buffer = b;
+      }
     } catch {
       /* no reverb */
     }
@@ -451,8 +488,17 @@ export class VenueGraph {
 
   // ---- the duck ---------------------------------------------------------------------------------------------------------------
 
+  /** the analyser path (phones, or no worklet): the booth's level is read on the main thread (`pumpDuck`, ~50 Hz) */
+  private keyTap: AnalyserNode | null = null;
+  private keyBuf: Float32Array<ArrayBuffer> | null = null;
+  private duckState = newDuckState();
+  private lastPump = 0;
+
   private async loadDuck() {
     const ctx = this.ctx;
+    // phones: the worklet's JS runs 375 times a second on the audio thread (~7 ms per audio second measured); the analyser path reads
+    // the same envelope 50 times a second on the main thread for a few microseconds
+    if (this.lowPower) return this.analyserDuck();
     if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined' || typeof Blob === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
     this.stats.worklet = 'loading';
     try {
@@ -475,7 +521,48 @@ export class VenueGraph {
       this.applyDuck();
     } catch {
       this.stats.worklet = 'failed';
+      this.analyserDuck();
     }
+  }
+
+  private analyserDuck() {
+    try {
+      const a = this.ctx.createAnalyser();
+      a.fftSize = 256;
+      this.boothFader.connect(a);
+      this.keyTap = a;
+      this.keyBuf = new Float32Array(a.fftSize);
+    } catch {
+      this.keyTap = null;
+    }
+  }
+
+  /** the analyser path's step (the mixer calls it ~50 times a second): the same `duckStep` the worklet runs, applied as gain targets */
+  pumpDuck(dt?: number) {
+    const a = this.keyTap;
+    if (!a || !this.keyBuf || this.duckNode) return;
+    const now = this.ctx.currentTime;
+    const step = dt ?? Math.min(0.1, Math.max(0.005, now - this.lastPump));
+    this.lastPump = now;
+    // idle and nothing to release: no work
+    if (this.duckState.red > -0.01 && this.manualKey === 0 && this.duckState.det < this.duck.threshold - 20 && this.idleKey()) return;
+    a.getFloatTimeDomainData(this.keyBuf);
+    let ms = 0;
+    for (const x of this.keyBuf) ms += x * x;
+    ms /= this.keyBuf.length;
+    const p = { ...this.duck, depth: this.duck.depth * this.duckScale, eqDepth: this.duck.eqDepth * this.duckScale, ext: this.manualKey };
+    const red = duckStep(this.duckState, ms, step, p);
+    this.duckGain.gain.setTargetAtTime(dbToGain(red), now, 0.012);
+    this.duckEq.gain.setTargetAtTime(p.depth > 0 ? (red * p.eqDepth) / p.depth : 0, now, 0.012);
+  }
+
+  /** the booth's tap is quiet right now (a cheap check before the full read) */
+  private idleKey(): boolean {
+    const a = this.keyTap!;
+    a.getFloatTimeDomainData(this.keyBuf!);
+    const b = this.keyBuf!;
+    for (let i = 0; i < b.length; i += 16) if (Math.abs(b[i]) > 1e-3) return false;
+    return true;
   }
 
   /** depth (dB), the presence cut (dB), attack / release (s) */
@@ -515,7 +602,9 @@ export class VenueGraph {
       set('ext', this.manualKey);
       return;
     }
-    // no worklet (insecure origin, old Safari): the same duck from the key flag, with the same time constants
+    // the analyser path follows in `pumpDuck`
+    if (this.keyTap) return;
+    // no worklet and no analyser: the same duck from the key flag, with the same time constants
     const on = this.manualKey > 0;
     const tc = (on ? this.duck.attack : this.duck.release) / 3;
     this.duckGain.gain.setTargetAtTime(on ? dbToGain(-depth * this.manualKey) : 1, t, tc);
@@ -525,7 +614,7 @@ export class VenueGraph {
   /** the duck's current reduction, dB (asks the worklet; resolves to the manual value without one) */
   duckNow(): Promise<number> {
     const n = this.duckNode;
-    if (!n) return Promise.resolve(20 * Math.log10(Math.max(1e-6, this.duckGain.gain.value)));
+    if (!n) return Promise.resolve(this.keyTap ? this.duckState.red : 20 * Math.log10(Math.max(1e-6, this.duckGain.gain.value)));
     return new Promise((res) => {
       const done = setTimeout(() => res(0), 200);
       n.port.onmessage = (e) => {
