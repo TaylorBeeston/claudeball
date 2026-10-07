@@ -22,15 +22,15 @@ import type { CrowdShot } from './crowd';
 
 export const MAX_VOICES = 32;
 /** master gain at the full slider, ahead of the master chain (sets the loudness: about -16 LUFS integrated at the default volume) */
-const MAKEUP = 2;
+const MAKEUP = 3.2;
 /** park music at the full slider (into the PA system) */
-const MUSIC_LEVEL = 1.0;
+const MUSIC_LEVEL = 0.13;
 /** the organ at the full slider (into the PA system) */
-const ORGAN_LEVEL = 1.0;
+const ORGAN_LEVEL = 0.13;
 /** PA voice at slider 1 (into the PA system) */
-const PA_LEVEL = 2.0;
+const PA_LEVEL = 0.85;
 /** booth voices at the full announcer slider (after the booth's compressor) */
-const BOOTH_LEVEL = 1.6;
+const BOOTH_LEVEL = 0.39;
 /** duck depth (dB) and presence cut (dB) per setting */
 export const DUCK_LEVELS = { light: { depth: 4, eqDepth: 2.5 }, normal: { depth: 7, eqDepth: 4 }, strong: { depth: 10, eqDepth: 5 } } as const;
 

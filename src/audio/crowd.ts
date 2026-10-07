@@ -21,7 +21,7 @@
  */
 import type { CrowdId, RawEvent } from './types';
 import { baseline } from './excitement';
-import type { ZoneId } from './venue/mics';
+import { ZONES, type ZoneId } from './venue/mics';
 
 export type ShotId = CrowdId | 'seat_thump';
 
@@ -53,6 +53,11 @@ export interface CrowdBed {
   cutoff: number;
   /** 0..1 how quiet the crowd is holding its breath */
   hush: number;
+  /**
+   * per section of the stands, 0..1: its own level (home fans and visiting fans react to different things: a visitor's home run lifts
+   * the first-base side and the right-field bleachers while the home sections groan)
+   */
+  zones: Record<ZoneId, number>;
 }
 
 export interface CrowdCtx {
@@ -74,9 +79,12 @@ export interface CrowdOptions {
 }
 
 type Channel = 'energy' | 'clap' | 'hush' | 'convo';
+/** whose fans an energy envelope belongs to (none: everybody) */
+type Side = 'home' | 'away';
 
 interface Env {
   ch: Channel;
+  side?: Side;
   tag: string;
   peak: number;
   t0: number;
@@ -118,14 +126,6 @@ export function hangTime(exitMph: number, launchDeg: number): number {
   return clamp(((2 * v * Math.sin((launchDeg * Math.PI) / 180)) / 9.81) * 0.85, 0.6, 7);
 }
 
-/** how loud and bright the bed is for a camera at `pos` (stands shots are close and loud, wide shots from above are distant) */
-export function proximityOf(pos: { x: number; y: number; z: number }): { gain: number; bright: number } {
-  const r = Math.hypot(pos.x, pos.z - 45); // from the middle of the diamond
-  const near = clamp((r - 60) / 40, 0, 1);
-  const high = clamp((pos.y - 12) / 28, 0, 1);
-  return { gain: (0.82 + 0.45 * near) * (1 - 0.14 * high), bright: (0.86 + 0.3 * near) * (1 - 0.12 * high) };
-}
-
 export class CrowdModel {
   /** model time, s */
   t = 0;
@@ -147,7 +147,7 @@ export class CrowdModel {
   private stealing = false;
   private outsRecent: number[] = [];
   private halfRuns = 0;
-  private prox = { gain: 1, bright: 1 };
+  private zoneLevel = Object.fromEntries(ZONES.map((z) => [z.id, 0.2])) as Record<ZoneId, number>;
   private life = { clap: 5, shout: 9, whistle: 30, kid: 60, vendor: 28, seat: 18, chatter: 7, chant: 80, wave: 140 };
   private clapUntil = 0;
   /** what the last reactions were (debug / tests) */
@@ -178,15 +178,6 @@ export class CrowdModel {
     this.tension = clamp(tn, 0, 1);
   }
 
-  /** the camera: closer to the stands = louder and brighter */
-  setListener(pos: { x: number; y: number; z: number }) {
-    this.prox = proximityOf(pos);
-  }
-
-  get proximity() {
-    return this.prox;
-  }
-
   /** is the next batter / pitcher of the home team? */
   private get homeBatting() {
     return this.ctxNow.half === 'bottom';
@@ -197,10 +188,15 @@ export class CrowdModel {
 
   // ---- building blocks ---------------------------------------------------------------------------------------------------
 
-  private add(ch: Channel, tag: string, peak: number, a: number, h: number, d: number, delay = 0) {
+  private add(ch: Channel, tag: string, peak: number, a: number, h: number, d: number, delay = 0, side?: Side) {
     if (peak <= 0.002) return;
     if (this.envs.length > 24) this.envs.shift();
-    this.envs.push({ ch, tag, peak: Math.min(1, peak), t0: this.t + delay, a, h, d });
+    this.envs.push({ ch, tag, peak: Math.min(1, peak), t0: this.t + delay, a, h, d, side });
+  }
+
+  /** a section where the visiting team's fans sit (near their dugout on the first-base side, and out in right field) */
+  private awayZone(): ZoneId {
+    return this.rng() < 0.6 ? 'line_1b' : 'rf_bleachers';
   }
 
   /** end the envelopes of a tag early (the foul ball that ends the anticipation) */
@@ -231,13 +227,14 @@ export class CrowdModel {
     const dl = o.delay ?? 0;
     if (forHome) {
       this.shot(o.cheer ?? 'cheer_short', size * L, dl);
-      this.add('energy', 'joy', 0.55 * size * L, 0.25, 0.5 + size, 1.4 + 1.6 * size, dl);
+      this.add('energy', 'joy', 0.55 * size * L, 0.25, 0.5 + size, 1.4 + 1.6 * size, dl, 'home');
     } else {
       // visitors' fans are a minority: a small cheer from their corner, the home stands groan, a few boo
-      this.shot(o.cheer ?? 'cheer_short', size * 0.3 * L, dl, { pan: this.rng() < 0.5 ? -0.7 : 0.7 });
+      this.shot(o.cheer ?? 'cheer_short', size * 0.3 * L, dl, { zone: this.awayZone() });
       this.shot('aww', size * 0.55 * L, dl + 0.1);
-      if (size > 0.55 && this.rng() < 0.6) this.shot('boo_few', size * 0.4, dl + 0.6);
+      if (size > 0.55 && this.rng() < 0.6) this.shot('boo_few', size * 0.4, dl + 0.6, { zone: this.rng() < 0.5 ? 'home_side' : 'backstop' });
       this.add('energy', 'joy', 0.14 * size * L, 0.3, 0.4, 1.3, dl);
+      this.add('energy', 'joy-away', 0.5 * size * L, 0.25, 0.4 + size * 0.5, 1.4 + size, dl, 'away');
     }
   }
 
@@ -247,7 +244,8 @@ export class CrowdModel {
     const beat = 0.27;
     const pat = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12];
     const g = (0.3 + 0.35 * strength) * (this.lowPower ? 0.9 : 1);
-    pat.forEach((b, i) => this.shot('clap_burst', g * (0.85 + 0.15 * this.rng()), 0.1 + b * beat, { rate: 0.97 + this.rng() * 0.06, pan: (this.rng() - 0.5) * 0.4 }));
+    // the whole home crowd claps together: the bowl, not one section
+    pat.forEach((b) => this.shot('clap_burst', g * (0.85 + 0.15 * this.rng()), 0.1 + b * beat, { rate: 0.97 + this.rng() * 0.06, diffuse: true }));
     this.add('clap', 'rhythm', 0.35 * strength, 0.4, 2.2, 1.2, 0.1);
     this.clapUntil = this.t + 12 * beat + 0.6;
     this.note('clap pattern');
@@ -503,8 +501,8 @@ export class CrowdModel {
     if (hb) {
       // first wave as it clears the wall; the roar keeps building for several seconds, with clapping, whistles and a second wave
       this.shot('roar_big', 1.0 * L, 0.05);
-      this.add('energy', 'hr', 0.62, 0.5, 0.6, 2.2);
-      this.add('energy', 'hr-build', 1.0, 3.6, 2.4, 5.5, 0.3);
+      this.add('energy', 'hr', 0.62, 0.5, 0.6, 2.2, 0, 'home');
+      this.add('energy', 'hr-build', 1.0, 3.6, 2.4, 5.5, 0.3, 'home');
       this.add('clap', 'hr', 0.8, 2.5, 3.5, 4.5, 0.6);
       this.shot('cheer_short', 0.8 * L, 1.4, { rate: 0.92 });
       this.shot('whistle', 0.35, 1.6, { pan: this.rng() < 0.5 ? -0.6 : 0.6 });
@@ -518,9 +516,11 @@ export class CrowdModel {
       // a visitor's home run: a groan, a few boos, a pocket of fans cheering, then quiet
       this.shot('groan', 0.8, 0.1);
       this.shot('boo_few', 0.45, 0.8);
-      this.shot('cheer_short', 0.4 * L, 0.3, { pan: this.rng() < 0.5 ? -0.8 : 0.8 });
-      this.shot('applause_small', 0.3, 1.2, { pan: 0.8 });
+      const z = this.awayZone();
+      this.shot('cheer_short', 0.4 * L, 0.3, { zone: z });
+      this.shot('applause_small', 0.3, 1.2, { zone: z });
       this.add('energy', 'hr', 0.25, 0.3, 0.5, 2.5);
+      this.add('energy', 'hr-away', 0.75, 0.3, 1.2, 3, 0, 'away');
       this.note('home run (visitor)');
     }
   }
@@ -628,14 +628,15 @@ export class CrowdModel {
       } else {
         this.shot('roar_big', (0.6 + big) * L, 0.1);
         this.shot('applause', 0.5 + big, 1.5);
-        this.add('energy', 'run', (0.5 + big) * L, 0.4, 1.2, 3.2);
+        this.add('energy', 'run', (0.5 + big) * L, 0.4, 1.2, 3.2, 0, 'home');
         this.add('clap', 'run', 0.55, 1, 2, 3.5, 0.5);
         this.note(`run (home) big=${big}`);
       }
     } else {
       this.shot('groan', 0.5, 0.15);
-      this.shot('cheer_short', 0.3 * L, 0.2, { pan: this.rng() < 0.5 ? -0.8 : 0.8 });
+      this.shot('cheer_short', 0.3 * L, 0.2, { zone: this.awayZone() });
       this.add('energy', 'run', 0.1, 0.3, 0.4, 1.6);
+      this.add('energy', 'run-away', 0.5 * L, 0.3, 0.8, 2.2, 0, 'away');
       this.note('run (visitor)');
     }
   }
@@ -666,10 +667,19 @@ export class CrowdModel {
     let keep: Env[] = [];
     const sums: Record<Channel, number> = { energy: 0, clap: 0, hush: 0, convo: 0 };
     const prod: Record<Channel, number> = { energy: 1, clap: 1, hush: 1, convo: 1 };
+    const zprod = ZONES.map(() => 1);
     for (const e of this.envs) {
       if (this.t > (e.kt !== undefined ? e.kt + (e.kf ?? 0.5) : envEnd(e))) continue;
       keep.push(e);
       const v = clamp(envValue(e, this.t), 0, 0.98);
+      if (e.ch === 'energy') {
+        // per section: home envelopes weigh by its home share, the visitors' by theirs; the visitors' own envelopes are not the bowl's
+        ZONES.forEach((z, i) => {
+          const w = e.side === 'home' ? clamp(z.home * 1.15, 0, 1) : e.side === 'away' ? clamp((1 - z.home) * 2, 0, 1) : 1;
+          zprod[i] *= 1 - v * w;
+        });
+        if (e.side === 'away') continue;
+      }
       prod[e.ch] *= 1 - v;
       sums[e.ch] += v;
     }
@@ -685,14 +695,20 @@ export class CrowdModel {
     this.hush += (hTarget - this.hush) * Math.min(1, (hTarget > this.hush ? 2.5 : 3.5) * dt);
     if (life) this.makeLife(dt, energy);
     const lv = this.level;
-    const bright = this.prox.bright;
+    const zones = {} as Record<ZoneId, number>;
+    ZONES.forEach((z, i) => {
+      const zt = clamp(this.base + (1 - this.base) * (1 - zprod[i]), 0.05, 1);
+      const cur = this.zoneLevel[z.id];
+      zones[z.id] = this.zoneLevel[z.id] = cur + (zt - cur) * Math.min(1, (zt > cur ? 6 : 1.4) * dt);
+    });
     return {
       level: lv,
       murmur: (0.55 + 0.35 * lv) * (1 - 0.5 * this.hush) * (1 + 0.25 * (1 - prod.convo)),
       roar: Math.pow(lv, 1.6) * 1.25,
       clap: (1 - prod.clap) * 0.9,
-      cutoff: (1600 + 4400 * lv) * (1 - 0.3 * this.hush) * bright,
+      cutoff: (1600 + 4400 * lv) * (1 - 0.3 * this.hush),
       hush: this.hush,
+      zones,
     };
   }
 
@@ -749,7 +765,8 @@ export class CrowdModel {
       L.wave = (140 + r() * 140) * f;
       if (lv > 0.4) {
         const left = r() < 0.5;
-        this.shot('cheer_short', 0.35 + 0.2 * lv, 0, { sweep: { from: left ? -0.9 : 0.9, to: left ? 0.9 : -0.9, dur: 5 }, rate: 0.85 });
+        // the wave goes round the bowl section after section (the mixer plays it zone by zone)
+        this.shot('cheer_short', 0.35 + 0.2 * lv, 0, { sweep: { from: left ? -0.9 : 0.9, to: left ? 0.9 : -0.9, dur: 6 }, rate: 0.85 });
         this.note('wave');
       }
     }
@@ -769,10 +786,10 @@ export class CrowdModel {
     return out;
   }
 
-  /** current energy of the envelopes alone, 0..1 (tests and debug) */
+  /** current energy of the envelopes alone, 0..1, of the bowl (the visitors' own sections are in `zones`) (tests and debug) */
   get energy(): number {
     let p = 1;
-    for (const e of this.envs) if (e.ch === 'energy') p *= 1 - clamp(envValue(e, this.t), 0, 0.98);
+    for (const e of this.envs) if (e.ch === 'energy' && e.side !== 'away') p *= 1 - clamp(envValue(e, this.t), 0, 0.98);
     return 1 - p;
   }
 
@@ -781,6 +798,7 @@ export class CrowdModel {
     this.shots = [];
     this.air = null;
     this.level = this.base;
+    for (const z of ZONES) this.zoneLevel[z.id] = this.base;
     this.hush = 0;
     this.stealing = false;
     this.outsRecent = [];

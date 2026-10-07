@@ -31,7 +31,7 @@ export interface RenderOpts {
   /** extra hooks (the IR / mic stems) */
   probe?: 'ir' | null;
   /** the scene: 'game' (default), 'impulse' (one click at the plate, for the venue response), 'duck' (steady bed + booth line) */
-  scene?: 'game' | 'impulse' | 'duck' | 'organ';
+  scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise';
   lowPower?: boolean;
   /** profiling: build without parts of the graph */
   debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean };
@@ -119,7 +119,7 @@ const crowdCtx = (half: 'top' | 'bottom' = 'bottom'): CrowdCtx => ({ inning: 7, 
 export async function render(o: RenderOpts = {}): Promise<RenderOut> {
   const sr = o.sr ?? 48000;
   const scene = o.scene ?? 'game';
-  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : 34);
+  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : scene === 'pa-noise' ? 6 : 34);
   const parts = { organ: true, crowd: true, sfx: true, pa: true, booth: true, ...(o.parts ?? {}) };
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(sr * seconds), sampleRate: sr });
   // the production code only plays into a running context; an offline one is 'suspended' between steps
@@ -221,6 +221,22 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
     parts.crowd = false;
   } else if (scene === 'duck') {
     script.push([5.0, () => parts.booth && say('pbp', 'And that ball is gone.')]);
+  } else if (scene === 'pa-noise') {
+    // the PA system's transfer: white noise into the PA voice input, the speakers' feed (before the air and the mics) to the output
+    parts.crowd = false;
+    const g = mx.graph as { out: AudioNode; paOut: AudioNode };
+    g.out.disconnect();
+    g.paOut.connect(ctx.destination);
+    const n = ctx.createBuffer(1, sr * (seconds - 1), sr);
+    const d = n.getChannelData(0);
+    const rr = mulberry32(5);
+    for (let i = 0; i < d.length; i++) d[i] = (rr() * 2 - 1) * 0.05;
+    script.push([0.5, () => {
+      const src = ctx.createBufferSource();
+      src.buffer = n;
+      src.connect(m.paBus);
+      src.start();
+    }]);
   } else if (scene === 'organ') {
     parts.crowd = false;
     script.push([0.3, () => organ.play('charge', 1)]);

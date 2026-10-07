@@ -38,7 +38,7 @@ export interface Strip {
 }
 
 /** loudness trims of the park's source families into the mic array (set by measurement, see the README's tuning guide) */
-export const TRIM = { sfx: 0.9, crowd: 0.55, bed: 0.5, pa: 0.5, ump: 0.55 };
+export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 1.0, pa: 0.5, ump: 0.55 };
 
 const dbToGain = (d: number) => Math.pow(10, d / 20);
 
@@ -213,12 +213,13 @@ export class VenueGraph {
 
     // ---- PA system: band-limited horns with a little drive, a few clusters around the bowl
     this.paIn = monoIn(1);
-    const pa1 = bq('highpass', PA_BAND.lo, 0.7);
-    const pa2 = bq('highpass', PA_BAND.lo, 0.7);
-    const pa3 = bq('lowpass', PA_BAND.hi, 0.7);
-    const pa4 = bq('lowpass', PA_BAND.hi, 0.7);
+    // two 2nd-order sections each side; the corners sit a little inside the band so the measured -6 dB points land on it
+    const pa1 = bq('highpass', PA_BAND.lo * 1.25, 0.7);
+    const pa2 = bq('highpass', PA_BAND.lo * 1.25, 0.7);
+    const pa3 = bq('lowpass', PA_BAND.hi * 0.83, 0.7);
+    const pa4 = bq('lowpass', PA_BAND.hi * 0.83, 0.7);
     const horn = bq('peaking', 2200, 1.0, 3.5);
-    const box = bq('peaking', 450, 1.0, -2.5);
+    const box = bq('peaking', 320, 0.8, -2.5);
     const drive = count(ctx.createWaveShaper());
     drive.curve = driveCurve(1.6);
     drive.oversample = o.profile?.noOversample ? 'none' : '2x';

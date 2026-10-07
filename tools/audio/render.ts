@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { CHROME, ROOT, freePort, sleep } from '../perf/lib';
-import { db, lufsIntegrated, loudnessRange, mono, rmsEnvelope, rt60, rt60Band, samplePeak, truePeak, bandEdges, decayCurve } from '../../src/audio/venue/analysis';
+import { db, lufsIntegrated, loudnessRange, loudnessSeries, powerSpectrum, bandPower, mono, rmsEnvelope, rt60, rt60Band, samplePeak, truePeak, decayCurve } from '../../src/audio/venue/analysis';
 
 const args = process.argv.slice(2);
 const opt = (k: string, d?: string) => {
@@ -128,6 +128,22 @@ async function main() {
         finite: chs.every((c) => c.every(Number.isFinite)),
         info: r.info,
       };
+      if (scene === 'game' && flag('stems')) {
+        // each family alone through the whole chain (master dynamics included): integrated and loudest momentary loudness
+        const fams = ['organ', 'crowd', 'sfx', 'pa', 'booth'] as const;
+        const stems: Record<string, unknown> = {};
+        for (const f of fams) {
+          const only = Object.fromEntries(fams.map((k) => [k, k === f]));
+          const sr2 = await run({ scene, voice, settings, lowPower, debug, parts: only });
+          const c2 = sr2.channels.map(fromB64);
+          const mom = loudnessSeries(c2, sr2.sr, 'momentary');
+          stems[f] = { lufs: +lufsIntegrated(c2, sr2.sr).toFixed(1), momentaryMax: +Math.max(...mom).toFixed(1), truePeakDb: +db(truePeak(c2)).toFixed(1) };
+          if (flag('stem-wavs')) writeWav(path.join(out, `${tag}-stem-${f}.wav`), c2, sr2.sr);
+        }
+        a.stems = stems;
+        const mom = loudnessSeries(chs, r.sr, 'momentary');
+        a.momentaryEvery500ms = mom.filter((_, i) => i % 5 === 0).map((v) => +v.toFixed(1));
+      }
       if (scene === 'impulse') {
         // the click at 0.5 s and the venue's answer: decay of the rendered tail (the bat crack itself is ~0.1 s long)
         const m = mono(chs);
@@ -137,7 +153,19 @@ async function main() {
         const edc = decayCurve(tail);
         a.edcAt = Object.fromEntries([0.1, 0.25, 0.5, 1, 2, 3].map((t) => [t, +edc[Math.min(edc.length - 1, Math.floor(t * r.sr))].toFixed(1)]));
       }
-      if (scene === 'organ' || scene === 'pa') a.band = bandEdges(mono(chs), r.sr, 12);
+      if (scene === 'pa-noise') {
+        // white noise in: the output spectrum is the PA's response; edges where it is 6 dB under its 1 kHz level
+        const m = mono(chs).subarray(r.sr * 1, r.sr * 5);
+        const psd = powerSpectrum(m, 8192);
+        const lvl = (f: number) => 10 * Math.log10(bandPower(psd, r.sr, f / 1.06, f * 1.06) / (f * 0.12));
+        const ref = lvl(1000);
+        const resp: Record<number, number> = {};
+        for (const f of [50, 100, 150, 200, 300, 500, 1000, 2000, 3000, 5000, 7000, 9000, 12000, 16000]) resp[f] = +(lvl(f) - ref).toFixed(1);
+        let lo = 0, hi = 0;
+        for (let f = 1000; f > 20; f /= 1.02) if (lvl(f) - ref < -6) { lo = Math.round(f); break; }
+        for (let f = 1000; f < r.sr / 2.2; f *= 1.02) if (lvl(f) - ref < -6) { hi = Math.round(f); break; }
+        a.paResponse = { lo, hi, relDb: resp };
+      }
       if (scene === 'duck') {
         // the same scene with the booth muted into the master (its key still drives the duck) vs no booth at all: the park bus's duck
         const silent = await run({ scene, voice, settings, lowPower, boothSilent: true });
