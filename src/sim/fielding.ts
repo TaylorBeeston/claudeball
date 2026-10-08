@@ -2,6 +2,7 @@ import { flightStep, newFlags, predictPath, PathSample, BallBody } from './ball'
 import { emit } from './events';
 import { BALL_RADIUS, BASE_POS, fenceAt, isFairXZ } from './field';
 import { clamp, MPH, RPM } from './math';
+import { releaseHeight, throwMotion, tossSpeed } from './throws';
 import { armMps, catcherTransfer, firstStepSeconds, judgementSigma, throwWindup, transferSeconds } from './attributes';
 import { WALL_STAND, insideFence, setGoal, travelTime } from './movement';
 import { giveBall, releaseBall, setAnim } from './util';
@@ -886,7 +887,10 @@ function holderLogic(w: World, F: PlayerRT): void {
   const tz = receiver.z;
   F.lookAt = { x: tx, z: tz };
   F.facing = Math.atan2(tx - F.x, tz - F.z);
-  setAnim(w, F, 'throw', 0.5);
+  // up close (a flip to the man covering second, to the pitcher covering first) he tosses it underhand; otherwise a real throw
+  const motion = throwMotion(Math.hypot(tx - F.x, tz - F.z), false) === 'toss_underhand' ? 'toss_underhand' : 'throw';
+  F.plan.throwMotion = motion;
+  setAnim(w, F, motion, 0.5);
 }
 
 const willRelay = (w: World, F: PlayerRT, receiver: PlayerRT) => {
@@ -1037,11 +1041,13 @@ export function doThrow(w: World, F: PlayerRT): void {
     tx = R ? R.x : bp!.x;
     tz = R ? R.z : bp!.z;
   }
-  const from = { x: F.x + Math.sin(F.facing) * 0.45, y: 1.75, z: F.z + Math.cos(F.facing) * 0.45 };
+  const flip = F.plan.throwMotion === 'toss_underhand';
+  const from = { x: F.x + Math.sin(F.facing) * (flip ? 0.4 : 0.45), y: flip ? releaseHeight('toss_underhand') : 1.75, z: F.z + Math.cos(F.facing) * (flip ? 0.4 : 0.45) };
   const D = Math.hypot(tx - from.x, tz - from.z);
   const effort = D > 14 ? 1 : 0.82 + 0.18 * (D / 14);
   const fs = Math.hypot(F.vx, F.vz);
-  const speed = armSpeed(F) * effort * (1 - 0.05 * Math.min(1, fs / 6));
+  // an underhand flip is a soft toss (7-13 m/s by distance), not a throw at arm speed
+  const speed = flip ? tossSpeed('toss_underhand', D) : armSpeed(F) * effort * (1 - 0.05 * Math.min(1, fs / 6));
   const to = { x: tx, y: 1.25, z: tz };
   const sol = solveThrow(from, to, speed, w.env);
   if (R && atBase && F.plan.delays < 14) {

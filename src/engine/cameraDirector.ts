@@ -52,6 +52,8 @@ interface Replay {
 
 const HOME_HIGH = new Vector3(0, 17, -26);
 const CF_CAM = new Vector3(-2.6, 10.5, 121);
+/** how far either batter's box reaches from the plate's centre line (m): the pitch shot frames the box, not a batter still walking up */
+const BOX_X = 1.6;
 
 export interface DirectorOutput {
   renderState: GameState;
@@ -844,7 +846,7 @@ export class CameraDirector {
         if (flying) subj.set(b.pos.x, b.pos.y, Math.max(0, b.pos.z));
         else {
           const batter = rs.players.find((p) => p.role === 'batter');
-          subj.set((batter?.pos.x ?? 0) * 0.5, 1.0, 0);
+          subj.set(MathUtils.clamp(batter?.pos.x ?? 0, -BOX_X, BOX_X) * 0.5, 1.0, 0);
         }
         break;
       }
@@ -948,7 +950,8 @@ export class CameraDirector {
       case 'pitch': {
         d.pos.copy(CF_CAM);
         const batter = rs.players.find((p) => p.role === 'batter');
-        const bx = batter ? batter.pos.x * 0.3 : 0;
+        // the box he stands in, not where he is: walking up from the dugout (x ~ -20) he swung the shot onto empty foul ground
+        const bx = batter ? MathUtils.clamp(batter.pos.x, -BOX_X, BOX_X) * 0.3 : 0;
         d.tgt.set(bx, 1.05, 8.2);
         const dist = d.pos.distanceTo(d.tgt);
         d.fov = this.tele(8.6, dist);

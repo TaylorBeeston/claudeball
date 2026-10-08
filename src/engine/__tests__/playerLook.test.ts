@@ -21,10 +21,14 @@ describe('computeLook', () => {
     expect(lean.morphs.build_lean).toBeGreaterThan(0.5);
     expect(lean.morphs.build_stocky).toBe(0);
     const heavy = computeLook(ph(1.85, 118, 'heavy'), app(2));
-    expect(heavy.morphs.build_stocky).toBeGreaterThan(0.8);
+    expect(heavy.morphs.build_heavy).toBeGreaterThan(0.8);
+    expect(heavy.morphs.build_stocky).toBeLessThanOrEqual(0.6);
     expect(heavy.morphs.build_lean).toBe(0);
+    expect(heavy.morphs.cheeks_full).toBeGreaterThan(0.4); // heavier people carry it in the face too
+    // an athletic player is not a bodybuilder: a little definition at most ("everyone has the same very fit build")
     const ath = computeLook(ph(1.85, 92, 'athletic'), app(2));
-    expect(ath.morphs.build_muscular).toBeGreaterThan(0.2);
+    expect(ath.morphs.build_muscular).toBeLessThan(0.5);
+    expect(ath.morphs.build_heavy).toBe(0);
     for (const l of [lean, heavy, ath]) for (const k of Object.keys(l.morphs)) {
       expect(l.morphs[k]).toBeGreaterThanOrEqual(0);
       expect(l.morphs[k]).toBeLessThanOrEqual(1);

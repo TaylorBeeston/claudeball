@@ -36,6 +36,11 @@ export type AnimHint =
   | 'transfer'
   /** easy casual throw (return throws after routine outs) */
   | 'toss'
+  /** short easy throws by distance: underhand flip, short-arm sidearm flick, underhand roll along the ground, relaxed overhand (the sim's `throwMotion`) */
+  | 'toss_underhand'
+  | 'toss_sidearm_short'
+  | 'roll_ball'
+  | 'throw_casual'
   /** glove out, facing the thrower, waiting for a throw that has not left his hand yet (pitcher before the catcher's return) */
   | 'catch_ready'
   | 'pitcher_catch_toss'
@@ -167,6 +172,8 @@ export interface PlayerSnap {
   gloveTarget?: Vec3;
   /** seconds until the catch (the hint starts the clip's catch-frame time before it, so the catch frame lands on the arrival) */
   catchIn?: number;
+  /** seconds until the ball leaves his hand while a throwing motion is under way: the clip is laid so its release frame lands then */
+  releaseIn?: number;
   /** umpires: HP, 1B-U, 2B-U, 3B-U */
   position?: string;
   /** pitchers: the pitch about to be thrown (FF, FT, SI, CH, …) when the sim says so; picks the 2-seam or 4-seam grip */

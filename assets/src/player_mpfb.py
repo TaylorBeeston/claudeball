@@ -24,8 +24,18 @@ def base():
         for sd in ("Left", "Right"):
             P = _hand_map(P, sd); _B["CH_" + sd] = _hand_map(np.asarray(_B["CH_" + sd], float).reshape(-1, 3), sd).reshape(np.asarray(_B["CH_" + sd]).shape)
         _B["P"] = P
+        for sd in ("Left", "Right"): _B["CH_" + sd] = _fix_knuckles(P, _B["FW_" + sd], _B["CH_" + sd])
         _B["D_mouth_open"] = _B["D_mouth_open"]*MOUTH_OPEN_SCALE                                         # the MPFB mouth interior (stretched inner-lip faces) turns into jagged spikes beyond ~30 % of the original opening: weight 1 = that usable opening
     return _B
+def _fix_knuckles(P, FW, CH):
+    """The extracted chains' first joint (the knuckle, MCP) of the index, middle and ring fingers lay 8-9 cm off to the thumb side, outside the hand, so every
+    curled variant (fist, claw, fingers_n) swung those fingers about a point in the air ("the catcher's fingers are insane"). The knuckle is re-derived from the
+    mesh: the centroid of the vertices blending between the palm and the finger's first segment (finger weight 0.05-0.5); PIP / DIP / tip were right."""
+    CH = np.asarray(CH, float).copy(); FW = np.asarray(FW, float)
+    for fi in range(1, 5):
+        tot = FW[:, fi*3:fi*3 + 3].sum(1); ring = (tot > .05) & (tot < .5)
+        if ring.sum() >= 8: CH[fi][0] = P[ring].mean(0)
+    return CH
 HC = Vector((0, -.065, 1.735))                                   # skull centre (replaces the procedural head's centre for headwear / hair builders)
 LM = dict(eyeL=(.032, -.146, 1.732), eyeR=(-.032, -.146, 1.732), nose=(0, -.185, 1.688), mouth=(0, -.150, 1.640), crown=(0, -.069, 1.85), ear_z=1.727, ear_x=.090)
 NECK_CUT = 1.585                                                 # Head / Body_Skin split height (face centres)
@@ -133,11 +143,13 @@ def hand_normal(side):
     return n if np.dot(n, np.array([-sx, 0, -.4])) > 0 else -n        # palm side: toward the body / down
 def _palm_centre(side, n):
     b = base(); P = b['P'].astype(float); hm = hand_vertex_mask(side) & (b['FW_' + side].sum(1) < .01); return P[hm].mean(0) + n*.012
-def posed_hand(side, curls=(0, 0, 0, 0, 0), curl_ratio=None, thumb_adduct=0.0, spread=0.0, P=None, return_tips=False):
-    """Vertex positions (n,3) of the whole base mesh with the fingers of `side` curled: curls = (thumb, index, middle, ring, pinky) in 0..1 (1 = fist). Only finger vertices move."""
+def posed_hand(side, curls=(0, 0, 0, 0, 0), curl_ratio=None, thumb_adduct=0.0, spread=0.0, P=None, return_tips=False, N=None):
+    """Vertex positions (n,3) of the whole base mesh with the fingers of `side` curled: curls = (thumb, index, middle, ring, pinky) in 0..1 (1 = fist). Only finger vertices move.
+    With `N` (rest vertex normals) the normals are turned with the fingers too and returned as a second value (the rest normals on a curled finger shade it inside out)."""
     b = base(); P = b["P"].astype(float) if P is None else P.astype(float); FW = b["FW_" + side].astype(float); CH = np.asarray(b["CH_" + side], float); n = hand_normal(side)
     H = np.concatenate([P, np.ones((len(P), 1))], 1); out = np.zeros_like(P); wf = FW.sum(1); rest = np.clip(1 - wf, 0, 1); tips = []
     out += rest[:, None]*P
+    NN = None if N is None else np.asarray(N, float); nout = None if N is None else rest[:, None]*NN
     for fi in range(5):                                          # 0 thumb, 1..4 index..pinky
         base_j, j1, j2, tip = CH[fi]; d = (tip - base_j)/np.linalg.norm(tip - base_j)
         axis = np.cross(d, n); axis /= np.linalg.norm(axis)
@@ -159,17 +171,22 @@ def posed_hand(side, curls=(0, 0, 0, 0, 0), curl_ratio=None, thumb_adduct=0.0, s
             c = curls[fi]*(1.0 if curl_ratio is None else curl_ratio[k])
             pv = (M @ np.append(pivots[k], 1))[:3]; ax = M[:3, :3] @ axis
             M = _rot(ax, ang[k]*c, pv) @ M; out += FW[:, fi*3 + k, None]*(H @ M.T)[:, :3]
+            if NN is not None: nout += FW[:, fi*3 + k, None]*(NN @ M[:3, :3].T)
         tips.append((M @ np.append(tip, 1))[:3])
+    if NN is not None:
+        nout /= np.maximum(np.linalg.norm(nout, axis=1, keepdims=True), 1e-9)
+        return ((out, tips) if return_tips else out), nout
     return (out, tips) if return_tips else out
 HAND_SPECS = dict(                                                # (curls thumb..pinky, thumb_adduct, spread)
     relaxed=((.20, .20, .24, .30, .36), 0.0, 0.0), open=((.04, .04, .05, .06, .07), 0.0, 3.0), fist=((.70, 1.0, 1.0, 1.0, 1.0), 0.0, 0.0), claw=((.35, .42, .46, .46, .46), 0.0, 4.0))
 def hand_object(name, side, spec, vmap_sel=None, norm=None):
     """Mesh object of one hand variant (faces touching the hand's vertices of the base mesh), fingers posed by `spec` (a HAND_SPECS key or (curls, adduct, spread))."""
     cu, ad, sp = HAND_SPECS[spec] if isinstance(spec, str) else spec
-    Pp = posed_hand(side, cu, thumb_adduct=ad, spread=sp)
+    if norm is not None: Pp, Np = posed_hand(side, cu, thumb_adduct=ad, spread=sp, N=norm)
+    else: Pp = posed_hand(side, cu, thumb_adduct=ad, spread=sp)
     sel = split_parts()["hand_" + ("L" if side == "Left" else "R")]
     o, vm = build_mesh(name, sel, P=Pp); set_weights(o, vm)
-    if norm is not None: smooth_normals(o, norm[vm])
+    if norm is not None: smooth_normals(o, Np[vm])                  # the rest normals turned with the fingers (the wrist seam keeps the body's normals)
     return o, vm
 def add_hand_finger_keys(obj, vm, side, base_spec="fist"):
     """Morph targets fingers_1..4 (first n fingers extended straight, the rest curled like `base_spec`) on a hand variant."""

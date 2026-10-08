@@ -36,6 +36,7 @@ const NIGHT_OF: Record<TimeOfDay, number> = { day: 0, dusk: 0.45, night: 1 };
 const CROWD_GAIN: Record<TimeOfDay, number> = { day: 1, dusk: 0.85, night: 0.6 };
 import { setJerseyQuality } from './jerseyText';
 import { makeLayout, SideCast, type Box } from './sideCast';
+import { KidChairs } from './kidChairs';
 import { loadAssets, textureTierFor, type Assets, type LoadProgress } from './assets';
 import { prepareEngine, rewarm, type PrepareOptions, type PrepareResult } from './warmup';
 import { GltfPuppet, templateNameFor } from './gltfCharacter';
@@ -77,6 +78,8 @@ export class Engine {
   readonly broadcast = new Broadcast();
   /** bench, on-deck batter, base coaches and ball kids (made up here unless the sim sends them) */
   readonly side = new SideCast();
+  /** the ball kids' chairs (placed where the kids sit) */
+  readonly kidChairs = new KidChairs();
   private tossBall: Object3D | null = null;
   /** a foul ball on the ground / in flight with nobody holding it, and the bat the hitter dropped (both from the sim) */
   private deadBallObj: Object3D | null = null;
@@ -158,6 +161,7 @@ export class Engine {
     this.players = new PlayerManager(this.env);
     this.players.lodOff = FLAGS.nolod;
     this.scene.add(this.players.group);
+    this.scene.add(this.kidChairs.group);
     this.ball = new BallView(this.env);
     this.bat = new BatView(this.env);
     this.scene.add(this.ball.group, this.bat.obj);
@@ -211,6 +215,10 @@ export class Engine {
       this.side.note(te.event);
       if (te.event.type === 'ball_tossed_to_fan') this.stadium.crowd.excite(0.55); // the stands go for it
       if (te.event.type === 'ball_kid_retrieve') this.stadium.crowd.excite(0.12);
+      if (te.event.type === 'signs_given' && te.event.playerId) {
+        const d = te.event.data as { catcherId?: string; seq?: number[] } | undefined;
+        if (d?.catcherId && Array.isArray(d.seq)) this.players.setSigns(d.catcherId, d.seq);
+      }
     });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
     this.sim.onPitchCross((x, y, inZone) => this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b'));
@@ -317,6 +325,7 @@ export class Engine {
   newGame(seed: number, cfg: SimConfig = {}) {
     this.sim.load(seed, cfg);
     this.players.reset();
+    this.kidChairs.reset();
     void this.updateCrowd();
     this.director.reset();
     this.hud?.reset();
@@ -690,6 +699,7 @@ export class Engine {
     if (this.contact.visible) this.contact.update(this.players.feet());
     this.updateTossBall();
     this.updateLoose(rs);
+    this.kidChairs.update(drawn);
     // the ball a pitcher / fielder carries is drawn by his puppet; at release it becomes the sim's ball without a pop
     const held = this.players.ballHeld;
     if (this.ball.heldByPlayer && !held && rs.ball.visible) {

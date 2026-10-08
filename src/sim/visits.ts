@@ -13,7 +13,7 @@ import { setGoal } from './movement';
 import { leverage } from './flow';
 import { lobBall, returnBallTo, sendHome, sendToDugout } from './handling';
 import { lticks, lullScale, setLull, clearLull } from './tempo';
-import { scheduleCall } from './umpires';
+import { BRUSH_FACE, BRUSH_SPOT, scheduleCall } from './umpires';
 import { giveBall, releaseBall, setAnim } from './util';
 import { DEFAULT_SPOTS } from './setup';
 import { bullpenSpot, dugDoor, dugStep, managerSpot, moundRing, moundVisitor, pitchCoachSpot, umpHuddle } from './venue';
@@ -412,8 +412,9 @@ export function changeTick(w: World): boolean {
       c.stage = 'brush';
       {
         const u = w.umpires.find((q) => q.key === 'plate')!;
-        u.hold = { x: -0.5, z: -0.9 };
-        c.until = w.tick + secToTicks(2.6);
+        u.hold = BRUSH_SPOT;
+        u.face = BRUSH_FACE;
+        c.until = w.tick + secToTicks(3.8);
       }
       break;
     case 'brush': {
@@ -426,6 +427,7 @@ export function changeTick(w: World): boolean {
       }
       if (w.tick < c.until) break;
       u.hold = null;
+      u.face = null;
       if (m.path.length === 0 || w.tick > c.deadline) {
         w.change = null;
         clearLull(w);

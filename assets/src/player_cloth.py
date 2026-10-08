@@ -241,16 +241,50 @@ def f_skin_neck(p):
     e = math.hypot((p[0]-NECK_C[0])/NECK_R[0], (p[1]-NECK_C[1])/NECK_R[1]) - 1.0
     return min(.30 - e, p[2] - 1.445, 1.72 - p[2])
 
+def ease_field(P, kind):
+    """Extra room (m) a real uniform has over the body, by region (t-0014: "their clothes are too tight, they look like they're wearing spandex"): the
+    jersey hangs off the chest and back and blouses over the belt, its sleeves are loose at the biceps; the pants are roomy in the seat, thighs and knees
+    (snug only at the waistband under the belt). The undershirt and socks stay close."""
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]; ax = np.abs(x); e = np.zeros(len(P))
+    g = lambda v, c, s_: np.exp(-((v - c)/s_)**2)
+    if kind == "jersey":
+        torso = (ax < .21) & (z > .95)
+        neck = 1 - np.clip((z - 1.42)/.10, 0, 1)                                  # back to the old fit at the collar (the collar tube sits 1.35 cm out)
+        e += np.where(torso, (.010 + .004*g(z, 1.28, .12))*neck, 0.0)             # off the chest / back
+        e += np.where(torso, .009*g(z, 1.035, .055), 0.0)                         # blousing over the belt
+        e += np.where(~torso & (z > 1.15), .012, 0.0)                             # loose sleeves (biceps / elbow)
+    elif kind == "pants":
+        legs = z < .935
+        e += np.where(legs, .009 + .004*g(z, .74, .14) + .006*g(z, .53, .07), 0.0)   # seat / thighs / the knee gather
+        e += .004*np.clip((.935 - z)/.04, 0, 1)*(z >= .895)                        # eased in from the waistband
+    return e
+
+def drape(bm, P, Pb, Nn, off_min, iters=6, lam=.5):
+    """Fabric bridges hollows instead of following them (spine groove, between the shoulder blades, small of the back, armpits): Laplacian smoothing of the
+    shell, then every vertex pushed back out to at least `off_min` (array) along the body normal. Boundary vertices (hems, cuffs, collar) do not move."""
+    bm.verts.ensure_lookup_table(); n = len(bm.verts)
+    nb = [[e.other_vert(v).index for e in v.link_edges] for v in bm.verts]; fixed = np.array([v.is_boundary for v in bm.verts])
+    Q = P.copy()
+    for _ in range(iters):
+        avg = np.array([Q[l].mean(0) if l else Q[i] for i, l in enumerate(nb)])
+        Q = np.where(fixed[:, None], Q, (1 - lam)*Q + lam*avg)
+        d = ((Q - Pb)*Nn).sum(1); short = d < off_min
+        Q[short] += Nn[short]*(off_min[short] - d[short])[:, None]
+    return Q
+
 def make_shell_cut(body, name, fn, kind, offset, taper_top=0.0):
-    """Clothing shell: copy of the whole skinned body cut along the smooth field `fn`, then pushed out along the normals (+ fabric folds)."""
+    """Clothing shell: copy of the whole skinned body cut along the smooth field `fn`, then pushed out along the normals (+ ease by region, fabric folds, and a
+    drape pass so the cloth bridges the body's hollows)."""
     o = body.copy(); o.data = body.data.copy(); o.name = name; bpy.context.collection.objects.link(o)
     bm = bmesh.new(); bm.from_mesh(o.data)
     for fn_ in (fn if isinstance(fn, (list, tuple)) else [fn]): cut_bm(bm, lambda co, fn_=fn_: fn_(co))
     bm.verts.ensure_lookup_table(); bm.normal_update()
     P = np.array([v.co[:] for v in bm.verts]); Nn = np.array([v.normal[:] for v in bm.verts])
     ff = fold_field(P, kind if kind in ("jersey", "pants", "undershirt") else "x")
-    off = offset - taper_top*np.clip((P[:, 2]-.94)/.075, 0, 1)**2*(3-2*np.clip((P[:, 2]-.94)/.075, 0, 1)) if taper_top else offset
+    off = offset - taper_top*np.clip((P[:, 2]-.94)/.075, 0, 1)**2*(3-2*np.clip((P[:, 2]-.94)/.075, 0, 1)) if taper_top else offset*np.ones(len(P))
+    off = off + ease_field(P, kind)
     P2 = P + Nn*(off + ff)[:, None]
+    if kind in ("jersey", "pants"): P2 = drape(bm, P2, P, Nn, off*.85)
     if kind == "cleats": P2[:, 2] = np.maximum(P2[:, 2], 0.0)
     for v, p in zip(bm.verts, P2): v.co = Vector(p)
     bm.to_mesh(o.data); bm.free()

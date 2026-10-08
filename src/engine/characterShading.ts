@@ -113,9 +113,12 @@ function configure(m: Material) {
     (m as MeshPhysicalMaterial).clearcoat = on ? 0.25 : 0;
     (m as MeshPhysicalMaterial).clearcoatRoughness = 0.42;
   } else if (kind === 'eye') {
-    (m as MeshPhysicalMaterial).clearcoat = on ? 1 : 0;
-    (m as MeshPhysicalMaterial).clearcoatRoughness = 0.03;
-    (m as MeshPhysicalMaterial).envMapIntensity = on ? 1.7 : 1;
+    // a little wet gloss; strong environment reflections on the eyeball (and the cornea over it) whited the whole eye out under a day sky
+    (m as MeshPhysicalMaterial).clearcoat = on ? 0.35 : 0;
+    (m as MeshPhysicalMaterial).clearcoatRoughness = 0.05;
+    (m as MeshPhysicalMaterial).envMapIntensity = on ? 0.75 : 0.8;
+    // a sclera is not paper white (and sits in the lids' shadow): the albedo was glowing next to the skin
+    (m as MeshPhysicalMaterial).color.setScalar(0.78);
   }
   m.needsUpdate = true;
 }
@@ -159,6 +162,18 @@ export function upgradeMaterial(mat: Material): Material {
   });
   pm.name = b.name;
   pm.userData = { ...b.userData, cbShade: kind };
+  if (kind === 'eye') {
+    // a living eye in daylight: the iris is darker than its pale texture reads under a strong sun (more contrast against the sclera), and the upper
+    // eyeball sits in the shadow of the lid and brow (without both, sunlit eyes turned into white discs: the "dead stare")
+    pm.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <map_fragment>', `#include <map_fragment>
+	{ float cbLum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) ); diffuseColor.rgb *= mix( 0.42, 1.0, smoothstep( 0.32, 0.62, cbLum ) ); }`)
+        .replace('#include <opaque_fragment>', `{ vec3 cbUp = normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz ); outgoingLight *= 1.0 - 0.5 * smoothstep( 0.0, 0.55, dot( normalize( normal ), cbUp ) ); }
+#include <opaque_fragment>`);
+    };
+    pm.customProgramCacheKey = () => 'cb-eye';
+  }
   delete pm.userData.regd;
   registry.add(pm);
   configure(pm);
@@ -187,8 +202,9 @@ export function makeCorneaShell(eyes: SkinnedMesh): SkinnedMesh {
     roughness: 0.015,
     metalness: 0,
     transparent: true,
-    opacity: 0.16,
-    envMapIntensity: 2.4,
+    opacity: 0.12,
+    // the sun gives the catchlight; the sky's reflection must stay faint (at 2.4 a day sky turned the eyes into white discs: "dead stare")
+    envMapIntensity: 0.9,
     specularIntensity: 1,
     ior: 1.376,
     depthWrite: false,

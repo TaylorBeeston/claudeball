@@ -55,9 +55,10 @@ const PRESETS: Record<TimeOfDay, TodPreset> = {
     skySun: [0.7, 0.62, 0.22],
     sunColor: 0xfff0dc,
     sunIntensity: 5.6,
-    env: 1.25,
-    exposure: 1.14,
-    hemi: [0xbcd6ff, 0x506038, 0.35],
+    // less flat fill: faces (and white uniforms) were washed out to a pale, modelless wax under the day sky
+    env: 1.0,
+    exposure: 1.02,
+    hemi: [0xbcd6ff, 0x506038, 0.26],
     lightsOn: false,
     sky: { turbidity: 2.0, rayleigh: 2.4, mie: 0.002, g: 0.7 },
     fog: 0xbfd2e6,
@@ -365,7 +366,7 @@ export class Environment {
     this.hdriEnv = this.pmrem.fromEquirectangular(h.tex);
     this.scene.environment = this.hdriEnv.texture;
     const t = this.tod;
-    this.scene.environmentIntensity = name === 'day' ? 1.1 : name === 'dusk' ? 0.7 : 0.12;
+    this.scene.environmentIntensity = name === 'day' ? 0.9 : name === 'dusk' ? 0.7 : 0.12; // (day: a little less flat fill on faces, as the procedural sky's preset)
     this.scene.backgroundIntensity = name === 'dusk' ? 0.45 : 1.0;
     if (name !== 'night') {
       this.sunDir.copy(sunDir).normalize();

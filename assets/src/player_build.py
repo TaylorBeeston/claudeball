@@ -20,7 +20,7 @@ SH["Cleats"] = make_cleats(body)
 for side, sx in (("L", 1), ("R", -1)): SH["Gear_ArmSleeve_"+side] = make_shell_cut(body, "Gear_ArmSleeve_"+side, f_armsleeve(sx), "undershirt", .0085)   # compression sleeve over the undershirt
 f_jacket = lambda p: min(p[2] - .80, neck_f(p), (.56 - arm_t(p)[0]) if in_arm(p, arm_t(p)[0], arm_t(p)[1]) else 1.0, 1.575 - p[2])
 SH["Gear_Jacket"] = make_shell_cut(body, "Gear_Jacket", f_jacket, "jersey", .021)                         # manager: team jacket, hip length, wrist sleeves
-belt_shell = make_shell_cut(body, "Gear_Belt", f_belt, "x", .0255)                               # 4 cm belt band hugging the waist, outside the tucked jersey
+belt_shell = make_shell_cut(body, "Gear_Belt", f_belt, "x", .036)                                # 4 cm belt band at the waist, outside the (looser, bloused) tucked jersey
 NORM = full_normals(); PARTS = split_parts(); bpy.data.objects.remove(body, do_unlink=True)
 body, _vm = build_mesh("Body_Skin", PARTS["body"]); set_weights(body, _vm); smooth_normals(body, NORM[_vm]); body_vm = _vm
 _remap, HEAD_BB = head_uv_remap(PARTS["head"]); head, head_vm = build_mesh("Head", PARTS["head"], uv_remap=_remap); set_weights(head, head_vm); smooth_normals(head, NORM[head_vm])
@@ -156,7 +156,7 @@ BODY_MORPH_OBJS = [body] + [SH[n] for n in SH if n not in ("Cleats",)] + [gear[n
 for o in BODY_MORPH_OBJS: add_keys(o, body_morph, BODY_KEYS)
 HEAD_ONLY = HEAD_KEYS
 add_keys(head, head_morph, HEAD_ONLY)
-for n in ["Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher", "Gear_CatcherMask", "Gear_UmpireMask", "Gear_EyeBlack"] + HAIR_NAMES: add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy") + (("ears_large",) if n.startswith("Gear_Hair") else ()))
+for n in ["Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher", "Gear_CatcherMask", "Gear_UmpireMask", "Gear_EyeBlack"] + HAIR_NAMES: add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy") + (("ears_large",) if n.startswith("Gear_Hair") else ()) + (("ears_large", "jaw_square", "cheeks_full") if n in ("Gear_Helmet", "Gear_Helmet_Catcher") else ()))   # the flaps cover the ears: they follow big ears / a square jaw / full cheeks
 for n in ("Gear_Helmet", "Gear_Helmet_Catcher"): add_keys(gear[n], head_morph, ("ears_large", "jaw_square"))
 for n in HAIR_NAMES: HAIR_SQUASH[n] = add_under_cap_key(gear[n], cap_inner)
 add_keys(eyeobj, head_morph, ("head_narrow", "head_wide")); add_keys(eyecornea, head_morph, ("head_narrow", "head_wide"))

@@ -123,6 +123,29 @@ _reg("throw_casual", 28, _keys(dict(UPRIGHT, hips=(0, 0, -.08), lean=12, head_pi
     (15, dict(hips=(0, -.14, -.12), lean=24, yaw=22, hyaw=22, lfoot=(.26, -.30, .085), rhand_rel=(.12, -.30, -.20), lhand_rel=(.14, -.20, -.20))),
     (21, dict(hips=(0, -.12, -.10), lean=16, yaw=8, hyaw=8, lfoot=(.26, -.30, .085), rhand_rel=(.00, -.26, -.30), lhand_rel=(.10, -.24, -.24))),
     (28, dict(hips=(0, -.10, -.08), lean=12, lfoot=(.26, -.30, .085)))]), events=dict(release=10))
+# ---------------------------------------------------------------- short, easy throws (t-0014: "they never underhand throw, even when rolling the ball to each other")
+# toss_underhand: a flip to a teammate a few metres away (arm swings back low, comes through below the waist, palm up, a lob); roll_ball: down low, the ball
+# rolled along the ground; toss_sidearm_short: a short-arm flick from the side at shoulder height (10-25 m). Right-handed, glove on the left hand.
+_TOSS = dict(UPRIGHT, hips=(0, 0, -.10), lean=14, head_pitch=-8, **CHEST)
+_reg("toss_underhand", 22, _keys(_TOSS, [
+    (0, {}), (4, dict(hips=(0, .02, -.14), lean=18, yaw=-8, hyaw=-4, lfoot=(.26, -.24, .085), rhand_rel=(-.16, .20, -.50), lhand_rel=(.18, -.30, -.18))),
+    (8, dict(hips=(0, -.04, -.16), lean=20, yaw=-2, lfoot=(.26, -.28, .085), rhand_rel=(-.13, -.16, -.56), lhand_rel=(.18, -.26, -.22))),
+    (11, dict(hips=(0, -.08, -.14), lean=16, yaw=4, hyaw=4, lfoot=(.26, -.28, .085), rhand_rel=(-.10, -.44, -.32), lhand_rel=(.16, -.22, -.26))),
+    (15, dict(hips=(0, -.09, -.12), lean=12, yaw=4, lfoot=(.26, -.28, .085), rhand_rel=(-.08, -.42, -.08), lhand_rel=(.14, -.22, -.28))),
+    (22, dict(hips=(0, -.08, -.10), lfoot=(.26, -.28, .085)))]), events=dict(release=11))
+_ROLL = dict(_TOSS, hips=(0, -.06, -.34), lean=52, head_pitch=-26, lknee=(.3, -1, 0), rknee=(-.3, -1, 0), lfoot=(.30, -.10, .085), rfoot=(-.26, .10, .085))
+_reg("roll_ball", 26, _keys(_TOSS, [
+    (0, {}), (6, dict(_ROLL, rhand_rel=(-.16, .10, -.60), lhand_rel=(.16, -.30, -.40))),
+    (10, dict(_ROLL, hips=(0, -.10, -.36), rhand_rel=(-.14, -.20, -.70), lhand_rel=(.16, -.30, -.40))),
+    (14, dict(_ROLL, hips=(0, -.14, -.36), lean=54, rhand_rel=(-.12, -.46, -.66), lhand_rel=(.16, -.28, -.42))),
+    (18, dict(_ROLL, hips=(0, -.14, -.32), lean=46, rhand_rel=(-.10, -.50, -.48), lhand_rel=(.14, -.26, -.40))),
+    (26, dict(hips=(0, -.12, -.12), lfoot=(.30, -.10, .085)))]), events=dict(release=14))
+_reg("toss_sidearm_short", 20, _keys(_TOSS, [
+    (0, {}), (4, dict(yaw=-20, hyaw=-10, rhand_rel=(-.36, .08, .02), rpole=(-.4, .5, -.6), lhand_rel=(.26, -.32, -.10))),
+    (7, dict(hips=(0, -.04, -.12), yaw=-6, hyaw=2, lfoot=(.26, -.28, .085), rhand_rel=(-.34, -.14, .04), rpole=(-.4, .5, -.6), lhand_rel=(.24, -.30, -.12))),
+    (9, dict(hips=(0, -.08, -.12), lean=18, yaw=10, hyaw=12, lfoot=(.26, -.28, .085), rhand_rel=(-.18, -.42, .00), lhand_rel=(.18, -.22, -.18))),
+    (13, dict(hips=(0, -.10, -.12), lean=20, yaw=18, hyaw=16, lfoot=(.26, -.28, .085), rhand_rel=(.08, -.32, -.18), lhand_rel=(.14, -.20, -.22))),
+    (20, dict(hips=(0, -.09, -.10), lfoot=(.26, -.28, .085)))]), events=dict(release=9))
 def _pickoff():
     S = _stretch_stages()["start"]; base = dict(S, head_yaw=0)
     return _keys(base, [

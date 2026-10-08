@@ -174,7 +174,9 @@ describe('tempo: the real game\'s non-pitch time', () => {
       expect(r.lullKinds.has('break')).toBe(true);
     }
     const hints = new Set(runs.flatMap((r) => [...r.hints]));
-    for (const h of ['warmup_pitch', 'umpire_brush_plate', 'catch_toss', 'toss', 'bullpen_throw', 'bench_cheer']) expect(hints.has(h), h).toBe(true);
+    for (const h of ['warmup_pitch', 'umpire_brush_plate', 'catch_toss', 'roll_ball', 'bullpen_throw', 'bench_cheer']) expect(hints.has(h), h).toBe(true);
+    // the outfielders play catch with a real throwing motion (a flick / a relaxed throw by distance), the infielders roll grounders
+    expect(hints.has('toss_sidearm_short') || hints.has('throw_casual') || hints.has('toss_underhand')).toBe(true);
     // the warm-up pitches arrive in the catcher's mitt as pitch-type catches, 8 per break at most
     const first = runs[0].events;
     let inBreak = false;

@@ -15,9 +15,9 @@ _ZR = [.94, 1.00, 1.05, 1.13, 1.20, 1.27, 1.33, 1.39, 1.45, 1.50, 1.55, 1.60]
 _HX = [.180, .168, .159, .149, .144, .152, .175, .178, .165, .150, .105, .07]            # torso half widths of the MPFB body at those heights (arms excluded)
 _HY = [.1125, .1115, .106, .097, .104, .1125, .1185, .119, .106, .0845, .0715, .06]     # half depths
 _YC = [.016, .030, .035, .045, .041, .035, .037, .032, .018, .012, .020, .02]           # torso centre in front of the spine axis (spine-frame z)
-BUILDS = ((1, 1), (1.13, 1.16), (1.11, 1.05), (.9, .92))                                               # (kx, ky): rest, build_stocky, build_muscular chest, build_lean
-BONUS = (0.0, .035, .02, 0.0); BONUS_SCALE = [1.0]                                                                          # the wide builds may press the arm a little into the body (their clearance requirement is eased by this much)
-def torso_dims(zr, b): return (np.interp(zr, _ZR, _HX) + .017)*b[0], (np.interp(zr, _ZR, _HY) + .017)*b[1]      # + jersey offset and folds
+BUILDS = ((1, 1), (1.13, 1.16), (1.11, 1.05), (.9, .92), (1.17, 1.26))                                 # (kx, ky): rest, build_stocky, build_muscular chest, build_lean, build_heavy
+BONUS = (0.0, .035, .02, 0.0, .05); BONUS_SCALE = [1.0]                                                                          # the wide builds may press the arm a little into the body (their clearance requirement is eased by this much)
+def torso_dims(zr, b): return (np.interp(zr, _ZR, _HX) + .027)*b[0], (np.interp(zr, _ZR, _HY) + .027)*b[1]      # + jersey offset, ease and folds
 def torso_centre(zr): return float(np.interp(zr, _ZR, _YC))
 
 def arm_metrics(M, side):
@@ -96,7 +96,7 @@ for _n in ("bench_stand_up", "bench_cheer", "coach_stop", "coach_go", "coach_adv
 RIT_BAT = ("batter_step_in", "batter_practice_swing", "batter_step_out")
 for _n in RIT_BAT: OPT_CLIPS[_n] = (BAT, False)
 for _n in ("batter_adjust", "catcher_signs", "catcher_signs_runner_on", "catcher_signal_infield", "pitcher_shake_off", "pitcher_nod", "pitcher_step_off", "pitcher_step_on", "pitcher_rosin", "pitcher_adjust",
-           "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw"): OPT_CLIPS[_n] = (CATCHCFG, False)
+           "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw", "toss_underhand", "roll_ball", "toss_sidearm_short"): OPT_CLIPS[_n] = (CATCHCFG, False)
 for _n in ("mound_talk", "mound_talk_listen", "mound_talk_cover", "ump_huddle", "bullpen_catcher_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
 OPT_CLIPS["manager_walk"] = (LOCO, True)
 ARM_REPORT = {}

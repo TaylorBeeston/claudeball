@@ -83,22 +83,42 @@ def _smooth_edge(z, it=3):
     for _ in range(it): z = (np.roll(z, 1) + 2*z + np.roll(z, -1))/4
     return z
 
-def build_batting_helmet(head, flap=1, name="Gear_Helmet", R=None):
-    """MLB-style batting helmet: smooth glossy dome that follows the skull (2 cm clear incl. padding), longer at the back, short bill, ONE ear flap (left ear for a
-    right-handed batter, flap=1) with an ear opening. Returns (object, inner-surface BVH)."""
+def rounder(R, phi_max, clear, k=1.0, p=2.6):
+    """The star fit R pushed out to an ellipsoid around the skull's own extents (front / back / sides / top): a helmet shell is a round dome with room
+    in it, not a tight copy of the skull (the old shell followed the skull and read as a tall egg). Returns the radii to hand to `dome`."""
+    nu, nphi = R.shape; phis = np.linspace(0, phi_max, nphi); us = 2*np.pi*np.arange(nu)/nu
+    S = np.sin(phis)[None, :]; X = R*S*np.sin(us)[:, None]; Y = -R*S*np.cos(us)[:, None]; Z = R*np.cos(phis)[None, :]
+    a = np.abs(X).max(); bf = (-Y).max(); bb = Y.max(); c = Z.max()
+    E = np.zeros_like(R)
+    for i, u in enumerate(us):
+        for j, ph in enumerate(phis):
+            d = np.array([math.sin(ph)*math.sin(u), -math.sin(ph)*math.cos(u), math.cos(ph)]); b = bf if d[1] < 0 else bb
+            cz = c if d[2] > 0 else c*1.25                                                  # below the skull centre the ellipsoid tucks in (no bell at the rim)
+            E[i, j] = 1.0/(abs(d[0]/a)**p + abs(d[1]/b)**p + abs(d[2]/cz)**p)**(1.0/p)          # a superellipsoid: widest at the temples, a flatter crown
+    return np.maximum(R, R + k*(E - R))
+
+def build_batting_helmet(head, flap=0, name="Gear_Helmet", R=None):
+    """MLB-style batting helmet: a round glossy dome (skull fit rounded out to an ellipsoid, 1.6 cm clear incl. padding) that sits low on the brow, longer at
+    the back, a short moulded bill, and ear flaps over BOTH ears (flap=0, the default: the user disliked the bare ear of the one-flap helmet; flap=+1/-1 = one
+    flap over the left / right ear) with a small ear hole each. Returns (object, inner-surface BVH)."""
     Rh, phi_max = R if R else star_radius(head)
-    u_ear = math.radians(90*flap)                                                         # +x = the batter's left
-    edge = _smooth_edge(_edge(1.768, 1.702, 1.652, dips=((u_ear, .50, .088), (-u_ear, .40, -.078))), 4)
-    ear = Vector((.092*flap, -.036, 1.716))
-    def extra(u, phi, t):                                                                 # the flap bulges out over the ear, the dome swells slightly at the crown
-        du = (u - u_ear + math.pi) % (2*math.pi) - math.pi
-        return .012*math.exp(-(du/.50)**2)*min(1.0, max(0.0, (t - .30)/.45)) + .003*max(0.0, math.cos(phi*1.6))
-    bm = dome(Rh, phi_max, edge, .0165, extra=extra, rim=.003, smooth=(3.5, 2.2))
+    Rr = rounder(Rh, phi_max, .0165, k=.85)
+    sides = (1, -1) if flap == 0 else (flap,)
+    dips = tuple((math.radians(90*sd), .52, .092) for sd in sides) + (() if flap == 0 else ((-math.radians(90*flap), .40, -.078),))
+    edge = _smooth_edge(_edge(1.772, 1.702, 1.648, dips=dips), 4)
+    def extra(u, phi, t):                                                                 # the flaps bulge a little over the ears
+        b = 0.0
+        for sd in sides:
+            du = (u - math.radians(90*sd) + math.pi) % (2*math.pi) - math.pi
+            b += .008*math.exp(-(du/.50)**2)*min(1.0, max(0.0, (t - .40)/.40))
+        return b
+    bm = dome(Rr, phi_max, edge, .0165, extra=extra, rim=.0035, smooth=(3.5, 2.2))
     inner = BVHTree.FromBMesh(bm); edge_pts = [_P(v.co.copy()) for v in bm.verts if v.is_boundary]
-    cut = cutter_cyl((ear.x*flap*1.0 + .06*flap, ear.y, ear.z), 'x', (.040, .056), .12)
-    finish(bm, .0050, cutters=[cut], name=name)
-    bb = bmesh.new(); brim_from_edge(bb, edge_pts, length=.046, droop=.010, side_curl=.012, thick=.005, arc=34, lift=.001, rows=6)
-    bmesh.ops.recalc_face_normals(bb, faces=bb.faces); bmesh.ops.solidify(bb, geom=list(bb.faces), thickness=.0045)
+    # a small ear hole over each ear canal (~3 cm), not the old 8 x 11 cm window
+    cuts = [cutter_cyl((.150*sd, -.034, 1.712), 'x', (.0135, .017), .12) for sd in sides]
+    finish(bm, .0050, cutters=cuts, name=name)
+    bb = bmesh.new(); brim_from_edge(bb, edge_pts, length=.048, droop=.016, side_curl=.030, thick=.006, arc=42, lift=-.002, rows=7)
+    bmesh.ops.recalc_face_normals(bb, faces=bb.faces); bmesh.ops.solidify(bb, geom=list(bb.faces), thickness=.005)
     for f in bb.faces: f.smooth = True
     mesh_into(bm, bb)
     return _obj(name, bm), inner

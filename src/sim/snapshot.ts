@@ -1,5 +1,6 @@
 import { groundHeight } from './field';
-import { dugoutFloorY } from './venue';
+import { BENCH_SIT_LIFT, dugoutFloorY } from './venue';
+import { umpStance } from './umpires';
 import { teamStats } from './stats';
 import { routineDetail, ticOf } from './tempo';
 import type { World, PlayerRT } from './world';
@@ -37,6 +38,16 @@ function feetY(w: World, p: PlayerRT): number {
   return ground + (u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0);
 }
 
+/** Seconds until the ball leaves his hand while a throwing motion is under way (a play's throw, a casual return, a warm-up toss); undefined otherwise. */
+function releaseIn(w: World, p: PlayerRT): number | undefined {
+  if (p.plan.releaseAt > w.tick) return (p.plan.releaseAt - w.tick) * TICK;
+  const r = w.ret;
+  if (r && r.from === p && r.motion && r.stage !== 'flight') return Math.max(0, (r.until - w.tick) * TICK);
+  const t = p.tossAt;
+  if (t !== undefined && t >= w.tick) return (t - w.tick) * TICK;
+  return undefined;
+}
+
 function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): PlayerSnapshot {
   const a = animOf(w, p);
   return {
@@ -46,7 +57,8 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     role,
     position: (p.fieldPos ?? p.info.primaryPosition) as PlayerSnapshot['position'],
     jersey: p.info.jersey,
-    pos: { x: p.x, y: feetY(w, p), z: p.z },
+    // seated, the root is the floor below the seat centre for a seat of the clip's height: on the taller dugout bench it is lifted by the difference
+    pos: { x: p.x, y: feetY(w, p) + (a.anim === 'bench_sit' ? BENCH_SIT_LIFT : 0), z: p.z },
     vel: { x: p.vx, y: 0, z: p.vz },
     facing: p.facing,
     anim: a.anim,
@@ -61,6 +73,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     gloveTarget: p.gloveTarget ? { ...p.gloveTarget } : null,
     gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
+    releaseIn: releaseIn(w, p),
     pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
     gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     tic: role === 'batter' || role === 'ondeck' ? ticOf(p) : undefined,
@@ -116,7 +129,9 @@ export function snapshot(w: World): GameStateSnapshot {
   for (const s of w.staff) {
     if (!s.active) continue;
     const sp = Math.hypot(s.vx, s.vz);
-    const doing = w.tick < s.animUntil;
+    // a ball kid sits only on his chair (standing still at his home spot): anywhere else he would be sitting on air
+    const onChair = s.role === 'ballkid' && sp < 0.05 && Math.hypot(s.x - s.homeX, s.z - s.homeZ) < 0.3;
+    const doing = w.tick < s.animUntil && (s.anim !== 'ballkid_sit' || onChair);
     players.push({
       id: s.id,
       name: s.name,
@@ -127,7 +142,7 @@ export function snapshot(w: World): GameStateSnapshot {
       pos: { x: s.x, y: dugoutFloorY(s.x, s.z) < 0 ? dugoutFloorY(s.x, s.z) : 0, z: s.z },
       vel: { x: s.vx, y: 0, z: s.vz },
       facing: s.facing,
-      anim: doing ? s.anim : (s.role === 'manager' || s.role === 'pitchcoach') ? (sp > 0.4 ? 'walk' : 'idle') : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
+      anim: doing ? s.anim : (s.role === 'manager' || s.role === 'pitchcoach') ? (sp > 0.4 ? 'walk' : 'idle') : sp > 0.4 ? (s.role === 'coach1b' || s.role === 'coach3b' ? 'walk' : sp > 2.5 ? 'ballkid_run' : 'walk') : s.role === 'ballkid' && s.task === 'idle' && onChair ? 'ballkid_sit' : s.role === 'coach1b' || s.role === 'coach3b' ? 'coach_ready' : 'ballkid_idle',
       animT: doing ? Math.min(1, (w.tick - s.animStart) / Math.max(1, s.animUntil - s.animStart)) : 0,
       hasBall: false,
       bats: 'R',
@@ -147,7 +162,7 @@ export function snapshot(w: World): GameStateSnapshot {
       pos: { x: u.x, y: 0, z: u.z },
       vel: { x: u.vx, y: 0, z: u.vz },
       facing: u.facing,
-      anim: gesturing ? u.anim : 'ump_ready',
+      anim: gesturing ? u.anim : umpStance(w),
       animT: gesturing ? Math.min(1, (w.tick - u.animStart) / Math.max(1, u.animUntil - u.animStart)) : 0,
       hasBall: false,
       bats: 'R',
@@ -166,9 +181,11 @@ export function snapshot(w: World): GameStateSnapshot {
   };
   const side = w.batStance === 'R' ? 1 : -1;
   let bat: BatSnapshot;
-  if (w.swing && w.swingStarted && w.batter && (w.phase === 'pitch' || w.phase === 'inPlay' || w.phase === 'playOver')) {
+  // the swing bat until the follow-through ends; then, if he dropped it, only the bat on the ground (the swing bat used to stay in the air at the end of
+  // the follow-through for the rest of the play, beside the dropped one)
+  if (w.swing && w.swingStarted && w.batter && (!w.batDown || !w.swing.done) && (w.phase === 'pitch' || w.phase === 'inPlay' || w.phase === 'playOver')) {
     const pose = w.swing.pose();
-    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress, dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null };
+    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress, dropped: null };
   } else if (w.batter && (w.phase === 'prePitch' || w.phase === 'windup' || w.phase === 'pitch')) {
     // ready stance: the batting_stance clip's bat (knob 0.20 m toward the plate and 0.17 m behind the body centre, bat up and back)
     const bx = w.batter.x;
@@ -182,7 +199,7 @@ export function snapshot(w: World): GameStateSnapshot {
       dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null,
     };
   } else {
-    bat = { active: false, batterId: null, knob: { x: 0, y: 0, z: 0 }, tip: { x: 0, y: 0, z: 0 }, swingT: -1 };
+    bat = { active: false, batterId: null, knob: { x: 0, y: 0, z: 0 }, tip: { x: 0, y: 0, z: 0 }, swingT: -1, dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null };
   }
   const runnerAt = (base: number) => {
     const r = w.runners.find((q) => q.state === 'live' && q.base === base && !(q.isBatter && q.base === 0));
