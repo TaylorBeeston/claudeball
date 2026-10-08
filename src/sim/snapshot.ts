@@ -181,9 +181,11 @@ export function snapshot(w: World): GameStateSnapshot {
   };
   const side = w.batStance === 'R' ? 1 : -1;
   let bat: BatSnapshot;
-  if (w.swing && w.swingStarted && w.batter && (w.phase === 'pitch' || w.phase === 'inPlay' || w.phase === 'playOver')) {
+  // the swing bat until the follow-through ends; then, if he dropped it, only the bat on the ground (the swing bat used to stay in the air at the end of
+  // the follow-through for the rest of the play, beside the dropped one)
+  if (w.swing && w.swingStarted && w.batter && (!w.batDown || !w.swing.done) && (w.phase === 'pitch' || w.phase === 'inPlay' || w.phase === 'playOver')) {
     const pose = w.swing.pose();
-    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress, dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null };
+    bat = { active: true, batterId: w.batter.info.id, knob: pose.knob, tip: pose.tip, swingT: w.swing.progress, dropped: null };
   } else if (w.batter && (w.phase === 'prePitch' || w.phase === 'windup' || w.phase === 'pitch')) {
     // ready stance: the batting_stance clip's bat (knob 0.20 m toward the plate and 0.17 m behind the body centre, bat up and back)
     const bx = w.batter.x;
@@ -197,7 +199,7 @@ export function snapshot(w: World): GameStateSnapshot {
       dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null,
     };
   } else {
-    bat = { active: false, batterId: null, knob: { x: 0, y: 0, z: 0 }, tip: { x: 0, y: 0, z: 0 }, swingT: -1 };
+    bat = { active: false, batterId: null, knob: { x: 0, y: 0, z: 0 }, tip: { x: 0, y: 0, z: 0 }, swingT: -1, dropped: w.batDown ? { x: w.batDown.x, y: 0.04, z: w.batDown.z } : null };
   }
   const runnerAt = (base: number) => {
     const r = w.runners.find((q) => q.state === 'live' && q.base === base && !(q.isBatter && q.base === 0));

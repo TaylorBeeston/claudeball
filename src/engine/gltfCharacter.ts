@@ -2097,6 +2097,15 @@ export class GltfPuppet implements PuppetLike {
       _c.set(0, 0, 1).applyQuaternion(hq);
       const cy = Math.atan2(_c.x, _c.z), cp = Math.atan2(-_c.y, Math.hypot(_c.x, _c.z));
       t = lookTarget(dv.x, dv.y, dv.z, cy, cp, this.lookT);
+      // running, the head stays near level and only glances at the ball (a sprinting runner threw his head back 50 deg to watch a fly ball);
+      // a fielder chasing a catch keeps his look (he tracks the ball over his shoulder)
+      const sp = Math.hypot(snap.vel.x, snap.vel.z);
+      if (t.valid && sp > 2.5 && !snap.gloveTarget) {
+        const k = Math.min(1, (sp - 2.5) / 2);
+        const upMax = 0.6 - 0.34 * k, yawMax = 1.2 - 0.33 * k;
+        t.pitch = Math.max(t.pitch, -upMax);
+        t.yaw = Math.max(-yawMax, Math.min(yawMax, t.yaw));
+      }
     }
     this.lookGoal = t && t.valid ? t : null;
     const hl = this.headLook;
