@@ -1,12 +1,12 @@
 {
  "sources": {
-  "players/player_base.glb": "568ad00f6fe771936c39d2f7dddf6a852982e63d",
-  "players/player_ballkid.glb": "b6ece58e17126d2e329e1144380fde1fc4bc0282",
-  "players/player_coach.glb": "694348c7100867be4055ba87b628d29e012c43e7",
-  "players/player_umpire.glb": "918b2517b40f09073b880bcb6e20eaa7cb5e1a24",
-  "players/player_umpire_base.glb": "6fa5cd40d04ccac1dc6cfe1758e095ddf4503783",
-  "optimized/players/player_home.glb": "bd706cf6a64beb5a3454ddf697fcf0b798f4f09a",
-  "optimized/players/player_batter.glb": "6ffae53765b5db5f596def9aac6afb7f16e0f1bc",
-  "optimized/players/player_catcher.glb": "7bd12401b7b85f42c7abaa2d3b6fc5eea90dccee"
+  "players/player_base.glb": "c2d28c1b7961e5dd49b8e1e370bcad09aeba480b",
+  "players/player_ballkid.glb": "443defeeaaf91ad9a296266b90d095fe2c133770",
+  "players/player_coach.glb": "485e475e1dfa1bfe878ef565263732e15b12770e",
+  "players/player_umpire.glb": "511aa24fa97265f787531203d4c59cf56adafcc3",
+  "players/player_umpire_base.glb": "37dca0b8b7a02d38fbef61cc4ee2868c41b8b4a6",
+  "optimized/players/player_home.glb": "f3c00c31b16f78baf3087612147662f4f4c55ff8",
+  "optimized/players/player_batter.glb": "c4f1462b170ce4fe9ca126a420f6a09f63bce003",
+  "optimized/players/player_catcher.glb": "55004f988ee30614e810b3848db79f2c19313686"
  }
 }
