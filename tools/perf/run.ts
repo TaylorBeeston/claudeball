@@ -23,6 +23,13 @@
  *   --out path/base                   write path/base.json|.md instead of results/<label>-<target>-<time>
  *   --quiet                           do not print the tables
  *   --extra "a=b&c=d"                 extra query params for the page
+ *   --audio                           sound ON (no `noaudio`): Chrome muted (`--mute-audio`: the graph still renders, nothing reaches the speakers),
+ *                                     fake speech voices (the same in every build), the probe's audio numbers in the results
+ *   --audiotrace                      trace the audio render thread (`webaudio` category): its load per scene (cheap)
+ *   --audionodes                      also the per-node-type audio-thread cost (`webaudio.audionode`; heavy: attribution runs only)
+ *   --dist work/bisect/dist-x         serve this build folder instead of ./dist (A/B of builds; implies --no-build)
+ *   --play 120 [--playwarm 20]        not the bench: the real game (broadcast director, sim at 1x, `?perf=1`) for 120 s after 20 s, one row `play`
+ *   --no-probe                        do not inject tools/perf/probe.ts (main-thread time outside the rAF tick, audio controller tick, Web Audio churn)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,6 +38,8 @@ import {
   traceStart, traceStop, type Chrome,
 } from './lib';
 import { markdown, type Run } from './report';
+import { fakeVoicesInit, initScript, probeInit } from './probe';
+import { audioLoads, audioTraceStart, audioTraceStop } from './audiotrace';
 import type { Browser, CDPSession, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 
@@ -59,10 +68,19 @@ const warm = +str('warm', '90');
 const repeat = +str('repeat', '1');
 const label = str('label', 'run');
 const outDir = path.join(ROOT, 'tools/perf/results');
+const audio = !!args.audio;
+const dist = typeof args.dist === 'string' ? (args.dist as string) : '';
 
 function pageUrl(base: string, preset: string, tod: string): string {
+  if (args.play) {
+    const q = new URLSearchParams({ perf: '1', autostart: '1', ...(audio ? {} : { noaudio: '1' }), seed: str('seed', '15'), tempo: str('tempo', 'standard'), quality: preset, tod, scale: str('scale', '1') });
+    const u = new URL(base);
+    for (const [k, v] of new URLSearchParams(str('extra', ''))) q.set(k, v);
+    u.search = q.toString();
+    return u.toString();
+  }
   const q = new URLSearchParams({
-    bench: '1', autostart: '1', noaudio: '1', seed: str('seed', '15'), tempo: str('tempo', 'standard'), quality: preset, tod,
+    bench: '1', autostart: '1', ...(audio ? {} : { noaudio: '1' }), seed: str('seed', '15'), tempo: str('tempo', 'standard'), quality: preset, tod,
     scenes: scenes.join(','), frames: String(frames), warm: String(warm), scale: str('scale', '1'),
   });
   if (args.shots) q.set('shots', '1');
@@ -80,7 +98,9 @@ async function runOne(page: Page, cdp: CDPSession, url: string, preset: string, 
   page.on('console', onConsole);
   const trace: unknown[] = [];
   if (args.trace) await traceStart(cdp, trace);
+  const atrace = args.audiotrace && !args.trace ? await audioTraceStart(cdp, !!args.audionodes) : null;
   await page.goto(url, { waitUntil: 'load', timeout: 120000 });
+  if (args.play) return playOne(page, cdp, preset, tod, tag, logs, onConsole, atrace);
   // wait for the benchmark to exist (boot: assets, shader compile, warm-up), then for it to finish
   const t0 = Date.now();
   let seen = '';
@@ -123,10 +143,50 @@ async function runOne(page: Page, cdp: CDPSession, url: string, preset: string, 
     return { totalMB: +(total / 1048576).toFixed(1), byKindMB: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, +(v / 1048576).toFixed(1)])) };
   }).catch(() => null);
   if (dl) (out as { download?: unknown }).download = dl;
+  if (atrace) {
+    await audioTraceStop(cdp);
+    const sr = (out.results[0] as { stats?: { probe?: { ctx?: { sampleRate?: number } } } })?.stats?.probe?.ctx?.sampleRate ?? 48000;
+    const loads = audioLoads(atrace as never, sr);
+    for (const x of out.results) (x as Record<string, unknown>).audioThread = loads[(x as { scene: string }).scene] ?? null;
+  }
+  // validity of an audio run: the context really runs (not locked / suspended) and the path (phone / desktop) is the intended one
+  if (audio) {
+    for (const x of out.results) {
+      const pr = (x as { stats: { probe?: { ctx?: { state?: string }; controller?: { locked?: boolean; lowPower?: boolean } } } }).stats.probe;
+      if (pr?.ctx?.state !== 'running' || pr?.controller?.locked) console.log(`\n[perf] WARNING: audio not running in ${preset}/${(x as { scene: string }).scene} (ctx ${pr?.ctx?.state}, locked ${pr?.controller?.locked}): the audio numbers are NOT valid`);
+    }
+  }
   let traceFile: string | undefined;
   if (args.trace) traceFile = await traceStop(cdp, trace, path.join(outDir, 'traces', `${label}-${target}-${preset}-${tod}-${tag}.json.gz`));
   page.off('console', onConsole);
   return { ...out, logs, traceFile };
+}
+
+/** --play: the real game for a while; one result row `play` (stats over every frame of the window, the probe's numbers) */
+async function playOne(page: Page, cdp: CDPSession, preset: string, tod: string, tag: string, logs: string[], onConsole: (m: { type(): string; text(): string }) => void, atrace: unknown[] | null) {
+  const secs = +str('play', '120');
+  const warmS = +str('playwarm', '20');
+  const t0 = Date.now();
+  while (!(await page.evaluate(() => !!(window as unknown as { __perf?: { frames(): unknown[] } }).__perf?.frames().length).catch(() => false))) {
+    if (Date.now() - t0 > 180000) throw new Error('timeout waiting for the game');
+    await sleep(500);
+  }
+  process.stdout.write(` playing (warm ${warmS} s, measure ${secs} s)`);
+  await sleep(warmS * 1000);
+  await page.evaluate(() => (window as unknown as { __probeStart(): boolean }).__probeStart());
+  await sleep(secs * 1000);
+  const stats = await page.evaluate(() => (window as unknown as { __probeEnd(): unknown }).__probeEnd());
+  const canvas = await page.evaluate(() => { const c = document.querySelector('canvas'); return c ? `${c.width}x${c.height}` : ''; });
+  const device = await page.evaluate(() => ({ ua: navigator.userAgent, dpr: devicePixelRatio, inner: `${innerWidth}x${innerHeight}`, cores: navigator.hardwareConcurrency }));
+  const results: Record<string, unknown>[] = [{ scene: 'play', preset, tod, canvas, pixelRatio: 0, stats }];
+  if (atrace) {
+    await audioTraceStop(cdp);
+    const sr = (stats as { probe?: { ctx?: { sampleRate?: number } } }).probe?.ctx?.sampleRate ?? 48000;
+    results[0].audioThread = audioLoads(atrace as never, sr).play ?? null;
+  }
+  void tag;
+  page.off('console', onConsole);
+  return { device, results, logs, traceFile: undefined as string | undefined };
 }
 
 async function main() {
@@ -137,8 +197,16 @@ async function main() {
   let chrome: Chrome | null = null;
   let browser: Browser;
   let phoneSerial = '';
+  let distPort = 0;
   const stayOn: { prev?: string } = {};
 
+  if (dist) {
+    const srv = await startPreview(undefined, dist);
+    stopServer = srv.stop;
+    base = srv.url;
+    meta.dist = dist;
+    distPort = srv.port;
+  }
   if (target === 'phone') {
     const dev = adbDevices().find((d) => d.state === 'device');
     if (!dev) {
@@ -155,6 +223,9 @@ async function main() {
       base = srv.url;
       adb('-s', phoneSerial, 'reverse', `tcp:${srv.port}`, `tcp:${srv.port}`);
       meta.adbReverse = srv.port;
+    } else if (distPort) {
+      adb('-s', phoneSerial, 'reverse', `tcp:${distPort}`, `tcp:${distPort}`);
+      meta.adbReverse = distPort;
     }
     stayOn.prev = adb('-s', phoneSerial, 'shell', 'settings', 'get', 'global', 'stay_on_while_plugged_in');
     if (stayOn.prev !== '7' && stayOn.prev !== '3') adb('-s', phoneSerial, 'shell', 'svc', 'power', 'stayon', 'usb');
@@ -187,7 +258,7 @@ async function main() {
       base = srv.url;
     }
     const [w, h] = str('size', '1920x1080').split('x').map(Number);
-    chrome = await launchChrome({ angle: str('angle', 'gl') as 'gl' | 'vulkan', uncapped: !!args.uncapped, width: w, height: h });
+    chrome = await launchChrome({ angle: str('angle', 'gl') as 'gl' | 'vulkan', uncapped: !!args.uncapped, width: w, height: h, extraFlags: audio ? ['--mute-audio'] : [] });
     browser = chrome.browser;
     meta.chromeFlags = chrome.flags.filter((f) => !f.startsWith('--user-data-dir'));
     meta.version = browser.version();
@@ -205,6 +276,8 @@ async function main() {
           const ctx = browser.contexts()[0];
           // a fresh tab each time (on the phone too: the user's own tabs are never touched), closed afterwards
           const page = await ctx.newPage();
+          if (!args['no-probe']) await page.addInitScript(initScript(probeInit));
+          if (audio) await page.addInitScript(initScript(fakeVoicesInit));
           const cdp = await ctx.newCDPSession(page);
           if (target === 'laptop') await applyDesktopViewport(cdp, ...(str('size', '1920x1080').split('x').map(Number) as [number, number]));
           if (target === 'emu') {

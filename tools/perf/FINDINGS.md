@@ -65,3 +65,81 @@ Laptop result: **every preset and scene is 60 fps (p5 59.5)**, including Ultra i
 - **The merged proxy for the GTAO prepass**: ambient-occlusion blotches on the ground (three attempts incl. mirrored winding and a stale skeleton; the stale-skeleton bug was real for shadows of culled puppets and is fixed there).
 - **A one-draw-call "far look"** (merged proxy with a vertex colour per part): parts landed in the wrong place with wrong colours; reverted. Merging parts by material for the main pass was not attempted at tier 0 (few players are close, and the morph sets differ per part); the right place for it is the GLB (see the note to the assets thread in the report).
 - KTX2: `toktx` is not installed; the 1k / 512 px WebP set is the alternative (a KTX2 encoder in WASM, e.g. `ktx2-encoder`, would also cut GPU memory 4x again).
+
+# Pass 2 (2026-10-08, t-0017): "the soundscape introduced a performance regression"
+
+## Method
+- The earlier bench always ran with `noaudio`, so it could not see audio costs at all. New in this pass:
+  - `--audio` (muted Chrome, fake voices);
+  - a build-agnostic probe, `probe.ts`: main thread outside the rAF tick, the audio controller tick and its parts, Web Audio churn, `playbackStats`;
+  - the audio render thread's load from a trace (`--audiotrace`);
+  - `--play` (the real game at 1x);
+  - `bisect.ts` (interleaved builds, each run with sound off and on).
+- Builds: the first-parent merges from the last perf pass (`771bd96`, which contains `perf: batch 2 summary`) to main, made with `work/bisect/build.sh` into `work/bisect/dist-*` (git-ignored). The labels used below:
+  - p00 `771bd96` perf baseline;
+  - p02 `e784f41` audio: crowd model, park music, stings;
+  - p07 `cd1cd4d` graphics passes and UI;
+  - p08 `ee33acc` repo diet;
+  - p09 `4263662` announcers: pregame, broadcast open;
+  - p10 `aa294db` **soundscape**;
+  - p11 `9095720` jank pass (= main).
+- Medians of 2 interleaved repeats. The laptop was shared: load 2-11, GPU 25-95 % busy with other sessions (each run's load is in the tables). Counts are exact; times are noisy.
+- The real phone was not connected.
+- Tables:
+  - `results/summary-pass2-bisect-laptop.md` (1080p vsync, low / high, scripted scenes);
+  - `results/summary-pass2-bisect-emu.md` (750x832@2.625, CPU x2);
+  - `results/summary-pass2-play-laptop.md` / `-play-emu.md` (90 s of the real game).
+
+## Findings
+1. **No steady-state frame regression from p00 to main, with sound off or on.**
+   - Laptop: JS per frame, GPU ms, sim (0.2 ms), `getState` (0.1 ms) and puppets are within noise at every merge. Examples: high / wide JS 11.9 -> 11.7 ms (off), 12.1 -> 12.1 (on); GPU 8.8 -> 8.2 ms.
+   - Phone proxy: also within noise (medium / pitchcam JS 14.5 -> 14.6; real game 14.6 -> 14.5 off, 14.4 -> 15.0 on; fps p5 29.6 -> 29.3, 30 fps-locked in every build).
+   - Draw calls and triangles went down with the graphics passes: high / wide 1059 -> 863 calls, 11.5 -> 7.8 M triangles. The jank pass added 8-50 calls.
+   - In the real game on the laptop, fps p5 wanders between 34 and 57 with no build trend: the GPU was 70-95 % busy with other sessions. From p09 on, the pregame opening shows different shots (fewer calls), so p08 -> p09 is not a like-for-like comparison.
+2. **The audio render thread** (a separate real-time thread) did about 2.5x more work from p10:
+
+   | scripted pitch shot | before p10 | from p10 |
+   |---|---|---|
+   | laptop, desktop path | 4.2-5.7 % of a core | 11-13 % |
+   | phone proxy, phone path, laptop CPU | ~4.4 % | 5.3-5.5 % |
+
+   - Real game: laptop 2.4-3.5 % -> 11.4-11.9 %; phone path 2.1-2.8 % -> 5.5-5.9 %.
+   - Nodes created per second about 4x, AudioParam calls about 5x.
+   - No underruns in any run.
+   - Cost by node type (`--audionodes`, desktop, ms per audio second): convolver 19.6, gain 18.9, biquad 14.2, buffer sources 6.4, worklet 4.2, compressors 4.2.
+   - Phone mix, offline: 30.4 ms/s in total. Without the convolver 24.3; without the crowd beds 20.8.
+3. **Main-thread audio** (timers outside the tick): the controller tick costs 2-3 ms/s, about 0.05 ms per frame; the soundscape added ~0.5 ms/s. The phone path's analyser duck follower adds ~1.3 ms/s. Commentary and director parts are below 0.5 ms/s; the tick p99 is 0.4 ms and its max 2.4 ms on the laptop.
+4. **The startup freeze, the regression a player feels.** Every sound (101 effects and one-shots, 3 bed loops, the IR) was synthesised on the main thread when the game started. Jobs ran in 6 ms slices, but a single job could take up to 115 ms on the laptop.
+
+   | phone proxy, sound on, first 20 s | timer work | longest task | frame p99 |
+   |---|---|---|---|
+   | p00 baseline | 65-67 ms/s | 213-215 ms | 67-83 ms |
+   | p02 crowd model | 83-91 ms/s | 283-284 ms | 83-117 ms |
+   | p09 announcers | 81-90 ms/s | 261-282 ms | 83-133 ms |
+   | p10 soundscape | 93-112 ms/s | 278-329 ms | 100-134 ms |
+   | p11 main | 97-118 ms/s | 273-361 ms | 116-133 ms |
+   | **this pass (worker)** | **5.3-5.4 ms/s** | **7-8 ms** | **36-52 ms** |
+
+   It existed before the soundscape, grew with the crowd model (p02), and grew again with the soundscape's mono resampling and IR synthesis.
+
+## Fixes
+- **Start-up synthesis in a worker** (`src/audio/synthJobs.ts`, `synthWorker.ts`): pure jobs, results turned into AudioBuffers as they land, and the IR made there too. See the startup table above.
+  - The main-thread fallback (offline render tool, tests) runs the same functions, so the sound is unchanged.
+  - All 101 sounds are ready and the beds start.
+- **Hidden page**: the AudioContext is suspended while the page is hidden and resumed when it is shown. The park graph used to keep 5-13 % of a core busy behind another app, and the paused game's murmur played on.
+- `mixer.level()` no longer allocates (8 KB, 10 times a second).
+- `vite.config.ts`: the asset / HDRI plugins honour `--outDir`. `dist-dbg` had no assets, so `alloc.ts` and `cpuprof.ts` measured stand-ins.
+- Guards: the `perf:check` audio stage with `budgets.json` `audio.desktop|phone`:
+  - standing nodes 183 / 123, mics 16 / 9, IR 2.3 s stereo / 1.6 s mono;
+  - peak voices, nodes made per second, main-thread audio ms per second.
+
+## Tried, not adopted
+- **32 kHz context on phones** (`?audiorate=32000`, kept as a flag).
+  - Live, the phone graph's whole audio callback went 5.7 -> 4.4 % of a core (-24 %, resampler included), with no underruns and latency +1.5 ms.
+  - Renders against the 48 kHz phone mix: game LUFS -16.19 -> -16.22; impulse -0.17 dB; duck +0.19 dB; **organ -0.56 dB**; true peak +0.5 dB (still <= -1.5 dBTP); the duck engages a little earlier.
+  - The mix moves, so the decision is the owner's.
+- **Re-targeting the crowd-bed parameters only on a 1.2 % change** (fewer automation events): no measurable audio-thread gain (phone 30.4 -> 31.3, desktop 59.2 -> 57.1 ms/s, within noise). Reverted.
+
+## Open
+- **Real phone**: only it can show whether the extra audio-thread work (~+3 % of a laptop core on the phone path) costs frames or heat. Run `npm run perf:phone -- --audio --audiotrace` once it is plugged in.
+- If the phone's audio thread matters, the next levers change the sound and need render A/B first: fewer bed zones or loops on phones (the beds are ~30 % of the phone mix's cost), the 32 kHz context, a shorter phone IR.
