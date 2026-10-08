@@ -67,7 +67,8 @@ export function makeLayout(benches?: [Box | null, Box | null], floorY = DEFAULT_
     first: { x: f.x + -SQ * 2.7 + SQ * 1.0, y: 0, z: f.z + -SQ * 2.7 - SQ * 1.0 },
     third: { x: t.x + SQ * 2.7 - SQ * 1.0, y: 0, z: t.z + -SQ * 2.7 - SQ * 1.0 },
   };
-  const kidAt = (sign: number) => ({ x: sign * (SQ * 31 + SQ * 3.4), y: 0, z: SQ * 31 - SQ * 3.4 });
+  // against the side wall, like the sim's chairs (48 m down the line, 15.9 m off it: out on the open foul grass a seated kid read as sitting in the outfield)
+  const kidAt = (sign: number) => ({ x: sign * (SQ * 48 + SQ * 15.9), y: 0, z: SQ * 48 - SQ * 15.9 });
   return {
     bench,
     onDeck: [{ x: -8.6, y: 0, z: -5.2 }, { x: 8.6, y: 0, z: -5.2 }],

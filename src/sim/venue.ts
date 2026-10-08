@@ -40,8 +40,19 @@ export const behindPlate = (x: number) => ({ x, z: -3.6 });
 /** Coach boxes beside first and third (10 x 20 ft, 15 ft off the line): the point a coach stands at. */
 export const coachBox = (base: 1 | 3) => alongLine(27.4, 6.1, base === 3 ? 'home' : 'away');
 
-/** Ball kids' chairs down the lines (foul ground, ~4.5 m off the line, 48 m from the plate along it), and the bat boy's spot by the dugout. */
-export const ballKidSpot = (base: 1 | 3) => alongLine(48, 4.5, base === 3 ? 'home' : 'away');
+/**
+ * Ball kids' chairs down the lines: against the side wall in foul ground, 48 m from the plate along the line (the wall is 17.0 m off the line there,
+ * `field_layout.json` ground_outline; the chair sits 1.1 m in front of it). At 4.5 m off the line, out on the open foul grass, a seated kid read as
+ * "a ball boy sitting in a chair in the middle of the outfield".
+ */
+export const KID_CHAIR_S = 48;
+export const KID_CHAIR_O = 15.9;
+export const ballKidSpot = (base: 1 | 3) => alongLine(KID_CHAIR_S, KID_CHAIR_O, base === 3 ? 'home' : 'away');
+/** The way a seated ball kid faces: across the field, toward the infield. */
+export const ballKidFacing = (base: 1 | 3) => {
+  const c = ballKidSpot(base);
+  return Math.atan2(-c.x, 20 - c.z);
+};
 export const batBoySpot = (side: TeamSide) => alongLine(16.5, 5.2, side);
 
 /** Bullpens beyond the outfield corners (the mound end and the plate end): first-base side for the visitors, third-base side for the home team. */
