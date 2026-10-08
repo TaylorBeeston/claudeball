@@ -374,7 +374,7 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       const head = p ? faceOf(v, p, _c).clone() : new Vector3(0, 1.9, 18.44);
       // the high-home camera behind the plate (the centre-field camera is behind the pitcher: it framed the back of his head and the catcher /
       // batter beyond); raised so the line of sight clears the umpire, catcher and batter (~2.4 m over the plate)
-      r.pos.set(1.6 * side, 3.3, -26);
+      r.pos.set(1.4 * side, 3.1, -12); // (inside the backstop at -18.3 m: from behind it the shot was the wall)
       r.tgt.copy(head);
       r.fov = tele(2.0, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(head);
@@ -399,9 +399,10 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       const cp = c ? sc(c.pos) : new Vector3(0, 0, -1.2);
       // the signs as the pitcher sees them: a long lens from centre field on the hand between his knees (from the side his thigh hid the hand and the
       // shot was his glove and forearm), offset a few metres so the line of sight passes beside the pitcher
-      r.pos.set(8 * side, 5.5, 121);
-      r.tgt.set(cp.x - 0.04, 0.42, cp.z + 0.32);
-      r.fov = tele(0.9, r.pos.distanceTo(r.tgt), v.aspect);
+      // (from his glove side, +X, the mitt hid the hand: always from the throwing-hand side)
+      r.pos.set(-7, 5.5, 121);
+      r.tgt.set(cp.x - 0.04, 0.45, cp.z + 0.32);
+      r.fov = tele(1.0, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(r.tgt);
       r.slab = 0.7;
       r.lp = r.lt = r.lf = 6;
