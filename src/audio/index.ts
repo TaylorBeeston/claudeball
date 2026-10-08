@@ -37,6 +37,7 @@ import { teamInfo } from '../engine/realSimAdapter';
 type Phase = 'prePitch' | 'betweenBatters' | 'break';
 import { BASES } from './venue/mics';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
+import { perf } from '../engine/perf';
 
 interface PlayerLike {
   id: string;
@@ -656,6 +657,7 @@ export class AudioController {
       this.tickInner(now);
     } finally {
       this.debug.tickMs += (performance.now() - now - this.debug.tickMs) * 0.05;
+      if (perf.on) perf.outside('audio', now);
     }
   }
 

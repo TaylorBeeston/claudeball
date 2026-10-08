@@ -19,6 +19,7 @@ import { TRIM, VenueGraph, type Perspective, type Played } from './venue/graph';
 import type { VenuePreset } from './venue/ir';
 import { WAVE_ORDER, LOW_FOLD, zone as zoneOf, zoneForPan, type ZoneId } from './venue/mics';
 import type { CrowdShot } from './crowd';
+import { perf } from '../engine/perf';
 
 export const MAX_VOICES = 32;
 /** master gain at the full slider, ahead of the master chain (sets the loudness: about -16 LUFS integrated at the default volume) */
@@ -200,7 +201,11 @@ export class Mixer {
     // the analyser duck (phones / no worklet) reads the booth ~50 times a second (a few microseconds; nothing to do when quiet); with
     // the worklet there is no timer at all
     void g.ready.then(() => {
-      if (g.needsPump && !this.offline && this.graph === g && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => this.graph?.pumpDuck(), 20);
+      if (g.needsPump && !this.offline && this.graph === g && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => {
+        const t = perf.t();
+        this.graph?.pumpDuck();
+        if (perf.on) perf.outside('audio.duck', t);
+      }, 20);
     });
     this.voiceBus = g.boothFader;
     this.reverbIn = g.reverbIn;
