@@ -31,6 +31,16 @@ Before / after contact sheets are in the thread's library folder (`.herdr-projec
 | 6b | Sweep: a bat floated in the air near the plate for the whole play after a hit, beside the dropped one (seen after a home run) | sweep frame t791; trace: the sim's bat `visible` at the end-of-swing pose while `bat.dropped` was set | the snapshot reported the swing bat for as long as the swing object existed (the whole play) | the swing bat until the follow-through ends, then only the dropped bat; `props.test.ts` (never both) | batch 5 |
 | 6c | Sweep: the catcher-signs B-roll showed his glove and forearm, not the signs | sweep frames t295 / t375 | low side camera: his thigh hides the hand between his knees | the pitcher's view: a long lens from centre field, offset to the throwing-hand side (from the glove side the mitt hid the hand) | batch 5 |
 | 9 | "Their run cycle is sometimes awkward from the IK of their hands" | probe over 300 s of fielders / runners: IK moved the arms > 15 deg in only 2.2 % of locomotion frames (no glove / ready / bat IK in them); side close-ups of a sprinting runner: head thrown back 50 deg watching the fly ball, the forward hand swinging palm-up | the look-at allowed 75 deg up while sprinting; the gait clips' hands had no palm orientation (the old shortest-arc arm left them palm-up) | running players only glance (<= 15 deg up, <= 20 deg aside at a sprint: a yaw about the leaning trunk also tipped the head back; a fielder with a catch coming keeps tracking); the gait clips' palms face the midline, a little down | batch 5 |
+| 6d | Night sweep (innings 2-5, 3x): at the start of a half-inning the pitch camera framed empty foul ground beside the plate | sweep frame t1326; director trace: `pitch` shot, the batter walking in from the dugout at x = 14.5 | the pitch shot aimed at 0.3 x the batter's x, wherever he was | the aim is clamped to the batter's box (+-1.6 m) | batch 6 |
 
-## Queue (not yet done)
-Swept 811 s of game time (2+ innings with a home run) at standard tempo; more sweeping at night / dusk would be worth a pass.
+## After merging main (announcers t-0015, soundscape t-0016), 2026-10-08
+Main added a pregame (36-54 s at `standard`) that ends with the plate umpire's "Play ball!", and the generated names of the umpires and managers.
+Merged so both work together: the crew meets in foul ground beside home for the first third of the pregame, walks out to its posts (the plate umpire
+brushes the plate on the way), the pregame ends only when every umpire is at his post, and "Play ball!" comes from the plate umpire there; the crew
+builds are keyed by the generated names. Verified in Chrome (seed 15, standard, a per-frame trace from t0 to t80): no jump > 0.6 m in a frame for
+anybody, no umpire set (crouched) outside a pitch, nobody standing in the diamond, no seated clip without a sitting hint; both benches seated
+(dugout views t20, t44.5). The director's opening sheet found the pitcher-face B-roll camera behind the backstop (fixed, ccf3c59).
+
+## Not done
+- A mouth interior / teeth pass and hair cards at the hairline (faces read much better, but the MPFB mouth is still simple).
+- The catcher's full beard behind the cage reads as a dark patch in close-ups.
