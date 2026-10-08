@@ -372,7 +372,9 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
     case 'pitcherFace': {
       const p = find(s, shot.subject, (q) => q.role === 'pitcher');
       const head = p ? faceOf(v, p, _c).clone() : new Vector3(0, 1.9, 18.44);
-      r.pos.copy(CF_CAM);
+      // the high-home camera behind the plate (the centre-field camera is behind the pitcher: it framed the back of his head and the catcher /
+      // batter beyond); raised so the line of sight clears the umpire, catcher and batter (~2.4 m over the plate)
+      r.pos.set(1.6 * side, 3.3, -26);
       r.tgt.copy(head);
       r.fov = tele(2.0, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(head);
