@@ -47,6 +47,7 @@ fixed microphones and mixed like a TV truck would; the camera never changes it. 
 | `music.ts` | organ pieces as data (pure, tested): melody + chord changes compiled to timed notes. Includes the 7th-inning stretch (the chorus of *Take Me Out to the Ball Game*, 1908, public domain, transcribed note for note: 31 bars of 3/4 played oom-pah-pah), the charge call, a rally build, home-run fanfare, three ditties, the "shave and a haircut" sting, walk-up, dirge, three soft beds |
 | `organ.ts` | the organ: drawbar-style tone (harmonics 1-6 and 8, 16' sub, decaying 2nd-harmonic percussion on lead notes, key click) through a rotary-speaker stage (AM + Doppler delay + stereo sway, ~0.9 Hz chorale or ~6.7 Hz tremolo for fanfares, soft saturation), one piece at a time with priorities (a fanfare cuts the stretch, nothing cuts a fanfare, anything cuts a bed), look-ahead scheduling, real cancellation |
 | `commentary.ts` | the booth: play-by-play + colour analyst chatter grounded in the sim state (see below) |
+| `synthJobs.ts`, `synthWorker.ts` | start-up synthesis as pure jobs, run in a worker (main-thread fallback) |
 | `neural.ts`, `neuralWorker.ts`, `hdInfo.ts` | optional HD voices (see below); `neural.ts` and the worker are lazy chunks |
 | `speech.ts` | priority queue over `SpeechSynthesis`: one line at a time, TTL for stale lines, big lines interrupt chatter, voice picking, pause/resume |
 | `mixer.ts` samples | `loadSamples()` fetches `${BASE_URL}audio/manifest.json` and only the files it lists (`crowd:*` keys), decodes them and swaps them in for the synth buffer; any failure leaves the synthesised sound |
@@ -298,6 +299,7 @@ desktop graph is ~6 % of one core, the phone graph ~2x the old cost; all of it o
 change (`tools/audio/live.ts`: median 0.10 -> 0.11 ms on desktop, 0.43 -> 0.35 ms with 4x CPU throttling + low power). Renders repeat
 to within 3e-5 (about -91 dBFS; the crowd beds' first moments differ between runs: not bit-exact, cause not found).
 
+<<<<<<< HEAD
 ## Foley (`foley.ts`, `field.ts`)
 
 The field's sounds are physically modelled recipes (pure, deterministic per seed): `modal()` damped resonances (wood damped hard: no
@@ -312,6 +314,16 @@ by direction (the sim's `DEFAULT_FENCE`), and where a foul fly lands (the sim st
 measures every variant (attack, decay, centroid, loudness, peak) and writes WAVs; `render.ts --scenes montage` plays them all through the
 mics. Levels: the crack and the mitt sit near the master limiter's threshold on purpose (sharp transients over the crowd, no pumping);
 `TRIM.sfx` (graph.ts) moves the whole field.
+=======
+**Start-up, the hidden page, the sample rate** (perf pass 2, `tools/perf/FINDINGS.md`):
+- Every sound is synthesised at start (101 effects and crowd one-shots, the three bed loops, the stadium IR: ~0.9 s of maths on this
+  desktop, single jobs up to 115 ms). `synthJobs.ts` holds the jobs as pure functions; `synthWorker.ts` runs them off the main thread and
+  the mixer turns each result into an AudioBuffer as it lands (`Mixer.prepare`). Without a worker (the offline render tool, tests) the
+  same jobs run on the main thread, at most 6 ms per timer tick. On the main thread they used to freeze frames for 210-360 ms as the game
+  started on a phone-class CPU.
+- The context is suspended while the page is hidden (another app, a background tab) and resumed when it is shown again.
+- `?audiorate=32000` runs the context at 32 kHz (an experiment, not the default; measured numbers in FINDINGS).
+>>>>>>> main
 
 ## HD voices (optional neural speech)
 

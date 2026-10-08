@@ -43,7 +43,29 @@ The user's own browser (Brave) is never touched. Check the first report line: th
 `perf:emu` sets `Emulation.setDeviceMetricsOverride` (default 412x915 @ 2.625), touch emulation (so `(pointer: coarse)` matches and the phone pixel-budget policy applies) and `Emulation.setCPUThrottlingRate` (default 4x). It is a proxy for the CPU side only; the GPU is still the 4090.
 
 ## Budgets (`perf:check`)
-`tools/perf/check.ts` runs a short deterministic bench (a few scenes, `frames=30`) per preset and fails if draw calls or triangles per frame exceed `tools/perf/budgets.json`. These are machine-independent numbers (counts, not times), so they can run in CI. Update the budgets deliberately when assets change.
+`tools/perf/check.ts` runs a short deterministic bench (a few scenes, `frames=40`) per preset and fails if draw calls or triangles per frame exceed `tools/perf/budgets.json`. These are machine-independent numbers (counts, not times), so they can run in CI. Update the budgets deliberately when assets change (`--update`).
+Then an **audio stage**: the bench with sound on (`--audio`), once on the desktop audio path and once on the phone path (`lowpower=1`), against `budgets.json` `audio.desktop|phone`:
+the standing Web Audio graph (venue + crowd beds), mics, the reverb IR's length and channels, peak voices, nodes made per second, and the audio layer's main-thread ms per second (timers; the only time-based budget, with 2x headroom).
+It fails if the context did not run or the sounds were not ready. The audio render thread's load is printed but is not a budget (it depends on the machine). `--no-audio` skips the stage, `--audio-only` runs only it (`--audio-only --update` rewrites only the audio budgets).
+
+## Sound on, outside the tick, other builds (pass 2)
+- `--audio`: sound on (no `noaudio`). Chrome runs with `--mute-audio` (the graph renders, nothing reaches the speakers) and fake speech voices, so every build talks alike. Without it the bench is blind to audio.
+- `--audiotrace`: the audio render thread's load per scene from a Chrome trace (`webaudio` category: each 128-frame quantum is a `RealtimeAudioDestinationHandler::Render`). `load` is the graph and `callbackLoad` the whole device callback (incl. the resampler). Cheap.
+  `--audionodes` adds `disabled-by-default-webaudio.audionode` (ms per second by node type: Convolver, Gain, BiquadFilter ...). It is heavy, so use it for attribution only.
+- **The probe** (`probe.ts`, injected with `addInitScript`, so it measures any build, also ones older than it) adds `stats.probe` to every scene:
+  - main thread per frame as `rafMs` (the tick) + `timerMs` (the audio controller's 30 / 15 Hz tick, the phone duck follower, booth timers) = `mainMs`;
+  - the audio tick (p50 / p99 / max, ms per second) and its parts (booth, crowd, cues, music, speech);
+  - Web Audio nodes made per second by type, AudioParam calls, AudioBuffers;
+  - `playbackStats` underruns and latency, the context's rate;
+  - `audioGraph` (standing nodes, mics, IR, duck path, peak voices);
+  - validity: the context running, the sounds prepared, the low-power path, booth lines, phase.
+- `?perf=1` / `__perf` itself now has `outs` (main-thread work outside the tick: `audio`, `audio.duck`) and `mainMs`.
+- `--dist <folder>`: serve another build (implies no build).
+- `--play 120 --playwarm 20`: not the scripted scenes but the real game (broadcast director, sim at 1x) for 120 s after 20 s, as one row `play`, with every frame of the window in the stats.
+- `bisect.ts --builds a,b,c [--audio both] [--reps 2] [--target emu ...] [--play 90]`: interleaved A/B of several builds (each repeat runs every build with sound off and on before the next starts) and a summary table.
+  Builds: `work/bisect/build.sh <commit> <label>` (git archive + shared `node_modules`, `work/` is git-ignored).
+- `cpuprof.ts [--audio] [--from 0 --secs 20] [--emu 750x832@2.625 --cpu 2] [--match name]`: V8 CPU profile of the real game on the unminified build (`dist-dbg/`). It prints self / total ms per function, and the callers of `--match`.
+- `tools/audio/render.ts --sr 32000`: render the mix at another context rate (the game: `?audiorate=32000`).
 
 ## More tools (batch 2)
 - `npx tsx tools/perf/census.ts` - what each puppet draws, main-pass draw calls by scene group, shadow casters per light.

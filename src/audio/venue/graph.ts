@@ -22,7 +22,12 @@
  * Per-frame JS is zero: one-shot pickups are computed when a sound is triggered (`mics.ts`), continuous sources are wired once.
  */
 import { DUCK_DEFAULTS, PROCESSOR_NAME, duckStep, newDuckState, workletSource, type DuckParams } from './duck';
-import { stadiumIR, VENUES, type VenuePreset } from './ir';
+import { VENUES, type VenuePreset } from './ir';
+import { irFor } from '../synthJobs';
+import type { Rendered } from '../dsp';
+
+/** makes the stadium IR somewhere else (a worker); null: not available */
+export type IrSource = (venue: VenuePreset, sr: number, lowPower: boolean) => Promise<Rendered | null>;
 import { MICS, PLACES, SPEAKERS, micPan, micsFor, pickupOne, pickups, type MicDef, type MicId, type Pickup } from './mics';
 import type { Vec3 } from '../types';
 
@@ -110,14 +115,17 @@ export class VenueGraph {
   readonly ready: Promise<void>;
   /** per mic strip level meters (only with `meters`: ?audiodebug=1) */
   readonly meters: boolean;
+  /** where the IR is made (the mixer's synthesis worker); null or a null result: here, after the gesture */
+  private irSource: IrSource | null;
   readonly stats = { worklet: 'none' as 'none' | 'loading' | 'on' | 'failed', irMs: 0, nodes: 0 };
 
-  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean; linearShapers?: boolean } } = {}) {
+  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; ir?: IrSource; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean; linearShapers?: boolean } } = {}) {
     this.ctx = ctx;
     this.lowPower = !!o.lowPower;
     this.venue = o.venue ?? 'normal';
     this.perspective = o.perspective ?? 'broadcast';
     this.meters = !!o.meters;
+    this.irSource = o.ir ?? null;
     this.mics = micsFor(this.lowPower);
     let n = 0;
     const count = <T extends AudioNode>(x: T): T => (n++, x);
@@ -474,27 +482,19 @@ export class VenueGraph {
   private async loadIr() {
     const conv = this.conv;
     if (!conv) return;
-    // generate after the gesture has returned (a few tens of ms of maths)
-    await new Promise((r) => setTimeout(r, 0));
+    const venue = this.venue;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
-      const ir = stadiumIR(this.ctx.sampleRate, this.venue);
-      if (this.lowPower) {
-        // phones: one channel, at most 1.6 s (faded): ~1/3 of the stereo 2.3 s convolution
-        const n = Math.min(ir.ch[0].length, Math.floor(1.6 * this.ctx.sampleRate));
-        const x = ir.ch[0].slice(0, n);
-        const fade = Math.floor(0.3 * this.ctx.sampleRate);
-        for (let i = n - fade; i < n; i++) x[i] *= (n - i) / fade;
-        for (let i = 0; i < n; i++) x[i] = (x[i] + ir.ch[1][i]) * Math.SQRT1_2;
-        const b = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
-        b.copyToChannel(x as Float32Array<ArrayBuffer>, 0);
-        conv.buffer = b;
-      } else {
-        const b = this.ctx.createBuffer(2, ir.ch[0].length, this.ctx.sampleRate);
-        b.copyToChannel(ir.ch[0] as Float32Array<ArrayBuffer>, 0);
-        b.copyToChannel(ir.ch[1] as Float32Array<ArrayBuffer>, 1);
-        conv.buffer = b;
+      // made in the worker (a few tens of ms of maths on a desktop, 100+ on a phone), or here after the gesture has returned
+      let r = this.irSource ? await this.irSource(venue, this.ctx.sampleRate, this.lowPower).catch(() => null) : null;
+      if (!r) {
+        await new Promise((res) => setTimeout(res, 0));
+        r = irFor(venue, this.ctx.sampleRate, this.lowPower);
       }
+      if (venue !== this.venue || this.conv !== conv) return; // the venue changed meanwhile: its own load sets the IR
+      const b = this.ctx.createBuffer(r.ch.length, r.ch[0].length, r.sr);
+      r.ch.forEach((c, i) => b.copyToChannel(c as Float32Array<ArrayBuffer>, i));
+      conv.buffer = b;
     } catch {
       /* no reverb */
     }

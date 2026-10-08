@@ -13,12 +13,14 @@
  * Everything is optional: with no AudioContext (old browser, node) `unlock()` returns false and every play call is a no-op.
  */
 import type { Cue, CrowdId, SfxId, Vec3 } from './types';
-import { CROWD_IDS, SFX_DEFS, crowdLoop, renderCrowd, renderSfx } from './synth';
+import { CROWD_IDS, SFX_DEFS } from './synth';
+import { runJob, type SynthJob } from './synthJobs';
 import { mulberry32, type Rendered } from './dsp';
 import { TRIM, VenueGraph, type Perspective, type Played } from './venue/graph';
 import type { VenuePreset } from './venue/ir';
 import { WAVE_ORDER, LOW_FOLD, zone as zoneOf, zoneForPan, type ZoneId } from './venue/mics';
 import type { CrowdShot } from './crowd';
+import { perf } from '../engine/perf';
 
 export const MAX_VOICES = 32;
 /** master gain at the full slider, ahead of the master chain (sets the loudness: about -16 LUFS integrated at the default volume) */
@@ -157,7 +159,7 @@ export class Mixer {
   /** counters per sound id, for debug and tests */
   readonly played: Record<string, number> = {};
 
-  constructor(settings: Settings = { ...DEFAULT_SETTINGS }, private factory: () => AudioContext = () => new AudioContext({ latencyHint: 'interactive' })) {
+  constructor(settings: Settings = { ...DEFAULT_SETTINGS }, private factory: () => AudioContext = () => newContext(this.lowPower)) {
     this.settings = settings;
   }
 
@@ -181,7 +183,7 @@ export class Mixer {
   }
 
   private build(ctx: AudioContext) {
-    const g = new VenueGraph(ctx, { lowPower: this.lowPower, venue: this.settings.venue, perspective: this.settings.micPerspective, meters: this.meters, profile: { noConvolver: this.debugFlags.noConvolver, noOversample: this.debugFlags.noOversample, noWorklet: this.debugFlags.noWorklet, linearShapers: this.debugFlags.linearShapers } });
+    const g = new VenueGraph(ctx, { lowPower: this.lowPower, venue: this.settings.venue, perspective: this.settings.micPerspective, meters: this.meters, ir: this.irFromWorker, profile: { noConvolver: this.debugFlags.noConvolver, noOversample: this.debugFlags.noOversample, noWorklet: this.debugFlags.noWorklet, linearShapers: this.debugFlags.linearShapers } });
     this.graph = g;
     const gain = () => ctx.createGain();
     // the master volume is the master chain's input: the park bus, the booth and the stings all sum there
@@ -200,7 +202,11 @@ export class Mixer {
     // the analyser duck (phones / no worklet) reads the booth ~50 times a second (a few microseconds; nothing to do when quiet); with
     // the worklet there is no timer at all
     void g.ready.then(() => {
-      if (g.needsPump && !this.offline && this.graph === g && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => this.graph?.pumpDuck(), 20);
+      if (g.needsPump && !this.offline && this.graph === g && typeof setInterval !== 'undefined') this.duckTimer = setInterval(() => {
+        const t = perf.t();
+        this.graph?.pumpDuck();
+        if (perf.on) perf.outside('audio.duck', t);
+      }, 20);
     });
     this.voiceBus = g.boothFader;
     this.reverbIn = g.reverbIn;
@@ -320,52 +326,155 @@ export class Mixer {
     return b;
   }
 
-  /** Render every sound a chunk per timer tick so no frame stalls; `onDone` fires when the last one is ready. */
+  /**
+   * Synthesise every sound (`synthJobs.ts`); `onDone` fires when the last one is ready. In a worker when there is one (about a second of
+   * maths, single jobs up to ~100 ms on a fast desktop: run on the main thread they froze frames as the game started), otherwise on the
+   * main thread a slice per timer tick (the offline render tool, tests). Results land as they come, most common sounds first.
+   */
   prepare(onDone?: () => void) {
-    if (!this.ctx || this.ready) return;
-    const jobs: (() => void)[] = [];
+    if (!this.ctx || this.ready || this.preparing) return;
+    this.preparing = true;
+    const sr = this.ctx.sampleRate;
+    const jobs: { job: SynthJob; put: (b: AudioBuffer) => void }[] = [];
     const ids = Object.keys(SFX_DEFS) as SfxId[];
     // most common sounds first
     const order: SfxId[] = ['mitt_pop', 'bat_crack', 'glove_pop', 'swing_whoosh', 'pitch_whoosh', 'throw_whip', ...ids];
     for (const id of new Set(order)) {
       const d = SFX_DEFS[id];
+      // park sounds go into mono mic strips: mono at the context's rate (no resampling per copy on the audio thread); the broadcast
+      // stings stay as rendered (stereo, dry)
       for (let b = 0; b < d.buckets; b++)
         for (let a = 0; a < this.altsOf(id); a++)
-          jobs.push(() => {
-            const list = this.buffers.get(id) ?? [];
-            // park sounds go into mono mic strips: mono at the context's rate (no resampling per copy on the audio thread); the
-            // broadcast stings stay as rendered (stereo, dry)
-            const r = renderSfx(id, b, a);
-            list[b * d.alts + a] = this.toBuffer(id.startsWith('bfx_') ? r : monoAt(r, this.ctx!.sampleRate));
-            this.buffers.set(id, list);
+          jobs.push({
+            job: { k: 'sfx', id, b, a },
+            put: (buf) => {
+              const list = this.buffers.get(id) ?? [];
+              list[b * d.alts + a] = buf;
+              this.buffers.set(id, list);
+            },
           });
     }
-    for (const id of CROWD_IDS) jobs.push(() => this.buffers.set(`crowd:${id}`, [this.toBuffer(monoAt(renderCrowd(id), this.ctx!.sampleRate))]));
-    // the bed loops play all the time in every zone: mono (the zones and the mics make the width) at the context's own rate, so their
-    // sources need no resampling on the audio thread
-    for (const k of ['murmur', 'roar', 'claps'] as const) jobs.push(() => this.buffers.set(`loop:${k}`, [this.toBuffer(monoAt(crowdLoop(k), this.ctx!.sampleRate))]));
+    for (const id of CROWD_IDS) jobs.push({ job: { k: 'crowd', id }, put: (b) => this.buffers.set(`crowd:${id}`, [b]) });
+    // the bed loops play all the time in every zone: mono (the zones and the mics make the width) at the context's own rate
+    for (const k of ['murmur', 'roar', 'claps'] as const) jobs.push({ job: { k: 'loop', kind: k }, put: (b) => this.buffers.set(`loop:${k}`, [b]) });
     this.totalToPrepare = jobs.length;
-    let i = 0;
-    const next = () => {
-      const t0 = performance.now();
-      while (i < jobs.length && performance.now() - t0 < 6) {
-        try {
-          jobs[i]();
-        } catch {
-          /* a failed recipe only loses that sound */
-        }
-        i++;
-        this.prepared = i;
-      }
-      if (i < jobs.length) setTimeout(next, 0);
-      else {
-        this.ready = true;
-        onDone?.();
-        void this.loadSamples();
-      }
+    const ctx = this.ctx;
+    let done = 0;
+    const finish = () => {
+      this.ready = true;
+      this.preparing = false;
+      onDone?.();
+      void this.loadSamples();
     };
-    setTimeout(next, 0);
+    const land = (k: number, r: Rendered) => {
+      if (this.ctx !== ctx) return;
+      try {
+        jobs[k].put(this.toBuffer(r));
+      } catch {
+        /* a failed recipe only loses that sound */
+      }
+      this.prepared = ++done;
+      if (done === jobs.length) finish();
+    };
+    // main-thread fallback: from job `from` on, a slice of at most 6 ms per timer tick
+    const local = (from: number) => {
+      let i = from;
+      const next = () => {
+        const t0 = performance.now();
+        while (i < jobs.length && performance.now() - t0 < 6) {
+          let r: Rendered | null = null;
+          try {
+            r = runJob(jobs[i].job, sr);
+          } catch {
+            /* a failed recipe only loses that sound */
+          }
+          if (r) land(i, r);
+          else this.prepared = ++done;
+          i++;
+        }
+        if (i < jobs.length) setTimeout(next, 0);
+        else if (done >= jobs.length && !this.ready) finish();
+      };
+      setTimeout(next, 0);
+    };
+    const w = this.offline ? null : this.synthWorker();
+    if (!w) return local(0);
+    let next = 0;
+    w.onmessage = (e: MessageEvent<{ n: number; sr: number; ch?: Float32Array[]; error?: string }>) => {
+      const m = e.data;
+      if (m.n < 0) return; // an IR job (see `irFromWorker`)
+      if (m.ch) land(m.n, { sr: m.sr, ch: m.ch });
+      else this.prepared = ++done;
+      next = Math.max(next, m.n + 1);
+      if (done === jobs.length && !this.ready) finish();
+    };
+    w.onerror = () => {
+      // the worker could not run (CSP, an old browser): the rest on the main thread
+      this.dropWorker();
+      local(next);
+    };
+    jobs.forEach((j, n) => w.postMessage({ n, job: j.job, sr }));
   }
+
+  private preparing = false;
+  private levelBuf: Float32Array<ArrayBuffer> | null = null;
+  private hiddenSuspended = false;
+
+  /** the page is hidden / shown again: suspend the context (no rendering at all) and resume it only if it was running before */
+  async setHidden(hidden: boolean) {
+    const c = this.ctx;
+    if (!c || this.offline) return;
+    try {
+      if (hidden && c.state === 'running') {
+        this.hiddenSuspended = true;
+        await c.suspend();
+      } else if (!hidden && this.hiddenSuspended) {
+        this.hiddenSuspended = false;
+        await c.resume();
+      }
+    } catch {
+      /* the next gesture unlocks it again */
+    }
+  }
+  private worker: Worker | null = null;
+  private irJobs = new Map<number, (r: Rendered | null) => void>();
+  private irSeq = -1;
+
+  /** the synthesis worker (one per mixer, closed with it), or null where workers do not exist */
+  private synthWorker(): Worker | null {
+    if (this.worker) return this.worker;
+    if (typeof Worker === 'undefined') return null;
+    try {
+      this.worker = new Worker(new URL('./synthWorker.ts', import.meta.url), { type: 'module' });
+      this.worker.addEventListener('message', (e: MessageEvent<{ n: number; sr: number; ch?: Float32Array[] }>) => {
+        const cb = this.irJobs.get(e.data.n);
+        if (!cb) return;
+        this.irJobs.delete(e.data.n);
+        cb(e.data.ch ? { sr: e.data.sr, ch: e.data.ch } : null);
+      });
+    } catch {
+      this.worker = null;
+    }
+    return this.worker;
+  }
+
+  private dropWorker() {
+    this.worker?.terminate();
+    this.worker = null;
+    for (const cb of this.irJobs.values()) cb(null);
+    this.irJobs.clear();
+  }
+
+  /** the stadium IR made in the worker (null: make it here) */
+  private irFromWorker = (venue: VenuePreset, sr: number, lowPower: boolean): Promise<Rendered | null> => {
+    const w = this.offline ? null : this.synthWorker();
+    if (!w) return Promise.resolve(null);
+    const n = this.irSeq--;
+    return new Promise((res) => {
+      this.irJobs.set(n, res);
+      w.postMessage({ n, job: { k: 'ir', venue, lowPower }, sr });
+    });
+  };
 
   /** Real recordings that replace the synthesised version of a crowd sound: only what `audio/manifest.json` lists (so nothing 404s). */
   samples: string[] = [];
@@ -601,7 +710,8 @@ export class Mixer {
   level(): { rms: number; peak: number } {
     const a = this.analyser;
     if (!a) return { rms: 0, peak: 0 };
-    const d = new Float32Array(a.fftSize);
+    if (this.levelBuf?.length !== a.fftSize) this.levelBuf = new Float32Array(a.fftSize);
+    const d = this.levelBuf;
     a.getFloatTimeDomainData(d);
     let s = 0;
     let p = 0;
@@ -630,6 +740,8 @@ export class Mixer {
 
   /** stop everything and release the context */
   dispose() {
+    this.dropWorker();
+    this.preparing = false;
     if (this.duckTimer) clearInterval(this.duckTimer);
     this.duckTimer = null;
     for (const _ of [...this.voices]) this.stealFor(99);
@@ -644,24 +756,26 @@ export class Mixer {
   }
 }
 
-/** a rendered sound folded to mono and resampled (cubic Hermite) to `sr`; a loop stays seamless (the interpolation wraps) */
-export function monoAt(r: Rendered, sr: number): Rendered {
-  const n = r.ch[0].length;
-  const m = new Float32Array(n);
-  for (const c of r.ch) for (let i = 0; i < n; i++) m[i] += c[i] / r.ch.length;
-  if (r.sr === sr) return { sr, ch: [m] };
-  const ratio = r.sr / sr;
-  const out = new Float32Array(Math.floor(n / ratio));
-  const at = (i: number) => m[((i % n) + n) % n];
-  for (let j = 0; j < out.length; j++) {
-    const x = j * ratio;
-    const i = Math.floor(x);
-    const f = x - i;
-    const y0 = at(i - 1), y1 = at(i), y2 = at(i + 1), y3 = at(i + 2);
-    const c1 = 0.5 * (y2 - y0), c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3, c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-    out[j] = ((c3 * f + c2) * f + c1) * f + y1;
+export { monoAt } from './synthJobs';
+
+/**
+ * The context's sample rate: the device's own (48 kHz on most). `?audiorate=32000` (an experiment, measured in tools/perf/FINDINGS.md, pass 2):
+ * the phone graph's audio thread -24 % with the output resampler included, but the mix moves (organ -0.56 LUFS, the duck engages a little
+ * earlier, true peak +0.5 dB), so it is not the default. `lowPower` is where a default for phones would go.
+ */
+export function contextRate(lowPower: boolean, q = typeof location !== 'undefined' ? location.search : ''): number | undefined {
+  void lowPower;
+  const f = new URLSearchParams(q).get('audiorate');
+  if (f && Number(f) >= 8000 && Number(f) <= 96000) return Number(f);
+  return undefined;
+}
+function newContext(lowPower: boolean): AudioContext {
+  const sampleRate = contextRate(lowPower);
+  try {
+    return new AudioContext(sampleRate ? { latencyHint: 'interactive', sampleRate } : { latencyHint: 'interactive' });
+  } catch {
+    return new AudioContext({ latencyHint: 'interactive' }); // a rate this browser refuses: its own
   }
-  return { sr, ch: [out] };
 }
 
 /** where an effect with no position is: the plate */

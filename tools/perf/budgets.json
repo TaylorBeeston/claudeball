@@ -54,5 +54,25 @@
    "calls": 420,
    "triangles": 2880000
   }
+ },
+ "audio": {
+  "desktop": {
+   "standingNodes": 187,
+   "mics": 16,
+   "irSeconds": 2.31,
+   "irChannels": 2,
+   "voicesMax": 9,
+   "nodesPerSec": 156,
+   "mainMsPerSec": 13.2
+  },
+  "phone": {
+   "standingNodes": 127,
+   "mics": 9,
+   "irSeconds": 1.61,
+   "irChannels": 1,
+   "voicesMax": 7,
+   "nodesPerSec": 56,
+   "mainMsPerSec": 8.4
+  }
  }
 }
