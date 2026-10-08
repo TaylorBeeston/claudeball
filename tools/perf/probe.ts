@@ -391,6 +391,7 @@ export function probeInit() {
       disconnectsPerSec: per(s0.disconnects, s1.disconnects),
       graphCallMsPerSec: +((s1.graphMs - s0.graphMs) / secs).toFixed(3),
       ctx: ctx ? { state: ctx.state, sampleRate: ctx.sampleRate, baseLatencyMs: +(ctx.baseLatency * 1000).toFixed(1), outputLatencyMs: +((ctx.outputLatency ?? 0) * 1000).toFixed(1), clockRatio: +((s1.ctxTime - s0.ctxTime) / secs).toFixed(3), playback: psDelta } : null,
+      visibility: document.visibilityState,
       audioGraph: graphFacts(c),
       controller: c ? { lowPower: c.lowPower, locked: c.locked ?? c.isLocked, mixer: c.mixer?.state, ready: c.mixer?.ready, prepared: `${c.mixer?.prepared}/${c.mixer?.totalToPrepare}`, beds: c.ambience?.started, irMs: c.mixer?.graph?.stats?.irMs, voices: c.mixer?.voiceCount, phase: c.phaseNow ?? null, chat: c.debug?.chat ? Object.values(c.debug.chat as Record<string, number>).reduce((a, b) => a + b, 0) : null } : null,
     };
