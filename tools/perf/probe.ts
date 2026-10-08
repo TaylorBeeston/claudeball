@@ -39,6 +39,8 @@ export function probeInit() {
     patched: false,
     perfHooked: false,
     snap: null as null | Record<string, any>,
+    n: 0,
+    voicesMax: 0,
   };
   W.__probe = P;
 
@@ -52,6 +54,10 @@ export function probeInit() {
         P.cur = { raf: 0, timers: 0, timerCalls: 0, tick: 0 };
         P.lastTs = ts;
         hook();
+        if (++P.n % 10 === 0) {
+          const v = W.__audioDebug?.controller?.mixer?.voiceCount;
+          if (typeof v === 'number' && v > P.voicesMax) P.voicesMax = v;
+        }
       }
       const t = now();
       try {
@@ -235,7 +241,7 @@ export function probeInit() {
     const ps = c?.playbackStats;
     return { at: now(), ctxTime: c?.currentTime ?? 0, ps: ps ? { underrunEvents: ps.underrunEvents, underrunDuration: ps.underrunDuration, totalDuration: ps.totalDuration, averageLatency: ps.averageLatency, maximumLatency: ps.maximumLatency } : null };
   };
-  const snapshot = () => ({ nodes: { ...P.nodes }, buffers: P.buffers, bufferSamples: P.bufferSamples, params: P.params, paramSets: P.paramSets, connects: P.connects, disconnects: P.disconnects, graphMs: P.graphMs, ...pstats() });
+  const snapshot = () => ({ phase: W.__audioDebug?.controller?.phaseNow ?? null, gameTime: W.__audioDebug?.controller?.host?.liveState?.time ?? null, nodes: { ...P.nodes }, buffers: P.buffers, bufferSamples: P.bufferSamples, params: P.params, paramSets: P.paramSets, connects: P.connects, disconnects: P.disconnects, graphMs: P.graphMs, ...pstats() });
   const stat = (v: number[]) => {
     const s = [...v].sort((a, b) => a - b);
     const n = s.length;
@@ -256,6 +262,7 @@ export function probeInit() {
       P.frames = [];
       P.ticks = [];
       P.parts = {};
+      P.voicesMax = 0;
       P.snap = snapshot();
       performance.mark(`probe:start:${scene}`);
     };
@@ -283,6 +290,7 @@ export function probeInit() {
     P.frames = [];
     P.ticks = [];
     P.parts = {};
+    P.voicesMax = 0;
     P.snap = snapshot();
     pf.reset();
     all = [];
@@ -305,6 +313,24 @@ export function probeInit() {
     all = null;
     return out;
   };
+
+  /** the standing graph (this build's own counters where it has them) and the voices' peak */
+  function graphFacts(c: any) {
+    const g = c?.mixer?.graph;
+    if (!g) return null;
+    const conv = g.conv as ConvolverNode | null | undefined;
+    const amb = c.ambience;
+    return {
+      venueNodes: g.stats?.nodes ?? null,
+      bedNodes: amb ? (amb.nodes?.length ?? 0) + (amb.sources?.length ?? 0) : null,
+      mics: g.mics?.length ?? null,
+      irSeconds: conv?.buffer ? +conv.buffer.duration.toFixed(2) : null,
+      irChannels: conv?.buffer?.numberOfChannels ?? null,
+      sampleRate: c.mixer?.ctx?.sampleRate ?? null,
+      duck: g.duckNode ? 'worklet' : g.keyTap ? 'analyser' : 'none',
+      voicesMax: P.voicesMax,
+    };
+  }
 
   function summary() {
     const s0 = P.snap!, s1 = snapshot();
@@ -342,6 +368,7 @@ export function probeInit() {
       disconnectsPerSec: per(s0.disconnects, s1.disconnects),
       graphCallMsPerSec: +((s1.graphMs - s0.graphMs) / secs).toFixed(3),
       ctx: ctx ? { state: ctx.state, sampleRate: ctx.sampleRate, baseLatencyMs: +(ctx.baseLatency * 1000).toFixed(1), outputLatencyMs: +((ctx.outputLatency ?? 0) * 1000).toFixed(1), clockRatio: +((s1.ctxTime - s0.ctxTime) / secs).toFixed(3), playback: psDelta } : null,
+      audioGraph: graphFacts(c),
       controller: c ? { lowPower: c.lowPower, locked: c.locked ?? c.isLocked, mixer: c.mixer?.state, ready: c.mixer?.ready, prepared: `${c.mixer?.prepared}/${c.mixer?.totalToPrepare}`, beds: c.ambience?.started, irMs: c.mixer?.graph?.stats?.irMs, voices: c.mixer?.voiceCount, phase: c.phaseNow ?? null, chat: c.debug?.chat ? Object.values(c.debug.chat as Record<string, number>).reduce((a, b) => a + b, 0) : null } : null,
     };
   }
