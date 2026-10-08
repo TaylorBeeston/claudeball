@@ -123,6 +123,10 @@ dead-ball running, walking off), `field` (fielding a ground ball / blocking), `c
 last out), `transfer` (a fielder moving the ball from glove to throwing hand, standing: after a catch, an out, a pitch), `tag_glove` / `tag_hand` (a tag sweep: the hint starts with `tagAttempt`, clip 0.583 s, contact frame 8 = 0.333 s), `ump_out_strikeout` (a strikeout), `slide_feet` / `slide_head` / `slide_hook_left` / `slide_hook_right` / `dive_back`, `catcher_block`, `catch_pitch` / `catch_throw` / `catch_stretch` / `catch_fly` / `catch_fly_run` (a fly ball taken on the run) / `catch_line_drive` / `catch_backhand` / `field_grounder` / `catch_comebacker` (the pitcher) (timed so the catch is at `animT` ≈ 0.5, and to start `CATCH_LEAD[hint]` before the catch), `ump_*` (umpires), `toss` (an
 easy short return toss; longer casual returns use `throw`; the engine adapter plays `toss` as `throw` and `transfer` as the ready pose until clips exist). `animT` runs 0..1 over the animation's duration.
 
+### Who and where (`game.info`, `gameinfo.ts`)
+
+Generated broadcast data that never changes the game (its own random streams; checked by the audit test): `venue` (the home club's park: name, city, opened, capacity, fence distances from the fence config, a feature; `parkFor(team)` gives the same park for the same club), `umpires` (four names, years, the crew chief: also the umpires' `name` in the snapshot), `managers` (per side: name, seasons with the club, background, pitching coach: also the staff names in the snapshot), `records` (W-L coming in, the last ten, the streak: derived from `teamStrength(team)`, the lineup's bats and the staff's arms, not from a simulated season), `date` (month, day, weekday), `mascot`, and `wind` (the configured wind, or null). Names are fictional; `DENY` lists real umpires, managers and broadcasters that are never generated.
+
 ### Events (`game.on(type, cb)`)
 
 Every event has `time` (sim seconds). Types (see `types.ts` for exact fields):
@@ -492,7 +496,7 @@ come from the physics, so they stand (the check exists but cannot fail until the
 **Dead-ball time**: after a ball goes out of play the plate umpire hands a new one (`ump_new_ball`); after an out with the bases empty the infield tosses it around the horn more often (+20 % at `broadcast`); the bench cheers
 (`bench_cheer`) or stands (`bench_stand_up`) for hits, runs, homers and strikeouts; the reliever likely to come in loosens in the bullpen (`bullpen_throw`) when the pitcher is tiring (pitch count, rattle, runs). Not
 modelled: the first baseman holding the runner at the bag (it would change the fielding), the grounds crew.
-**Between innings** (`breaks.ts`): 26-60 s at `broadcast` (event `breakStart {inning, half, sec}`; the first half-inning 22-28 s): the fielders trot out and in as before, then the pitcher throws eight warm-up pitches (`warmup_pitch`) to the
+**Between innings** (`breaks.ts`): 26-60 s at `broadcast` (event `breakStart {inning, half, sec}`). The first one is the **pregame** (`breakStart { pregame: true }`: 60-90 s at `broadcast`, ~36-54 s at `standard`, ~15-22 s at `quick`, for the booth's opening) and ends with the plate umpire's `umpireCall { kind: 'play_ball' }` (gesture `ump_fair`, a point at the pitcher): the fielders trot out and in as before, then the pitcher throws eight warm-up pitches (`warmup_pitch`) to the
 catcher (the last followed by his throw down to second), the infielders roll ground balls to each other (`throw` / `field_grounder`) and the outfielders play catch (`toss` / `catch_toss`) with **extra balls that are only for show**
 (`GameStateSnapshot.extraBalls`, positions in metres), the field umpires walk in to the plate, the plate umpire brushes it off; the first batter walks in after (bounded: 25 s over).
 

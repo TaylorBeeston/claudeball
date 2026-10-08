@@ -7,13 +7,15 @@
  * queue and nothing can overlap. The queue asks it to `prefetch` the next line while the current one plays; generation runs in a
  * worker, one job at a time. If generation fails or is too slow for a line, that line falls back to the browser's voice.
  */
+import { CAST } from './broadcast/cast';
 import type { Mixer } from './mixer';
 import type { SpeakHandle, SpeakOptions, SpeechEngine } from './speech';
 import { clauses } from './broadcast/text';
 import type { SpeakRole } from './types';
 import { HD_MODES, type HdMode } from './hdInfo';
 
-export const HD_VOICES: Record<SpeakRole, string> = { pa: 'am_onyx', ump: 'am_adam', pbp: 'am_michael', color: 'bm_george' };
+/** stable Kokoro presets: the cast's (see `broadcast/cast.ts`) and the umpire's */
+export const HD_VOICES: Record<SpeakRole, string> = { pa: CAST.pa.voice.kokoro, ump: 'am_adam', pbp: CAST.pbp.voice.kokoro, color: CAST.color.voice.kokoro };
 
 export { HD_MODES, pickMode, type HdMode } from './hdInfo';
 

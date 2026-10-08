@@ -12,6 +12,7 @@ import { tickUmpires } from './umpires';
 import { benchReact, initDugouts, tickDugout } from './dugout';
 import { initStaff, tickStaff } from './staff';
 import { tickBreak } from './breaks';
+import { buildGameInfo, type GameInfo } from './gameinfo';
 import { TICK } from './world';
 import type { PlayerRT, World } from './world';
 import type {
@@ -33,11 +34,15 @@ export type EventCallback = (e: GameEvent) => void;
 
 export class Game {
   private w: World;
+  /** The park, the umpire crew, the managers, the clubs' records and the date (generated, see `gameinfo.ts`; never changes the game). */
+  readonly info: GameInfo;
 
   constructor(cfg: GameConfig) {
     this.w = createWorld(cfg);
     initDugouts(this.w);
     initStaff(this.w);
+    this.info = buildGameInfo(cfg.seed, { home: this.w.teams.home.team, away: this.w.teams.away.team }, { fence: cfg.fence, wind: cfg.wind });
+    nameOfficials(this.w, this.info);
     this.on('*', (e) => benchReact(this.w, e));
   }
 
@@ -166,6 +171,17 @@ export class Game {
     return e;
   }
 
+  /** The next `n` hitters due up for a side (from its batting order and the lineup as it stands now: substitutions included). */
+  dueUp(side: TeamSide, n = 3): { id: string; name: string }[] {
+    const t = this.w.teams[side];
+    const out: { id: string; name: string }[] = [];
+    for (let k = 0; k < Math.min(n, t.lineup.length); k++) {
+      const p = t.lineup[(t.batIdx + k) % t.lineup.length]?.player;
+      if (p) out.push({ id: p.info.id, name: p.info.name });
+    }
+    return out;
+  }
+
   getTeams(): { home: Team; away: Team } {
     return { home: this.w.teams.home.team, away: this.w.teams.away.team };
   }
@@ -195,6 +211,19 @@ export class Game {
   /** Internal access for tests and tooling. */
   get _world(): World {
     return this.w;
+  }
+}
+
+/** The umpires and the managers / pitching coaches get their generated names (the snapshot's `name` of those people). */
+function nameOfficials(w: World, info: GameInfo): void {
+  for (const u of w.umpires) {
+    const o = info.umpires.find((x) => x.key === u.key);
+    if (o) u.name = o.name;
+  }
+  for (const s of w.staff) {
+    const m = info.managers[s.team];
+    if (s.role === 'manager') s.name = m.name;
+    else if (s.role === 'pitchcoach') s.name = m.pitchingCoach;
   }
 }
 

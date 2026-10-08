@@ -28,6 +28,11 @@ import { SpeechGate } from './broadcast/gate';
 import type { SpeechEvent } from './captions';
 export type { SpeechEvent, SpeechStartEvent, SpeechEndEvent, SpeechChannel, SpeechSpeaker } from './captions';
 import { ctxFromRaw, type BoothCtx } from './broadcast/ctx';
+import { factsFromGame } from './broadcast/facts';
+import { CAST, speakerLabel, speakerName } from './broadcast/cast';
+import { estimateDuration } from './broadcast/text';
+import { paWelcome } from './cues';
+import { teamInfo } from '../engine/realSimAdapter';
 
 type Phase = 'prePitch' | 'betweenBatters' | 'break';
 import { listenerFromMatrix } from './spatial';
@@ -66,6 +71,8 @@ export interface AudioHost {
     on(cb: (te: { simTime: number; event: { type: string } & Record<string, unknown> }) => void): unknown;
   };
   director?: { shot: string };
+  /** the sky the renderer shows (the opening's weather follows it) */
+  env?: { todName?: string; hdriActive?: boolean };
 }
 
 interface RawBus {
@@ -210,6 +217,7 @@ export class AudioController {
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw, crowdCues: false }); // the crowd model makes the crowd sounds
+    this.initFacts();
     // the engine's camera / graphics events come through the engine's own stream, whichever source the game events use
     host.sim.on((te) => {
       if (FX_EVENT_TYPES.has(te.event.type)) this.cameraEvent(te.event as CameraEvent);
@@ -271,6 +279,41 @@ export class AudioController {
     this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
     this.ui?.voicePanel?.set(voiceManager.status());
     this.interval = setInterval(() => this.tick(), this.lowPower ? 1000 / 15 : 1000 / 30);
+  }
+
+  /** the game's who-and-where for the booth's opening and the PA's welcome (from the sim's teams and `game.info`, and the renderer's sky) */
+  private venueName: string | undefined;
+  private todName(): 'day' | 'dusk' | 'night' {
+    const t = this.host.env?.todName;
+    return t === 'dusk' || t === 'night' ? t : 'day';
+  }
+  private initFacts() {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const game = (this.host.sim.game as any)?.game ?? null;
+      if (!game || !this.raw) return;
+      const tod = this.todName();
+      const teams = game.getTeams?.();
+      const colors = (side: 'home' | 'away') => (teams?.[side] ? teamInfo({ name: teams[side].name, abbrev: teams[side].abbrev }, side === 'home' ? 1 : 0) : undefined);
+      const seed = String(game._world?.cfg?.seed ?? `${teams?.away?.abbrev}-${teams?.home?.abbrev}`);
+      const f = factsFromGame(game, seed, tod, tod === 'day' && !!this.host.env?.hdriActive, colors);
+      if (!f) return;
+      this.venueName = f.venue?.name;
+      // the PA's welcome (0.5 s after gameStart, about 8 % slower than the estimate) plays first
+      const pa = paWelcome({ teams: { home: f.home.name, away: f.away.name }, venue: this.venueName, tod });
+      this.booth.setFacts(f, 0.5 + estimateDuration(pa, 0.92) + 0.8);
+    } catch (e) {
+      console.warn('[audio] no opening facts', e);
+    }
+  }
+
+  /** The cast (names, roles, voices) and the caption label / display name of a speaker role ('pbp' -> 'LYLE' / 'Lyle Pemberton'). */
+  readonly cast = CAST;
+  speakerLabel(speaker: string): string | undefined {
+    return speakerLabel(speaker);
+  }
+  speakerName(speaker: string): string | undefined {
+    return speakerName(speaker);
   }
 
   // ---- HD (neural) voices: the manager (`hd.ts`) owns the download and the engine; a game only plugs its mixer in -------------
@@ -497,6 +540,8 @@ export class AudioController {
       score: { home: st.score.home, away: st.score.away },
       runners: st.runners,
       teams: { home: st.teams.home.name, away: st.teams.away.name },
+      venue: this.venueName,
+      tod: this.todName(),
       catcher: (() => {
         const c = st.players.find((p) => p.role === 'catcher');
         return c ? { x: c.pos.x, y: 0.9, z: c.pos.z - 0.6 } : undefined;
@@ -519,7 +564,8 @@ export class AudioController {
     if (!force && this.bctx && now - this.bctxAt < 250) return this.bctx;
     const rs = this.raw?.getState?.();
     if (!rs) return null;
-    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText, game: (this.host.sim.game as any)?.game });
     this.bctxAt = now;
     return this.bctx;
   }
@@ -702,9 +748,12 @@ export class AudioController {
         this.boothWasSuppressed = suppressed;
         const cc = this.raw ? this.boothCtx() : null;
         if (cc) {
-          this.booth.setLevel(this.music.breakPlaying ? 'low' : this.settings.chatter); // calls only while the break music plays
+          // calls only while the break music plays (a scripted segment still runs: the music ducks under the booth)
+          this.booth.setUserLevel(this.settings.chatter);
+          this.booth.setLevel(this.music.breakPlaying && !this.booth.director.segmentActive ? 'low' : this.settings.chatter);
           this.booth.canTalk = this.phase !== null;
-          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed }));
+          // browser voices cannot overlap: a segment's next turn waits while the PA / umpire speak
+          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed, fieldHold: !this.gate.concurrent && this.gate.busy.field > 0 }));
         }
       }
       this.speech.pump();

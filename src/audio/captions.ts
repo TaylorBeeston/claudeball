@@ -18,6 +18,10 @@ export interface SpeechStartEvent {
   /** the engine's length when it knows it, else an estimate from the words (ms); the real end is `speechEnd` */
   expectedDurationMs: number;
   excited: boolean;
+  /** the speaker's caption label from the cast ('LYLE', 'BISCUIT', 'PA'); absent for the umpires */
+  label?: string;
+  /** the speaker's display name from the cast ('Lyle Pemberton'); absent for the umpires */
+  name?: string;
 }
 
 export interface SpeechEndEvent {

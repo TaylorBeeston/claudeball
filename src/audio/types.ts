@@ -105,6 +105,9 @@ export interface MapCtx {
   score: { home: number; away: number };
   runners: [boolean, boolean, boolean];
   teams: { home: string; away: string };
+  /** the ballpark's name and the time of day (for the PA's welcome), when known */
+  venue?: string;
+  tod?: 'day' | 'dusk' | 'night';
   /** catcher's mitt (glove pops for pitches) and the mound, when known */
   catcher?: Vec3;
   /** sim speed multiplier (1, 2, 4) */

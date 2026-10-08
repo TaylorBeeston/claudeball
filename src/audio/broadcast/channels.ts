@@ -3,8 +3,9 @@
  * `SpeechQueue` on the gate's other view; see `gate.ts`.) Reports back when a voice really finished, applies the excited delivery
  * (faster, higher) and cuts a running line at a clause boundary when told to.
  */
-import type { SpeakHandle, SpeechEngine } from '../speech';
+import { pickVoices, type SpeakHandle, type SpeechEngine, type VoiceChoice } from '../speech';
 import type { Action, StartAction, VoiceId } from './director';
+import { CAST } from './cast';
 
 export interface BoothSinkOpts {
   /** seconds, the same clock the director uses */
@@ -18,7 +19,7 @@ export interface BoothSinkOpts {
 }
 
 /** delivery per voice: the play-by-play a touch quicker, the analyst relaxed; excited lines faster and higher */
-const BASE = { pxp: { rate: 1.04, pitch: 1 }, color: { rate: 1.0, pitch: 1 } } as const;
+const BASE = { pxp: CAST.pbp.voice.delivery, color: CAST.color.voice.delivery } as const;
 const EXCITED = { rate: 1.12, pitch: 1.1, shift: 1.06 };
 
 export class BoothSink {
@@ -34,6 +35,17 @@ export class BoothSink {
       if (a.type === 'start') this.start(a);
       else this.cut(a.voice, a.at);
     }
+  }
+
+  /** browser voices: each booth character keeps one voice for the game (the same picks as the PA queue: two different male-ish voices when there are) */
+  private choice: VoiceChoice | null = null;
+  private browserVoice(role: 'pbp' | 'color'): string | undefined {
+    if (!this.choice?.pbp) {
+      const list = this.engine.voices?.() ?? [];
+      if (!list.length) return undefined;
+      this.choice = pickVoices(list);
+    }
+    return this.choice[role];
   }
 
   private start(a: StartAction) {
@@ -52,7 +64,7 @@ export class BoothSink {
     const role = a.voice === 'pxp' ? 'pbp' : 'color';
     const handle = this.engine.speak(text, {
       role,
-      voiceName: this.engine.voiceFor?.(role),
+      voiceName: this.engine.voiceFor?.(role) ?? this.browserVoice(role),
       pitch: ex ? EXCITED.pitch : d.pitch,
       shift: ex ? EXCITED.shift : 1,
       rate: ex ? EXCITED.rate : d.rate,

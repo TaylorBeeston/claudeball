@@ -94,6 +94,7 @@ export function umpireCallText(kind: string): string | null {
     case 'safe': return 'Safe!';
     case 'out': return 'Out!';
     case 'time': return 'Time!';
+    case 'play_ball': return 'Play ball!';
     default: return null;
   }
 }
@@ -106,6 +107,12 @@ function trimName(n: string) {
 }
 
 /** Team name as spoken: drop a trailing abbreviation-looking token, keep it short. */
+/** the PA announcer's welcome at the start of the pregame (the booth's opening waits for it) */
+export function paWelcome(c: Pick<MapCtx, 'teams' | 'venue' | 'tod'>): string {
+  const hi = c.tod === 'day' ? 'Good afternoon' : c.tod ? 'Good evening' : null;
+  return `${hi ? `${hi}, ladies` : 'Ladies'} and gentlemen, welcome to ${c.venue ?? 'Claudeball'}! ${c.tod === 'day' ? 'Today' : 'Tonight'}, the ${teamSay(c.teams.away)} visit your ${teamSay(c.teams.home)}.`;
+}
+
 function teamSay(s: string) {
   return trimName(s) || 'the visitors';
 }
@@ -198,7 +205,7 @@ export class CueMapper {
     switch (t) {
       case 'gameStart': {
         this.reset();
-        out.push(cue.crowd('roar_med', 2, 0.8), cue.speak('pa', `Ladies and gentlemen, welcome to Claudeball. Tonight, the ${teamSay(c.teams.away)} visit the ${teamSay(c.teams.home)}.`, PRI.pa, 20, 0.5, 1));
+        out.push(cue.crowd('roar_med', 2, 0.8), cue.speak('pa', paWelcome(c), PRI.pa, 20, 0.5, 1));
         out.push({ kind: 'organ', id: 'ditty', imp: 2, delay: 0.2 });
         break;
       }
@@ -319,7 +326,8 @@ export class CueMapper {
         const kind = str(ev.kind);
         const text = umpireCallText(kind);
         const at = vec(ev.pos);
-        if (text) out.push({ ...cue.speak('ump', text, PRI.ump, 1.5, 0.05, 2), pos: at } as Cue);
+        // "Play ball!" waits behind the PA's pitcher / batter announcements (it must be heard: the booth's handoff answers it); live calls go stale fast
+        if (text) out.push({ ...cue.speak('ump', text, PRI.ump, kind === 'play_ball' ? 10 : 1.5, 0.05, 2), pos: at } as Cue);
         // the close play resolves: relief for one side, groans for the other
         if ((kind === 'safe' || kind === 'out') && this.close && num(ev.time) - this.close.t < 4 && num(ev.time) >= this.close.t) {
           const homeWins = kind === 'out' ? !hb : hb; // out: the fielding side wins the play; safe: the batting side

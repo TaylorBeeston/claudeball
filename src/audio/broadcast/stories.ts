@@ -13,10 +13,14 @@ import { isBreaking, isFastball, isHit, isK, isOffspeed, type GameLog } from './
 import { pitchName } from '../commentary';
 import { numWord, ordWord } from './lexicon';
 import type { Topic, TopicTurn, VoiceId } from './director';
+import { CAST } from './cast';
+
+/** how a voice is addressed by his partner (the analyst is mostly "Biscuit", now and then "Hollis") */
+export const addressOf = (v: VoiceId, rng: Rng) => (v === 'pxp' ? CAST.pbp.calledBy[0] : rng() < 0.9 ? CAST.color.calledBy[0] : CAST.color.calledBy[1] ?? CAST.color.calledBy[0]);
 
 type Rng = () => number;
 
-interface Line {
+export interface Line {
   /** A opens the topic, B answers (who is which voice is chosen per topic) */
   who: 'A' | 'B';
   t: string[];
@@ -40,11 +44,13 @@ export interface Story {
   build(rng: Rng, opener: VoiceId): TopicTurn[] | null;
 }
 
-function script(lines: Line[], slots: Slots, rng: Rng, opener: VoiceId): TopicTurn[] | null {
+export function script(lines: Line[], slots: Slots, rng: Rng, opener: VoiceId): TopicTurn[] | null {
   const other: VoiceId = opener === 'pxp' ? 'color' : 'pxp';
   const turns: TopicTurn[] = [];
   for (const l of lines) {
-    const text = say(l.t, slots, rng);
+    const me: VoiceId = l.who === 'A' ? opener : other;
+    // $other: what this speaker calls his partner (the cast's names), $me: his own first name
+    const text = say(l.t, { ...slots, other: addressOf(me === 'pxp' ? 'color' : 'pxp', rng), me: me === 'pxp' ? CAST.pbp.first : CAST.color.first }, rng);
     if (!text) {
       if (l.opt) continue;
       return null;
@@ -237,7 +243,7 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
     const pr = pit?.ratings;
     if (pr?.control && pr.control >= 65) {
       add({ id: 'controlGrade', key: `ctl:${pid}`, salience: 0.35, relevance: 0.3, opener: 'color', build: (rng, o) => script([
-        { who: 'A', t: ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p, and it {shows|has shown} tonight.'] },
+        { who: 'A', t: mix.total >= 20 ? ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p, and it {shows|has shown} tonight.'] : ['$p has a $g grade on command, so expect the {corners|edges}.', '$g-grade control for $p. He lives on the edges.'] },
         { who: 'B', t: ['That is why the walks are {rare|so few}.', 'Painting the corners.', 'That is why he does not walk many.'], opt: true },
       ], { ...S, g: grade(pr.control) }, rng, o) });
     }
@@ -390,7 +396,7 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
   if (bat && pit && bat.hand && pit.hand && bat.hand !== 'S' && pit.hand !== 'S' && bat.hand === pit.hand) {
     add({ id: 'sameHand', key: `hand:${bat.hand}${pit.hand}:${c.inning}`, salience: 0.22, relevance: 0.4, opener: 'color', build: (rng, o) => script([
       { who: 'A', t: ['$h against $h2 here.', 'It is $h on $h2 in this matchup.'] },
-      { who: 'B', t: ['That {usually|tends to} {favors|helps} the pitcher.', '{The break|The angle} {works|plays} for $p.'], opt: true },
+      { who: 'B', t: ['That {usually favors|tends to favor|helps} the pitcher.', '{The break|The angle} {works|plays} for $p.'], opt: true },
     ], { ...S, h: bat.hand === 'L' ? 'lefty' : 'righty', h2: bat.hand === 'L' ? 'lefty' : 'righty' }, rng, o) });
   }
   return stories;
@@ -400,12 +406,13 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
 export function neutralStories(c: BoothCtx): Story[] {
   const S = slotsOf(c);
   const out: Story[] = [];
-  const add = (id: string, lines: Line[], ok = true, tense = false) => ok && out.push({ id, key: `n:${id}`, salience: 0.1, relevance: 0.2, tense, opener: 'either', build: (rng, o) => script(lines, S, rng, o) });
-  add('n.inning', [{ who: 'A', t: ['We are in the $half of the $ord.', 'It is the $half of the $ord inning.'] }, { who: 'B', t: ['Plenty of baseball left.', 'Still a lot of game ahead.'], opt: true }], c.inning <= 6);
-  add('n.score', [{ who: 'A', t: ['It is $score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['A game that is still up for grabs.', 'Anybody\'s ballgame.', 'Nothing decided yet.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2);
-  add('n.tied', [{ who: 'A', t: ['All tied up at $tiescore.', 'Tied at $tiescore.'] }, { who: 'B', t: ['And the next run could matter a lot.', 'Somebody is going to have to break it open.'], opt: true }], c.score.home === c.score.away);
+  // the score fillers (score, tied, lead) say the same fact: one of them per score and inning
+  const add = (id: string, lines: Line[], ok = true, tense = false) => ok && out.push({ id, key: /^n\.(score|tied|lead)$/.test(id) ? `n:score:${c.score.away}-${c.score.home}:${c.inning}` : `n:${id}`, salience: 0.1, relevance: 0.2, tense, opener: 'either', build: (rng, o) => script(lines, S, rng, o) });
+  add('n.inning', [{ who: 'A', t: ['We are in the $half of the $ord.', 'It is the $half of the $ord inning.'] }, { who: 'B', t: ['Plenty of baseball left.', 'Still a lot of game ahead.'], opt: true }], c.inning >= 2 && c.inning <= 6);
+  add('n.score', [{ who: 'A', t: ['It is $score in the $ord.', 'The score: $score.'] }, { who: 'B', t: ['A game that is still up for grabs.', 'Anybody\'s ballgame.', 'Nothing decided yet.'], opt: true }], Math.abs(c.score.home - c.score.away) <= 2 && c.score.home + c.score.away > 0);
+  add('n.tied', [{ who: 'A', t: ['All tied up at $tiescore.', 'Tied at $tiescore.'] }, { who: 'B', t: ['And the next run could matter a lot.', 'Every run counts double in a tie game, $other.'], opt: true }], c.score.home === c.score.away && c.score.home > 0 && c.inning >= 4);
   add('n.lead', [{ who: 'A', t: ['$lead lead by $diffw.', '$lead are up $diffw.'] }, { who: 'B', t: ['Not a safe margin.', 'That can disappear in a hurry.', 'One swing changes that.'], opt: true }], S.lead !== undefined && Number(S.diff) > 0 && Number(S.diff) <= 3);
-  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : c.outs === 1 ? ['One out.', 'One down, two to go.'] : ['Nobody out yet.', 'No outs so far this half.'] }]);
+  add('n.outs', [{ who: 'A', t: c.outs === 2 ? ['Two out, and the pressure is on.', 'Two outs here.'] : ['One out.', 'One down, two to go.'] }], c.outs > 0);
   return out;
 }
 
@@ -425,8 +432,22 @@ export class TopicPicker {
   private seq = 1;
   constructor(private rng: Rng, private cfg: PickerCfg = { maxNeutralInRow: 3 }) {}
 
-  next(log: GameLog, c: BoothCtx, tenseMoment: boolean): Topic | null {
-    const stories = collectStories(log, c).filter((s) => !this.used.has(s.key));
+  /**
+   * `extra`: stories the booth adds (callbacks, running jokes, long-lull talk, second-guessing a move); `maxTurns`: longer exchanges in long lulls;
+   * `fresh(text)`: false for a line said recently (the story is rebuilt with other words, or skipped).
+   */
+  next(log: GameLog, c: BoothCtx, tenseMoment: boolean, o: { extra?: Story[]; maxTurns?: number; fresh?: (text: string) => boolean } = {}): Topic | null {
+    this.maxTurns = o.maxTurns ?? 4;
+    this.names = new Set(Object.values(slotsOf(c)).filter((v): v is string => typeof v === 'string').flatMap((v) => v.split(/[\s,]+/)).filter((w) => /^[A-Z][a-z]/.test(w)));
+    const fresh = o.fresh ?? (() => true);
+    const build = (s: Story, opener: VoiceId) => {
+      for (let k = 0; k < 3; k++) {
+        const turns = s.build(this.rng, opener);
+        if (!turns || turns.every((x) => fresh(x.text))) return turns;
+      }
+      return null;
+    };
+    const stories = [...collectStories(log, c), ...(o.extra ?? [])].filter((s) => !this.used.has(s.key));
     const scored = stories.map((s) => {
       const novelty = this.recentIds.includes(s.id) ? 0 : 0.3 - Math.min(0.3, this.recentIds.filter((x) => x === s.id).length * 0.1);
       const tenseFit = tenseMoment ? (s.tense ? 0.15 : -0.1) : s.tense ? -0.05 : 0.05;
@@ -435,7 +456,7 @@ export class TopicPicker {
     scored.sort((a, b) => b.score - a.score);
     for (const { s } of scored) {
       const opener: VoiceId = s.opener === 'either' || !s.opener ? (this.rng() < 0.5 ? 'pxp' : 'color') : s.opener;
-      const turns = s.build(this.rng, opener);
+      const turns = build(s, opener);
       if (turns && turns.length) return this.take(s, turns, false);
     }
     // nothing interesting: a neutral line (rarely, and never too many in a row)
@@ -444,24 +465,60 @@ export class TopicPicker {
       return null;
     }
     if (this.rng() > 0.4) return null; // fillers are rare
-    const neutral = neutralStories(c).filter((s) => !this.recentIds.slice(-6).includes(s.id));
+    const neutral = neutralStories(c).filter((s) => !this.recentIds.slice(-6).includes(s.id) && !this.used.has(s.key));
     while (neutral.length) {
       const i = Math.floor(this.rng() * neutral.length);
       const s = neutral.splice(i, 1)[0];
       const opener: VoiceId = this.rng() < 0.5 ? 'pxp' : 'color';
-      const turns = s.build(this.rng, opener);
+      const turns = build(s, opener);
       if (turns && turns.length) return this.take(s, turns, true);
     }
     return null;
   }
 
+  private maxTurns = 4;
+  /** proper names of the moment (players, clubs): they keep their capital after "Well, Lyle, ..." */
+  private names = new Set<string>();
+  /** topics since the last time one voice called the other by name */
+  private sinceAddress = 0;
+
   private take(s: Story, turns: TopicTurn[], neutral: boolean): Topic {
-    if (!neutral) this.used.set(s.key, 1);
+    if (!neutral || s.key.startsWith('n:score:')) this.used.set(s.key, 1);
     this.neutralInRow = neutral ? this.neutralInRow + 1 : 0;
     this.recentIds.push(s.id);
     if (this.recentIds.length > 40) this.recentIds.shift();
-    // a short exchange: at most 4 turns
-    return { id: this.seq++, tag: s.id, turns: turns.slice(0, 4) };
+    // a short exchange (longer in a long lull)
+    return { id: this.seq++, tag: s.id, turns: this.address(turns.slice(0, this.maxTurns)) };
+  }
+
+  /**
+   * Now and then (not more than every third topic) a question is put to the partner by name ("..., Biscuit?") and the answer starts with his name
+   * ("Well, Lyle, ..."), like two people who have worked together for years. Lines that already name the partner are left alone.
+   */
+  private address(turns: TopicTurn[]): TopicTurn[] {
+    this.sinceAddress++;
+    if (turns.length < 2 || this.sinceAddress < 4 || this.rng() > 0.35) return turns;
+    const out = turns.map((t) => ({ ...t }));
+    const named = (t: TopicTurn) => CAST.pbp.calledBy.concat(CAST.color.calledBy).some((n) => t.text.includes(n));
+    if (out.some(named)) return turns;
+    const q = out.findIndex((t, i) => i < out.length - 1 && /\?$/.test(t.text) && out[i + 1].speaker !== t.speaker);
+    if (q >= 0) {
+      const to = addressOf(out[q].speaker === 'pxp' ? 'color' : 'pxp', this.rng);
+      out[q].text = out[q].text.replace(/\?$/, `, ${to}?`);
+    } else {
+      // the answer (second turn, a real one: six words or more) opens with the partner's name
+      const a = out[1];
+      if (a.text.split(/\s+/).length < 6) return turns;
+      const to = addressOf(a.speaker === 'pxp' ? 'color' : 'pxp', this.rng);
+      const first = (a.text.split(/\s+/)[0] ?? '').replace(/[^A-Za-z']/g, '');
+      if (/^(Agreed|Right|Exactly|Yes|Yeah|Well)$/.test(first)) return turns;
+      const no = /^(Not|No|Nope)$/.test(first);
+      // a name keeps its capital (the players and clubs of this moment), anything else is lowercased
+      const keepCap = /^(I|I'm|I'd|I'll|I've)$/.test(first) || this.names.has(first);
+      a.text = `${no || this.rng() < 0.5 ? 'Well' : 'Yeah'}, ${to}, ${keepCap ? a.text : a.text.charAt(0).toLowerCase() + a.text.slice(1)}`;
+    }
+    this.sinceAddress = 0;
+    return out;
   }
 
   reset() {
