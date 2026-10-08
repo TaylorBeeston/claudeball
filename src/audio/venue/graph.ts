@@ -48,7 +48,7 @@ export interface Played {
 }
 
 /** loudness trims of the park's source families into the mic array (set by measurement, see the README's tuning guide) */
-export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 0.85, pa: 0.5, ump: 0.55 };
+export const TRIM = { sfx: 1.6, crowd: 0.38, bed: 0.85, pa: 0.5, ump: 0.55 };
 
 const dbToGain = (d: number) => Math.pow(10, d / 20);
 

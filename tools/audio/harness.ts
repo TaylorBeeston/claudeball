@@ -32,7 +32,7 @@ export interface RenderOpts {
   /** extra hooks (the IR / mic stems) */
   probe?: 'ir' | null;
   /** the scene: 'game' (default), 'impulse' (one click at the plate, for the venue response), 'duck' (steady bed + booth line) */
-  scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise';
+  scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise' | 'montage';
   lowPower?: boolean;
   /** profiling: build without parts of the graph */
   debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noBeds?: boolean; noShots?: boolean; linearShapers?: boolean };
@@ -120,7 +120,7 @@ const crowdCtx = (half: 'top' | 'bottom' = 'bottom'): CrowdCtx => ({ inning: 7, 
 export async function render(o: RenderOpts = {}): Promise<RenderOut> {
   const sr = o.sr ?? 48000;
   const scene = o.scene ?? 'game';
-  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : scene === 'pa-noise' ? 6 : 34);
+  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : scene === 'pa-noise' ? 6 : scene === 'montage' ? 46 : 34);
   const parts = { organ: true, crowd: true, sfx: true, pa: true, booth: true, ...(o.parts ?? {}) };
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(sr * seconds), sampleRate: sr });
   // the production code only plays into a running context; an offline one is 'suspended' between steps
@@ -222,6 +222,70 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
     parts.crowd = false;
   } else if (scene === 'duck') {
     script.push([5.0, () => parts.booth && say('pbp', 'And that ball is gone.')]);
+  } else if (scene === 'montage') {
+    // the foley through the mic array: every catch, the bat, the ball on things, the rituals (the crowd a quiet bed under it)
+    const C = { x: 0, y: 0.8, z: -1.1 }; // the catcher's mitt
+    const F1 = { x: -19.4, y: 1.1, z: 19.4 }, SS = { x: 9, y: 0.4, z: 32 }, CF = { x: 4, y: 2.2, z: 95 }, LF = { x: 40, y: 1.8, z: 80 };
+    const at = (t: number, id: string, pos: { x: number; y: number; z: number }, o: Record<string, number> = {}) => script.push([t, () => sfx({ id: id as Sfx['id'], pos, gain: 0.8, ...o })]);
+    let t = 0.6;
+    // four pitches, slow to fast: the mitt pop grows; one in the dirt (blocked), one framed on the corner
+    for (const [b, mph] of [[0, 76], [1, 85], [2, 92], [3, 99]]) {
+      at(t, 'pitch_whoosh', { x: 0, y: 1, z: 1.2 }, { bucket: mph >= 88 ? 1 : 0, gain: 0.5 });
+      at(t + 0.07, 'mitt_pop', C, { bucket: b, gain: 0.75 + 0.1 * b });
+      t += 1.6;
+    }
+    at(t, 'mitt_block', C);
+    t += 1.4;
+    at(t, 'mitt_pop', C, { bucket: 2 });
+    at(t + 0.12, 'mitt_creak', C, { gain: 0.5 });
+    t += 1.8;
+    // contact: sweet spot, solid, ordinary, jammed, off the end, foul tip, bunt; the bat dropped
+    for (const [id, b] of [['bat_crack', 2], ['bat_crack', 1], ['bat_crack', 0], ['bat_thud', 0], ['bat_thud', 1], ['bat_tick', 0], ['bunt_tap', 0]] as [string, number][]) {
+      at(t, id, { x: 0.3, y: 0.9, z: 0.3 }, { bucket: b, gain: 0.95 });
+      t += 1.3;
+    }
+    at(t, 'bat_drop', { x: -0.6, y: 0.1, z: 0.5 }, { gain: 0.6 });
+    t += 1.6;
+    // a grounder to short: bounces on the grass and the dirt, the scoop, the transfer, the throw, the first baseman
+    at(t, 'ground_bounce', { x: 4, y: 0.1, z: 14 }, { bucket: 1 });
+    at(t + 0.45, 'dirt_thud', { x: 8, y: 0.1, z: 27 }, { bucket: 0 });
+    at(t + 0.75, 'glove_pop', SS, { bucket: 4 });
+    at(t + 1.0, 'glove_transfer', SS, { gain: 0.7 });
+    at(t + 1.3, 'throw_whip', SS, { bucket: 2 });
+    at(t + 1.95, 'glove_pop', F1, { bucket: 1 });
+    at(t + 2.0, 'base_thud', { x: -19.4, y: 0.1, z: 19.4 }, { bucket: 0 });
+    t += 3.4;
+    // a line drive caught, a ball in the webbing, a bare-hand smack, a soft return to the pitcher
+    at(t, 'glove_pop', { x: -10, y: 1.4, z: 30 }, { bucket: 2 });
+    at(t + 1.3, 'glove_pop', { x: 12, y: 1.0, z: 28 }, { bucket: 5 });
+    at(t + 2.4, 'bare_smack', { x: 17, y: 0.6, z: 20 });
+    at(t + 3.4, 'throw_whip', C, { bucket: 0, gain: 0.5 });
+    at(t + 4.1, 'glove_pop', { x: 0, y: 1.3, z: 17 }, { bucket: 0, gain: 0.6 });
+    t += 5.2;
+    // a fly to centre (the outfield thwup), off the left-field wall, the warning track, the top rail
+    at(t, 'glove_pop', CF, { bucket: 3 });
+    at(t + 1.4, 'dirt_thud', { x: 36, y: 0.1, z: 92 }, { bucket: 1 });
+    at(t + 1.9, 'wall_thud', { x: 40, y: 1.2, z: 96 }, { bucket: 1 });
+    at(t + 3.1, 'wall_thud', LF, { bucket: 0 });
+    at(t + 4.2, 'fence_rattle', { x: 30, y: 2.3, z: 108 }, { gain: 0.6 });
+    t += 5.4;
+    // a tag on the slide at second, a missed tag, hit by pitch, a wild pitch to the backstop, a foul into the seats
+    at(t, 'slide_scuff', { x: 0.5, y: 0.2, z: 37.5 }, { bucket: 0 });
+    at(t + 0.35, 'tag_slap', { x: 0, y: 0.5, z: 38.5 });
+    at(t + 1.6, 'tag_miss', { x: 19, y: 0.8, z: 19 });
+    at(t + 2.6, 'body_thump', { x: 0.8, y: 1.1, z: 0.3 });
+    at(t + 3.8, 'backstop_bang', { x: 1, y: 0.6, z: -20.3 });
+    at(t + 5.0, 'seat_thump', { x: 40, y: 7, z: 10 });
+    at(t + 5.2, 'seat_scramble', { x: 40, y: 7, z: 10 });
+    t += 6.8;
+    // rituals: Velcro, a helmet tap, the spikes, the rosin bag, the pouch, the umpire's gear
+    at(t, 'velcro', { x: 0.9, y: 1.2, z: 0.3 });
+    at(t + 0.9, 'helmet_tap', { x: 0.9, y: 1.75, z: 0.3 });
+    at(t + 1.6, 'bat_tap', { x: 0.9, y: 0.2, z: 0.3 });
+    at(t + 2.6, 'rosin_poof', { x: 0.6, y: 0.3, z: 17.5 });
+    at(t + 3.5, 'pouch', { x: 0, y: 1, z: -1.6 });
+    at(t + 4.2, 'ump_gear', { x: 0, y: 1.5, z: -1.6 });
+    at(t + 5.0, 'rail_thump', { x: 18.7, y: 0.8, z: 2.5 });
   } else if (scene === 'pa-noise') {
     // the PA system's transfer: white noise into the PA voice input, the speakers' feed (before the air and the mics) to the output
     parts.crowd = false;

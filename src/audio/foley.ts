@@ -188,8 +188,8 @@ export function level(x: Float32Array, db: number): Rendered {
 /** a wooden bat's bending / shell modes (Hz) and how long each rings */
 const WOOD: Mode[] = [
   [175, 1, 0.02],
-  [615, 1, 0.012],
-  [1240, 1, 0.007],
+  [615, 1, 0.018],
+  [1240, 1, 0.011],
   [2060, 1, 0.005],
   [3100, 1, 0.003],
 ];
@@ -208,7 +208,7 @@ export function batCrack(b: number, _a: number, r: Rand): Rendered {
   const amps = [0.4 - 0.3 * p, 0.55 - 0.15 * p, 0.5 + 0.1 * p, 0.4 + 0.15 * p, 0.3 + 0.15 * p];
   modal(o, WOOD.map(([f, , t], i) => [f, amps[i], t] as Mode), { pitch, decay: vary(r, 0.15) });
   thump(o, { f0: 320, f1: 170, pitchTau: 0.006, tau: 0.01, amp: 0.2 }); // the ball's compression
-  burst(o, r, { t0: 0.002, tau: 0.018, amp: 0.18, bp: 900, q: 0.6 }); // a little air
+  burst(o, r, { t0: 0.002, attack: 0.003, tau: 0.03, amp: 0.35, bp: 1100, q: 0.6 }); // the crack's body in the air
   return level(o, ([-12.5, -10, -8][b] ?? -10) - HEADROOM);
 }
 
@@ -298,7 +298,7 @@ export function mittPop(b: number, _a: number, r: Rand): Rendered {
   const decay = vary(r, 0.15);
   burst(o, r, { tau: 0.0009, amp: 1.3 + 0.5 * p, hp: 2200 }); // the leather crack
   burst(o, r, { t0: 0.0012 + 0.001 * r(), tau: 0.0005, amp: 0.6 + 0.2 * p, bp: 7000 * pitch, q: 1.5 }); // the laces' paper snap
-  burst(o, r, { tau: 0.005 + 0.002 * (1 - p), amp: 1.5, hp: 700, lp: 6000 }); // the pocket slapping shut on the ball
+  burst(o, r, { tau: 0.007 + 0.002 * (1 - p), amp: 1.5, hp: 700, lp: 6000 }); // the pocket slapping shut on the ball
   burst(o, r, { tau: 0.004, amp: 1, bp: 2600 * pitch, q: 0.9 });
   modal(o, [[340, 0.55, 0.012], [520, 0.45, 0.009], [690, 0.35, 0.007], [1050, 0.25, 0.005]], { pitch, decay });
   thump(o, { f0: 150 + 20 * p, f1: 82, pitchTau: 0.01, tau: 0.02 + 0.015 * p, amp: 0.14 + 0.36 * p });

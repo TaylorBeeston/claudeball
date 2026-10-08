@@ -298,6 +298,21 @@ desktop graph is ~6 % of one core, the phone graph ~2x the old cost; all of it o
 change (`tools/audio/live.ts`: median 0.10 -> 0.11 ms on desktop, 0.43 -> 0.35 ms with 4x CPU throttling + low power). Renders repeat
 to within 3e-5 (about -91 dBFS; the crowd beds' first moments differ between runs: not bit-exact, cause not found).
 
+## Foley (`foley.ts`, `field.ts`)
+
+The field's sounds are physically modelled recipes (pure, deterministic per seed): `modal()` damped resonances (wood damped hard: no
+metallic ring; dead leather; plastic; metal), `burst()` shaped noise for transients and puffs, `grains()` friction textures (dirt skitter,
+cleat crunch, Velcro, cloth, chain link), `zip()` objects through the air (Doppler sweep, seam flutter). `level()` sets each to a target
+loudness (loudest 25 ms RMS, 6 dB of headroom under its nominal) and trims silence. `SFX_DEFS` (`synth.ts`) lists buckets (the physical
+case) and alts (variations: pitch, decay, noise seed); the mixer renders the bank once at unlock (142 variants, 6.4 MB mono float32 at
+48 kHz, ~0.4-0.7 s of synthesis in 6 ms slices; phones keep 2 variants per sound), plays them in rotation (never the same twice in a row)
+with +-0.7 semitone and +-1 dB jitter. `field.ts`: the surface under a point (grass, infield dirt, mound, plate, warning track), the fence
+by direction (the sim's `DEFAULT_FENCE`), and where a foul fly lands (the sim stops a foul when it is called). The mapping is in `cues.ts`
+(events) and `index.ts` (`frameCues`: bounces, slides, cleats, the glove-to-hand transfer, the backstop). `npx tsx tools/audio/foley.ts`
+measures every variant (attack, decay, centroid, loudness, peak) and writes WAVs; `render.ts --scenes montage` plays them all through the
+mics. Levels: the crack and the mitt sit near the master limiter's threshold on purpose (sharp transients over the crowd, no pumping);
+`TRIM.sfx` (graph.ts) moves the whole field.
+
 ## HD voices (optional neural speech)
 
 `hd.ts` is a manager that outlives games: download, progress, cache check and a *Preview voices* button work from the title menu before any game or `AudioContext` exists (an `AudioBuffer` belongs to no context; the preview makes its own mixer on the click), and a new game just rebinds its mixer, so the model is not reloaded or re-downloaded. Clause-by-clause synthesis for the booth (the first clause plays sooner, a cut happens exactly at a clause), one generation job at a time in priority order (a spoken line > the next queued line > background warm-up of the umpire's calls), concurrent playback for the channels.

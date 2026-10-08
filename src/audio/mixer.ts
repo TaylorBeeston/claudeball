@@ -330,7 +330,7 @@ export class Mixer {
     for (const id of new Set(order)) {
       const d = SFX_DEFS[id];
       for (let b = 0; b < d.buckets; b++)
-        for (let a = 0; a < d.alts; a++)
+        for (let a = 0; a < this.altsOf(id); a++)
           jobs.push(() => {
             const list = this.buffers.get(id) ?? [];
             // park sounds go into mono mic strips: mono at the context's rate (no resampling per copy on the audio thread); the
@@ -398,6 +398,14 @@ export class Mixer {
   }
 
   // ---- playing -------------------------------------------------------------------------------------------------------
+
+  private lastAlt = new Map<string, number>();
+
+  /** variants kept per sound: phones keep two (less memory and boot time), broadcast stings all */
+  private altsOf(id: SfxId): number {
+    const d = SFX_DEFS[id];
+    return this.lowPower && !id.startsWith('bfx_') ? Math.min(2, d.alts) : d.alts;
+  }
 
   private allow(id: string, now: number): boolean {
     const gap = MIN_GAP[id];
@@ -475,7 +483,12 @@ export class Mixer {
     const fx = c.id.startsWith('bfx_') || c.id === 'replay_whoosh';
     if (this.paused && !fx) return false;
     const bucket = Math.min(def.buckets - 1, Math.max(0, c.bucket ?? 0));
-    const alt = Math.floor(this.rnd() * def.alts);
+    // round robin over the variants (never the same one twice in a row), so repeats of a sound never sound identical
+    const n = this.altsOf(c.id);
+    const key = `${c.id}:${bucket}`;
+    const prev = this.lastAlt.get(key) ?? -1;
+    const alt = n > 1 ? (prev + 1 + Math.floor(this.rnd() * (n - 1))) % n : 0;
+    this.lastAlt.set(key, alt);
     const buffer = list[bucket * def.alts + alt] ?? list.find(Boolean);
     if (!buffer) return false;
     this.prune(this.voices, now);
@@ -484,7 +497,8 @@ export class Mixer {
       return false;
     }
     // one buffer, one rate for every copy (the copies are the same sound at different mics)
-    const jitter = 0.96 + this.rnd() * 0.08;
+    const jitter = 0.96 + this.rnd() * 0.08; // +-0.7 semitone
+    const vol = 0.89 + this.rnd() * 0.22; // +-1 dB
     const slow = this.replay && !fx ? 0.6 : 1;
     const rate = (c.rate ?? 1) * jitter * slow;
     const when = now + Math.max(0, c.delay ?? 0);
@@ -492,8 +506,8 @@ export class Mixer {
     let r: Played;
     if (fx) r = this.single(buffer, Math.min(1.5, c.gain ?? 1), rate, when, this.fxBus);
     else if (c.id === 'pa_click') r = this.single(buffer, (c.gain ?? 1) * 2, rate, when, this.paBus);
-    else if (this.replay) r = this.single(buffer, Math.min(1.5, (c.gain ?? 1) * s.sfx * s.sfx * 0.6), rate, when, g.replayBus);
-    else r = g.playAt(buffer, (c.pos as Vec3 | undefined) ?? DEFAULT_POS, Math.min(1.5, c.gain ?? 1) * s.sfx * s.sfx * TRIM.sfx, when, rate);
+    else if (this.replay) r = this.single(buffer, Math.min(1.5, (c.gain ?? 1) * vol) * s.sfx * s.sfx * 0.6 * TRIM.sfx, rate, when, g.replayBus);
+    else r = g.playAt(buffer, (c.pos as Vec3 | undefined) ?? DEFAULT_POS, Math.min(1.5, (c.gain ?? 1) * vol) * s.sfx * s.sfx * TRIM.sfx, when, rate);
     if (!r.srcs.length) return false;
     this.track(this.voices, { srcs: r.srcs, nodes: r.nodes, id: c.id, imp: c.imp, start: now, left: r.srcs.length, end: r.end });
     this.played[c.id] = (this.played[c.id] ?? 0) + 1;
