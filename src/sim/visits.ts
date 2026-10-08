@@ -6,6 +6,7 @@
  * the score, runners in scoring position), decided with `aiRng`; how long people talk is show (`propRng`).
  */
 import { emit } from './events';
+import * as clock from './clock';
 import { BASE_POS } from './field';
 import { MOUND_DIST } from './field';
 import { clamp } from './math';
@@ -76,7 +77,7 @@ function maybeStartVisit(w: World): boolean {
   const t = w.fieldingTeam;
   const side = t.side;
   const P = w.pitcher;
-  if (w.visits[side] >= 4 || w.change || w.review) return false;
+  if (w.change || w.review) return false;
   const pitches = teamPitches(t);
   if (pitches - w.visits.lastPitchNo[side] < 14) return false;
   const on = w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead);
@@ -88,6 +89,12 @@ function maybeStartVisit(w: World): boolean {
   const walked = /walk/.test(w.lastPlay) && on.length >= 2;
   const p = 0.002 + 0.08 * P.rattle * P.rattle + (loaded ? 0.012 : 0) + (risp && w.outs === 2 && late && close ? 0.01 : 0) + (w.inningRuns >= 2 ? 0.01 : 0) + (walked ? 0.012 : 0) + 0.014 * clamp(fatigue, 0, 1);
   if (w.aiRng.next() >= p) return false;
+  if (clock.visitsLeft(w, side) <= 0) {
+    // out of mound visits (five a game): the catcher starts out and the plate umpire sends him back
+    w.visits.lastPitchNo[side] = pitches;
+    emit(w, { type: 'timeDenied', by: 'catcher', playerId: w.catcher.info.id, reason: 'noMoundVisits', team: side });
+    return false;
+  }
   // why, and who goes
   const purpose: MoundVisitPurpose = walked ? 'walks' : P.rattle > 0.5 ? 'rattled' : fatigue > 0.4 ? 'pitchCount' : loaded || risp ? 'scoringPosition' : late && close ? 'keyAtBat' : 'trouble';
   const x = w.aiRng.next();
@@ -119,8 +126,9 @@ function maybeStartVisit(w: World): boolean {
   w.visits[side]++;
   w.visits.lastPitchNo[side] = pitches;
   w.visit = v;
-  // time is called; the umpire grants it
+  // time is called; the umpire grants it (the pitch clock stops: it starts over after the visit)
   scheduleCall(w, 'plate', 'time', 0.1);
+  clock.pauseClock(w);
   const sp = walkSpeed(w, 1.7);
   if (v.visitorP) walkTo(w, v.visitorP, moundVisitor.x, moundVisitor.z, walkSpeed(w, 2.0));
   if (v.visitorS) {
@@ -208,6 +216,7 @@ function tickVisit(w: World): boolean {
         emit(w, { type: 'moundVisitEnd', by: v.by, team: side });
         w.visit = null;
         clearLull(w);
+        clock.resetClock(w, 'moundVisit');
         return true;
       }
       break;
@@ -323,6 +332,7 @@ export function changeTick(w: World): boolean {
       np.after = null;
       emit(w, { type: 'pitchingChangeStart', team: side, outId: P.info.id, inId: np.info.id, managerId: m.id });
       setLull(w, 'pitchingChange', 'pitchingChange', 75 * lullScale(w) + 20);
+      clock.showClock(w, 'pitchingChange', (75 * lullScale(w) + 20) / clock.clockScale(w));
       scheduleCall(w, 'plate', 'time', 0.2);
       break;
     }

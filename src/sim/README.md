@@ -461,27 +461,32 @@ before. `ritual` durations (waiting parts of the batter / pitcher routines) are 
 What is decided (steps out, calls time, shakes off, steps off the rubber, who goes to the mound, whether a manager challenges) comes from the state and `aiRng`; what is only show (how long, how many warm-up swings)
 from `propRng`, which nothing in the physics or the decisions reads. Same seed + same tempo = the same game.
 
-**Measured** (`npm run sim -- 40 1 1 <tempo>`, 8 seeds x 40 games; pitch-to-pitch = release to release inside a plate appearance, medians):
+**Measured** under the pitch clock (`npx tsx scripts/pitchclock.ts 8 <seed> <tempo>`, 9 innings; broadcast: seeds 1-4 x 8 games, standard / quick: 8 games;
+pitch-to-pitch = release to release inside a plate appearance, medians):
 | | quick | standard | broadcast |
 |---|---|---|---|
-| nobody on | 7.3 s | 13.5 s | 15.7 s (p10 12.7, p90 39 after a foul / a ball in play) |
-| runners on | 7.2 s | 15.8 s | 22.2 s |
-| mean half-inning (3 outs) | 4.0 min | 6.6 min | 7.5 min |
-| a 9-inning game | 73 min | 116-126 min | 134-144 min |
+| nobody on | 6.8 s | 10.5 s | 14.0-14.9 s (p10 12.1, p90 17-18) |
+| runners on | 6.6 s | 12.0 s | 16.6-17.7 s (p90 20-22) |
+| clock used at the delivery (15 s / 18 s timer) | 2-5 s | 6-10 s | 11.0 / 13.7 s (betweenBatters 30 s: 18.6) |
+| a 9-inning game | 62 min | 81 min | 106-122 min (median; 90-150) |
+| clock violations per game | 0 | 0 | 0.19 (pitcher 0.125, batter 0.09) |
 | inning break | 6-15 s | 16-36 s | 26-60 s |
-League line is unchanged by tempo: AVG .247 / .243 / .245, K% 23.4 / 23.2 / 23.4, BABIP .300 / .294 / .301, R/G 4.63 / 4.67 / 4.56, pitches per PA 3.63 / 3.65 / 3.63.
+Before the clock the broadcast median was 16.3 / 19.9 s with a p90 of 39-42 s and a 173-minute game: the routine also froze for up to 25 s whenever the batter stepped
+out (the readiness wait stopped the routine he was stepping out in; fixed). The game is shorter than MLB's ~2h40 because the sim's inning breaks (26-60 s, MLB 2:15) and
+pitching changes (~75-100 s) are compressed; between pitches it is at MLB's pace. League line: `pace: 0` games are bit-for-bit unchanged (event hashes of seeds 1-8);
+at pace > 0 the line holds across tempos (`tempo.test.ts`).
 
 **Between pitches** (`tempo.ts`, run once the pitch is chosen; two lanes in parallel, then the stages in order): the batter on the first pitch of his turn takes 1-2 practice swings (`batter_practice_swing`,
 1.2 s), adjusts (`batter_adjust`: his habit `PlayerSnapshot.tic` = `tap_plate | adjust_helmet | rock_bat | stretch`, fixed by his appearance seed) and digs in (`batter_step_in`); between pitches he steps out
 (`batter_step_out` -> `batter_adjust` -> `batter_step_in`, 3-8 s, to 1.95 m off the plate) with a probability from foul balls, two strikes, the count of pitches and his `consistency`, or calls time (event
-`timeCalled {by: 'batter'|'catcher'|'pitcher', playerId}`, the plate umpire's `ump_time`). The pitcher works (`pitcher_rosin` 2 s, `pitcher_adjust` 1.4 s, a step off the rubber `pitcher_step_off` after a pickoff
+`timeCalled {by: 'batter'|'catcher'|'pitcher', playerId}`, the plate umpire's `ump_time`; one batter time-out per plate appearance, the defense's counts as a disengagement: see *The pitch clock*). The pitcher works (`pitcher_rosin` 2 s, `pitcher_adjust` 1.4 s, a step off the rubber `pitcher_step_off` after a pickoff
 throw / a foul / a runner, then back), the time scaled by his `delivery.tempo`, his rattle and the runners; the catcher sometimes signals the infield (`catcher_signal_infield`); then **the signs**:
 `catcher_signs` 1.2-2.4 s (a runner on second: +1 s and a decoyed 4-number sequence), event `signsGiven {catcherId, pitcherId, pitchType, complex, seq, reshown?}` where `seq` follows the pitch chosen
 **before** the signs (the pitch-choice decision; `PitchRequest.shookOff` is set on the second one). He may **shake off** (`pitcher_shake_off` 1.3 s, event `shakeOff {pitcherId, catcherId, rejected}`: 3 % + rattle +
 composure + a call that is not one of his better pitches, about 7 % overall): a second pitch decision refusing that type, new signs (`reshown: true`), then `pitcher_nod`, `pitcher_look_runner` with a runner
 on, and the pitch. Everything is bounded (70 s) and `pace`-scaled.
 
-**Mound visits** (`visits.ts`): by the state (rattle, bases loaded, runs this inning, pitch count, a walk, late and close with a man in scoring position; at most 4 per team per game and 14 pitches apart), event
+**Mound visits** (`visits.ts`): by the state (rattle, bases loaded, runs this inning, pitch count, a walk, late and close with a man in scoring position; at most 5 per team per game, the pitch-clock rule, and 14 pitches apart), event
 `moundVisit {by: 'catcher'|'pitchingCoach'|'manager'|'infielders', purpose, visitorId, team, start, end}` and `moundVisitEnd`. The visitor walks out (`walk`; coach and manager from the dugout rail through the steps and
 door as staff, roles `pitchcoach` / `manager`, hint `manager_walk`), 12-25 s of `mound_talk` (visitor) / `mound_talk_listen` (pitcher, the gathered infielders who stand at `moundRing` of `venue.ts`), and walks back; the pitcher
 is steadier afterwards (rattle x 0.72, x 0.6 for the manager). Plate umpire `ump_time`. About 2-3 per game.
@@ -499,6 +504,50 @@ modelled: the first baseman holding the runner at the bag (it would change the f
 **Between innings** (`breaks.ts`): 26-60 s at `broadcast` (event `breakStart {inning, half, sec}`). The first one is the **pregame** (`breakStart { pregame: true }`: 60-90 s at `broadcast`, ~36-54 s at `standard`, ~15-22 s at `quick`, for the booth's opening) and ends with the plate umpire's `umpireCall { kind: 'play_ball' }` (gesture `ump_fair`, a point at the pitcher): the fielders trot out and in as before, then the pitcher throws eight warm-up pitches (`warmup_pitch`) to the
 catcher (the last followed by his throw down to second), the infielders roll ground balls to each other (`throw` / `field_grounder`) and the outfielders play catch (`toss` / `catch_toss`) with **extra balls that are only for show**
 (`GameStateSnapshot.extraBalls`, positions in metres), the field umpires walk in to the plate, the plate umpire brushes it off; the first batter walks in after (bounded: 25 s over).
+
+### The pitch clock (`clock.ts`)
+
+An enforced, visible rule (MLB 2023-2025, OBR 5.07(c) and the pace-of-play regulations), `pace > 0` only (headless games have no clock and are unchanged).
+Seconds are rule seconds: sim seconds (sim seconds / `pace` when `pace` > 1). Every constant is `CLOCK_RULES`:
+
+| rule | value | in the sim |
+|---|---|---|
+| pitch timer, bases empty | 15 s | starts when the pitcher holds the ball inside the mound's dirt circle (`moundCircle` 2.74 m), the catcher is within `catcherBox` 1.6 m of his spot and the batter is inside the plate circle (`plateCircle` 3.96 m); stops when the windup starts |
+| pitch timer, runner(s) on | 18 s | (20 s in 2023, 18 s from 2024) |
+| between batters | 30 s | the first pitch of every plate appearance, including the leadoff man after a break and the first batter a reliever faces. *Interpretation:* it starts when the pitcher has the ball back after the play (MLB starts it when the previous play ends; the sim's playOver / walk-up come first) and does not wait for the batter |
+| pitcher violation | automatic ball | the delivery has not started at 0: `pitchClockViolation {on:'pitcher', result:'ball'}`, the plate umpire `umpireCall {kind:'clock_violation_ball'}` (`ump_time`, then `ump_ball`); ball four walks him |
+| batter alert | by 8 s | in the box (0.6 m of his spot, still), not stepping out or taking a practice swing at the 8-second mark, else an automatic strike (`clock_violation_strike`: `ump_time` then `ump_strike`); strike three is a strikeout looking |
+| disengagements | 2 per PA | a pickoff throw, a step off the rubber with a runner on, the defense's time-out (`disengagement {kind, count, left}`); each resets the timer (a pickoff: when the play is over). The count resets when a runner advances |
+| third disengagement | balk | a third pickoff that retires nobody (and on which nobody advanced) is a balk: every runner moves up a base |
+| batter time-out | 1 per PA | granted: the clock pauses (`kind: 'timeout'`) and starts over when he is back in the box (`pitchClockReset {reason:'timeout'}`); a second one, or one after the 8-second mark, is denied (`timeDenied`) |
+| mound visits | 5 per team per game | +1 from the ninth inning on; pitching changes do not count; a visit pauses and then resets the clock; a team out of visits is denied (`timeDenied {reason:'noMoundVisits'}`) |
+| inning break | display | MLB: 2:15. The sim's break (26-60 s at broadcast) shows as a `break` clock counting down; no penalty (the sequence is bounded) |
+| pitching change | display | MLB: the reliever gets the break timer. The sim's change sequence shows as a `pitchingChange` clock |
+| ball in play, review, visit | paused | the clock is not running; it starts again when the pitcher has the ball back |
+
+*Simplified / not modelled:* the catcher-in-the-box-by-9-seconds rule (the catcher is always set before his signs), the umpire's discretion to grant extra time
+(injuries, crowd noise), step-offs with the bases empty (allowed, they do not reset or count: the clock keeps running), extra visits in extra innings beyond the
+ninth-inning one, and the pregame (no clock).
+
+**What the people do about it** (`tempo.ts`, decision-side draws from `aiRng`): when the clock starts each man gets a read of it (`pBias`: N(0, 0.3 + 0.55 rattle
++ composure), `bBias`: N(0, 0.5 + consistency)). The pitcher means to go at `pitcherTarget`: (11.5 - 12 (delivery.tempo - 1)) s of 15 (a quick worker, tempo 1.25,
+~8.5 s; a slow one, 0.75, ~14 s), x 18/15 with a runner on, longer when rattled, +45 % of the extra between batters, times the tempo's share of the ritual, never past
+his margin (1 s, by composure). His routine (rosin, cap, a look in) fills what is left before the signs; as the clock runs low (by his read) he cuts it, skips the
+infield signal and the look at the runner, gives short signs, does not shake off with under ~4 s, and goes with ~0.6 s left set or not; a delivery with under 2 s
+left is rushed (`rush`: command error x (1 + 0.12 rush)). The batter plans his step-out to be back by the 8-second mark (or keeps one foot in, or, after a two-strike
+foul, spends his time-out on it); the practice swings on the first pitch go first when time is short. A pickoff with one disengagement left is half as likely; with
+none, only at a fast runner with a long lead off first. Violations are what is left when a read is off by more than the margin.
+
+**Decision providers**: every request's `situation` carries `clockSec` (null: not running), `disengagementsLeft`, `timeoutAvailable`. A provider with
+`clocked: true` (a human at the controls) answers `pitch` / `pickoff` against the clock: a deferred answer does not pause the game, and if the clock runs out first
+the violation is called and the question withdrawn (the next pitch asks again). Default: deferred answers pause the game as always.
+
+**Snapshot** `pitchClock` (null at `pace: 0`, in the pregame, after the game): `{running, remainingSec, limitSec, kind: 'pitch'|'betweenBatters'|'break'|'pitchingChange'|'timeout',
+disengagementsLeft, batterAlertBy: 8, timeoutAvailable, visitsLeft {home, away}, violation {on, result, time} | null}`. The `betweenPitches` / `walkup` lull's
+`lullSec` is bounded by the clock (breaks, visits, changes and reviews are not). **Events**: `pitchClockStart {kind, limitSec}`, `pitchClockViolation {on, result,
+clockSec, pitcherId, batterId, team}` (the penalised side), `pitchClockReset {reason: 'disengagement'|'timeout'|'moundVisit', limitSec}`, `disengagement {kind:
+'pickoff'|'stepOff'|'time', pitcherId, count, left}`, `timeDenied {by, playerId, reason: 'timeoutUsed'|'tooLate'|'noMoundVisits', team}`; `UmpireCallKind` gained
+`clock_violation_ball` / `clock_violation_strike`. Tests: `__tests__/clock.test.ts`; measure with `scripts/pitchclock.ts`.
 
 **Snapshot, additive**: `phaseDetail` ('batterRoutine' | 'pitcherRoutine' | 'signs' | 'shakeOff' | 'moundVisit' | 'pitchingChange' | 'review' | 'break' | null; `phase` itself is unchanged), `lull` (bool), `lullKind`
 ('walkup' | 'betweenPitches' | 'moundVisit' | 'pitchingChange' | 'break' | 'review'), `lullSec` (expected length), `lullRemaining`, `extraBalls`, `PlayerSnapshot.tic`. New roles `manager` (`MGR`) and

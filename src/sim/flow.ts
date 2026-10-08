@@ -15,6 +15,7 @@ import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import type { PitchType } from './types';
 import { routineStage } from './tempo';
+import * as clock from './clock';
 import { visitStage } from './visits';
 import { beginBreak, breakFinished } from './breaks';
 import { DEFAULT_SPOTS } from './setup';
@@ -178,6 +179,7 @@ export function startPlateAppearance(w: World): void {
   w.swingStarted = false;
   w.prep = freshPrep();
   if (w.ball.holder !== w.pitcher) giveBall(w, w.pitcher);
+  clock.armClock(w); // 30 s between batters
 }
 
 function stepInBatter(w: World): void {
@@ -218,6 +220,7 @@ function stepInBatter(w: World): void {
     leaveDugout(b, [...keep, ...routeToBox(b, side as 1 | -1)], { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(2.4 / b.vmax, 0.1, 1) }, 2.4);
   }
   b.anim = 'idle';
+  clock.newPlateAppearance(w);
   w.pitcher.pit.bf += 1;
   w.pitcher.rattle *= 0.93; // he settles a little between batters
   b.form = nextForm(b.form, b.info.ratings.consistency, w.rng.normal(0, 1));
@@ -229,6 +232,8 @@ function stepInBatter(w: World): void {
 }
 
 export function tickPrePitch(w: World): void {
+  // the pitch clock: it starts when the pitcher has the ball back; the batter at the 8-second mark, the pitcher at zero (a violation ends this pitch)
+  if (clock.tickClock(w)) return;
   running.updateLeads(w);
   // defensive alignment for this pitch (asked as soon as the pitch is set up, so the fielders move during the walk-up)
   if (!w.prep.alignmentDone) {
@@ -245,9 +250,11 @@ export function tickPrePitch(w: World): void {
   if (!visitStage(w)) return;
   // everybody set: fielders at their spots, the pitcher on the rubber with the ball, the catcher behind the plate, the batter in the box,
   // runners on their bases or at their leads; a slow case (a long trot in from the wall, a reliever from the bullpen) is waited for, up to a limit
-  if (w.cfg.pace > 0) {
+  // (once the routine is under way the batter's step-out is part of it: it must not stop the routine it belongs to)
+  if (w.cfg.pace > 0 && !w.prep.routine) {
     if (w.prep.readyBy === 0) w.prep.readyBy = w.tick + secToTicks(READY_TIMEOUT * Math.min(1, w.cfg.pace));
-    if (!readyToPitch(w).ready && w.tick < w.prep.readyBy) {
+    // (with the clock low he goes anyway: the timer does not wait for a straggler)
+    if (!readyToPitch(w).ready && w.tick < w.prep.readyBy && !clockUrgent(w)) {
       hurryStragglers(w);
       return;
     }
@@ -267,6 +274,11 @@ export function tickPrePitch(w: World): void {
     w.prep.stealsDone = true;
   }
   beginWindup(w);
+}
+
+/** The pitcher's read of the clock says he has to get on with it (enough left for the decision, the signs and the nod). */
+function clockUrgent(w: World): boolean {
+  return clock.running(w) && (clock.remaining(w) + w.clock.pBias) * clock.clockScale(w) < 4.5;
 }
 
 function stageAlignment(w: World): boolean {
@@ -323,9 +335,11 @@ export function beginWindup(w: World): void {
   // motion that the umpire calls
   const hitch = w.rng.normal(0, 0.05 * (1 + (50 - P.info.ratings.control) / 250) * consistencyScale(P.info.ratings.consistency));
   if (Math.abs(hitch) > HITCH_BALK && w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead)) {
+    clock.haltClock(w);
     rules.balk(w);
     return;
   }
+  clock.stopClock(w); // he has started his delivery in time
   const d = w.prep.pitch!;
   const spec = P.info.arsenal.find((a) => a.type === d.pitchType) ?? P.info.arsenal[0];
   const zn = w.zone;
@@ -367,6 +381,7 @@ export function releasePitch(w: World): void {
     stretch: w.runners.some((r) => r.state === 'live' && r.base >= 1 && !r.dead),
     pressure: leverage(w),
     rattled: P.rattle,
+    rushed: w.clock.rush,
   });
   pitch.inZone = pitchTouchesZone(pitch, w.zone);
   w.pitch = pitch;
@@ -793,6 +808,7 @@ export function readyNextPitch(w: World, seconds = BETWEEN): void {
   w.play = null;
   w.stealing.clear();
   ensureBallReturn(w, true);
+  clock.armClock(w);
 }
 
 export function ballFollowsHolder(w: World): void {

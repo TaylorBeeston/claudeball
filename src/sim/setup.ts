@@ -1,3 +1,4 @@
+import { newClock } from './clock';
 import { DEFAULT_ENV } from './ball';
 import { DEFAULT_FENCE, MOUND_DIST } from './field';
 import { Rng } from './rng';
@@ -266,6 +267,7 @@ export function createWorld(cfg: GameConfig): World {
     review: null,
     breakShow: null,
     pickoffTick: -99999,
+    clock: newClock(),
     lastClose: null,
     visits: { home: 0, away: 0, lastPitchNo: { home: 0, away: 0 } },
     challenges: { home: 0, away: 0 },

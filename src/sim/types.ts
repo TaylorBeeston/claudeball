@@ -511,6 +511,8 @@ export interface GameStateSnapshot {
   lullKind?: LullKind | null;
   lullSec?: number;
   lullRemaining?: number;
+  /** (additive) the pitch clock (null with `pace: 0`, in the pregame and after the game). */
+  pitchClock?: PitchClockSnapshot | null;
   /** (additive) balls that are only for show (infield / outfield warm-up tosses between innings). */
   extraBalls?: Vec3[];
   /** (additive) a foul ball that is out of play: rolling / lying in foul ground, carried by a ball kid, or tossed to a fan. */
@@ -565,7 +567,32 @@ export type UmpireCallKind =
   | 'ball_four'
   | 'strikeout'
   /** the plate umpire starts the game (at the end of the pregame) */
-  | 'play_ball';
+  | 'play_ball'
+  /** a pitch-clock violation: 'time' first, then the ball / strike signal (`on` the event `pitchClockViolation`) */
+  | 'clock_violation_ball'
+  | 'clock_violation_strike';
+
+/** Which pitch clock is showing (see README "The pitch clock"). */
+export type PitchClockKind = 'pitch' | 'betweenBatters' | 'break' | 'pitchingChange' | 'timeout';
+
+/** (additive snapshot field) the pitch clock as the park shows it. Seconds are rule seconds (sim seconds / `pace`). */
+export interface PitchClockSnapshot {
+  /** Counting down now (false: waiting to start, paused for a visit / timeout, or stopped during the pitch / the play). */
+  running: boolean;
+  remainingSec: number;
+  limitSec: number;
+  kind: PitchClockKind;
+  /** Pickoff throws / step-offs / defensive time-outs the pitcher still has in this plate appearance (2 per PA; a 3rd that gets no out is a balk). */
+  disengagementsLeft: number;
+  /** The batter must be in the box and alert by this many seconds left. */
+  batterAlertBy: number;
+  /** The batter still has his one time-out of this plate appearance. */
+  timeoutAvailable: boolean;
+  /** Mound visits each team has left (not counting pitching changes). */
+  visitsLeft: { home: number; away: number };
+  /** The last violation (for a call-out), with the sim time it happened. */
+  violation: { on: 'pitcher' | 'batter'; result: 'ball' | 'strike'; time: number } | null;
+}
 
 export type GameEvent =
   | (EBase & { type: 'gameStart' })
@@ -616,6 +643,16 @@ export type GameEvent =
   | (EBase & { type: 'signsGiven'; catcherId: string; pitcherId: string; pitchType: PitchType; complex: boolean; seq: number[]; reshown?: boolean })
   | (EBase & { type: 'shakeOff'; pitcherId: string; catcherId: string; rejected: PitchType; chosen?: PitchType })
   | (EBase & { type: 'timeCalled'; by: 'batter' | 'pitcher' | 'catcher' | 'manager'; playerId: string })
+  /** The pitch clock started counting (`kind`, `limitSec` rule seconds). */
+  | (EBase & { type: 'pitchClockStart'; kind: PitchClockKind; limitSec: number })
+  /** The pitch clock ran out on the pitcher (an automatic ball) or the batter was not in the box and alert by the 8-second mark (an automatic strike). */
+  | (EBase & { type: 'pitchClockViolation'; on: 'pitcher' | 'batter'; result: 'ball' | 'strike'; clockSec: number; pitcherId: string; batterId: string; team: TeamSide })
+  /** The clock was reset (a disengagement, the batter's time-out, a mound visit). */
+  | (EBase & { type: 'pitchClockReset'; reason: 'disengagement' | 'timeout' | 'moundVisit'; limitSec: number })
+  /** The pitcher disengaged (a pickoff throw, a step off the rubber, the defense's time-out): `count` used of 2 this plate appearance. */
+  | (EBase & { type: 'disengagement'; kind: 'pickoff' | 'stepOff' | 'time'; pitcherId: string; count: number; left: number })
+  /** A request for time the umpire did not grant (the batter's time-out already used / too late; no mound visits left). */
+  | (EBase & { type: 'timeDenied'; by: 'batter' | 'pitcher' | 'catcher' | 'manager'; playerId: string; reason: 'timeoutUsed' | 'tooLate' | 'noMoundVisits'; team: TeamSide })
   | (EBase & { type: 'moundVisit'; by: 'catcher' | 'pitchingCoach' | 'manager' | 'infielders'; purpose: MoundVisitPurpose; visitorId: string; team: TeamSide; start: number; end: number })
   | (EBase & { type: 'moundVisitEnd'; by: 'catcher' | 'pitchingCoach' | 'manager' | 'infielders'; team: TeamSide })
   | (EBase & { type: 'pitchingChangeStart'; team: TeamSide; outId: string; inId: string; managerId: string })

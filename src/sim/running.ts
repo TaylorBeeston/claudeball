@@ -20,6 +20,7 @@ const visitsNoteClose = (w: World, id: string, b: number, margin: number, close:
 import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
+import * as clock from './clock';
 import { DUGOUT } from './setup';
 import { leaveDugout, toBench } from './dugout';
 
@@ -263,7 +264,9 @@ export function stagePickoff(w: World): 'none' | 'wait' | 'thrown' {
   const d = ask(w, 'pickoff', 'pickoff', w.fieldingTeam.side, () => ({ situation: situationOf(w), pitcher: w.pitcher.info, runner: r.p.info, base: r.base, lead: Math.hypot(r.p.x - bpos(r.base).x, r.p.z - bpos(r.base).z) }), { r });
   if (d === PENDING) return 'wait';
   if (d.throw && r.state === 'live') {
+    const third = clock.disengage(w, 'pickoff'); // (one of his two per plate appearance)
     inplay.beginPickoff(w, r);
+    if (third) w.play!.thirdDisengagement = true;
     w.pickoffTick = w.tick;
     return 'thrown';
   }
@@ -275,7 +278,16 @@ export function aiPickoff(w: World, r: RunnerRT): PickoffDecision {
   const threat = clamp((r.p.info.ratings.speed - 45) / 40, 0, 1) * (r.base === 1 ? 1 : 0.2);
   const p = (r.base === 1 ? 0.012 : 0.002) + (r.base === 1 ? 0.06 : 0.01) * threat;
   // a pitcher with a good move throws over more often
-  return { throw: w.aiRng.next() < p * clamp(1 + 0.012 * (w.pitcher.info.ratings.pickoff - 50), 0.6, 1.6) };
+  const q = p * clamp(1 + 0.012 * (w.pitcher.info.ratings.pickoff - 50), 0.6, 1.6);
+  if (!clock.clockOn(w)) return { throw: w.aiRng.next() < q };
+  // the disengagement limit: he saves his last one; with none left a throw that does not get the runner is a balk, so he throws only at a runner who is
+  // surely going (a fast man, a long lead, the base ahead open)
+  const left = clock.disengagementsLeft(w);
+  if (left >= 2) return { throw: w.aiRng.next() < q };
+  if (left === 1) return { throw: w.aiRng.next() < 0.5 * q };
+  const lead = Math.hypot(r.p.x - bpos(r.base).x, r.p.z - bpos(r.base).z);
+  const going = threat > 0.75 && lead > 3.6 && r.base === 1;
+  return { throw: going && w.aiRng.next() < 0.15 };
 }
 
 /** The runner who could break for the next base on this pitch, if the base is open. */

@@ -5,6 +5,7 @@ import { PENDING } from './decisions';
 import type { Situation, DecisionKind, DecisionOf, DecisionProvider, DecisionRequest, FullDecisionProvider, Pending, RequestOf } from './decisions';
 import type { TeamSide } from './types';
 import type { World } from './world';
+import * as clock from './clock';
 
 export interface Slot {
   id: number;
@@ -15,6 +16,8 @@ export interface Slot {
   value: unknown;
   /** Tick at which the answer became available (decisions are applied on a later tick). */
   readyTick: number;
+  /** A deferred answer that does not pause the game (a `clocked` provider asked under the pitch clock). */
+  free?: boolean;
 }
 
 export interface DecState {
@@ -36,6 +39,9 @@ export function situationOf(w: World): Situation {
     strikes: w.count.strikes,
     scoreDiff: w.battingTeam.runs - w.fieldingTeam.runs,
     runners: { first: at(1), second: at(2), third: at(3) },
+    clockSec: clock.clockOn(w) && clock.running(w) ? clock.remaining(w) : null,
+    disengagementsLeft: clock.disengagementsLeft(w),
+    timeoutAvailable: clock.timeoutAvailable(w),
   };
 }
 
@@ -74,7 +80,8 @@ export function ask<K extends DecisionKind>(w: World, key: string, kind: K, side
     if (r === undefined) r = (w.ai[kind] as (r: RequestOf<K>) => unknown)(req);
     if (r === PENDING || isThenable(r)) {
       slot.state = 'wait';
-      dec.waiting++;
+      if (dec.providers[side]?.clocked && (kind === 'pitch' || kind === 'pickoff') && clock.clockOn(w) && (w.clock.state === 'running' || w.clock.state === 'armed')) slot.free = true;
+      else dec.waiting++;
       emit(w, { type: 'decisionRequested', id, decision: kind, side });
       if (r !== PENDING) {
         const s = slot;
@@ -97,7 +104,7 @@ function settle(w: World, slot: Slot, value: unknown): void {
   slot.value = v;
   slot.state = 'ready';
   slot.readyTick = -1;
-  w.dec.waiting--;
+  if (!slot.free) w.dec.waiting--;
   emit(w, { type: 'decisionResolved', id: slot.id, decision: slot.kind, side: slot.side });
 }
 
@@ -117,7 +124,7 @@ export function pendingDecisions(w: World): DecisionRequest[] {
 export function forget(w: World, prefix: string): void {
   for (const [k, s] of w.dec.slots) {
     if (!k.startsWith(prefix)) continue;
-    if (s.state === 'wait') w.dec.waiting--;
+    if (s.state === 'wait' && !s.free) w.dec.waiting--;
     w.dec.slots.delete(k);
     w.dec.byId.delete(s.id);
   }

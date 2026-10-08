@@ -3,6 +3,7 @@ import { BENCH_SIT_LIFT, dugoutFloorY } from './venue';
 import { umpStance } from './umpires';
 import { teamStats } from './stats';
 import { routineDetail, ticOf } from './tempo';
+import { clockSnapshot } from './clock';
 import type { World, PlayerRT } from './world';
 import { TICK } from './world';
 import type {
@@ -226,6 +227,7 @@ export function snapshot(w: World): GameStateSnapshot {
     umpire: { lastCall: w.lastCall, zone: { left: z.left, right: z.right, bottom: z.bottom, top: z.top, depthZ: 0.4318 } },
     lastPlay: w.lastPlay,
     phaseDetail: phaseDetail(w),
+    pitchClock: clockSnapshot(w),
     lull: !!w.lull,
     lullKind: w.lull?.kind ?? null,
     lullSec: w.lull?.sec ?? 0,
