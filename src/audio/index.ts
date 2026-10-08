@@ -255,6 +255,13 @@ export class AudioController {
         hdRemove: () => void this.removeHd(),
         hdPreview: () => void hdManager.preview(),
       });
+    // a hidden tab (another app on a phone, a background tab) renders no sound: the park graph would otherwise keep a share of a CPU core
+    // busy (and the paused game's crowd murmur would go on playing in the background); it resumes when the page is shown again
+    if (typeof document !== 'undefined') {
+      const vis = () => void this.mixer.setHidden(document.hidden);
+      document.addEventListener('visibilitychange', vis);
+      this.offs.push(() => document.removeEventListener('visibilitychange', vis));
+    }
     // any first interaction unlocks audio, except the sound controls themselves (they decide mute state) and the M key
     const gesture = (e: Event) => {
       const t = e.target as HTMLElement | null;

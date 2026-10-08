@@ -417,6 +417,25 @@ export class Mixer {
   }
 
   private preparing = false;
+  private levelBuf: Float32Array<ArrayBuffer> | null = null;
+  private hiddenSuspended = false;
+
+  /** the page is hidden / shown again: suspend the context (no rendering at all) and resume it only if it was running before */
+  async setHidden(hidden: boolean) {
+    const c = this.ctx;
+    if (!c || this.offline) return;
+    try {
+      if (hidden && c.state === 'running') {
+        this.hiddenSuspended = true;
+        await c.suspend();
+      } else if (!hidden && this.hiddenSuspended) {
+        this.hiddenSuspended = false;
+        await c.resume();
+      }
+    } catch {
+      /* the next gesture unlocks it again */
+    }
+  }
   private worker: Worker | null = null;
   private irJobs = new Map<number, (r: Rendered | null) => void>();
   private irSeq = -1;
@@ -677,7 +696,8 @@ export class Mixer {
   level(): { rms: number; peak: number } {
     const a = this.analyser;
     if (!a) return { rms: 0, peak: 0 };
-    const d = new Float32Array(a.fftSize);
+    if (this.levelBuf?.length !== a.fftSize) this.levelBuf = new Float32Array(a.fftSize);
+    const d = this.levelBuf;
     a.getFloatTimeDomainData(d);
     let s = 0;
     let p = 0;

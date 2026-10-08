@@ -226,3 +226,22 @@ describe('start-up synthesis', () => {
     expect(desk.ch.length).toBe(2);
   });
 });
+
+describe('hidden page', () => {
+  it('suspends a running context while hidden and resumes it when shown; a context that was not running stays as it was', async () => {
+    const { m, f } = await readyMixer();
+    f.ctx.suspend = vi.fn(async () => { f.ctx.state = 'suspended'; });
+    await m.setHidden(true);
+    expect(f.ctx.state).toBe('suspended');
+    f.ctx.resume.mockClear();
+    await m.setHidden(false);
+    expect(f.ctx.resume).toHaveBeenCalledTimes(1);
+    expect(f.ctx.state).toBe('running');
+    // suspended by something else (locked, never unlocked): showing the page does not start it
+    f.ctx.state = 'suspended';
+    f.ctx.resume.mockClear();
+    await m.setHidden(true);
+    await m.setHidden(false);
+    expect(f.ctx.resume).not.toHaveBeenCalled();
+  });
+});
