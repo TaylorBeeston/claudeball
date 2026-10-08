@@ -27,8 +27,10 @@ export async function audioTraceStop(cdp: CDPSession) {
 }
 
 export interface AudioLoad {
-  /** share of wall time the audio thread spent rendering (sum of quantum render times / window) */
+  /** share of wall time the audio thread spent rendering the graph (sum of quantum render times / window) */
   load: number;
+  /** the same for the whole device callback (graph render + FIFO + the resampler when the context's rate is not the device's) */
+  callbackLoad: number;
   /** render quanta per second (48 kHz / 128 = 375) */
   quantaPerSec: number;
   /** quantum render time, microseconds */
@@ -45,6 +47,7 @@ export interface AudioLoad {
 export function audioLoads(events: Ev[], sampleRate = 48000): Record<string, AudioLoad> {
   const marks = events.filter((e) => e.cat.includes('user_timing') && /^probe:(start|end):/.test(e.name));
   const renders = events.filter((e) => e.name === 'RealtimeAudioDestinationHandler::Render' && e.ph === 'X');
+  const callbacks = events.filter((e) => e.name === 'AudioDestination::Render' && e.ph === 'X');
   const handlers = events.filter((e) => /Handler::Process$/.test(e.name) && e.ph === 'X');
   const budgetUs = (128 / sampleRate) * 1e6;
   const out: Record<string, AudioLoad> = {};
@@ -58,6 +61,7 @@ export function audioLoads(events: Ev[], sampleRate = 48000): Record<string, Aud
     const sum = r.reduce((a, b) => a + b, 0);
     const res: AudioLoad = {
       load: +(sum / 1e6 / win).toFixed(4),
+      callbackLoad: +(callbacks.filter((x) => x.ts >= s.ts && x.ts < e.ts).reduce((a, x) => a + (x.dur ?? 0), 0) / 1e6 / win).toFixed(4),
       quantaPerSec: +(r.length / win).toFixed(1),
       quantumUsMedian: +q(0.5).toFixed(0),
       quantumUsP99: +q(0.99).toFixed(0),

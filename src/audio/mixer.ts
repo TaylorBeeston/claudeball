@@ -159,7 +159,7 @@ export class Mixer {
   /** counters per sound id, for debug and tests */
   readonly played: Record<string, number> = {};
 
-  constructor(settings: Settings = { ...DEFAULT_SETTINGS }, private factory: () => AudioContext = () => new AudioContext({ latencyHint: 'interactive' })) {
+  constructor(settings: Settings = { ...DEFAULT_SETTINGS }, private factory: () => AudioContext = () => newContext(this.lowPower)) {
     this.settings = settings;
   }
 
@@ -743,6 +743,26 @@ export class Mixer {
 }
 
 export { monoAt } from './synthJobs';
+
+/**
+ * The context's sample rate: the device's own (48 kHz on most). `?audiorate=32000` (an experiment, measured in tools/perf/FINDINGS.md, pass 2):
+ * the phone graph's audio thread -24 % with the output resampler included, but the mix moves (organ -0.56 LUFS, the duck engages a little
+ * earlier, true peak +0.5 dB), so it is not the default. `lowPower` is where a default for phones would go.
+ */
+export function contextRate(lowPower: boolean, q = typeof location !== 'undefined' ? location.search : ''): number | undefined {
+  void lowPower;
+  const f = new URLSearchParams(q).get('audiorate');
+  if (f && Number(f) >= 8000 && Number(f) <= 96000) return Number(f);
+  return undefined;
+}
+function newContext(lowPower: boolean): AudioContext {
+  const sampleRate = contextRate(lowPower);
+  try {
+    return new AudioContext(sampleRate ? { latencyHint: 'interactive', sampleRate } : { latencyHint: 'interactive' });
+  } catch {
+    return new AudioContext({ latencyHint: 'interactive' }); // a rate this browser refuses: its own
+  }
+}
 
 /** where an effect with no position is: the plate */
 const DEFAULT_POS: Vec3 = { x: 0, y: 1, z: 0 };
