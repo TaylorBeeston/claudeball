@@ -36,6 +36,7 @@ import { teamInfo } from '../engine/realSimAdapter';
 
 type Phase = 'prePitch' | 'betweenBatters' | 'break';
 import { BASES } from './venue/mics';
+import { surfaceAt, surfaceBounce, surfaceStep } from './field';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
 
 interface PlayerLike {
@@ -155,7 +156,7 @@ export class AudioController {
   private wasReplay = false;
   private wasSkipping = false;
   private lastSpeed = 1;
-  private prevBall: { vy: number } | null = null;
+  private prevBall: { vy: number; vz: number } | null = null;
   private prevAnim = new Map<string, string>();
   private stepPhase = new Map<string, number>();
   private levelTimer = 0;
@@ -811,16 +812,22 @@ export class AudioController {
       const vy = b.vel.y;
       const r = Math.hypot(b.pos.x, b.pos.z);
       if (this.prevBall && this.prevBall.vy < -1.5 && vy > 0.4 && b.pos.y < 0.6 && r < WALL(b.pos.x, b.pos.z) + 1) {
-        const dirt = r < 18 || r > WALL(b.pos.x, b.pos.z) - 5;
-        const g = 0.25 + 0.55 * Math.min(1, -this.prevBall.vy / 16);
-        this.dispatch({ kind: 'sfx', id: dirt ? 'dirt_thud' : 'ground_bounce', pos: { x: b.pos.x, y: 0.1, z: b.pos.z }, gain: g, imp: 1 }, st, speed);
+        // the bounce by what it lands on: grass, infield dirt, the warning track, the plate or the mound
+        const hit = -this.prevBall.vy;
+        const sb = surfaceBounce(surfaceAt(b.pos.x, b.pos.z));
+        const g = 0.3 + 0.6 * Math.min(1, hit / 16);
+        this.dispatch({ kind: 'sfx', id: sb.id, bucket: sb.id === 'ground_bounce' ? (hit > 8 ? 1 : 0) : sb.bucket, pos: { x: b.pos.x, y: 0.1, z: b.pos.z }, gain: g, imp: 1 }, st, speed);
       }
-      this.prevBall = { vy };
+      // a ball reaching the backstop (a wild pitch, a passed ball): it bounces back off the padding
+      if (this.prevBall && b.pos.z < -18.5 && this.prevBall.vz < -3 && b.vel.z > 0.5) this.dispatch({ kind: 'sfx', id: 'backstop_bang', pos: { x: b.pos.x, y: Math.max(0.5, b.pos.y), z: -20.3 }, gain: 0.4 + 0.5 * Math.min(1, -this.prevBall.vz / 25), imp: 1 }, st, speed);
+      this.prevBall = { vy, vz: b.vel.z };
     } else this.prevBall = null;
     let steps = 0;
     for (const p of st.players) {
       const was = this.prevAnim.get(p.id);
-      if (p.anim === 'slide' && was !== 'slide') this.dispatch({ kind: 'sfx', id: 'slide_scuff', pos: { x: p.pos.x, y: 0.2, z: p.pos.z }, gain: 0.55, imp: 1 }, st, speed);
+      if (p.anim === 'slide' && was !== 'slide') this.dispatch({ kind: 'sfx', id: 'slide_scuff', bucket: 0, pos: { x: p.pos.x, y: 0.2, z: p.pos.z }, gain: 0.6, imp: 1 }, st, speed);
+      // the ball from the glove into the throwing hand (after a catch, an out, a pitch)
+      if (p.anim === 'transfer' && was !== 'transfer' && speed <= 1.01) this.dispatch({ kind: 'sfx', id: 'glove_transfer', pos: { x: p.pos.x, y: 1.2, z: p.pos.z }, gain: 0.6, imp: 0 }, st, speed);
       this.prevAnim.set(p.id, p.anim);
       const v = Math.hypot(p.vel.x, p.vel.z);
       if (!this.lowPower && speed <= 1.01 && v > 2.5 && steps < 3 && p.role !== 'umpire' && (p.anim === 'run' || p.anim === 'trot' || p.anim === 'run_turn')) {
@@ -831,7 +838,7 @@ export class AudioController {
           if (ph >= 1) {
             this.stepPhase.set(p.id, 0);
             steps++;
-            this.dispatch({ kind: 'sfx', id: 'footstep', pos: { x: p.pos.x, y: 0.05, z: p.pos.z }, gain: 0.1 + 0.02 * Math.min(8, v), imp: 0 }, st, speed);
+            this.dispatch({ kind: 'sfx', id: 'footstep', bucket: surfaceStep(surfaceAt(p.pos.x, p.pos.z)), pos: { x: p.pos.x, y: 0.05, z: p.pos.z }, gain: 0.35 + 0.06 * Math.min(8, v), imp: 0 }, st, speed);
           } else this.stepPhase.set(p.id, ph);
         }
       }
