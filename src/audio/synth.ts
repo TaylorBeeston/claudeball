@@ -7,6 +7,7 @@
  * formant-filtered voices. That keeps the repo licence-clean (MIT, no third-party audio) and the game never silent.
  */
 import type { CrowdId, SfxId } from './types';
+import * as F from './foley';
 import {
   Biquad,
   addModes,
@@ -35,186 +36,6 @@ export interface SoundDef {
 const SR = 44100;
 const buf = (dur: number, sr = SR) => new Float32Array(Math.floor(dur * sr));
 const jit = (r: Rand, amt: number) => 1 + (r() * 2 - 1) * amt;
-
-function batCrack(bucket: number, _alt: number, r: Rand): Rendered {
-  const p = [0.3, 0.65, 1][bucket] ?? 0.65;
-  const o = buf(0.4);
-  addNoise(o, SR, r, { tau: 0.0012, amp: 1.2, hp: 1500 });
-  addNoise(o, SR, r, { tau: 0.006, amp: 0.7, bp: 2600 + 1200 * p, q: 0.8 });
-  addModes(o, SR, [
-    [(900 + 450 * p) * jit(r, 0.05), 0.9, 0.022],
-    [(1650 + 750 * p) * jit(r, 0.05), 0.8, 0.014],
-    [(2900 + 900 * p) * jit(r, 0.05), 0.55, 0.008],
-    [(4300 + 1200 * p) * jit(r, 0.05), 0.35, 0.005],
-  ]);
-  addThump(o, SR, { f0: 260 + 90 * p, f1: 150, pitchTau: 0.02, tau: 0.035, amp: 0.9 });
-  addNoise(o, SR, r, { tau: 0.05, amp: 0.25, lp: 900 });
-  return finish(mono(SR, o), 0.95);
-}
-
-function batThud(bucket: number, _alt: number, r: Rand): Rendered {
-  const o = buf(0.3);
-  addNoise(o, SR, r, { tau: 0.002, amp: 0.5, hp: 900, lp: 5000 });
-  addModes(o, SR, [
-    [(520 + 200 * bucket) * jit(r, 0.06), 0.8, 0.02],
-    [(1150 + 300 * bucket) * jit(r, 0.06), 0.5, 0.012],
-    [2100 * jit(r, 0.06), 0.25, 0.007],
-  ]);
-  addThump(o, SR, { f0: 220, f1: 120, pitchTau: 0.025, tau: 0.045, amp: 1.0 });
-  addNoise(o, SR, r, { tau: 0.04, amp: 0.3, lp: 700 });
-  return finish(mono(SR, o), 0.9);
-}
-
-function batTick(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.12);
-  addNoise(o, SR, r, { tau: 0.001, amp: 1, hp: 2500 });
-  addModes(o, SR, [[2500 * jit(r, 0.06), 0.9, 0.004], [4100 * jit(r, 0.06), 0.5, 0.003], [1300, 0.4, 0.006]]);
-  return finish(mono(SR, o), 0.8);
-}
-
-function buntTap(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.18);
-  addNoise(o, SR, r, { tau: 0.002, amp: 0.7, hp: 800, lp: 4500 });
-  addModes(o, SR, [[720 * jit(r, 0.05), 0.9, 0.012], [1480 * jit(r, 0.05), 0.5, 0.008]]);
-  addThump(o, SR, { f0: 240, f1: 170, pitchTau: 0.015, tau: 0.02, amp: 0.7 });
-  return finish(mono(SR, o), 0.8);
-}
-
-function whoosh(dur: number, f0: number, f1: number, f2: number, q: number, lpHz: number) {
-  return (_b: number, _a: number, r: Rand): Rendered => {
-    const peak = 0.55;
-    const x = sweepNoise(
-      SR,
-      dur,
-      r,
-      (t) => {
-        const k = t / dur;
-        return k < peak ? f0 + (f1 - f0) * (k / peak) : f1 + (f2 - f1) * ((k - peak) / (1 - peak));
-      },
-      (t) => Math.pow(Math.sin(Math.PI * clamp(t / dur, 0, 1)), 1.6),
-      q,
-      lpHz,
-    );
-    return finish(mono(SR, x), 0.75, 20);
-  };
-}
-
-function mittPop(bucket: number, _alt: number, r: Rand): Rendered {
-  const p = [0.2, 0.6, 1][bucket] ?? 0.6;
-  const o = buf(0.28);
-  addNoise(o, SR, r, { tau: 0.003, amp: 0.9, hp: 1200 });
-  addNoise(o, SR, r, { tau: 0.014, amp: 0.8, bp: 1700 + 500 * p, q: 1.2 });
-  addThump(o, SR, { f0: 330 + 90 * p, f1: 130 + 30 * p, pitchTau: 0.018, tau: 0.055, amp: 1.1 });
-  addNoise(o, SR, r, { tau: 0.035, amp: 0.55, lp: 650 });
-  addModes(o, SR, [[(950 + 250 * p) * jit(r, 0.05), 0.35, 0.02]]);
-  return finish(mono(SR, o), 0.9);
-}
-
-function glovePop(bucket: number, _alt: number, r: Rand): Rendered {
-  const p = bucket === 0 ? 0.35 : 0.75;
-  const o = buf(0.2);
-  addNoise(o, SR, r, { tau: 0.003, amp: 0.7, hp: 900, lp: 6000 });
-  addNoise(o, SR, r, { tau: 0.012, amp: 0.7, bp: 1300 + 400 * p, q: 1 });
-  addThump(o, SR, { f0: 250 + 60 * p, f1: 120, pitchTau: 0.02, tau: 0.04, amp: 0.9 });
-  addNoise(o, SR, r, { tau: 0.03, amp: 0.4, lp: 600 });
-  return finish(mono(SR, o), 0.85);
-}
-
-function bounce(dirt: boolean) {
-  return (_b: number, _a: number, r: Rand): Rendered => {
-    const o = buf(dirt ? 0.32 : 0.22);
-    addThump(o, SR, { f0: dirt ? 210 : 170, f1: dirt ? 90 : 75, pitchTau: 0.02, tau: dirt ? 0.06 : 0.045, amp: 1 });
-    addNoise(o, SR, r, { tau: dirt ? 0.06 : 0.03, amp: dirt ? 0.9 : 0.5, lp: dirt ? 2400 : 1400, hp: 120 });
-    if (dirt) addNoise(o, SR, r, { tau: 0.09, amp: 0.25, bp: 3200, q: 0.6, t0: 0.01 }); // grit
-    return finish(mono(SR, o), 0.85);
-  };
-}
-
-function wallThud(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.7);
-  addThump(o, SR, { f0: 150, f1: 62, pitchTau: 0.05, tau: 0.16, amp: 1 });
-  addNoise(o, SR, r, { tau: 0.05, amp: 0.8, lp: 1100 });
-  addNoise(o, SR, r, { tau: 0.004, amp: 0.7, hp: 700, lp: 4500 });
-  addModes(o, SR, [[95 * jit(r, 0.04), 0.5, 0.18], [230 * jit(r, 0.04), 0.3, 0.1]]);
-  return finish(mono(SR, o), 0.9, 8);
-}
-
-function fenceRattle(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(1.1);
-  const modes: [number, number, number][] = [];
-  for (let k = 0; k < 9; k++) modes.push([(420 + r() * 3600) * (k < 3 ? 0.7 : 1), 0.18 + r() * 0.3, 0.12 + r() * 0.35]);
-  addModes(o, SR, modes);
-  addNoise(o, SR, r, { tau: 0.15, amp: 0.35, hp: 2500 });
-  addNoise(o, SR, r, { tau: 0.004, amp: 0.8, hp: 1500 });
-  for (let k = 0; k < 6; k++) addNoise(o, SR, r, { t0: 0.05 + k * 0.06 + r() * 0.04, tau: 0.02, amp: 0.2 + r() * 0.25, hp: 2000 });
-  return finish(mono(SR, o), 0.8, 30);
-}
-
-function seatThump(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.8);
-  addThump(o, SR, { f0: 190, f1: 90, pitchTau: 0.03, tau: 0.09, amp: 0.9 });
-  addNoise(o, SR, r, { tau: 0.006, amp: 0.7, hp: 900 });
-  const modes: [number, number, number][] = [];
-  for (let k = 0; k < 6; k++) modes.push([(600 + r() * 2600) * jit(r, 0.05), 0.25 + r() * 0.25, 0.07 + r() * 0.12]);
-  addModes(o, SR, modes);
-  return finish(mono(SR, o), 0.8, 20);
-}
-
-function throwWhip(_b: number, _a: number, r: Rand): Rendered {
-  const x = sweepNoise(SR, 0.16, r, (t) => 900 + 3600 * (t / 0.16), (t) => Math.pow(Math.sin(Math.PI * clamp(t / 0.16, 0, 1)), 1.2), 1.8, 7000);
-  return finish(mono(SR, x), 0.6, 12);
-}
-
-function tagSlap(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.2);
-  addNoise(o, SR, r, { tau: 0.0025, amp: 1, hp: 1500 });
-  addNoise(o, SR, r, { tau: 0.012, amp: 0.7, bp: 2000, q: 0.9 });
-  addThump(o, SR, { f0: 300, f1: 170, pitchTau: 0.015, tau: 0.03, amp: 0.7 });
-  return finish(mono(SR, o), 0.85);
-}
-
-function tagMiss(_b: number, _a: number, r: Rand): Rendered {
-  const dur = 0.2;
-  const x = sweepNoise(SR, dur, r, (t) => 2800 - 1800 * (t / dur), (t) => Math.pow(Math.sin(Math.PI * clamp(t / dur, 0, 1)), 1.3), 1.2, 6500);
-  const o = new Float32Array(x.length);
-  for (let i = 0; i < x.length; i++) o[i] = x[i];
-  addNoise(o, SR, r, { t0: 0.02, tau: 0.02, amp: 0.25, bp: 900, q: 0.7 }); // leather / cloth brush
-  return finish(mono(SR, o), 0.6, 15);
-}
-
-function slideScuff(_b: number, _a: number, r: Rand): Rendered {
-  const dur = 0.55;
-  const x = sweepNoise(SR, dur, r, (t) => 2600 - 1500 * (t / dur), (t) => Math.min(1, t / 0.03) * Math.exp(-t / 0.2), 0.7, 6000);
-  const grit = buf(dur);
-  for (let k = 0; k < 90; k++) {
-    const t0 = r() * dur * 0.7;
-    addNoise(grit, SR, r, { t0, tau: 0.002, amp: 0.4 * Math.exp(-t0 / 0.25), hp: 1800 });
-  }
-  for (let i = 0; i < x.length; i++) x[i] += grit[i];
-  return finish(mono(SR, x), 0.7, 20);
-}
-
-function footstep(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.09);
-  addThump(o, SR, { f0: 160, f1: 90, pitchTau: 0.01, tau: 0.018, amp: 0.8 });
-  addNoise(o, SR, r, { tau: 0.012, amp: 0.7, bp: 2200, q: 0.6 });
-  return finish(mono(SR, o), 0.5);
-}
-
-function baseThud(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.16);
-  addThump(o, SR, { f0: 130, f1: 80, pitchTau: 0.02, tau: 0.035, amp: 1 });
-  addNoise(o, SR, r, { tau: 0.015, amp: 0.4, lp: 1200 });
-  return finish(mono(SR, o), 0.6);
-}
-
-function bodyThump(_b: number, _a: number, r: Rand): Rendered {
-  const o = buf(0.3);
-  addThump(o, SR, { f0: 130, f1: 70, pitchTau: 0.03, tau: 0.07, amp: 1 });
-  addNoise(o, SR, r, { tau: 0.04, amp: 0.6, lp: 900 });
-  addNoise(o, SR, r, { tau: 0.004, amp: 0.3, hp: 700, lp: 3500 });
-  return finish(mono(SR, o), 0.85);
-}
 
 function firework(_b: number, _a: number, r: Rand): Rendered {
   const o = buf(2.4);
@@ -579,27 +400,53 @@ export function crowdLoop(kind: 'murmur' | 'roar' | 'claps', seed = 7): Rendered
 
 // ---- registry ---------------------------------------------------------------------------------------------------------
 
+/** The bank: buckets are physical cases (pitch speed, catch type, surface ...), alts are variations (pitch, decay, noise seed). */
 export const SFX_DEFS: Record<SfxId, SoundDef> = {
-  bat_crack: { buckets: 3, alts: 3, make: batCrack },
-  bat_thud: { buckets: 2, alts: 2, make: batThud },
-  bat_tick: { buckets: 1, alts: 2, make: batTick },
-  bunt_tap: { buckets: 1, alts: 2, make: buntTap },
-  swing_whoosh: { buckets: 1, alts: 3, make: whoosh(0.3, 350, 1500, 500, 1.4, 6000) },
-  pitch_whoosh: { buckets: 1, alts: 2, make: whoosh(0.2, 500, 1800, 900, 1.2, 5000) },
-  mitt_pop: { buckets: 3, alts: 3, make: mittPop },
-  glove_pop: { buckets: 2, alts: 3, make: glovePop },
-  ground_bounce: { buckets: 1, alts: 2, make: bounce(false) },
-  dirt_thud: { buckets: 1, alts: 2, make: bounce(true) },
-  wall_thud: { buckets: 1, alts: 2, make: wallThud },
-  fence_rattle: { buckets: 1, alts: 2, make: fenceRattle },
-  seat_thump: { buckets: 1, alts: 2, make: seatThump },
-  throw_whip: { buckets: 1, alts: 3, make: throwWhip },
-  tag_slap: { buckets: 1, alts: 2, make: tagSlap },
-  tag_miss: { buckets: 1, alts: 2, make: tagMiss },
-  slide_scuff: { buckets: 1, alts: 2, make: slideScuff },
-  footstep: { buckets: 1, alts: 3, make: footstep },
-  base_thud: { buckets: 1, alts: 2, make: baseThud },
-  body_thump: { buckets: 1, alts: 2, make: bodyThump },
+  // the bat
+  bat_crack: { buckets: 3, alts: 3, make: F.batCrack },
+  bat_thud: { buckets: 2, alts: 3, make: F.batThud },
+  bat_tick: { buckets: 1, alts: 3, make: F.batTick },
+  bunt_tap: { buckets: 1, alts: 2, make: F.buntTap },
+  bat_drop: { buckets: 1, alts: 2, make: F.batDrop },
+  bat_rack: { buckets: 1, alts: 2, make: F.batRack },
+  bat_tap: { buckets: 1, alts: 2, make: F.batTap },
+  swing_whoosh: { buckets: 1, alts: 3, make: F.swingWhoosh },
+  pitch_whoosh: { buckets: 2, alts: 2, make: F.pitchWhip },
+  // gloves and hands
+  mitt_pop: { buckets: 4, alts: 3, make: F.mittPop },
+  mitt_block: { buckets: 1, alts: 2, make: F.mittBlock },
+  mitt_creak: { buckets: 1, alts: 2, make: F.mittCreak },
+  glove_pop: { buckets: 6, alts: 2, make: F.glovePop },
+  bare_smack: { buckets: 1, alts: 2, make: F.bareSmack },
+  glove_transfer: { buckets: 1, alts: 3, make: F.gloveTransfer },
+  thigh_slap: { buckets: 1, alts: 2, make: F.thighSlap },
+  // the ball on things
+  ground_bounce: { buckets: 2, alts: 2, make: F.grassBounce },
+  dirt_thud: { buckets: 2, alts: 2, make: F.dirtBounce },
+  plate_bounce: { buckets: 1, alts: 2, make: F.plateBounce },
+  wall_thud: { buckets: 2, alts: 2, make: F.wallThud },
+  fence_rattle: { buckets: 1, alts: 2, make: F.fenceRattle },
+  backstop_bang: { buckets: 1, alts: 2, make: F.backstopBang },
+  seat_thump: { buckets: 1, alts: 3, make: F.seatClack },
+  seat_scramble: { buckets: 1, alts: 1, make: F.seatScramble },
+  body_thump: { buckets: 1, alts: 2, make: F.bodyThump },
+  // through the air
+  throw_whip: { buckets: 3, alts: 2, make: F.throwZip },
+  // tags, slides, feet, bases
+  tag_slap: { buckets: 1, alts: 3, make: F.tagSlap },
+  tag_miss: { buckets: 1, alts: 2, make: F.tagMiss },
+  slide_scuff: { buckets: 2, alts: 2, make: F.slideScrape },
+  footstep: { buckets: 3, alts: 3, make: F.footstep },
+  base_thud: { buckets: 2, alts: 2, make: F.baseTap },
+  // gear and rituals
+  helmet_tap: { buckets: 1, alts: 2, make: F.helmetTap },
+  velcro: { buckets: 1, alts: 1, make: F.velcro },
+  rosin_poof: { buckets: 1, alts: 1, make: F.rosinPoof },
+  rail_thump: { buckets: 1, alts: 1, make: F.railThump },
+  ump_gear: { buckets: 1, alts: 2, make: F.umpGear },
+  pouch: { buckets: 1, alts: 2, make: F.pouch },
+  ball_rub: { buckets: 1, alts: 1, make: F.ballRub },
+  // stadium and broadcast
   firework: { buckets: 1, alts: 1, make: firework },
   replay_whoosh: { buckets: 1, alts: 1, make: replayWhoosh },
   pa_click: { buckets: 1, alts: 1, make: paClick },

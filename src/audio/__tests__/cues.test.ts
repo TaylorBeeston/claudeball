@@ -63,14 +63,20 @@ describe('pitches and swings', () => {
     const slow = sfx(m({ type: 'pitchCrossed', mph: 78, x: 0, y: 0.8, inZone: true }, c), 'mitt_pop')[0] as Extract<Cue, { kind: 'sfx' }>;
     const fast = sfx(m({ type: 'pitchCrossed', mph: 99, x: 0, y: 0.8, inZone: true }, c), 'mitt_pop')[0] as Extract<Cue, { kind: 'sfx' }>;
     expect(slow.bucket).toBe(0);
-    expect(fast.bucket).toBe(2);
+    expect(fast.bucket).toBe(3);
     expect(fast.gain!).toBeGreaterThan(slow.gain!);
     expect(fast.pos).toEqual({ x: 0, y: 0.8, z: -1.2 });
   });
 
-  it('release whoosh at the release point and swing whoosh at the batter', () => {
+  it('the pitch whips past the plate (the dish hears it as it arrives); the swing whoosh is at the batter', () => {
     const r = sfx(m({ type: 'pitchReleased', mph: 95, release: { x: 0.3, y: 1.9, z: 16.9 } }), 'pitch_whoosh')[0] as Extract<Cue, { kind: 'sfx' }>;
-    expect(r.pos).toMatchObject({ x: 0.3, z: 16.9 });
+    expect(r.pos!.z).toBeLessThan(2);
+    expect(r.bucket).toBe(1);
+    expect(r.delay!).toBeGreaterThan(0.25); // ~0.4 s of flight at 95 mph
+    expect(r.delay!).toBeLessThan(0.5);
+    const slow = sfx(m({ type: 'pitchReleased', mph: 78, release: { x: 0.3, y: 1.9, z: 16.9 } }), 'pitch_whoosh')[0] as Extract<Cue, { kind: 'sfx' }>;
+    expect(slow.bucket).toBe(0);
+    expect(slow.delay!).toBeGreaterThan(r.delay!);
     const s = sfx(m({ type: 'swing', batterId: 'b1' }), 'swing_whoosh')[0] as Extract<Cue, { kind: 'sfx' }>;
     expect(s.pos).toMatchObject({ x: 0.5 });
   });
@@ -161,13 +167,16 @@ describe('throws, wall, errors', () => {
     expect(pop.pos).toMatchObject({ x: 0.5 });
   });
 
-  it('wall contact: harder hits are louder and rattle the fence', () => {
+  it('wall contact: the padding thuds, louder when harder; off the top rail it rings too; a fielder into the wall is the body bucket', () => {
     const soft = m({ type: 'wallContact', who: 'ball', speed: 5, pos: { x: 0, y: 1, z: 120 } });
     const hard = m({ type: 'wallContact', who: 'ball', speed: 30, pos: { x: 0, y: 1, z: 120 } });
-    const t = (cs: Cue[]) => (sfx(cs, 'wall_thud')[0] as Extract<Cue, { kind: 'sfx' }>).gain!;
-    expect(t(hard)).toBeGreaterThan(t(soft));
-    expect(sfx(hard, 'fence_rattle')).toHaveLength(1);
-    expect(sfx(soft, 'fence_rattle')).toHaveLength(0);
+    const top = m({ type: 'wallContact', who: 'ball', speed: 30, pos: { x: 0, y: 2.3, z: 120 } });
+    const t = (cs: Cue[]) => sfx(cs, 'wall_thud')[0] as Extract<Cue, { kind: 'sfx' }>;
+    expect(t(hard).gain!).toBeGreaterThan(t(soft).gain!);
+    expect(t(hard).bucket).toBe(1);
+    expect(sfx(hard, 'fence_rattle')).toHaveLength(0);
+    expect(sfx(top, 'fence_rattle')).toHaveLength(1);
+    expect(t(m({ type: 'wallContact', who: 'fielder', speed: 6, pos: { x: 0, y: 1, z: 120 } })).bucket).toBe(0);
   });
 
   it('errors groan', () => {
