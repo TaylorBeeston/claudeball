@@ -176,3 +176,53 @@ describe('mixer', () => {
     expect(Math.max(...wave) - Math.min(...wave)).toBeGreaterThan(3); // goes round the bowl over seconds
   });
 });
+
+describe('start-up synthesis', () => {
+  /** a Worker double that runs the real worker's job function, one message at a time, asynchronously */
+  class FakeWorker {
+    static made = 0;
+    onmessage: ((e: MessageEvent) => void) | null = null;
+    onerror: ((e: unknown) => void) | null = null;
+    private listeners: ((e: MessageEvent) => void)[] = [];
+    private q = Promise.resolve();
+    constructor() {
+      FakeWorker.made++;
+    }
+    addEventListener(_t: string, f: (e: MessageEvent) => void) {
+      this.listeners.push(f);
+    }
+    postMessage(m: { n: number; job: import('../synthJobs').SynthJob; sr: number }) {
+      this.q = this.q.then(async () => {
+        const { runJob } = await import('../synthJobs');
+        const r = runJob(m.job, m.sr);
+        const e = { data: { n: m.n, sr: r.sr, ch: r.ch } } as MessageEvent;
+        this.onmessage?.(e);
+        for (const f of this.listeners) f(e);
+      });
+    }
+    terminate() {}
+  }
+
+  it('runs in a worker when there is one: every sound lands, the same set as on the main thread', async () => {
+    const main = await readyMixer();
+    vi.stubGlobal('Worker', FakeWorker);
+    try {
+      const w = await readyMixer();
+      expect(FakeWorker.made).toBeGreaterThan(0);
+      expect(w.m.prepared).toBe(w.m.totalToPrepare);
+      expect([...w.m.buffers.keys()].sort()).toEqual([...main.m.buffers.keys()].sort());
+      for (const [k, v] of main.m.buffers) expect(w.m.buffers.get(k)!.map((b) => b.length)).toEqual(v.map((b) => b.length));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('the phone IR is one channel of at most 1.6 s, the desktop IR stereo', async () => {
+    const { irFor } = await import('../synthJobs');
+    const phone = irFor('normal', 48000, true);
+    const desk = irFor('normal', 48000, false);
+    expect(phone.ch.length).toBe(1);
+    expect(phone.ch[0].length).toBeLessThanOrEqual(1.6 * 48000);
+    expect(desk.ch.length).toBe(2);
+  });
+});
