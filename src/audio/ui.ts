@@ -32,6 +32,9 @@ export function loadSettings(): Settings {
       organVolume: num(o.organVolume, DEFAULT_SETTINGS.organVolume),
       chatter: o.chatter === 'low' || o.chatter === 'high' ? o.chatter : 'normal',
       hd: o.hd === true,
+      venue: o.venue === 'dry' || o.venue === 'big' ? o.venue : 'normal',
+      micPerspective: o.micPerspective === 'close' ? 'close' : 'broadcast',
+      duck: o.duck === 'light' || o.duck === 'strong' ? o.duck : 'normal',
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -159,6 +162,27 @@ export class AudioUi {
     check('music', 'Park music on');
     check('pa', 'PA announcer & umpire');
     check('commentary', 'Commentary');
+    const choose = <K extends 'venue' | 'micPerspective' | 'duck'>(key: K, label: string, opts: [Settings[K], string][]) => {
+      const l = document.createElement('label');
+      l.append(label);
+      const sel = document.createElement('select');
+      for (const [v, t] of opts) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = t;
+        sel.append(o);
+      }
+      sel.value = s[key];
+      sel.onchange = () => {
+        s[key] = sel.value as Settings[K];
+        h.changed();
+      };
+      l.append(sel);
+      panel.append(l);
+    };
+    choose('venue', 'Venue acoustics', [['dry', 'Dry'], ['normal', 'Normal'], ['big', 'Big']]);
+    choose('micPerspective', 'Mic perspective', [['broadcast', 'Broadcast mix'], ['close', 'Close']]);
+    choose('duck', 'Under the commentary', [['light', 'Light (4 dB)'], ['normal', 'Normal (7 dB)'], ['strong', 'Strong (10 dB)']]);
     {
       const l = document.createElement('label');
       l.append('Chatter');

@@ -1,41 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { spatialize, listenerFromMatrix, type Listener } from '../spatial';
 import { Excitement, baseline } from '../excitement';
 import { SpeechQueue, pickVoices, type SpeechEngine } from '../speech';
-
-const L: Listener = { pos: { x: 0, y: 2, z: -20 }, right: { x: 1, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 } };
-
-describe('spatialize', () => {
-  it('pans by the side of the camera the sound is on', () => {
-    expect(spatialize(L, { x: 30, y: 1, z: 20 }).pan).toBeGreaterThan(0.3);
-    expect(spatialize(L, { x: -30, y: 1, z: 20 }).pan).toBeLessThan(-0.3);
-    expect(Math.abs(spatialize(L, { x: 0, y: 1, z: 20 }).pan)).toBeLessThan(0.05);
-  });
-
-  it('gets quieter and duller with distance, never silent', () => {
-    const near = spatialize(L, { x: 0, y: 1, z: -14 });
-    const mid = spatialize(L, { x: 0, y: 1, z: 20 });
-    const far = spatialize(L, { x: 0, y: 1, z: 120 });
-    expect(near.gain).toBeGreaterThan(mid.gain);
-    expect(mid.gain).toBeGreaterThan(far.gain);
-    expect(far.gain).toBeGreaterThan(0.1);
-    expect(far.cutoff).toBeLessThan(mid.cutoff);
-    expect(far.cutoff).toBeGreaterThan(2000);
-  });
-
-  it('a sound right at the camera stays centred', () => {
-    expect(spatialize(L, { x: 0.2, y: 2, z: -19.9 }).pan).toBeCloseTo(0, 1);
-  });
-
-  it('reads the listener from a three.js matrix (column-major)', () => {
-    // camera at (1,2,3) looking down +z: rotation by 180deg about y -> right = (-1,0,0), forward (-col2) = (0,0,1)
-    const e = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 1, 2, 3, 1];
-    const l = listenerFromMatrix(e);
-    expect(l.pos).toEqual({ x: 1, y: 2, z: 3 });
-    expect(l.right).toEqual({ x: -1, y: 0, z: 0 });
-    expect(l.fwd).toEqual({ x: 0, y: 0, z: 1 });
-  });
-});
 
 describe('crowd excitement', () => {
   const calm = { inning: 2, outs: 0, balls: 0, strikes: 0, score: { home: 0, away: 6 }, runners: [false, false, false] as [boolean, boolean, boolean] };

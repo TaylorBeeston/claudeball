@@ -22,6 +22,7 @@ function fakeCtx() {
     createStereoPanner: () => node('pan', { pan: param() }),
     createDelay: () => node('delay', { delayTime: param() }),
     createWaveShaper: () => node('shaper', { curve: null }),
+    createChannelSplitter: () => node('split'),
     createBuffer: (c: number, len: number, sr: number) => ({ length: len, sampleRate: sr, numberOfChannels: c, getChannelData: () => new Float32Array(len), copyToChannel: vi.fn() }),
     createBufferSource: () => node('source', { buffer: null, playbackRate: param(1), start: vi.fn(), stop: vi.fn(), onended: null }),
   };
@@ -240,22 +241,25 @@ describe('concurrent channels (PA over booth), clauses, priorities', () => {
     void h1;
   });
 
-  it('routes the PA and the umpire to the PA bus and the booth to the booth bus', async () => {
+  it('routes the PA into the PA system, the umpire to the field (plate) and each booth voice through its own EQ into the booth chain', async () => {
     const { eng, f, mixer } = await setup();
     const into = (bus: object) => f.made.filter((m) => m.node.connect.mock?.calls.some((c: unknown[]) => c[0] === bus)).length;
-    const before = { pa: into(mixer.paBus), booth: into(mixer.boothBus) };
+    const pbpIn = mixer.boothIn('pbp');
+    const colorIn = mixer.boothIn('color');
+    expect(pbpIn).not.toBe(colorIn);
+    const before = { pa: into(mixer.paBus), ump: into(mixer.umpireBus), pbp: into(pbpIn), color: into(colorIn) };
     eng.speak('Now batting.', opts('pa'));
     await flush();
-    expect(into(mixer.paBus)).toBeGreaterThan(before.pa);
-    expect(into(mixer.boothBus)).toBe(before.booth);
+    expect(into(mixer.paBus)).toBe(before.pa + 1);
+    expect(into(pbpIn) + into(colorIn)).toBe(before.pbp + before.color);
     eng.speak('Strike!', opts('ump'));
     await flush();
-    const afterUmp = into(mixer.paBus);
-    expect(afterUmp).toBeGreaterThan(before.pa + 1);
+    expect(into(mixer.umpireBus)).toBe(before.ump + 1);
+    expect(into(mixer.paBus)).toBe(before.pa + 1);
     eng.speak('Called strike one.', opts('color'));
     await flush();
-    expect(into(mixer.boothBus)).toBeGreaterThan(before.booth);
-    expect(into(mixer.paBus)).toBe(afterUmp);
+    expect(into(colorIn)).toBe(before.color + 1);
+    expect(into(mixer.paBus)).toBe(before.pa + 1);
   });
 
   it('booth lines are synthesised clause by clause and played in order; the first clause starts as soon as it is ready', async () => {

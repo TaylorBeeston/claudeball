@@ -433,74 +433,11 @@ export class NeuralSpeechEngine implements SpeechEngine {
     nodes.push(level);
     src.connect(level);
     const tail: AudioNode = level;
-    if (o.role === 'pa') {
-      // public-address voice: band-limited horn speaker, a touch of drive, a slap-back off the far stands and the stadium reverb
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 320;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 3400;
-      const drive = ctx.createWaveShaper();
-      const curve = new Float32Array(512);
-      for (let i = 0; i < curve.length; i++) {
-        const x = (i / (curve.length - 1)) * 2 - 1;
-        curve[i] = Math.tanh(1.6 * x) / Math.tanh(1.6);
-      }
-      drive.curve = curve;
-      tail.connect(hp);
-      hp.connect(lp);
-      lp.connect(drive);
-      const dry = ctx.createGain();
-      dry.gain.value = 0.85;
-      drive.connect(dry);
-      dry.connect(mixer.paBus);
-      const slap = ctx.createDelay(0.5);
-      slap.delayTime.value = 0.19;
-      const fb = ctx.createGain();
-      fb.gain.value = 0.22;
-      const wet = ctx.createGain();
-      wet.gain.value = 0.32;
-      drive.connect(slap);
-      slap.connect(fb);
-      fb.connect(slap);
-      slap.connect(wet);
-      wet.connect(mixer.paBus);
-      const send = ctx.createGain();
-      send.gain.value = 0.7;
-      drive.connect(send);
-      send.connect(mixer.reverbIn);
-      nodes.push(hp, lp, drive, dry, slap, fb, wet, send);
-    } else if (o.role === 'ump') {
-      // the umpire is on the field: part of the stadium, in the room reverb, a little band-limited, no slap-back
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 150;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 6500;
-      tail.connect(hp);
-      hp.connect(lp);
-      lp.connect(mixer.paBus);
-      const send = ctx.createGain();
-      send.gain.value = 0.45;
-      lp.connect(send);
-      send.connect(mixer.reverbIn);
-      nodes.push(hp, lp, send);
-    } else {
-      // booth voices stay dry and close-miked: roll off the rumble, add a little presence
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 90;
-      const pres = ctx.createBiquadFilter();
-      pres.type = 'peaking';
-      pres.frequency.value = 3000;
-      pres.gain.value = 2;
-      tail.connect(hp);
-      hp.connect(pres);
-      pres.connect(mixer.boothBus);
-      nodes.push(hp, pres);
-    }
+    // the mixer does the processing (`venue/graph.ts`): the PA voice goes through the PA system into the park (horns, clusters,
+    // slap-back, the bowl's reverb), the umpire is a source at the plate heard by the field mics, booth voices take the broadcast chain
+    if (o.role === 'pa') tail.connect(mixer.paBus);
+    else if (o.role === 'ump') tail.connect(mixer.umpireBus ?? mixer.paBus);
+    else tail.connect(mixer.boothIn ? mixer.boothIn(o.role ?? 'pbp') : mixer.boothBus);
     const c = { src, nodes, shift };
     this.playing.add(c);
     src.onended = () => {
