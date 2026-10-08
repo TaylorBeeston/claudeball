@@ -77,27 +77,33 @@ export function computeLook(physique: PhysiqueSnap | undefined, app: AppearanceS
   // ---- body -------------------------------------------------------------------------------
   const scale = clamp(ph.heightM / MODEL_HEIGHT, 0.88, 1.14);
   const bmi = ph.weightKg / (ph.heightM * ph.heightM);
-  let lean = 0, stocky = 0, muscular = 0;
+  // most players are athletic-average, a good number heavier, a few lanky or truly muscular (t-0014: "everyone has the same very fit build"):
+  // the sim's BMI drives the morphs, the seed adds a little definition on some of the athletic ones
+  let lean = 0, stocky = 0, muscular = 0, heavy = 0;
   switch (ph.build) {
-    case 'lean': lean = 0.75; break;
-    case 'athletic': muscular = 0.45; break;
-    case 'stocky': stocky = 0.6; break;
-    case 'heavy': stocky = 1; break;
+    case 'lean': lean = 0.55; break;
+    case 'athletic': muscular = 0.12 + 0.3 * rnd(); break;
+    case 'stocky': stocky = 0.45; break;
+    case 'heavy': stocky = 0.35; heavy = 0.45; break;
   }
-  const dev = clamp((bmi - 25) / 6, -1, 1); // heavier / lighter than a typical athlete for his height
-  if (dev > 0) stocky = clamp(stocky + dev * 0.45, 0, 1);
-  else lean = clamp(lean - dev * 0.45, 0, 1);
+  if (bmi < 23.5) lean = clamp(lean + (23.5 - bmi) * 0.25, 0, 1);
+  if (bmi > 25.5) stocky = clamp(stocky + (bmi - 25.5) * 0.12, 0, 1);
+  if (bmi > 28) heavy = clamp(heavy + (bmi - 28) * 0.16, 0, 1);
   // conflicting body morphs cancel: keep the dominant one
-  if (lean > 0 && stocky > 0) {
-    if (lean >= stocky) { lean -= stocky; stocky = 0; } else { stocky -= lean; lean = 0; }
+  if (lean > 0 && stocky + heavy > 0) {
+    if (lean >= stocky + heavy) { lean -= stocky + heavy; stocky = heavy = 0; } else { stocky = Math.max(0, stocky - lean); lean = 0; }
   }
-  if (stocky > 0.6) muscular *= 0.5;
+  if (stocky + heavy > 0.5) muscular *= 0.3;
+  if (heavy > 0.5) stocky = Math.min(stocky, 0.5);
   const jit = () => (rnd() - 0.5) * 0.16;
   const morphs: Record<string, number> = {
     build_lean: clamp(lean + (lean > 0 ? jit() : 0), 0, 1),
     build_stocky: clamp(stocky + (stocky > 0 ? jit() : 0), 0, 1),
     build_muscular: clamp(muscular + (muscular > 0 ? jit() : 0), 0, 1),
+    build_heavy: clamp(heavy + (heavy > 0 ? jit() : 0), 0, 1),
   };
+  // heavier people carry it in the face too
+  const faceFat = clamp(heavy * 0.7 + stocky * 0.25, 0, 0.8);
 
   // ---- head (all from the seed) --------------------------------------------------------------
   const hw = rnd(), hv = rnd();
@@ -106,6 +112,7 @@ export function computeLook(physique: PhysiqueSnap | undefined, app: AppearanceS
   morphs.jaw_square = Math.pow(rnd(), 1.4) * 0.9;
   morphs.nose_large = Math.pow(rnd(), 1.6) * 0.9;
   morphs.ears_large = Math.pow(rnd(), 1.6) * 0.9;
+  if (faceFat > 0.05) morphs.cheeks_full = faceFat;
 
   // ---- skin / hair -----------------------------------------------------------------------------
   // the sim's 0..5 (light → dark) spread over the 10 tones, the seed picks the neighbour within the band

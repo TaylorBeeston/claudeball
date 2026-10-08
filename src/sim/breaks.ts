@@ -14,6 +14,7 @@ import { warmTick, type WarmCtx } from './visits';
 import type { PlayerRT, UmpireRT, World } from './world';
 import { secToTicks } from './world';
 import { sendHome } from './handling';
+import { RELEASE_S, releaseHeight, throwMotion } from './throws';
 import { BRUSH_FACE, BRUSH_SPOT, restSpot } from './umpires';
 import { CREW_MEETING, crewMeetingSpot } from './venue';
 import { crewMeets } from './setup';
@@ -170,29 +171,48 @@ const crewInPlace = (w: World) => w.umpires.every((u) => u.hold || Math.hypot(u.
 
 function tickPairs(w: World, s: BreakShow): void {
   w.extraBalls = [];
-  if (s.stage === 'done') return;
+  if (s.stage === 'done') {
+    for (const p of s.pairs) p.a.tossAt = p.b.tossAt = undefined;
+    return;
+  }
   for (const p of s.pairs) {
     if (!arrived(p.a) || !arrived(p.b)) continue;
     const u0 = ((w.tick - p.t0) % p.period) / p.period;
-    const half = Math.floor((((w.tick - p.t0) / p.period) * 2) % 2);
     const flip = Math.floor(((w.tick - p.t0) / p.period) * 2);
     const from = u0 < 0.5 ? p.a : p.b;
     const to = u0 < 0.5 ? p.b : p.a;
-    const f = (u0 % 0.5) / 0.5;
+    const halfSec = p.period / 2 / 240;
+    const tau = ((u0 % 0.5) / 0.5) * halfSec;
+    // infielders roll grounders to each other; outfielders play catch (an underhand flip up close, a short-arm flick, a relaxed throw)
+    const D = Math.hypot(to.x - from.x, to.z - from.z);
+    const motion = p.mode === 'air' ? throwMotion(D, true) : 'roll_ball';
+    const rel = Math.min(RELEASE_S[motion], halfSec * 0.45);
     if (flip !== p.half) {
       p.half = flip;
-      void half;
-      setAnim(w, from, p.mode === 'air' ? 'toss' : 'throw', 0.6);
+      setAnim(w, from, motion, rel + 0.5);
+      from.tossAt = w.tick + secToTicks(rel - tau);
+      to.tossAt = undefined;
       from.lookAt = { x: to.x, z: to.z };
       to.lookAt = { x: from.x, z: from.z };
     }
+    // the ball is in his hand until the clip's release frame, then flies (or rolls) for the rest of the half cycle
+    const f = Math.max(0, (tau - rel) / Math.max(0.05, halfSec - rel));
     // the receiver's catch clip starts its lead ahead of the arrival
     const lead = p.mode === 'air' ? 0.5 : 0.46;
-    const remain = (1 - f) * (p.period / 2 / 240);
-    if (remain < lead && remain > lead - 0.05 && to.anim !== (p.mode === 'air' ? 'catch_toss' : 'field_grounder')) setAnim(w, to, p.mode === 'air' ? 'catch_toss' : 'field_grounder', lead * 2);
+    const remain = (1 - f) * (halfSec - rel);
+    if (tau >= rel && remain < lead && remain > lead - 0.05 && to.anim !== (p.mode === 'air' ? 'catch_toss' : 'field_grounder')) setAnim(w, to, p.mode === 'air' ? 'catch_toss' : 'field_grounder', lead * 2);
+    if (tau < rel) {
+      // in the thrower's hand (low for a roll)
+      const hy = motion === 'roll_ball' ? 0.25 + 0.75 * Math.max(0, 1 - tau / rel) : 1.1;
+      w.extraBalls.push({ x: from.x + Math.sin(from.facing) * 0.3, y: hy, z: from.z + Math.cos(from.facing) * 0.3 });
+      continue;
+    }
     const x = from.x + (to.x - from.x) * f;
     const z = from.z + (to.z - from.z) * f;
-    const y = p.mode === 'air' ? 1.3 + 3.6 * f * (1 - f) : 0.04 + Math.abs(Math.sin(f * 9)) * 0.08 * (1 - f);
+    const arc = motion === 'toss_underhand' ? 0.7 : 3.6;
+    const y0 = releaseHeight(motion);
+    // a roll leaves the hand a hand's height up and runs along the grass; a toss arcs from the release height to the partner's chest
+    const y = p.mode === 'air' ? y0 + (1.3 - y0) * f + arc * f * (1 - f) : 0.037 + Math.max(0, y0 - 0.037) * Math.max(0, 1 - f / 0.06);
     w.extraBalls.push({ x, y, z });
   }
 }

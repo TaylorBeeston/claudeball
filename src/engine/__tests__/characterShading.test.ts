@@ -41,7 +41,10 @@ describe('character shading', () => {
     eye.name = 'eye';
     const a = upgradeMaterial(eye) as MeshPhysicalMaterial;
     expect(a.isMeshPhysicalMaterial).toBe(true);
-    expect(a.clearcoat).toBe(1);
+    // a little wet gloss, not a mirror (a full clear coat + strong env reflections whited the eyes out under a day sky)
+    expect(a.clearcoat).toBeGreaterThan(0.2);
+    expect(a.clearcoat).toBeLessThan(0.5);
+    expect(a.envMapIntensity).toBeLessThan(1);
     expect(upgradeMaterial(eye)).toBe(a);
     const cloth = new MeshStandardMaterial();
     cloth.name = 'uniform_pants';

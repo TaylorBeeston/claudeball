@@ -38,6 +38,16 @@ function feetY(w: World, p: PlayerRT): number {
   return ground + (u > 0 && u < 1 ? 4 * L.h * u * (1 - u) : 0);
 }
 
+/** Seconds until the ball leaves his hand while a throwing motion is under way (a play's throw, a casual return, a warm-up toss); undefined otherwise. */
+function releaseIn(w: World, p: PlayerRT): number | undefined {
+  if (p.plan.releaseAt > w.tick) return (p.plan.releaseAt - w.tick) * TICK;
+  const r = w.ret;
+  if (r && r.from === p && r.motion && r.stage !== 'flight') return Math.max(0, (r.until - w.tick) * TICK);
+  const t = p.tossAt;
+  if (t !== undefined && t >= w.tick) return (t - w.tick) * TICK;
+  return undefined;
+}
+
 function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): PlayerSnapshot {
   const a = animOf(w, p);
   return {
@@ -63,6 +73,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     gloveTarget: p.gloveTarget ? { ...p.gloveTarget } : null,
     gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
+    releaseIn: releaseIn(w, p),
     pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
     gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     tic: role === 'batter' || role === 'ondeck' ? ticOf(p) : undefined,

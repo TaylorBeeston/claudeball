@@ -93,12 +93,17 @@ function makeName(rng: Rng, used: Set<string>): string {
   return `${rng.pick(FIRST)} ${rng.pick(LAST)} Jr.`;
 }
 
-function makePhysique(rng: Rng, pos: string, sizeZ: number): Physique {
+/**
+ * Height, weight and build. The weight spread is a real roster's (BMI ~23-35, most athletic-average, a good number of heavier catchers / first basemen /
+ * DHs / pitchers, some lanky relievers): body mass feeds nothing in the physics (only the height does), so it is free to vary as much as real players do;
+ * fast runners run leaner. Same random draws as before (the rest of the roster is unchanged).
+ */
+function makePhysique(rng: Rng, pos: string, sizeZ: number, speed = 50): Physique {
   const b = BODY[pos] ?? BODY.P;
   const heightM = clamp(b.h + 0.055 * (0.55 * sizeZ + 0.85 * rng.normal(0, 1)), 1.70, 2.08);
-  const bmi = clamp(b.bmi + 1.4 * sizeZ + rng.normal(0, 0.7), 23.2, 33);
+  const bmi = clamp(b.bmi + 1.3 * sizeZ - 0.045 * (speed - 50) + rng.normal(0, 1.9), 22.8, 35);
   const weightKg = Math.round(bmi * heightM * heightM * 10) / 10;
-  const build: Build = bmi < 24.2 ? 'lean' : bmi < 26.6 ? 'athletic' : bmi < 28.6 ? 'stocky' : 'heavy';
+  const build: Build = bmi < 24.2 ? 'lean' : bmi < 27.0 ? 'athletic' : bmi < 29.5 ? 'stocky' : 'heavy';
   return { heightM: Math.round(heightM * 1000) / 1000, weightKg, build };
 }
 
@@ -186,7 +191,7 @@ function makeHitter(id: string, side: TeamSide, jersey: number, pos: FieldPositi
   // throwing hand by position: almost nobody throws left-handed at C, 2B, SS or 3B
   const pLeft = pos === 'C' || pos === '2B' || pos === 'SS' || pos === '3B' ? 0 : pos === '1B' ? 0.25 : 0.2;
   const throwsL = rng.next() < pLeft;
-  const physique = makePhysique(rng, pos, sizeZ);
+  const physique = makePhysique(rng, pos, sizeZ, speed);
   return {
     id,
     name: makeName(rng, used),

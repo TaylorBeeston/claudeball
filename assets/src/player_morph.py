@@ -1,6 +1,6 @@
 # Shape keys (glTF morph targets) for body / head variety. The SAME spatial function displaces every skinned mesh (skin, clothes, gear), so clothing follows the body.
 # Blender axes: model faces -Y, left = +X, up = +Z, rest pose = the A-pose the meshes are built in. Requires numpy/bpy.
-#   body : build_lean, build_stocky, build_muscular
+#   body : build_lean, build_stocky, build_muscular, build_heavy
 #   head : head_narrow, head_wide (all head-attached meshes),  jaw_square, nose_large, ears_large (Head + beards only)
 import bpy, numpy as np
 from mathutils import Vector
@@ -19,11 +19,14 @@ def body_morph(P, kind):
     neck = _sm(1.52, 1.58, z)*(1-_sm(1.66, 1.70, z))*(ax < .09)
     if kind == "build_lean":    kt = (.90, .92); karm = .88; kleg = .90; kneck = .92; dsh = -.012; belly = 0; waist = .95
     elif kind == "build_stocky": kt = (1.13, 1.16); karm = 1.10; kleg = 1.10; kneck = 1.14; dsh = .012; belly = .11; waist = 1.10
+    elif kind == "build_heavy":  kt = (1.15, 1.20); karm = 1.15; kleg = 1.14; kneck = 1.20; dsh = .004; belly = .30; waist = 1.20      # soft and heavy: belly, love handles, seat, thick neck
     else:                        kt = (1.03, 1.05); karm = 1.14; kleg = 1.09; kneck = 1.15; dsh = .016; belly = -.02; waist = .98
     # torso: horizontal scale about the trunk axis, with a chest/waist profile
     if kind == "build_muscular": kx = 1 + .11*_g(z, 1.38, .12) - .03*_g(z, 1.10, .10) + .02*_g(z, 1.25, .1)     # V taper: broad chest, narrow waist
     else: kx = 1 + (kt[0]-1)*torso + (waist-1)*_g(z, 1.10, .09)*.6
-    ky = 1 + (kt[1]-1)*torso + belly*_g(z, 1.10, .10)*(y < -.005)
+    front = (y < -.005) if kind != "build_heavy" else _sm(.01, -.05, y)          # (a smooth front weight for the heavy belly: no crease at the side)
+    ky = 1 + (kt[1]-1)*torso + belly*_g(z, 1.10, .10 if kind != "build_heavy" else .13)*front
+    if kind == "build_heavy": ky = ky + .14*_g(z, .94, .07)*_sm(-.01, .05, y) + .05*_g(z, 1.34, .07)*_sm(.0, -.06, y)   # the seat behind, a soft chest in front
     keep = 1 - arm*.85                                                         # arm points move with the arm scaling below instead
     out[:, 0] = x + x*(kx-1)*torso*keep
     out[:, 1] = y + (y+.005)*(ky-1)*keep
@@ -66,7 +69,7 @@ def head_morph(P, kind):
         m = (np.abs(np.abs(x) - .033) < .028)*_g(z, .012, .020)*(y < -.06); out[:, 1] += .0035*m
     return out
 
-BODY_KEYS = ("build_lean", "build_stocky", "build_muscular")
+BODY_KEYS = ("build_lean", "build_stocky", "build_muscular", "build_heavy")
 def add_keys(obj, fn, names):
     """fn(P, name) -> displaced positions; adds Basis + one shape key per name (value 0, range 0..1)."""
     me = obj.data; n = len(me.vertices)

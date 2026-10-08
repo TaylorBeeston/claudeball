@@ -94,6 +94,19 @@ function install([roles, every]: [string[], number]) {
         rec[`reach${s[0]}`] = +(sh.distanceTo(ha) / arm).toFixed(3);
         rec[`head${s[0]}`] = +ha.distanceTo(head).toFixed(3);
       }
+      // how far the look-at / IK / elbow fixes moved the arm bones away from the clip's own pose this frame (deg), and the weights that drive them
+      const dev: Record<string, number> = {};
+      for (const b of ['LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand', 'Spine2', 'Neck', 'Head']) {
+        const q0 = pu.clipPose?.get(B[b]);
+        if (!q0 || !B[b]) continue;
+        const d = Math.abs(q0.dot(B[b].quaternion));
+        const a = (2 * Math.acos(Math.min(1, d)) * 180) / Math.PI;
+        if (a > 0.5) dev[b] = +a.toFixed(1);
+      }
+      rec.dev = dev;
+      rec.gloveW = +(pu.gloveW ?? 0).toFixed(2);
+      rec.readyW = +(pu.readyW ?? 0).toFixed(2);
+      rec.sp = +Math.hypot(p.vel.x, p.vel.z).toFixed(2);
       w.__probe.lines.push(JSON.stringify(rec));
     }
   };

@@ -24,9 +24,9 @@ beforeAll(async () => {
     const m = node.getWorldMatrix();
     const d: Decal = { pos: [], uv: [] };
     for (let i = 0; i < P.getCount(); i++) {
-      const p = P.getElement(i, []) as number[];
+      const p = P.getElement(i, [0, 0, 0]);
       d.pos.push([m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14]]);
-      d.uv.push(U.getElement(i, []) as [number, number]);
+      d.uv.push(U.getElement(i, [0, 0]) as [number, number]);
     }
     decals.set(node.getName(), d);
   }

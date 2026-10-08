@@ -16,10 +16,10 @@ export interface TorsoVolume {
 
 export function torsoVolume(morphs: Record<string, number> | undefined): TorsoVolume {
   const m = morphs ?? {};
-  const lean = m.build_lean ?? 0, stocky = m.build_stocky ?? 0, musc = m.build_muscular ?? 0;
+  const lean = m.build_lean ?? 0, stocky = m.build_stocky ?? 0, musc = m.build_muscular ?? 0, heavy = m.build_heavy ?? 0;
   return {
-    halfW: 0.165 * (1 + 0.32 * stocky + 0.16 * musc - 0.1 * lean),
-    halfD: 0.115 * (1 + 0.42 * stocky + 0.1 * musc - 0.08 * lean),
+    halfW: 0.165 * (1 + 0.32 * stocky + 0.16 * musc - 0.1 * lean + 0.36 * heavy),
+    halfD: 0.115 * (1 + 0.42 * stocky + 0.1 * musc - 0.08 * lean + 0.55 * heavy),
     yMin: -0.5,
     yMax: 0.1,
     zOff: 0.012,

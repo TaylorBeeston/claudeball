@@ -92,6 +92,10 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'walk': return ['walk', 'trot', 'run'];
     case 'transfer': return ['transfer', ...idleFor(role)];
     case 'toss': return ['throw_casual', 'toss', 'throw'];
+    case 'throw_casual': return ['throw_casual', 'throw'];
+    case 'toss_underhand': return ['toss_underhand', 'ballkid_toss', 'throw_casual', 'throw'];
+    case 'toss_sidearm_short': return ['toss_sidearm_short', 'throw_casual', 'throw'];
+    case 'roll_ball': return ['roll_ball', 'toss_underhand', 'ballkid_toss', 'throw_casual'];
     case 'catch_pitch': case 'catch_throw': case 'catch_stretch': case 'catch_fly': case 'catch_fly_run': case 'catch_line_drive': case 'catch_comebacker': case 'catch_backhand': return [hint, 'field_catch'];
     case 'field_grounder': return ['field_grounder', 'field_catch'];
     case 'tag_glove': case 'tag_hand': return [hint, 'field_catch'];
@@ -138,11 +142,25 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
   }
 }
 
+/** throwing motions: the ball is in the throwing hand until the sim releases it, and the clip is laid so its release frame lands on that moment */
+const THROW_HINTS = new Set<string>(['throw', 'toss', 'throw_casual', 'toss_underhand', 'toss_sidearm_short', 'roll_ball']);
+
 /**
  * A base umpire while a pitch comes: he stays upright and relaxed. The `ump_set_base` clip holds its hands out in the air in a stiff claw crouch, and the
  * fielders' hands-on-knees set bends the neck back hard once the head looks up at the ball; neither reads as an umpire.
  */
 const BASE_UMP_SET = ['idle'];
+/** Body morphs for the people in fixed-look files (no sim physique): umpires and managers / pitching coaches mostly average to heavy, base coaches
+ * anything, the bat boy slim. Deterministic per person (`h` = hash of the id). */
+export function crewBuild(role: PlayerRole, h: number): Record<string, number> | null {
+  const u = (h % 1000) / 1000, v = ((h >>> 10) % 1000) / 1000;
+  if (role === 'umpire') return { build_heavy: 0.15 + 0.65 * u, build_stocky: 0.2 + 0.4 * v, build_muscular: 0, cheeks_full: 0.2 + 0.5 * u };
+  if (role === 'manager' || role === 'pitchcoach') return { build_heavy: 0.3 + 0.6 * u, build_stocky: 0.3 + 0.3 * v, build_muscular: 0, cheeks_full: 0.3 + 0.4 * u };
+  if (role === 'coach1b' || role === 'coach3b') return u < 0.4 ? { build_lean: 0.3 * v, build_muscular: 0.1 } : { build_heavy: 0.6 * u, build_stocky: 0.3 + 0.3 * v, build_muscular: 0 };
+  if (role === 'batboy') return { build_lean: 0.4 + 0.3 * u };
+  return null;
+}
+
 /** the seat height the seated clips are made for (their root is the ground below the seat centre) */
 const SIT_SEAT = 0.45;
 
@@ -216,6 +234,23 @@ function decalMaterial(tpl: Material | undefined, tex: import('three').Texture):
     const mm = m;
     tex.addEventListener('dispose', () => mm.dispose());
     decalMats.set(tex, m);
+  }
+  return m;
+}
+
+const eyeBlackMats = new WeakMap<Material, Material>();
+function eyeBlackMaterial(src: Material): Material {
+  let m = eyeBlackMats.get(src);
+  if (!m) {
+    const c = src.clone() as MeshStandardMaterial;
+    c.transparent = true;
+    c.depthWrite = false;
+    c.opacity = 0.82;
+    c.roughness = 0.95;
+    c.color = new Color(0x161616);
+    (c.defines ??= {}).CB_FEATHER = '0.007';
+    reg(c);
+    eyeBlackMats.set(src, (m = c));
   }
   return m;
 }
@@ -560,6 +595,13 @@ export class GltfPuppet implements PuppetLike {
         return u;
       });
       m.material = Array.isArray(m.material) ? next : next[0];
+      // the files carry their own cornea shell: the engine's (below) replaces it (two glossy layers over the iris whited the eyes out)
+      if (m.name === 'Eyes_Cornea') {
+        m.removeFromParent();
+        this.meshes.splice(this.meshes.indexOf(m), 1);
+        this.nodes.delete('Eyes_Cornea');
+        continue;
+      }
       if (m.name === 'Eyes' && (m as SkinnedMesh).isSkinnedMesh && m.parent) {
         const shell = makeCorneaShell(m as SkinnedMesh);
         shell.visible = false;
@@ -578,14 +620,17 @@ export class GltfPuppet implements PuppetLike {
       }
     }
     this.setCullBounds();
-    for (const m of this.meshes) if (FEATHERED.test(m.name)) addEdgeAttribute(m.geometry, edgeUnit(m));
+    for (const m of this.meshes) if (FEATHERED.test(m.name) || m.name === 'Gear_EyeBlack') addEdgeAttribute(m.geometry, edgeUnit(m));
+    // eye black is a matte grease smear that thins out at its edges, not an opaque black bar on the cheek
+    const eb = this.nodes.get('Gear_EyeBlack') as Mesh | undefined;
+    if (eb && !Array.isArray(eb.material)) eb.material = eyeBlackMaterial(eb.material);
     for (const m of this.meshes) {
       const t = LOD_TIER1.test(m.name) ? 1 : LOD_TIER2.test(m.name) ? 2 : 0;
       if (t) this.lodParts.push({ m, tier: t });
       // the simplified geometry (same mesh names, skeleton, uv layout and morph targets; a third of the triangles) for the small / distant tiers
       const lg = tpl.lodGeo?.get(m.name);
       const sk = m as SkinnedMesh;
-      if (lg && FEATHERED.test(m.name)) addEdgeAttribute(lg, edgeUnit(m));
+      if (lg && (FEATHERED.test(m.name) || m.name === 'Gear_EyeBlack')) addEdgeAttribute(lg, edgeUnit(m));
       if (lg && sk.isSkinnedMesh && m.name !== 'Eyes_Cornea' && lg.morphAttributes.position?.length === m.geometry.morphAttributes.position?.length) this.lodSwap.push({ m, full: m.geometry, lod: lg });
     }
     this.rig = new Rig(this.model);
@@ -628,6 +673,12 @@ export class GltfPuppet implements PuppetLike {
         const helmet = this.nodes.get('Gear_Helmet'), cap = this.nodes.get('Gear_Cap');
         if (helmet) helmet.visible = false;
         if (cap) cap.visible = true;
+      }
+      // umpires, managers and coaches are not athletes: ordinary builds, many of them heavy (the files bake one body, so it is set here per person)
+      const crew = crewBuild(snap.role, h);
+      if (crew) {
+        this.applyMorphs(crew);
+        this.torso = torsoVolume(crew);
       }
       // hair hidden under caps / helmets
       const hair = this.nodes.get('Gear_Hair') ?? this.nodes.get('Face_Hair');
@@ -922,7 +973,10 @@ export class GltfPuppet implements PuppetLike {
     const a = this.actions.get(name) ?? this.actions.get('idle');
     if (!a || a === this.current) return;
     a.reset();
-    const t = snap.animTime ?? 0;
+    let t = snap.animTime ?? 0;
+    // a throw starts so its release frame meets the sim's release (`releaseIn`); the sim starts most motions that long ahead, a play's quick throw later
+    const rel = THROW_HINTS.has(snap.anim) && snap.releaseIn !== undefined ? this.manifest?.clips[name]?.events_s?.release : undefined;
+    if (rel !== undefined) t = Math.max(0, rel - (snap.releaseIn ?? 0));
     a.time = Math.min(t, Math.max(0, a.getClip().duration - 0.001));
     a.enabled = true;
     a.setEffectiveWeight(1);
@@ -1475,10 +1529,92 @@ export class GltfPuppet implements PuppetLike {
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
       // a fielder who holds the ball has it in the glove pocket; while he throws it stays in his hand until the sim releases it
-      place = snap.anim === 'throw' || snap.anim === 'toss' || snap.role === 'ballkid' ? 'hand' : 'glove';
+      place = THROW_HINTS.has(snap.anim) || snap.role === 'ballkid' ? 'hand' : 'glove';
     }
     this.updateHeldBall(snap, env, place, dt);
     this.updateHands(snap);
+    this.updateFace(snap, dt);
+  }
+
+  // ---- face ---------------------------------------------------------------------------------------------------------------
+  private lookGoal: LookTarget | null = null;
+  private eyeYaw = 0;
+  private eyePitch = 0;
+  private face: { meshes: Mesh[]; blinkAt: number; blinkT: number; sacAt: number; sacYaw: number; sacPitch: number; base: Record<string, number>; cur: Record<string, number>; clock: number } | null = null;
+  /**
+   * The face is alive (t-0014: "faces look weird, like uncanny valley": the expression morphs were never driven, so every face stared without blinking):
+   * blinks at natural random intervals (2.5-6 s, ~0.15 s each), the eyes lead the head to its look target with small saccades, a relaxed per-person
+   * baseline (a hint of a smile, brows not knitted), focus on the pitch (batter, pitcher, catcher), an effort face on swings / throws / slides, smiles
+   * celebrating. Only for close players (detail tier 0); the morphs are the files' MPFB expression keys (mouth_open kept <= 0.6).
+   */
+  private updateFace(snap: PlayerSnap, dt: number) {
+    if (this.lodTier > 0) return;
+    if (!this.face) {
+      const meshes: Mesh[] = [];
+      for (const m of this.meshes) {
+        const d = (m as Mesh).morphTargetDictionary;
+        if (d && (d.eyes_blink !== undefined || d.eyes_look_left !== undefined || d.smile !== undefined)) meshes.push(m as Mesh);
+      }
+      if (!meshes.length) return;
+      const h = hashString(snap.id + ':face');
+      const r = (k: number) => ((h >>> (k * 3)) % 997) / 997;
+      this.face = {
+        meshes, blinkAt: 0.5 + 3 * r(1), blinkT: -1, sacAt: 0, sacYaw: 0, sacPitch: 0, clock: 0,
+        base: { smile: 0.04 + 0.14 * r(2), brow_raise: 0.12 + 0.16 * r(3), brow_furrow: 0, mouth_open: 0.02 + 0.05 * r(4), mouth_pucker: 0 },
+        cur: { eyes_blink: 0, smile: 0, brow_raise: 0, brow_furrow: 0, mouth_open: 0, mouth_pucker: 0, eyes_look_left: 0, eyes_look_right: 0, eyes_look_up: 0, eyes_look_down: 0 },
+      };
+    }
+    const F = this.face;
+    F.clock += dt;
+    // blink: close 0.06 s, open 0.10 s; the next one 2.5-6 s later (sometimes a double blink)
+    if (F.blinkT < 0 && F.clock >= F.blinkAt) F.blinkT = 0;
+    let blink = 0;
+    if (F.blinkT >= 0) {
+      F.blinkT += dt;
+      blink = F.blinkT < 0.06 ? F.blinkT / 0.06 : Math.max(0, 1 - (F.blinkT - 0.06) / 0.1);
+      if (F.blinkT > 0.16) {
+        F.blinkT = -1;
+        const u = (Math.sin(F.clock * 12.9898 + hashString(snap.id)) * 43758.5453) % 1;
+        const v = Math.abs(u);
+        F.blinkAt = F.clock + (v < 0.12 ? 0.25 : 2.5 + 3.5 * v);
+      }
+    }
+    // micro-saccades: a small new fixation offset every 0.5-1.8 s
+    if (F.clock >= F.sacAt) {
+      const v = Math.abs((Math.sin(F.clock * 78.233 + 1.7) * 43758.5453) % 1), w = Math.abs((Math.sin(F.clock * 39.425 + 0.3) * 24634.6345) % 1);
+      F.sacYaw = (v - 0.5) * 0.09;
+      F.sacPitch = (w - 0.5) * 0.06;
+      F.sacAt = F.clock + 0.5 + 1.3 * w;
+    }
+    const EYE = (22 * Math.PI) / 180, EYE_V = (18 * Math.PI) / 180;
+    const ey = Math.max(-1, Math.min(1, (this.eyeYaw + F.sacYaw) / EYE)), ep = Math.max(-1, Math.min(1, (this.eyePitch + F.sacPitch) / EYE_V));
+    // the situation
+    const a = snap.anim;
+    const want: Record<string, number> = { ...F.base, eyes_blink: blink, eyes_look_left: Math.max(0, ey), eyes_look_right: Math.max(0, -ey), eyes_look_down: Math.max(0, ep), eyes_look_up: Math.max(0, -ep) };
+    const focus = (snap.role === 'batter' && a === 'idle') || a === 'windup' || (snap.role === 'catcher' && a === 'idle') || a === 'catcher_signs';
+    if (focus) { want.brow_furrow = 0.22; want.brow_raise = 0.02; want.smile = 0; want.mouth_open = 0.02; }
+    if (a === 'swing' || a === 'pitch' || a === 'throw' || a.startsWith('slide') || a === 'catch_jump' || a === 'dive_back') { want.brow_furrow = 0.55; want.brow_raise = 0; want.mouth_open = 0.35; want.smile = 0.2; }
+    if (a === 'celebrate' || a === 'bench_cheer' || a === 'coach_go') { want.smile = 0.75; want.mouth_open = 0.45; want.brow_raise = 0.35; want.brow_furrow = 0; }
+    if (a.startsWith('mound_talk') || a === 'manager_signal') { want.mouth_open = 0.12 + 0.12 * Math.abs(Math.sin(F.clock * 9)); }
+    want.mouth_open = Math.min(0.6, want.mouth_open);
+    // ease toward it (blinks and eye moves are fast, expressions slower)
+    for (const k in want) {
+      const fast = k === 'eyes_blink' || k.startsWith('eyes_look');
+      const rate = fast ? 1 : 1 - Math.exp(-dt * 6);
+      F.cur[k] = (F.cur[k] ?? 0) + (want[k] - (F.cur[k] ?? 0)) * rate;
+    }
+    for (const m of F.meshes) {
+      const d = m.morphTargetDictionary!, inf = m.morphTargetInfluences!;
+      for (const k in F.cur) {
+        const i = d[k];
+        if (i !== undefined) inf[i] = F.cur[k];
+      }
+    }
+    // the cornea shells share the eyes' morphs
+    for (const c of this.cornea) {
+      const cm = c as Mesh, eyes = this.nodes.get('Eyes') as Mesh | undefined;
+      if (cm.morphTargetInfluences && eyes?.morphTargetInfluences) for (let i = 0; i < cm.morphTargetInfluences.length; i++) cm.morphTargetInfluences[i] = eyes.morphTargetInfluences[i] ?? 0;
+    }
   }
 
   // ---- hands --------------------------------------------------------------------------------------------------------------
@@ -1962,8 +2098,14 @@ export class GltfPuppet implements PuppetLike {
       const cy = Math.atan2(_c.x, _c.z), cp = Math.atan2(-_c.y, Math.hypot(_c.x, _c.z));
       t = lookTarget(dv.x, dv.y, dv.z, cy, cp, this.lookT);
     }
+    this.lookGoal = t && t.valid ? t : null;
     const hl = this.headLook;
     hl.step(t, dt);
+    // what the head has not turned yet, the eyes cover (they lead the head)
+    if (this.lookGoal) {
+      this.eyeYaw = this.lookGoal.yaw - hl.yaw;
+      this.eyePitch = this.lookGoal.pitch - hl.pitch;
+    } else this.eyeYaw = this.eyePitch = 0;
     this.lookStep = hl.lastStep;
     this.maxLookStep = Math.max(this.maxLookStep, hl.lastStep);
     // debug assertion: the look offset can never move faster than its speed cap (a spike here means a target or spring bug)

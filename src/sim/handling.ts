@@ -11,6 +11,7 @@ import { spawnDeadBall } from './staff';
 import { CATCH_LEAD, catchClipOn } from './fielding';
 import { MOUND_DIST, groundHeight } from './field';
 import { clamp } from './math';
+import { RELEASE_S, casualSpeed, releaseHeight, throwMotion, tossSpeed, type ThrowMotion } from './throws';
 import { setGoal } from './movement';
 import * as running from './running';
 import { DUGOUT } from './setup';
@@ -28,8 +29,7 @@ export function transferRoutine(r: Ratings, forceOut: boolean, jitter = 0): numb
 }
 /** A catcher's transfer of a caught pitch (s): quicker, his exchange. */
 export const transferCatcher = (r: Ratings, jitter = 0) => clamp(0.34 - 0.003 * (r.pop - 50) + jitter, 0.2, 0.5);
-/** Speed (m/s) of a casual return: 25–40 by distance. */
-export const casualSpeed = (dist: number) => clamp(24 + 0.3 * dist, 25, 40);
+export { casualSpeed } from './throws';
 
 const homeOf = (w: World, p: PlayerRT) => p.home ?? { x: p.x, z: p.z };
 
@@ -131,6 +131,14 @@ export function tickBallReturn(w: World): void {
   readyReceiver(w, ret);
   const b = ball.body;
   const from = ret.from;
+  // the throwing motion starts its release time before the ball leaves, so the hand lets go on the clip's release frame
+  const D0 = Math.hypot(ret.to.x - from.x, ret.to.z - from.z);
+  const motion = throwMotion(D0, true);
+  if (ret.stage === 'look' && !ret.motion && w.tick >= ret.until - secToTicks(RELEASE_S[motion])) {
+    ret.motion = motion;
+    from.facing = Math.atan2(ret.to.x - from.x, ret.to.z - from.z);
+    setAnim(w, from, motion, RELEASE_S[motion] + 0.5);
+  }
   const hx = from.x + Math.sin(from.facing) * 0.32;
   const hz = from.z + Math.cos(from.facing) * 0.32;
   b.x = hx;
@@ -144,24 +152,29 @@ export function tickBallReturn(w: World): void {
     from.lookAt = { x: ret.to.x, z: ret.to.z };
     return;
   }
-  // release: an easy toss
+  // release: an easy toss (an underhand lob up close, a short-arm flick, a relaxed throw from further)
   const to = ret.to;
   const D = Math.hypot(to.x - from.x, to.z - from.z);
-  const v = casualSpeed(D) * (from === w.catcher ? 1.04 : 1);
+  const mo = ret.motion ?? throwMotion(D, true);
+  const v = returnSpeed(w, from, mo, D);
   const dur = secToTicks(D / v + 0.06);
   from.facing = Math.atan2(to.x - from.x, to.z - from.z);
   releaseBall(w);
   ball.mode = 'thrown';
-  ball.lob = { from, to, start: w.tick, dur, arc: clamp(0.06 * D, 0.5, 3) };
+  ball.lob = { from, to, start: w.tick, dur, arc: mo === 'toss_underhand' ? clamp(0.3 + 0.07 * D, 0.35, 0.9) : clamp(0.06 * D, 0.5, 3), y0: releaseHeight(mo) };
   ball.throwTo = null;
   ball.throwBase = null;
   ret.stage = 'flight';
-  setAnim(w, from, D < 14 ? 'toss' : 'throw', 0.5);
+  if (!ret.motion) setAnim(w, from, mo, 0.5);
+  ret.motion = undefined;
   emit(w, { type: 'ballReturn', fromId: from.info.id, toId: to.info.id, mph: v / 0.44704, casual: true });
   // the passer goes back to his spot; the receiver comes to meet it
   sendHome(w, from, false);
   sendHome(w, to, false);
 }
+
+/** Speed of a casual return by its motion (the catcher's a touch firmer). */
+const returnSpeed = (w: World, from: PlayerRT, motion: ThrowMotion, D: number) => tossSpeed(motion, D) * (from === w.catcher && motion !== 'toss_underhand' ? 1.04 : 1);
 
 /** Where a casual toss ends: in the receiver's glove, a little toward the passer and to his glove side, at chest height. */
 function lobGlove(from: PlayerRT, to: PlayerRT): { x: number; y: number; z: number } {
@@ -189,7 +202,7 @@ function readyReceiver(w: World, ret: NonNullable<World['ret']>): void {
   const preSec = Math.max(0, (ret.until - w.tick) * TICK) + (ret.stage === 'transfer' ? ret.look : 0);
   if (preSec > READY_LEAD) return;
   const D = Math.hypot(to.x - from.x, to.z - from.z);
-  const flight = D / (casualSpeed(D) * (from === w.catcher ? 1.04 : 1)) + 0.06;
+  const flight = D / returnSpeed(w, from, throwMotion(D, true), D) + 0.06;
   const g = lobGlove(from, to);
   to.gloveTarget = g;
   to.gloveAt = w.tick + secToTicks(preSec + flight);
@@ -227,7 +240,7 @@ export function tickLob(w: World): void {
     return;
   }
   const ax = l.from.x, az = l.from.z;
-  const y0 = groundHeight(ax, az) + 1.15;
+  const y0 = groundHeight(ax, az) + (l.y0 ?? 1.15);
   b.x = ax + (g.x - ax) * t;
   b.z = az + (g.z - az) * t;
   b.y = y0 + (g.y - y0) * t + (l.arc ?? 1.2) * Math.sin(Math.PI * t);

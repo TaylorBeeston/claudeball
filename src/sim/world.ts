@@ -65,6 +65,8 @@ export interface PlayerRT {
   onField: boolean;
   /** Fielding plan for the current play. */
   plan: FielderPlan;
+  /** A warm-up toss (between innings) leaves his hand at this tick (shown on the snapshot's `releaseIn`). */
+  tossAt?: number;
   /** Wall leap in progress. */
   leap: Leap | null;
   /** Gait presentation for the renderer: jogging (`trot`) or a hard turn at a bag (`turn`). */
@@ -144,6 +146,8 @@ export interface FielderPlan {
   holdUntil: number;
   /** Throw wind-up in progress: release at this tick (0 = none). */
   releaseAt: number;
+  /** The motion of that throw (an underhand flip up close, else a full throw). */
+  throwMotion?: 'toss_underhand' | 'throw';
   throwBase: number;
   throwTo: PlayerRT | null;
   /** The glove's random miss for the catch he is about to make, drawn once (unit normals; scaled by the catch's difficulty at the instant). */
@@ -272,7 +276,7 @@ export interface BallRT {
   thrower: PlayerRT | null;
   throwTarget: { x: number; z: number } | null;
   /** For throws that are not physics (catcher -> pitcher lobs). */
-  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number; arc?: number; kind?: 'pitch' | 'throw' } | null;
+  lob: { from: PlayerRT; to: PlayerRT; start: number; dur: number; arc?: number; kind?: 'pitch' | 'throw'; /** release height above the ground (m), default 1.15 */ y0?: number } | null;
   /** Cached prediction for fielders. */
   path: PathSample[];
   pathStart: number; // tick when path was computed
@@ -486,6 +490,8 @@ export interface BallReturn {
   chain: PlayerRT[];
   /** After a pitch (catcher's return) rather than after a play. */
   afterPitch: boolean;
+  /** The throwing motion once it has started (its release time before the toss leaves). */
+  motion?: import('./throws').ThrowMotion;
 }
 
 export interface World {

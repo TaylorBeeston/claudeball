@@ -33,6 +33,12 @@ export type AnimHint =
   | 'transfer'
   /** An easy, non-urgent toss back in (a short underhand / short-arm flip). Longer casual returns use `throw`. */
   | 'toss'
+  /** Short, easy throws by distance (`throwMotion`): an underhand flip (< ~8 m), a short-arm sidearm flick (~8-25 m), an underhand roll along the ground
+   * (warm-up grounders). The sim starts the hint the clip's release time (`RELEASE_S`) before the ball leaves, so the hand lets go on the release frame. */
+  | 'toss_underhand'
+  | 'toss_sidearm_short'
+  | 'roll_ball'
+  | 'throw_casual'
   /** A fielder sweeping a tag with the ball in the glove / bare hand (`animT`: the contact is at ~0.45). */
   | 'tag_glove'
   | 'tag_hand'
@@ -411,6 +417,9 @@ export interface PlayerSnapshot {
   gloveEta?: number;
   /** Seconds until the catch (== `gloveEta`, 0 when no catch is coming): the catch hint starts exactly its clip's catch-frame time before, so the catch frame lands on the arrival. */
   catchIn?: number;
+  /** Seconds until the ball leaves his hand while a throwing motion is under way (`throw`, `toss_underhand`, `toss_sidearm_short`, `throw_casual`,
+   * `roll_ball`): the clip is laid so its release frame lands then. Undefined otherwise. */
+  releaseIn?: number;
   /** The pitch the pitcher has chosen, from the moment he has (before the windup) until the pitch is released and done — pick the grip from it. */
   pitchType?: PitchType | null;
   /** (additive) a batter's habit in the box (deterministic per player): what his `batter_adjust` is. */

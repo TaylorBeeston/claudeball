@@ -95,7 +95,8 @@ function fans(n: number, teams: { home: TeamInfo; away: TeamInfo } | null, seed:
     const capColor = !teams ? (teamCap ? '#ffffff' : pick(CASUAL)) : teamCap ? (rnd() < 0.8 ? teams.home.color : teams.away.color) : pick(CASUAL);
     if (!teams) rnd();
     const h = 1.55 + rnd() * 0.4;
-    const build = pick(['lean', 'athletic', 'stocky', 'heavy', 'athletic', 'stocky'] as const);
+    // ordinary people of every build, not athletes: as many soft / heavy ones as lean
+    const build = pick(['lean', 'athletic', 'stocky', 'heavy', 'heavy', 'stocky', 'athletic', 'heavy'] as const);
     const snap: PlayerSnap = {
       id: `fan-${seed}-${i}`,
       team: 1,
@@ -104,7 +105,7 @@ function fans(n: number, teams: { home: TeamInfo; away: TeamInfo } | null, seed:
       facing: 0,
       vel: { x: 0, y: 0, z: 0 },
       anim: 'idle',
-      physique: { heightM: h, weightKg: 22 * h * h * (build === 'heavy' ? 1.35 : build === 'stocky' ? 1.18 : build === 'lean' ? 0.92 : 1.02), build },
+      physique: { heightM: h, weightKg: 22 * h * h * (build === 'heavy' ? 1.3 + 0.3 * rnd() : build === 'stocky' ? 1.2 : build === 'lean' ? 0.92 : 1.04), build },
       appearance: { skin: Math.floor(rnd() * 6), hairColor: Math.floor(rnd() * 6), hairStyle: Math.floor(rnd() * 4), facialHair: rnd() < 0.55 ? 0 : rnd() < 0.5 ? 1 : 2, seed: Math.floor(rnd() * 1e9) },
     };
     out.push({
