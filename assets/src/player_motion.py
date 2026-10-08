@@ -22,7 +22,8 @@ def run_v2(n=24, duty=.40, half=.32, lean=26, bank=0, dx=0.0, yaw0=0, hyaw0=0, h
         lh = (lh[0]*amp[0] + .02, lh[1]*amp[0], lh[2]*amp[0] + (1-amp[0])*(-.1)); rh = (rh[0]*amp[1] + .02, rh[1]*amp[1], rh[2]*amp[1] + (1-amp[1])*(-.1))
         spec = dict(hips=(0, 0, bob), lean=lean, yaw=yaw0 + rot[0]*_cyc(p), hyaw=hyaw0 - rot[1]*_cyc(p), head_yaw=head_yaw, head_pitch=-.5*lean,
                     lfoot=(.10+dx, ly, lz), rfoot=(-.10+dx, ry, rz), lhand_rel=(lh[0]+hand_dx, lh[1], lh[2]), rhand_rel=(-rh[0] - abs(hand_dx)*.6, rh[1], rh[2]),
-                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1])
+                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1],
+                    lhand_face=(-1, 0, -.25), rhand_face=(1, 0, -.25))        # palms toward the midline, a little down (they swung palm-up, a waiter's tray)
         if bank: spec['side'] = bank
         out.append((f, spec))
     return out
@@ -96,7 +97,8 @@ def gait(v, n, a, b, vc, hl, lift, rise, lean, fwd, back, rot, bank=0, dx=0.0, y
         lh = (lh[0]*amp[0] + .02, lh[1]*amp[0], lh[2]*amp[0] + (1-amp[0])*(-.1)); rh = (rh[0]*amp[1] + .02, rh[1]*amp[1], rh[2]*amp[1] + (1-amp[1])*(-.1))
         spec = dict(hips=(0, 0, bob), lean=lean, yaw=yaw0 + rot[0]*_cyc(p), hyaw=hyaw0 - rot[1]*_cyc(p), head_yaw=head_yaw, head_pitch=-.5*lean,
                     lfoot=(.10+dx, ly, lz), rfoot=(-.10+dx, ry, rz), lhand_rel=(lh[0]+hand_dx, lh[1], lh[2]), rhand_rel=(-rh[0] - abs(hand_dx)*.6, rh[1], rh[2]),
-                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1])
+                    lpole=(.15, .35, -1), rpole=(-.15, .35, -1), lfoot_o=foot_o[0], rfoot_o=foot_o[1],
+                    lhand_face=(-1, 0, -.25), rhand_face=(1, 0, -.25))        # palms toward the midline, a little down (they swung palm-up, a waiter's tray)
         if bank: spec['side'] = bank
         out.append((f, spec))
     return out
