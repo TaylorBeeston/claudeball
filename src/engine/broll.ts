@@ -401,7 +401,7 @@ export function computeRig(shot: BrollShot, v: RigView, out: BrollRig = makeRig(
       // shot was his glove and forearm), offset a few metres so the line of sight passes beside the pitcher
       r.pos.set(8 * side, 5.5, 121);
       r.tgt.set(cp.x - 0.04, 0.42, cp.z + 0.32);
-      r.fov = tele(0.75, r.pos.distanceTo(r.tgt), v.aspect);
+      r.fov = tele(0.9, r.pos.distanceTo(r.tgt), v.aspect);
       r.focus.copy(r.tgt);
       r.slab = 0.7;
       r.lp = r.lt = r.lf = 6;
