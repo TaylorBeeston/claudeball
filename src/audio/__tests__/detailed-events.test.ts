@@ -117,7 +117,7 @@ describe('catches', () => {
     const pop = sfx(m.map(catchEv({}), ctx()), 'mitt_pop');
     expect(pop).toHaveLength(1);
     expect(pop[0].pos).toMatchObject({ x: 0, z: -1.2 });
-    expect(pop[0].bucket).toBe(2);
+    expect(pop[0].bucket).toBe(3); // 98 mph
   });
 
   it('a firm catch is sharper and louder than one at the edge of the glove', () => {
@@ -131,7 +131,7 @@ describe('catches', () => {
     const g = (o: Record<string, unknown>) => sfx(m.map(catchEv({ kind: 'throw', pos: { x: 0, y: 1, z: 20 }, ...o }), ctx()), 'glove_pop')[0];
     expect(g({ firm: true }).gain!).toBeGreaterThan(g({ firm: false }).gain!);
     expect(g({ firm: true }).bucket).toBe(1);
-    expect(g({ firm: false }).bucket).toBe(0);
+    expect(g({ firm: false }).bucket).toBe(5); // in the webbing / off the edge
     expect(g({ side: 'arm' }).gain!).toBeLessThan(g({}).gain!);
   });
 
@@ -147,10 +147,16 @@ describe('catches', () => {
 
   it('fly balls and grounders pop too (fielded is the ground ball)', () => {
     const m = new CueMapper({ detailed: true });
-    const fly = m.map(catchEv({ kind: 'fly', fly: true, fielderId: 'ss', pos: { x: 8, y: 2, z: 60 } }), ctx());
-    expect(sfx(fly, 'glove_pop')).toHaveLength(1);
+    const fly = m.map(catchEv({ kind: 'fly', fly: true, fielderId: 'cf', pos: { x: 8, y: 2, z: 90 } }), ctx());
+    expect(sfx(fly, 'glove_pop').map((c) => c.bucket)).toEqual([3]); // the outfield "thwup"
+    const pop = m.map(catchEv({ kind: 'fly', fly: true, fielderId: 'ss', pos: { x: 8, y: 2, z: 30 } }), ctx());
+    expect(sfx(pop, 'glove_pop').map((c) => c.bucket)).toEqual([1]); // an infield pop-up: firm
+    const line = m.map(catchEv({ kind: 'line', fielderId: 'ss', pos: { x: 8, y: 1.2, z: 30 } }), ctx());
+    expect(sfx(line, 'glove_pop').map((c) => c.bucket)).toEqual([2]);
+    const clean = m.map({ type: 'fielded', fielderId: 'ss', clean: true, pos: { x: 8, y: 0.3, z: 30 }, kind: 'ground', firm: true }, ctx());
+    expect(sfx(clean, 'glove_pop').map((c) => c.bucket)).toEqual([4]); // the scoop
     const gr = m.map({ type: 'fielded', fielderId: 'ss', clean: false, pos: { x: 8, y: 0.3, z: 30 }, kind: 'ground', firm: false }, ctx());
-    expect(sfx(gr, 'glove_pop')).toHaveLength(1);
+    expect(sfx(gr, 'glove_pop')).toHaveLength(2); // juggled: the first touch and the re-grab
     expect(crowd(gr, 'ooh')).toHaveLength(1); // a bobble
   });
 });
