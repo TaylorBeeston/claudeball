@@ -299,6 +299,22 @@ desktop graph is ~6 % of one core, the phone graph ~2x the old cost; all of it o
 change (`tools/audio/live.ts`: median 0.10 -> 0.11 ms on desktop, 0.43 -> 0.35 ms with 4x CPU throttling + low power). Renders repeat
 to within 3e-5 (about -91 dBFS; the crowd beds' first moments differ between runs: not bit-exact, cause not found).
 
+<<<<<<< HEAD
+## Foley (`foley.ts`, `field.ts`)
+
+The field's sounds are physically modelled recipes (pure, deterministic per seed): `modal()` damped resonances (wood damped hard: no
+metallic ring; dead leather; plastic; metal), `burst()` shaped noise for transients and puffs, `grains()` friction textures (dirt skitter,
+cleat crunch, Velcro, cloth, chain link), `zip()` objects through the air (Doppler sweep, seam flutter). `level()` sets each to a target
+loudness (loudest 25 ms RMS, 6 dB of headroom under its nominal) and trims silence. `SFX_DEFS` (`synth.ts`) lists buckets (the physical
+case) and alts (variations: pitch, decay, noise seed); the mixer renders the bank once at unlock (142 variants, 6.4 MB mono float32 at
+48 kHz, ~0.4-0.7 s of synthesis in 6 ms slices; phones keep 2 variants per sound), plays them in rotation (never the same twice in a row)
+with +-0.7 semitone and +-1 dB jitter. `field.ts`: the surface under a point (grass, infield dirt, mound, plate, warning track), the fence
+by direction (the sim's `DEFAULT_FENCE`), and where a foul fly lands (the sim stops a foul when it is called). The mapping is in `cues.ts`
+(events) and `index.ts` (`frameCues`: bounces, slides, cleats, the glove-to-hand transfer, the backstop). `npx tsx tools/audio/foley.ts`
+measures every variant (attack, decay, centroid, loudness, peak) and writes WAVs; `render.ts --scenes montage` plays them all through the
+mics. Levels: the crack and the mitt sit near the master limiter's threshold on purpose (sharp transients over the crowd, no pumping);
+`TRIM.sfx` (graph.ts) moves the whole field.
+=======
 **Start-up, the hidden page, the sample rate** (perf pass 2, `tools/perf/FINDINGS.md`):
 - Every sound is synthesised at start (101 effects and crowd one-shots, the three bed loops, the stadium IR: ~0.9 s of maths on this
   desktop, single jobs up to 115 ms). `synthJobs.ts` holds the jobs as pure functions; `synthWorker.ts` runs them off the main thread and
@@ -307,6 +323,7 @@ to within 3e-5 (about -91 dBFS; the crowd beds' first moments differ between run
   started on a phone-class CPU.
 - The context is suspended while the page is hidden (another app, a background tab) and resumed when it is shown again.
 - `?audiorate=32000` runs the context at 32 kHz (an experiment, not the default; measured numbers in FINDINGS).
+>>>>>>> main
 
 ## HD voices (optional neural speech)
 
