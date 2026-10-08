@@ -8,6 +8,7 @@
  *    and lets a much more important line cancel one that is being spoken.
  *  - Voices load asynchronously and headless browsers may have none: everything is a silent no-op then.
  */
+import { CAST } from './broadcast/cast';
 import type { SpeakRole } from './types';
 
 export interface Line {
@@ -152,7 +153,7 @@ export interface VoiceChoice {
   color?: string;
 }
 
-/** Pick English voices: a male-ish voice for the PA, umpire and play-by-play, a different (female-ish if there is one) for colour. */
+/** Pick English voices: male-ish voices for the PA, umpire and play-by-play, a different one for the analyst (a male-ish one when there is a third, as the cast is; a female-ish one only as the fallback that keeps the two booth voices apart). */
 export function pickVoices(list: { name: string; lang: string }[]): VoiceChoice {
   const en = list.filter((v) => /^en([-_]|$)/i.test(v.lang));
   const pool = en.length ? en : list;
@@ -163,12 +164,13 @@ export function pickVoices(list: { name: string; lang: string }[]): VoiceChoice 
   const guys = [...male, ...neutral];
   const pa = (guys[0] ?? pool[0]).name;
   const pbp = (guys[1] ?? guys[0] ?? pool[0]).name;
-  const color = (female[0] ?? guys[2] ?? pool[Math.min(1, pool.length - 1)]).name;
+  // the analyst: what the cast asks for first (a male-ish voice for Biscuit), the other kind only to keep the two booth voices apart
+  const color = (CAST.color.voice.browser.prefer === 'female' ? female[0] ?? guys[2] : guys[2] ?? female[0])?.name ?? pool[Math.min(1, pool.length - 1)].name;
   return { pa, ump: pa, pbp, color };
 }
 
 const PARAMS: Record<SpeakRole, { pitch: number; rate: number; vol: number }> = {
-  pa: { pitch: 0.75, rate: 0.92, vol: 1 },
+  pa: { pitch: CAST.pa.voice.delivery.pitch, rate: CAST.pa.voice.delivery.rate, vol: 1 },
   ump: { pitch: 0.55, rate: 1.12, vol: 1 },
   pbp: { pitch: 0.95, rate: 1.08, vol: 0.9 },
   color: { pitch: 1.05, rate: 1.03, vol: 0.9 },

@@ -61,6 +61,24 @@ export interface Topic {
   turns: TopicTurn[];
 }
 
+/** A turn of a scripted segment (the opening, a break, the closing): who says what; optional turns are skipped when they would not fit. */
+export interface SegmentTurn {
+  speaker: VoiceId;
+  text: string;
+  /** the block (a short exchange) this turn belongs to: when a block's first turn is skipped, the block's later turns go too */
+  block: string;
+  /** may be skipped when the segment runs out of time (essential turns are always said; a MUST may still cut them) */
+  optional?: boolean;
+  excited?: boolean;
+  /** start no earlier than this many seconds after the segment began (a deliberate gap: "we'll be right back" ... "and we're back") */
+  notBefore?: number;
+}
+
+export interface Segment {
+  tag: string;
+  turns: SegmentTurn[];
+}
+
 export interface StartAction {
   type: 'start';
   voice: VoiceId;
@@ -126,6 +144,9 @@ export class Director {
   private pending: Item[] = [];
   private folds = new Map<string, Fold & { at: number }>();
   private active: { topic: Topic; next: number; lastVoice: VoiceId; lastStartedAt: number; pauseUntil?: number } | null = null;
+  private seg: { s: Segment; next: number; start: number; deadline: number; pauseUntil?: number; skipBlock?: string; heldAt?: number } | null = null;
+  /** the field channel (PA, umpire) is speaking and voices cannot overlap: segment / topic turns and colour lines wait for it (calls do not) */
+  holdForField = false;
   private breatheUntil = 0;
   private epoch = 0;
   private suppressed = false;
@@ -136,7 +157,7 @@ export class Director {
   private ends: (text: string, excited?: boolean) => number[];
   topicSource: ((t: number) => Topic | null) | null;
   /** debug / tests */
-  readonly stats = { started: 0, cuts: 0, foldedIn: 0, foldDropped: 0, shouldDropped: 0, topicsStarted: 0, topicsAborted: 0 };
+  readonly stats = { started: 0, cuts: 0, foldedIn: 0, foldDropped: 0, shouldDropped: 0, topicsStarted: 0, topicsAborted: 0, segments: 0, segmentTurns: 0, segmentSkipped: 0 };
 
   constructor(o: DirectorOpts) {
     this.rng = o.rng;
@@ -159,6 +180,49 @@ export class Director {
     return !!(this.voices.pxp.item || this.voices.color.item);
   }
 
+  /**
+   * Run a scripted segment now (it replaces a running topic or segment). Turns follow each other with the usual beats; MUST calls pre-empt a turn and
+   * the segment resumes after them; optional turns (with the rest of their block) are skipped when they would end after `deadline` (absolute time).
+   * Segments play at every chatter level (the builder makes them short at Low).
+   */
+  runSegment(s: Segment, t: number, deadline: number) {
+    if (this.suppressed || !s.turns.length) return;
+    if (this.active) {
+      this.active = null;
+      this.stats.topicsAborted++;
+    }
+    this.seg = { s, next: 0, start: t, deadline };
+    this.stats.segments++;
+  }
+
+  /** stop the running segment (its remaining turns are dropped; a line in progress finishes) */
+  endSegment() {
+    this.seg = null;
+    this.parked = null;
+  }
+
+  /** the rest of a segment that was running when the booth went quiet (pause, mute, fast-forward) */
+  parked: { s: Segment } | null = null;
+  /** resume the parked segment (its optional turns are fitted to the new deadline) */
+  resumeSegment(t: number, deadline: number) {
+    const p = this.parked;
+    this.parked = null;
+    if (p && p.s.turns.length) this.runSegment(p.s, t, deadline);
+  }
+
+  get segmentActive(): string | null {
+    return this.seg ? this.seg.s.tag : null;
+  }
+
+  /** seconds the rest of the segment would take from its next turn (estimate) */
+  segmentRemaining(): number {
+    const g = this.seg;
+    if (!g) return 0;
+    let sum = 0;
+    for (let i = g.next; i < g.s.turns.length; i++) sum += this.dur(g.s.turns[i].text, g.s.turns[i].excited) + (this.cfg.pauseMin + this.cfg.pauseMax) / 2;
+    return sum;
+  }
+
   /** Muted (2x and above, fast-forward, chatter off): nothing is said; running lines are cut. */
   setSuppressed(on: boolean, t: number): Action[] {
     if (on === this.suppressed) return [];
@@ -167,6 +231,9 @@ export class Director {
     this.pending = [];
     this.folds.clear();
     this.active = null;
+    // a running segment is parked (the booth resumes it with the time that is left, or drops it)
+    if (this.seg) this.parked = { s: { ...this.seg.s, turns: this.seg.s.turns.slice(this.seg.next) } };
+    this.seg = null;
     const out: Action[] = [];
     for (const v of ['pxp', 'color'] as VoiceId[]) {
       if (this.voices[v].item) out.push(this.cutNow(v, t, 'suppressed'));
@@ -377,6 +444,7 @@ export class Director {
       const other = this.voices[voice === 'pxp' ? 'color' : 'pxp'];
       const mustWaiting = this.pending.some((p) => p.importance === 'must');
       if (mustWaiting || v.item) continue;
+      if ((this.seg || this.holdForField) && !it.interject) continue;
       if (it.interject) {
         const rem = other.item ? other.end - t : 0;
         if (rem <= this.cfg.interjectOverlap && t >= v.lastEnd + 0.1) {
@@ -390,11 +458,13 @@ export class Director {
       }
     }
 
-    // 4. the running topic
-    if (this.active) this.advanceTopic(t, actions);
+    // 4. the running segment, or the running topic (whose next turn waits while the PA / umpire speak and voices cannot overlap)
+    if (this.seg) this.advanceSegment(t, actions);
+    else if (this.active && !this.holdForField) this.advanceTopic(t, actions);
+    else if (this.active && this.holdForField) this.active.lastStartedAt = t; // (the hold does not count as a stall)
 
     // 5. a new topic in a lull
-    if (!this.active && this.cfg.topics && this.topicSource && !this.busy && !this.pending.some((p) => p.importance !== 'could') && t >= this.breatheUntil && t >= Math.max(this.voices.pxp.lastEnd, this.voices.color.lastEnd) + this.cfg.pauseMin) {
+    if (!this.seg && !this.active && !this.holdForField && this.cfg.topics && this.topicSource && !this.busy && !this.pending.some((p) => p.importance !== 'could') && t >= this.breatheUntil && t >= Math.max(this.voices.pxp.lastEnd, this.voices.color.lastEnd) + this.cfg.pauseMin) {
       const topic = this.topicSource(t);
       if (topic && topic.turns.length) {
         this.stats.topicsStarted++;
@@ -441,6 +511,48 @@ export class Director {
     a.pauseUntil = undefined;
   }
 
+  private advanceSegment(t: number, actions: Action[]) {
+    const g = this.seg!;
+    if (this.busy || this.holdForField || this.pending.some((p) => p.importance === 'must' || (p.importance === 'should' && p.notBefore !== undefined))) {
+      g.pauseUntil = undefined; // a fresh beat after whatever is speaking now
+      if (this.holdForField) g.heldAt = t;
+      return;
+    }
+    const lastEnd = Math.max(this.voices.pxp.lastEnd, this.voices.color.lastEnd, g.heldAt ?? -99);
+    while (g.next < g.s.turns.length) {
+      const turn = g.s.turns[g.next];
+      if (g.skipBlock !== undefined && turn.block === g.skipBlock && turn.optional !== false) {
+        g.next++;
+        this.stats.segmentSkipped++;
+        continue;
+      }
+      g.skipBlock = undefined;
+      if (g.pauseUntil === undefined) g.pauseUntil = Math.max(t, lastEnd + this.pause(t));
+      const at = Math.max(g.pauseUntil, turn.notBefore !== undefined ? g.start + turn.notBefore : 0);
+      if (turn.optional) {
+        // the turn and the rest of its block must fit before the deadline
+        let need = 0;
+        for (let i = g.next; i < g.s.turns.length && g.s.turns[i].block === turn.block; i++) need += this.dur(g.s.turns[i].text, g.s.turns[i].excited) + this.cfg.pauseMin;
+        if (at + need > g.deadline) {
+          g.skipBlock = turn.block;
+          g.next++;
+          this.stats.segmentSkipped++;
+          continue;
+        }
+      }
+      if (t < at) return;
+      const item: Item = { id: `s${this.stats.segments}.${g.next}`, importance: 'could', speaker: turn.speaker, text: turn.text, ttl: 99, excited: turn.excited, tag: `${g.s.tag}.${turn.block}`, createdAt: t };
+      this.start(turn.speaker, t, item, actions);
+      this.stats.segmentTurns++;
+      g.next++;
+      g.pauseUntil = undefined;
+      return;
+    }
+    // done: the booth breathes before the next topic
+    this.seg = null;
+    this.breatheUntil = Math.max(this.breatheUntil, t + this.cfg.breatheMin);
+  }
+
   private foldOrDrop(it: Item, t: number) {
     if (it.fold) this.folds.set(it.fold.key, { ...it.fold, at: t });
     else this.stats.shouldDropped++;
@@ -448,6 +560,6 @@ export class Director {
 
   /** debug: a snapshot */
   snapshot() {
-    return { pending: this.pending.map((p) => `${p.importance}:${p.text}`), folds: [...this.folds.keys()], active: this.active?.topic.tag ?? null, breatheUntil: this.breatheUntil };
+    return { pending: this.pending.map((p) => `${p.importance}:${p.text}`), folds: [...this.folds.keys()], active: this.active?.topic.tag ?? null, segment: this.seg ? `${this.seg.s.tag} ${this.seg.next}/${this.seg.s.turns.length}` : null, breatheUntil: this.breatheUntil };
   }
 }

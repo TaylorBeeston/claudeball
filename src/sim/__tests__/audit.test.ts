@@ -22,6 +22,7 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   'batting.ts': { count: 1, why: 'perception: does the batter recognise the pitch type (noise in what he sees, not what happens)' },
   'pitching.ts': { count: 1, why: 'release lapse: a heavy tail on the pitcher\'s command noise; the pitch\'s flight and result still come from physics' },
   'flow.ts': { count: 2, why: 'direction / speed the ball squirts off the catcher\'s block (physical scatter)' },
+  'gameinfo.ts': { count: 12, why: 'flavour only, on its own streams (seed:gameinfo / umpires / records, park / skipper / mascot per club): the park, the officials\' names, the date, the clubs\' records coming in; nothing in the game reads them' },
   'fielding.ts': { count: 1, why: 'direction the ball spills after a bobble (physical scatter)' },
 };
 

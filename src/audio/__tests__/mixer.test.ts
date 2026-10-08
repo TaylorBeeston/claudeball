@@ -25,10 +25,13 @@ function fakeCtx(state: 'running' | 'suspended' = 'running') {
     createGain: () => node({ gain: param() }),
     createDynamicsCompressor: () => node({ threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }),
     createAnalyser: () => node({ fftSize: 2048, getFloatTimeDomainData: (a: Float32Array) => a.fill(0.1) }),
-    createBiquadFilter: () => node({ frequency: param(), type: '' }),
+    createBiquadFilter: () => node({ frequency: param(), Q: param(), gain: param(), type: '' }),
     createConvolver: () => node({ buffer: null }),
+    createDelay: () => node({ delayTime: param() }),
+    createWaveShaper: () => node({ curve: null }),
+    createChannelSplitter: () => node(),
     createStereoPanner: () => node({ pan: param() }),
-    createBuffer: (ch: number, len: number, sr: number) => ({ numberOfChannels: ch, length: len, sampleRate: sr, getChannelData: () => new Float32Array(len), copyToChannel: () => {} }),
+    createBuffer: (ch: number, len: number, sr: number) => ({ numberOfChannels: ch, length: len, sampleRate: sr, duration: len / sr, getChannelData: () => new Float32Array(len), copyToChannel: () => {} }),
     createBufferSource: () => {
       const s: any = node({ buffer: null, loop: false, playbackRate: param(), start: vi.fn(), stop: vi.fn(), onended: null });
       ctx.sources.push(s);
@@ -90,11 +93,22 @@ describe('mixer', () => {
   it('plays a cue, disconnects its nodes when it ends, and does not leak', async () => {
     const { m, f } = await readyMixer();
     const baseline = f.live.size;
+    const n0 = f.ctx.sources.length;
     expect(m.playSfx({ kind: 'sfx', id: 'bat_crack', bucket: 2, pos: { x: 0, y: 1, z: 0 }, gain: 1, imp: 2 })).toBe(true);
+    // one logical voice, heard by several mics: the same buffer and rate, each copy later by its extra flight time
     expect(m.voiceCount).toBe(1);
-    const src = f.ctx.sources.at(-1);
-    expect(src.start).toHaveBeenCalled();
-    src.onended();
+    const copies = f.ctx.sources.slice(n0);
+    expect(copies.length).toBeGreaterThan(1);
+    expect(new Set(copies.map((c: any) => c.buffer)).size).toBe(1);
+    expect(new Set(copies.map((c: any) => c.playbackRate.value)).size).toBe(1);
+    const starts = copies.map((c: any) => c.start.mock.calls[0][0]).sort((a: number, b: number) => a - b);
+    expect(starts[0]).toBeCloseTo(f.ctx.currentTime, 6);
+    expect(starts.at(-1)).toBeGreaterThan(starts[0]);
+    copies[0].onended();
+    expect(m.voiceCount).toBe(1);
+    for (const c of copies.slice(1)) c.onended();
+    // the nodes are released at once; the voice leaves the count when the audio clock passes its end
+    f.ctx.currentTime = 10;
     expect(m.voiceCount).toBe(0);
     expect(f.live.size).toBe(baseline);
     expect(m.played.bat_crack).toBe(1);
@@ -126,5 +140,39 @@ describe('mixer', () => {
     m.settings.muted = true;
     m.applySettings();
     expect(m.master.gain.setTargetAtTime).toHaveBeenLastCalledWith(0, expect.any(Number), expect.any(Number));
+  });
+
+  it('the park is mixed from fixed mics: no camera listener; venue, perspective and duck settings reach the graph; phones get the small array', async () => {
+    const { m } = await readyMixer();
+    expect('setListener' in m).toBe(false);
+    expect(m.graph!.mics.length).toBe(16);
+    m.settings.venue = 'big';
+    m.settings.micPerspective = 'close';
+    m.settings.duck = 'strong';
+    m.applySettings();
+    expect(m.graph!.venue).toBe('big');
+    expect(m.graph!.perspective).toBe('close');
+    expect(m.graph!.duck.depth).toBe(10);
+    const f = fakeCtx();
+    const low = new Mixer({ ...DEFAULT_SETTINGS }, () => f.ctx);
+    low.lowPower = true;
+    await low.unlock();
+    expect(low.graph!.mics.length).toBe(9);
+  });
+
+  it('a crowd shot plays in its zone (a couple of mics), a big roar in the whole bowl, the wave section by section', async () => {
+    const { m, f } = await readyMixer();
+    let n0 = f.ctx.sources.length;
+    expect(m.playCrowdShot({ id: 'cheer_short', gain: 0.5, delay: 0, zone: 'line_1b' })).toBe(true);
+    const zoneCopies = f.ctx.sources.length - n0;
+    expect(zoneCopies).toBeGreaterThanOrEqual(1);
+    expect(zoneCopies).toBeLessThanOrEqual(3);
+    n0 = f.ctx.sources.length;
+    expect(m.playCrowd('roar_big', 1)).toBe(true);
+    expect(f.ctx.sources.length - n0).toBeGreaterThanOrEqual(2);
+    n0 = f.ctx.sources.length;
+    expect(m.playCrowd('whoop', 0.5, 0, { sweep: { from: -0.9, to: 0.9, dur: 6 } })).toBe(true);
+    const wave = f.ctx.sources.slice(n0).map((x: any) => x.start.mock.calls[0][0]);
+    expect(Math.max(...wave) - Math.min(...wave)).toBeGreaterThan(3); // goes round the bowl over seconds
   });
 });

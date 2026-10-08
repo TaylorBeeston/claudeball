@@ -675,7 +675,8 @@ export class GltfPuppet implements PuppetLike {
         if (cap) cap.visible = true;
       }
       // umpires, managers and coaches are not athletes: ordinary builds, many of them heavy (the files bake one body, so it is set here per person)
-      const crew = crewBuild(snap.role, h);
+      // (keyed by the generated name: the ids are the same every game, `ump-hp`, the people are not)
+      const crew = crewBuild(snap.role, hashString(snap.name ?? id));
       if (crew) {
         this.applyMorphs(crew);
         this.torso = torsoVolume(crew);

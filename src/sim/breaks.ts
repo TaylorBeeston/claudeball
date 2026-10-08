@@ -15,7 +15,7 @@ import type { PlayerRT, UmpireRT, World } from './world';
 import { secToTicks } from './world';
 import { sendHome } from './handling';
 import { RELEASE_S, releaseHeight, throwMotion } from './throws';
-import { BRUSH_FACE, BRUSH_SPOT, restSpot } from './umpires';
+import { BRUSH_FACE, BRUSH_SPOT, restSpot, scheduleCall } from './umpires';
 import { CREW_MEETING, crewMeetingSpot } from './venue';
 import { crewMeets } from './setup';
 
@@ -42,12 +42,15 @@ export interface BreakShow {
   tailUntil: number;
   /** Until this tick the crew stands at its pre-game plate meeting (0 = no meeting: every break but the first, or no time for one). */
   meeting: number;
+  /** the pregame (before the first pitch): it ends with the plate umpire's "Play ball!" */
+  pregame: boolean;
 }
 
 /** Start the show for the half-inning that begins now (called from `startHalfInning`); returns the length of the break in ticks. */
 export function beginBreak(w: World): number {
-  const first = w.tick === 0;
-  const sec = first ? 22 + 6 * w.propRng.next() : 26 + 34 * w.propRng.next();
+  const first = w.inning === 1 && w.half === 'top' && w.tick <= 1; // (startGame runs on tick 1)
+  // the pregame is longer (60-90 s at `broadcast`, ~36-54 s at `standard`, ~15-22 s at `quick`): the booth's opening segment fits into it
+  const sec = first ? 60 + 30 * w.propRng.next() : 26 + 34 * w.propRng.next();
   const planned = lticks(w, sec);
   const P = w.pitcher;
   const warmTotal = Math.max(2, Math.round(8 * clamp(lullScale(w), 0, 1)));
@@ -60,14 +63,14 @@ export function beginBreak(w: World): number {
     pairs: [],
     brushed: false,
     tailUntil: 0,
-    // the crew meets at the plate for the first third of the opening break (they start there, see setup.ts), then takes the field
-    // (`first` above is never true: the game's first tick is 1 by then; kept so the break lengths, and every seed's game, stay as they were)
-    meeting: w.inning === 1 && w.half === 'top' && crewMeets(w.cfg) ? w.tick + Math.round(planned * 0.3) : 0,
+    // the crew meets at the plate for the first third of the pregame (they start there, see setup.ts), then takes the field
+    meeting: first && crewMeets(w.cfg) ? w.tick + Math.round(planned * 0.3) : 0,
+    pregame: first,
   };
   w.breakShow = show;
   w.extraBalls = [];
   setLull(w, 'break', 'break', planned / 240);
-  emit(w, { type: 'breakStart', inning: w.inning, half: w.half, sec: planned / 240 });
+  emit(w, { type: 'breakStart', inning: w.inning, half: w.half, sec: planned / 240, ...(first ? { pregame: true } : {}) });
   return planned;
 }
 
@@ -235,6 +238,7 @@ export function breakFinished(w: World): boolean {
     sendHome(w, p.b, false);
   }
   w.extraBalls = [];
+  if (s.pregame) scheduleCall(w, 'plate', 'play_ball', 0.2);
   w.breakShow = null;
   clearLull(w);
   void DEFAULT_SPOTS;

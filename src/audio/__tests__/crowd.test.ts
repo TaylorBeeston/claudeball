@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CrowdModel, carryOf, hangTime, proximityOf, type CrowdCtx, type CrowdShot } from '../crowd';
+import { CrowdModel, carryOf, hangTime, type CrowdCtx, type CrowdShot } from '../crowd';
 import { mulberry32 } from '../dsp';
 import type { RawEvent } from '../types';
 
@@ -262,7 +262,7 @@ describe('crowd reaction model', () => {
     for (const s of c.take(0.2)) expect(s.delay).toBeLessThanOrEqual(0.2);
   });
 
-  it('the bed gets louder and brighter with the level; closer cameras are louder and brighter than wide shots', () => {
+  it('the bed gets louder and brighter with the level; the camera plays no part (the mics are fixed)', () => {
     const m = mk();
     m.setContext(ctx());
     const quiet = run(m, 5).bed.pop()!;
@@ -270,11 +270,26 @@ describe('crowd reaction model', () => {
     const loud = run(m, 4).bed.pop()!;
     expect(loud.roar).toBeGreaterThan(quiet.roar * 2);
     expect(loud.cutoff).toBeGreaterThan(quiet.cutoff);
-    const stands = proximityOf({ x: 70, y: 4, z: 110 });
-    const behindPlate = proximityOf({ x: 0, y: 3, z: -8 });
-    const wide = proximityOf({ x: 0, y: 40, z: -30 });
-    expect(stands.gain).toBeGreaterThan(behindPlate.gain);
-    expect(stands.gain).toBeGreaterThan(wide.gain);
-    expect(stands.bright).toBeGreaterThan(wide.bright);
+    expect('setListener' in m).toBe(false);
+  });
+
+  it('sections react by whose fans sit there: a home homer lifts the home side, a visitor homer the visitors\' corner', () => {
+    const home = mk();
+    home.setContext(ctx());
+    run(home, 3);
+    home.observe({ type: 'homeRun' }, ctx({ half: 'bottom' }));
+    const zh = run(home, 3).bed.pop()!.zones;
+    expect(zh.home_side).toBeGreaterThan(zh.line_1b);
+    const away = mk();
+    away.setContext(ctx({ half: 'top' }));
+    run(away, 3);
+    away.observe({ type: 'homeRun' }, ctx({ half: 'top' }));
+    const r = run(away, 2);
+    const za = r.bed.pop()!.zones;
+    expect(za.line_1b).toBeGreaterThan(za.home_side + 0.1);
+    expect(za.rf_bleachers).toBeGreaterThan(za.lf_bleachers);
+    // the visitors' cheer comes from their sections, not the whole bowl
+    const cheer = r.shots.find((s) => s.id === 'cheer_short');
+    expect(['line_1b', 'rf_bleachers']).toContain(cheer?.zone);
   });
 });

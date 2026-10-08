@@ -28,9 +28,14 @@ import { SpeechGate } from './broadcast/gate';
 import type { SpeechEvent } from './captions';
 export type { SpeechEvent, SpeechStartEvent, SpeechEndEvent, SpeechChannel, SpeechSpeaker } from './captions';
 import { ctxFromRaw, type BoothCtx } from './broadcast/ctx';
+import { factsFromGame } from './broadcast/facts';
+import { CAST, speakerLabel, speakerName } from './broadcast/cast';
+import { estimateDuration } from './broadcast/text';
+import { paWelcome } from './cues';
+import { teamInfo } from '../engine/realSimAdapter';
 
 type Phase = 'prePitch' | 'betweenBatters' | 'break';
-import { listenerFromMatrix } from './spatial';
+import { BASES } from './venue/mics';
 import type { Cue, MapCtx, RawEvent, Vec3 } from './types';
 
 interface PlayerLike {
@@ -66,6 +71,8 @@ export interface AudioHost {
     on(cb: (te: { simTime: number; event: { type: string } & Record<string, unknown> }) => void): unknown;
   };
   director?: { shot: string };
+  /** the sky the renderer shows (the opening's weather follows it) */
+  env?: { todName?: string; hdriActive?: boolean };
 }
 
 interface RawBus {
@@ -164,6 +171,7 @@ export class AudioController {
   private phase: Phase | null = null;
   private lastPlayText = '';
   private offs: (() => void)[] = [];
+  private debugPanel: { dispose(): void } | null = null;
 
   readonly debug = {
     cues: [] as DebugCue[],
@@ -181,6 +189,14 @@ export class AudioController {
     this.settings = loadSettings();
     this.mixer = new Mixer(this.settings);
     this.mixer.lowPower = this.lowPower;
+    let audioDebug = false;
+    try {
+      audioDebug = new URLSearchParams(location.search).get('audiodebug') === '1';
+    } catch {
+      /* no location */
+    }
+    // ?audiodebug=1: level meters on every mic strip and a live panel (meters, duck, zones, venue)
+    this.mixer.meters = audioDebug;
     this.music = new ParkMusic({
       backend: new WebAudioMusic(this.mixer),
       base: `${import.meta.env?.BASE_URL ?? '/'}audio/music/`,
@@ -196,6 +212,7 @@ export class AudioController {
     }
     this.crowd = new CrowdModel({ rng: Math.random, lowPower: this.lowPower });
     this.ambience = new Ambience(this.mixer);
+    if (audioDebug) void import('./debugPanel').then((d) => (this.debugPanel = new d.AudioDebugPanel(this.mixer, this.ambience, root)));
     this.organ = new Organ(this.mixer);
     this.sw = new SwitchEngine(browserSpeech());
     // the stadium side (PA announcer, umpire) and the booth are separate channels: with the HD voices they overlap, with browser voices they take turns
@@ -210,6 +227,7 @@ export class AudioController {
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw, crowdCues: false }); // the crowd model makes the crowd sounds
+    this.initFacts();
     // the engine's camera / graphics events come through the engine's own stream, whichever source the game events use
     host.sim.on((te) => {
       if (FX_EVENT_TYPES.has(te.event.type)) this.cameraEvent(te.event as CameraEvent);
@@ -271,6 +289,41 @@ export class AudioController {
     this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
     this.ui?.voicePanel?.set(voiceManager.status());
     this.interval = setInterval(() => this.tick(), this.lowPower ? 1000 / 15 : 1000 / 30);
+  }
+
+  /** the game's who-and-where for the booth's opening and the PA's welcome (from the sim's teams and `game.info`, and the renderer's sky) */
+  private venueName: string | undefined;
+  private todName(): 'day' | 'dusk' | 'night' {
+    const t = this.host.env?.todName;
+    return t === 'dusk' || t === 'night' ? t : 'day';
+  }
+  private initFacts() {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const game = (this.host.sim.game as any)?.game ?? null;
+      if (!game || !this.raw) return;
+      const tod = this.todName();
+      const teams = game.getTeams?.();
+      const colors = (side: 'home' | 'away') => (teams?.[side] ? teamInfo({ name: teams[side].name, abbrev: teams[side].abbrev }, side === 'home' ? 1 : 0) : undefined);
+      const seed = String(game._world?.cfg?.seed ?? `${teams?.away?.abbrev}-${teams?.home?.abbrev}`);
+      const f = factsFromGame(game, seed, tod, tod === 'day' && !!this.host.env?.hdriActive, colors);
+      if (!f) return;
+      this.venueName = f.venue?.name;
+      // the PA's welcome (0.5 s after gameStart, about 8 % slower than the estimate) plays first
+      const pa = paWelcome({ teams: { home: f.home.name, away: f.away.name }, venue: this.venueName, tod });
+      this.booth.setFacts(f, 0.5 + estimateDuration(pa, 0.92) + 0.8);
+    } catch (e) {
+      console.warn('[audio] no opening facts', e);
+    }
+  }
+
+  /** The cast (names, roles, voices) and the caption label / display name of a speaker role ('pbp' -> 'LYLE' / 'Lyle Pemberton'). */
+  readonly cast = CAST;
+  speakerLabel(speaker: string): string | undefined {
+    return speakerLabel(speaker);
+  }
+  speakerName(speaker: string): string | undefined {
+    return speakerName(speaker);
   }
 
   // ---- HD (neural) voices: the manager (`hd.ts`) owns the download and the engine; a game only plugs its mixer in -------------
@@ -497,6 +550,8 @@ export class AudioController {
       score: { home: st.score.home, away: st.score.away },
       runners: st.runners,
       teams: { home: st.teams.home.name, away: st.teams.away.name },
+      venue: this.venueName,
+      tod: this.todName(),
       catcher: (() => {
         const c = st.players.find((p) => p.role === 'catcher');
         return c ? { x: c.pos.x, y: 0.9, z: c.pos.z - 0.6 } : undefined;
@@ -519,7 +574,8 @@ export class AudioController {
     if (!force && this.bctx && now - this.bctxAt < 250) return this.bctx;
     const rs = this.raw?.getState?.();
     if (!rs) return null;
-    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText, game: (this.host.sim.game as any)?.game });
     this.bctxAt = now;
     return this.bctx;
   }
@@ -610,7 +666,6 @@ export class AudioController {
     const st = this.state();
     if (!st || !st.players) return;
     try {
-      this.mixer.setListener(listenerFromMatrix(this.host.camera.matrixWorld.elements));
       // modes: pause, slow-motion replay, speed, fast-forward
       const replay = this.host.director?.shot === 'replay';
       const shotName = this.host.director?.shot ?? '';
@@ -640,8 +695,10 @@ export class AudioController {
       if (sim.skipping) this.bedWanted = false;
       const speaking = this.gate.busy.field + this.gate.busy.booth > 0;
       if (speaking !== this.mixer.speaking) this.mixer.setMode({ speaking });
-      // PA and booth sit under each other (about -5 dB for the PA while the booth talks, -2 dB for the booth under the PA): neither is muted
-      if (this.gate.concurrent) this.mixer.setVoiceDuck(this.gate.busy.booth > 0 ? 0.56 : 1, this.gate.busy.field > 0 ? 0.79 : 1);
+      // the park (PA included) ducks under the booth through the sidechain: keyed by the booth's real signal when the voices play
+      // through Web Audio, by the gate's flag for browser speech; the booth sits about 2 dB under the PA announcer
+      this.mixer.setVoices({ pa: this.gate.busy.field > 0, booth: this.gate.busy.booth > 0, routed: this.sw.usingNeural });
+      if (this.gate.concurrent) this.mixer.setVoiceDuck(1, this.gate.busy.field > 0 ? 0.79 : 1);
       if (this.bedWanted && !this.music.active && !sim.paused && !sim.skipping && sim.speed <= 1.01 && !this.settings.muted && this.settings.organ && !this.locked && this.organ.playing === null && !speaking) this.organ.play('bed', 0.9);
       const stretch = this.organ.playing === 'stretch';
       if (sim.speed > 1.01 && this.lastSpeed <= 1.01) this.speech.clear();
@@ -676,14 +733,14 @@ export class AudioController {
           const step = this.crowdAcc;
           this.crowdAcc = 0;
           this.crowd.setContext(crowdCtx(st));
-          this.crowd.setListener(this.mixer.listener.pos);
           const bed = this.crowd.update(step, !sim.paused && sim.speed <= 1.51 && !this.settings.muted);
           this.ambience.apply(sim.paused ? { ...bed, murmur: bed.murmur * 0.6, roar: bed.roar * 0.6, clap: bed.clap * 0.5 } : bed);
-          this.mixer.setCrowdProximity(this.crowd.proximity.gain);
+          this.mixer.setCrowdEnergy(this.crowd.energy);
           // park music: silent while paused / skipping / fast / muted / off / the stretch; under the booth and the PA, and under big crowd moments
           const musicOff = sim.paused || sim.skipping || sim.speed > 1.01 || this.settings.muted || !this.settings.music || this.organ.playing === 'stretch';
           this.music.tick(now / 1000, musicOff);
-          const speech = this.gate.busy.booth > 0 ? 0.5 : this.gate.busy.field > 0 ? 0.62 : 1;
+          // (the booth's duck is the sidechain's; the PA announcer and the music share the PA, the music sits under it)
+          const speech = this.gate.busy.field > 0 ? 0.62 : 1;
           this.mixer.setMusicDuck(speech * (1 - 0.4 * Math.min(1, Math.max(0, (this.crowd.energy - 0.5) / 0.5))));
           for (const shot of this.crowd.take()) if (!this.settings.muted && (sim.speed <= 1.01 || shot.gain >= 0.3)) this.playShot(shot);
         }
@@ -702,9 +759,12 @@ export class AudioController {
         this.boothWasSuppressed = suppressed;
         const cc = this.raw ? this.boothCtx() : null;
         if (cc) {
-          this.booth.setLevel(this.music.breakPlaying ? 'low' : this.settings.chatter); // calls only while the break music plays
+          // calls only while the break music plays (a scripted segment still runs: the music ducks under the booth)
+          this.booth.setUserLevel(this.settings.chatter);
+          this.booth.setLevel(this.music.breakPlaying && !this.booth.director.segmentActive ? 'low' : this.settings.chatter);
           this.booth.canTalk = this.phase !== null;
-          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed }));
+          // browser voices cannot overlap: a segment's next turn waits while the PA / umpire speak
+          this.sink.apply(this.booth.tick(now / 1000, cc, { suppressed, fieldHold: !this.gate.concurrent && this.gate.busy.field > 0 }));
         }
       }
       this.speech.pump();
@@ -739,14 +799,9 @@ export class AudioController {
     void this.music.load().then(next);
   }
 
+  /** a crowd reaction in its section of the stands (or the whole bowl), heard through the mic array */
   private playShot(s: CrowdShot) {
-    if (s.id === 'seat_thump') {
-      // a seat banging shut somewhere in the stands
-      const side = (s.pan ?? 0) * 70;
-      this.mixer.playSfx({ kind: 'sfx', id: 'seat_thump', pos: { x: side, y: 4, z: 40 + Math.abs(side) * 0.6 }, gain: s.gain, imp: 0 });
-      return;
-    }
-    this.mixer.playCrowd(s.id, s.gain, s.delay, { pan: s.pan, rate: s.rate, sweep: s.sweep });
+    this.mixer.playCrowdShot(s);
   }
 
   /** Sounds with no sim event of their own, derived from the snapshot: bounces, slides, cleats. */
@@ -762,7 +817,6 @@ export class AudioController {
       }
       this.prevBall = { vy };
     } else this.prevBall = null;
-    const cam = this.mixer.listener.pos;
     let steps = 0;
     for (const p of st.players) {
       const was = this.prevAnim.get(p.id);
@@ -770,8 +824,9 @@ export class AudioController {
       this.prevAnim.set(p.id, p.anim);
       const v = Math.hypot(p.vel.x, p.vel.z);
       if (!this.lowPower && speed <= 1.01 && v > 2.5 && steps < 3 && p.role !== 'umpire' && (p.anim === 'run' || p.anim === 'trot' || p.anim === 'run_turn')) {
-        const d = Math.hypot(p.pos.x - cam.x, p.pos.z - cam.z);
-        if (d < 40) {
+        // only near a field mic (the plate's dish and the base shotguns hear cleats; nothing else does)
+        const d = Math.min(Math.hypot(p.pos.x, p.pos.z), Math.hypot(p.pos.x - BASES.first.x, p.pos.z - BASES.first.z), Math.hypot(p.pos.x - BASES.third.x, p.pos.z - BASES.third.z));
+        if (d < 12) {
           const ph = (this.stepPhase.get(p.id) ?? 0) + (v * 0.4) / 30; // ~one stride per (2.5 m / v) s at 30 Hz
           if (ph >= 1) {
             this.stepPhase.set(p.id, 0);
@@ -797,6 +852,7 @@ export class AudioController {
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     for (const o of this.offs) o();
+    this.debugPanel?.dispose();
     this.speech.clear();
     this.ambience.stop();
     this.organ.stop();
