@@ -297,6 +297,10 @@ export function probeInit() {
     const arr = pf.frames as unknown[];
     const push = arr.push;
     arr.push = function (this: unknown[], ...x: unknown[]) {
+      // each frame tagged with the director's shot (B-roll with its kind), for the per-shot table
+      const d = W.engine?.director;
+      const shot = d ? `${d.shot}${d.shot === 'broll' && d.broll?.shot?.kind ? `:${d.broll.shot.kind}` : ''}` : '?';
+      for (const f of x) (f as { shot?: string }).shot = shot;
       all?.push(...x);
       return push.apply(this, x);
     };
@@ -310,6 +314,25 @@ export function probeInit() {
     Object.assign(fake, { frames: all ?? [], gpuTimer: pf.gpuTimer, gpuName: pf.gpuName, tags: pf.tags, longFrames: pf.longFrames, longTasks: pf.longTasks, longTaskMs: pf.longTaskMs });
     const out = Object.getPrototypeOf(pf).stats.call(fake, (all ?? []).length);
     out.probe = summary();
+    // per shot: frames, missed vsyncs (> 1.5 refresh intervals), the engine tick, GPU time, draw calls
+    const by: Record<string, { frame: number; js: number; gpu: number; calls: number }[]> = {};
+    for (const f of (all ?? []) as { shot?: string; frame: number; js: number; calls: number; passes: Record<string, { gpu: number }> }[]) {
+      let g = 0;
+      for (const k in f.passes) g += f.passes[k].gpu;
+      (by[f.shot ?? '?'] ??= []).push({ frame: f.frame, js: f.js, gpu: g, calls: f.calls });
+    }
+    const med = (v: number[]) => { const s2 = [...v].sort((a, b) => a - b); return s2.length ? s2[(s2.length - 1) >> 1] : 0; };
+    const p95 = (v: number[]) => { const s2 = [...v].sort((a, b) => a - b); return s2.length ? s2[Math.floor(0.95 * (s2.length - 1))] : 0; };
+    const iv = med((all ?? []).map((f) => (f as { frame: number }).frame).filter((x) => x > 0));
+    out.probe.shots = Object.fromEntries(Object.entries(by).sort((a, b) => b[1].length - a[1].length).map(([k, v]) => [k, {
+      frames: v.length,
+      missed: v.filter((f) => f.frame > iv * 1.5).length,
+      jsMed: +med(v.map((f) => f.js)).toFixed(2),
+      jsP95: +p95(v.map((f) => f.js)).toFixed(2),
+      gpuMed: +med(v.map((f) => f.gpu)).toFixed(2),
+      gpuP95: +p95(v.map((f) => f.gpu)).toFixed(2),
+      calls: Math.round(med(v.map((f) => f.calls))),
+    }]));
     all = null;
     return out;
   };
@@ -368,6 +391,7 @@ export function probeInit() {
       disconnectsPerSec: per(s0.disconnects, s1.disconnects),
       graphCallMsPerSec: +((s1.graphMs - s0.graphMs) / secs).toFixed(3),
       ctx: ctx ? { state: ctx.state, sampleRate: ctx.sampleRate, baseLatencyMs: +(ctx.baseLatency * 1000).toFixed(1), outputLatencyMs: +((ctx.outputLatency ?? 0) * 1000).toFixed(1), clockRatio: +((s1.ctxTime - s0.ctxTime) / secs).toFixed(3), playback: psDelta } : null,
+      visibility: document.visibilityState,
       audioGraph: graphFacts(c),
       controller: c ? { lowPower: c.lowPower, locked: c.locked ?? c.isLocked, mixer: c.mixer?.state, ready: c.mixer?.ready, prepared: `${c.mixer?.prepared}/${c.mixer?.totalToPrepare}`, beds: c.ambience?.started, irMs: c.mixer?.graph?.stats?.irMs, voices: c.mixer?.voiceCount, phase: c.phaseNow ?? null, chat: c.debug?.chat ? Object.values(c.debug.chat as Record<string, number>).reduce((a, b) => a + b, 0) : null } : null,
     };

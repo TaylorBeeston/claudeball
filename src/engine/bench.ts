@@ -65,6 +65,8 @@ export const SCENES: Record<string, SceneFn> = {
     if (c) set(o, [c.pos.x, c.pos.y, c.pos.z], [c.target.x, c.target.y, c.target.z], 34, 1);
     else set(o, [-30, 3, 8], [-18, 1, 0], 34, 1);
   },
+  /** the B-roll aerial (broll.ts `aerial`, mid-drift): high behind home over the upper deck, the whole park and bowl in view */
+  aerial: (_e, o) => set(o, [0, 61, -84], [0, 0, 58], 38, 0.4),
   /** the stadium from the outfield: the most geometry in view (stands, towers, scoreboard) */
   stadium: (_e, o) => set(o, [0, 32, 150], [0, 18, -20], 55, 0.4),
 };

@@ -41,6 +41,9 @@ export type Perspective = 'broadcast' | 'close';
 export interface Strip {
   def: MicDef;
   input: GainNode;
+  /** far pickups come in here: one shared air-absorption low-pass into `input` (made on first use; a filter per far copy of every
+   * one-shot cost a node per sound, and filters in series commute, so sharing it changes nothing) */
+  far: AudioNode | null;
   send: GainNode;
   meter: AnalyserNode | null;
 }
@@ -237,7 +240,7 @@ export class VenueGraph {
         meter.fftSize = 512;
         tone.connect(meter);
       }
-      this.strips.set(def.id, { def, input, send, meter });
+      this.strips.set(def.id, { def, input, far: null, send, meter });
     }
 
     // ---- PA system: band-limited horns with a little drive, a few clusters around the bowl
@@ -333,13 +336,21 @@ export class VenueGraph {
       d.delayTime.value = Math.min(0.99, delay);
       from.connect(d).connect(gg);
     } else from.connect(gg);
-    if (p.far) {
-      const air = count(this.ctx.createBiquadFilter());
-      air.type = 'lowpass';
-      air.frequency.value = AIR_HZ;
-      air.Q.value = 0.6;
-      gg.connect(air).connect(s.input);
-    } else gg.connect(s.input);
+    gg.connect(p.far ? this.farIn(s, count) : s.input);
+  }
+
+  /** the strip's shared far input (air absorption), made on first use */
+  private farIn(s: Strip, count: <T extends AudioNode>(x: T) => T = (x) => x): AudioNode {
+    if (s.far) return s.far;
+    const air = count(this.ctx.createBiquadFilter());
+    air.type = 'lowpass';
+    air.frequency.value = AIR_HZ;
+    air.Q.value = 0.6;
+    air.channelCount = 1;
+    air.channelCountMode = 'explicit';
+    air.connect(s.input);
+    s.far = air;
+    return air;
   }
 
   /** a continuous source at a fixed place: its top `k` mics, each through a delay (relative flight time) and a gain */
@@ -365,15 +376,6 @@ export class VenueGraph {
       g.gain.value = Math.min(4, gain * p.gain);
       src.connect(g);
       let tail: AudioNode = g;
-      if (p.far) {
-        const air = this.ctx.createBiquadFilter();
-        air.type = 'lowpass';
-        air.frequency.value = AIR_HZ;
-        air.Q.value = 0.6;
-        g.connect(air);
-        tail = air;
-        nodes.push(air);
-      }
       if (p.proximityDb > 1) {
         const ls = this.ctx.createBiquadFilter();
         ls.type = 'lowshelf';
@@ -383,7 +385,7 @@ export class VenueGraph {
         tail = ls;
         nodes.push(ls);
       }
-      tail.connect(s.input);
+      tail.connect(p.far ? this.farIn(s) : s.input);
       src.start(when + p.delay);
       end = Math.max(end, when + p.delay + (buffer.duration || 0) / rate);
       srcs.push(src);

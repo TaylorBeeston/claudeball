@@ -143,3 +143,26 @@ Laptop result: **every preset and scene is 60 fps (p5 59.5)**, including Ultra i
 ## Open
 - **Real phone**: only it can show whether the extra audio-thread work (~+3 % of a laptop core on the phone path) costs frames or heat. Run `npm run perf:phone -- --audio --audiotrace` once it is plugged in.
 - If the phone's audio thread matters, the next levers change the sound and need render A/B first: fewer bed zones or loops on phones (the beds are ~30 % of the phone mix's cost), the 32 kHz context, a shorter phone IR.
+
+## Pass 2, batch 2 (after main's foley pass)
+- **Shared air filter per mic strip.** Far pickups (one-shot copies and the fixed wiring) now go through one air-absorption low-pass per strip instead of a new biquad per copy. Filters in series commute and sum linearly, so the mix is the same:
+  - renders null against the previous mix at -85..-101 dB (the tool's run-to-run floor is about -91 dBFS);
+  - LUFS and true peak are identical in all 8 renders (game, impulse, duck, organ; desktop and phone);
+  - biquads made per second: 0.87 -> 0.10 (desktop), 0.67 -> 0.02 (phone);
+  - in `perf:check`'s window, nodes made per second: phone 30 -> 12, desktop 78 -> 63 (this includes the foley pass's changes);
+  - the desktop standing graph is 181 nodes (was 183).
+  - The audio thread's load did not move measurably (the machine was at load 14-21).
+- **Fewer crowd-bed zones on phones (3 instead of 4: the outfield folded behind home): rejected.** The phone game mix moved -0.37 LUFS (-16.56 vs -16.19), and no CPU saving was measurable. Each zone carries its own fans' reactions and direction, so any merge moves the mix.
+- **Startup with the foley pass**: 168 synthesis jobs (~1 s on this laptop), all in the worker. On the phone proxy, all 151 sounds the mixer prepares were ready, the longest timer task was 8-13 ms and timers took 6-7 ms/s in the first 20 s.
+- **The pregame's single missed vsyncs** (`--play` now tags every frame with the director's shot; real game, laptop, high, 150 s from the start, 2 runs):
+
+  | shot | frames missed | JS median | GPU median | draw calls |
+  |---|---|---|---|---|
+  | `broll:aerial` | 8-10 % | ~16 ms | 11-12 ms | 780-860 |
+  | `broll:dugout` (one run) | heavy too | 15 ms | 12 ms | 829 |
+  | pitch camera | 1.2 % (background noise) | | | 240-330 |
+
+  - The new bench scene `aerial` costs the same as the long-standing `wide` (high: JS 15.8 / 15.8 ms, GPU 11.5 / 11.3, 837 / 872 calls). It is a whole-park shot at the edge of the 60 Hz budget, not a new kind of cost.
+  - The pregame opening simply shows more of them.
+  - Census of the aerial at high: the 47 players are ~450 of its ~540 main-pass calls (~10 each, already on their smallest detail tier), the stadium ~110, the crowd 12.
+  - Fewer draws per tiny player would change pixels (Medium+ must stay identical). The options are listed in the report: a far tier at Low only; the adaptive controller degrading before a scheduled whole-park B-roll; fewer aerials on phones.
