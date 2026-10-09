@@ -17,6 +17,40 @@ export function insideFence(w: World, x: number, z: number, margin = WALL_STAND)
   return { x: (x / rho) * lim, z: (z / rho) * lim };
 }
 
+/** How far (x, z) is outside the line WALL_STAND inside the wall (> 0: through it), measured along the radial from home plate. */
+const wallExcess = (w: World, x: number, z: number) => Math.hypot(x, z) - (fenceAt(w.env.fence, x, z).distance - WALL_STAND);
+
+/**
+ * If (x, z) is through the wall (closer than WALL_STAND to it): the nearest point on the allowed side, pushed out along the wall's local normal
+ * (the gradient of the radial excess, so an oblique stretch of wall pushes square to itself), and that outward normal. Null when clear.
+ */
+export function wallContact(w: World, x: number, z: number): { x: number; z: number; nx: number; nz: number } | null {
+  let f = wallExcess(w, x, z);
+  if (f <= 0) return null;
+  let nx = 0, nz = 0;
+  // (Newton steps aim 0.5 mm inside the line, so the next tick starts clear)
+  const IN = 5e-4;
+  for (let it = 0; it < 6 && f > 0; it++) {
+    const h = 0.05;
+    const gx = (wallExcess(w, x + h, z) - wallExcess(w, x - h, z)) / (2 * h);
+    const gz = (wallExcess(w, x, z + h) - wallExcess(w, x, z - h)) / (2 * h);
+    const g2 = gx * gx + gz * gz || 1;
+    const gl = Math.sqrt(g2);
+    nx = gx / gl;
+    nz = gz / gl;
+    // a Newton step on the excess, along its gradient (the shortest way back inside)
+    x -= ((f + IN) * gx) / g2;
+    z -= ((f + IN) * gz) / g2;
+    f = wallExcess(w, x, z);
+  }
+  if (nx === 0 && nz === 0) {
+    const r = Math.hypot(x, z) || 1;
+    nx = x / r;
+    nz = z / r;
+  }
+  return { x, z, nx, nz };
+}
+
 export const sprintSpeed = (speedRating: number) => 6.65 + 0.031 * speedRating; // 50 -> 8.2 m/s (27 ft/s)
 export const accelOf = (speedRating: number) => 6.6 + 0.03 * speedRating; // 50 -> 8.1 m/s^2
 
@@ -83,16 +117,15 @@ export function stepPlayer(p: PlayerRT, w: World): void {
   p.vz += dvz;
   p.x += p.vx * TICK;
   p.z += p.vz * TICK;
-  // the outfield wall is solid: nobody runs through it
-  const rho = Math.hypot(p.x, p.z);
-  if (rho > 15 && p.onField) {
-    const lim = fenceAt(w.env.fence, p.x, p.z).distance - WALL_STAND;
-    if (rho > lim) {
-      const nx = p.x / rho;
-      const nz = p.z / rho;
+  // the outfield wall is solid: nobody runs through it. He is pushed back out along the wall's own normal and keeps the part of his velocity along
+  // the wall (the old radial snap from home plate moved him along an oblique wall near the corners: up to 3.8x his top speed in one tick)
+  if (p.onField && Math.hypot(p.x, p.z) > 15) {
+    const c = wallContact(w, p.x, p.z);
+    if (c) {
+      const { nx, nz } = c;
       const vn = p.vx * nx + p.vz * nz;
-      p.x = nx * lim;
-      p.z = nz * lim;
+      p.x = c.x;
+      p.z = c.z;
       if (vn > 0) {
         p.vx -= vn * nx;
         p.vz -= vn * nz;
