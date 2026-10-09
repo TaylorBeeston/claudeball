@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
 import { restSpot } from '../umpires';
@@ -50,6 +51,25 @@ describe('sitters sit on something: every seated pose is on a real seat at the s
       const spot = [ballKidSpot(1), ballKidSpot(3)].reduce((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) < Math.hypot(b.x - p.x, b.z - p.z) ? a : b));
       expect(Math.hypot(spot.x - p.x, spot.z - p.z)).toBeLessThan(0.3);
       expect(p.y).toBe(0);
+    }
+  });
+
+  it('the ball kids\' chairs are against the side wall, not out on the foul grass ("a ball boy sitting in a chair in the middle of the outfield")', () => {
+    const outline = (JSON.parse(readFileSync(new URL('../../../assets/field_layout.json', import.meta.url), 'utf8')) as { ground_outline: number[][] }).ground_outline.map((p) => [p[0], p[p.length - 1]]);
+    const inside = (x: number, z: number) => {
+      let r = false;
+      for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+        const a = outline[i], b = outline[j];
+        if (a[1] > z !== b[1] > z && x < ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1]) + a[0]) r = !r;
+      }
+      return r;
+    };
+    for (const p of sitters.filter((q) => q.anim === 'ballkid_sit')) {
+      // on the field, within 2 m of the wall: 2 m further out along the same perpendicular is beyond it
+      const { s: sl, o } = lineFrame(p.x, p.z);
+      expect(inside(p.x, p.z)).toBe(true);
+      const sg = Math.sign(p.x);
+      expect(inside(sg * (sl + o + 2) * Math.SQRT1_2, (sl - o - 2) * Math.SQRT1_2)).toBe(false);
     }
   });
 
