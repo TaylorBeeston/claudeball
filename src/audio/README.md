@@ -321,6 +321,10 @@ Players are "he / him / his" (see Pronouns above).
 `mapped` / `played` (counters; *mapped* counts every cue before speed gating or voice limits, *played* what actually started), `perHalf` (mapped counts per `1t`, `1b`, `2t` ...),
 `energy` (output RMS/peak every 100 ms from an `AnalyserNode`), `speechLog`, `level()`.
 
+## The pitch clock
+
+The booth: a violation (`pitchClockViolation`) is a MUST call naming the man penalised ("Pitch clock violation on Rook. That is an automatic ball.", "Vance was not in the box in time, and that is an automatic strike.") with the analyst's reaction; a denied time-out and a team out of mound visits (`timeDenied`) are SHOULD calls. Colour (`stories.ts`, from the snapshot's `pitchClock` and the pitcher's `delivery.tempo` in `BoothCtx.clock` / `pitcherTempo`): the clock running down on the pitcher (under 3.5 s, once a half-inning at most), both disengagements used with a runner on (the balk risk, the bigger lead), a quick or a deliberate worker, and a once-a-game exchange about the rule and the pace of play. The umpire shouts "Time! Violation, ball!" / "... strike!" (`umpireCallText`), and the crowd boos a violation against the home side and cheers one against the visitors. `pitchClockStart`, `pitchClockReset` and `disengagement` are silent. No stadium beep: MLB clocks are silent.
+
 ## Tests
 
 `npm test` runs `src/audio/__tests__` and `src/audio/venue/__tests__`: event → cue mapping (incl. junk input and pronoun check), the mic maths (delays, distance law, polar patterns, pan law), the IR's RT60 per band, the duck follower and its worklet source, excitement, the speech queue (fake engine), every synth recipe renders finite/non-silent audio,

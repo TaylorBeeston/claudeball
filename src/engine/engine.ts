@@ -1,3 +1,4 @@
+import { ParkClocks } from './parkClocks';
 import {
   Frustum,
   MathUtils,
@@ -101,6 +102,8 @@ export class Engine {
   private time = 0;
   fps = 60;
   private gbufferHidden: Object3D[] = [];
+  /** the pitch clocks on the backstop and the batter's eye (one draw call) */
+  private clocks = new ParkClocks();
   private sbTimer = 0;
   private hudTimer = 0;
   private landed = false;
@@ -149,6 +152,8 @@ export class Engine {
     this.stadium = buildStadium(this.env);
     this.scene.add(this.stadium.group);
     this.gbufferHidden.push(...this.stadium.gbufferHidden);
+    this.scene.add(this.clocks.group);
+    this.gbufferHidden.push(this.clocks.mesh);
     this.env.onStadiumLights((on) => this.stadium.setLightsOn(on));
     this.lights = new StadiumLights(this.scene);
     this.lights.setTowers(this.stadium.towers);
@@ -288,6 +293,7 @@ export class Engine {
       // and the prepass's override material draws an invisible sprite as an opaque square (a dark AO column in the sky behind every light tower)
       this.gbufferHidden.push(...this.stadium.gbufferHidden.slice(before));
       this.lights.setTowers(this.stadium.towers);
+      this.clocks.place(a.stadium as Object3D);
     }
     if (a.ball) this.ball.useModel(a.ball, this.env);
     if (a.bat) this.bat.useModel(a.bat, this.env);
@@ -720,6 +726,7 @@ export class Engine {
       // now and then in the late innings the stands start a wave (between plays, not on replays)
       if (state.inning >= 5 && !this.batted && !out.replaying && !this.sim.paused && fract(Math.sin(Math.floor(state.time * 3.3) * 12.9898) * 43758.5453) < 0.3 / 240) this.stadium.crowd.startWave();
     }
+    this.clocks.update(state, dt);
     if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);
     this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);

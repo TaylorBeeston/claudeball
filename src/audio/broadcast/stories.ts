@@ -393,6 +393,38 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
       { who: 'B', t: ['{They know|They can feel} what is {at stake|coming}.', 'That is what baseball is for.', 'You {cannot|can not} {fake|buy} {that|an atmosphere like that}.'], opt: true },
     ], S, rng, o) });
   }
+  // ---- the pitch clock ----------------------------------------------------------------------------------------------------
+  const clk = c.clock;
+  if (clk && clk.running && (clk.kind === 'pitch' || clk.kind === 'betweenBatters') && clk.remaining <= 3.5 && clk.remaining > 1 && pit) {
+    // (once a half-inning at most: a deliberate worker is near the end of the clock often)
+    add({ id: 'clockLow', key: `clk:${c.inning}${c.half}`, salience: 0.3, relevance: 1, tense: true, opener: 'pxp', build: (rng, o) => script([
+      { who: 'A', t: ['$p is going to have to get set... the clock is running.', 'Clock is winding down on $p.', '{Under five|Four} seconds on the clock, and $p still has not come set.', 'He had better get going, the clock is ticking.'] },
+    ], S, rng, o) });
+  }
+  if (clk && clk.kind === 'pitch' && clk.disengagementsLeft === 0 && c.runners.some(Boolean) && pit) {
+    add({ id: 'clockDiseng', key: `dis:${log.cur?.n}`, salience: 0.45, relevance: 0.9, opener: 'color', build: (rng, o) => script([
+      { who: 'A', t: ['That is both of his disengagements used up, $other.', '$p has stepped off twice now. He is out of disengagements.'] },
+      { who: 'B', t: ['So if he throws over again and does not get him, it is a balk. The runner knows it, too.', 'One more throw over that does not get the runner is a balk. That runner can take a bigger lead now.'] },
+      { who: 'A', t: ['{Watch for the steal here.|The rule changes the whole cat-and-mouse game.}'], opt: true },
+    ], S, rng, o) });
+  }
+  if (clk && pit && c.pitcherTempo !== undefined && (c.pitcherTempo >= 1.12 || c.pitcherTempo <= 0.88)) {
+    const quick = c.pitcherTempo >= 1.12;
+    add({ id: quick ? 'quickWorker' : 'slowWorker', key: `tempo:${pit.id}`, salience: 0.3, relevance: 0.5, opener: 'pxp', build: (rng, o) => script(quick ? [
+      { who: 'A', t: ['$p works fast. Gets the ball back and he is ready to go.', 'You do not need a pitch clock for $p. He works in a hurry.', '$p is one of the quickest workers you will see.'] },
+      { who: 'B', t: ['Defenses love that. Keeps everybody on their toes behind him.', 'Hitters hate it, though. He does not give them a chance to breathe.', 'I loved catching guys like that. Get it, sign, throw, done.'], opt: true },
+    ] : [
+      { who: 'A', t: ['$p takes his time out there. He will use most of that clock.', '$p is a deliberate worker. He is up against the clock just about every pitch.', 'He lives on the edge of the clock, $p does.'] },
+      { who: 'B', t: ['Before the clock came in, he would have been a twenty-five-second guy, easy.', 'He has had to speed up a lot since the clock came in.', 'You can see him peek at the clock before he comes set.'], opt: true },
+    ], S, rng, o) });
+  }
+  if (clk && c.inning >= 2) {
+    add({ id: 'clockRule', key: 'clockrule', salience: 0.14, relevance: 0.2, opener: 'pxp', build: (rng, o) => script([
+      { who: 'A', t: ['Fifteen seconds with the bases empty, eighteen with a runner on. The pitch clock has changed the rhythm of this game.', 'Games are a half hour shorter since the pitch clock came in.', 'You notice the pace now. No more pitchers wandering around the mound between pitches.'] },
+      { who: 'B', t: ['As a catcher I would have hated it. I used to take my time going back to the plate, give my pitcher a breather.', 'The hitters had to adjust too. One timeout per at-bat, and you have to be in the box with eight seconds left.', 'I was skeptical, $other. But I like it. More action, less standing around.'] },
+      { who: 'A', t: ['{And the fans seem to like it.|Hard to argue with a game that moves.}'], opt: true },
+    ], S, rng, o) });
+  }
   if (bat && pit && bat.hand && pit.hand && bat.hand !== 'S' && pit.hand !== 'S' && bat.hand === pit.hand) {
     add({ id: 'sameHand', key: `hand:${bat.hand}${pit.hand}:${c.inning}`, salience: 0.22, relevance: 0.4, opener: 'color', build: (rng, o) => script([
       { who: 'A', t: ['$h against $h2 here.', 'It is $h on $h2 in this matchup.'] },

@@ -95,6 +95,8 @@ export function umpireCallText(kind: string): string | null {
     case 'out': return 'Out!';
     case 'time': return 'Time!';
     case 'play_ball': return 'Play ball!';
+    case 'clock_violation_ball': return 'Time! Violation, ball!';
+    case 'clock_violation_strike': return 'Time! Violation, strike!';
     default: return null;
   }
 }

@@ -42,6 +42,7 @@ interface RSState {
   phaseDetail?: string | null;
   extraBalls?: V[];
   deadBall?: { pos: V; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
+  pitchClock?: import('./types').PitchClockView | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
   gameOver: boolean;
@@ -337,6 +338,7 @@ export class RealSimAdapter implements GameLike {
       stats: s.stats ? { away: s.stats.away, home: s.stats.home } : undefined,
       pitchCount: p?.pitchCount,
       side: sideInfoOf(this.g._world as RSWorld | undefined, !!b),
+      pitchClock: s.pitchClock ?? null,
     };
     if (this.carry) this.applyCarry(st, s.ball.pos);
     this.last = st;
