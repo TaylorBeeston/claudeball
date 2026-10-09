@@ -40,7 +40,7 @@ const CSS = /* css */ `
 .cb-dots.b u.on{background:#4dd26a}.cb-dots.s u.on{background:#ff6a4d}.cb-dots.o u.on{background:#ffcf4a}
 /* the pitch clock: a compact cell at the end of the scorebug (digits, a label, the disengagement pips); amber under 10 s, red under 5, flashing on a violation */
 .cb-clk{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*.3);min-width:calc(var(--u)*6.4);margin-left:calc(var(--u)*.8);padding:0 calc(var(--u)*.9);border-left:1px solid rgba(255,255,255,.12);transition:opacity .25s}
-.cb-clk.off{opacity:0}
+.cb-clk.off{display:none}
 .cb-clk .d{font-size:max(17px,calc(var(--u)*3.6));line-height:1;font-variant-numeric:tabular-nums;min-width:2ch;text-align:center;padding:calc(var(--u)*.25) calc(var(--u)*.5);border-radius:calc(var(--u)*.5);background:rgba(0,0,0,.35);transition:color .2s,background .2s}
 .cb-clk .lb{font-size:max(8px,calc(var(--u)*1.15));letter-spacing:.14em;opacity:.75}
 .cb-clk .pp{display:flex;gap:calc(var(--u)*.4);height:max(5px,calc(var(--u)*.8))}
