@@ -324,6 +324,8 @@ export type PlayKind = 'battedBall' | 'looseBall' | 'pickoff' | 'steal' | 'deadB
 
 export interface PlayState {
   kind: PlayKind;
+  /** A pickoff throw that was the pitcher's third disengagement of the plate appearance: it must retire a runner, else it is a balk. */
+  thirdDisengagement?: boolean;
   startTick: number;
   bip: BipInfo | null;
   runsThisPlay: { runner: RunnerRT; tick: number }[];
@@ -586,7 +588,7 @@ export interface World {
   /** Fielders of the defense placed at positions in the snapshot. */
   umpires: UmpireRT[];
   /** Umpire calls waiting for their moment (after the catch, after the tag / touch). */
-  umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean }[];
+  umpQueue: { due: number; ump: UmpKey; kind: import('./types').UmpireCallKind; atBase?: number; playerId?: string; swinging?: boolean; /** only a gesture (no event): the second half of a two-part signal */ gesture?: import('./types').AnimHint }[];
   /** The lull in the action the game is in (B-roll / announcers' time), if any. */
   lull: Lull | null;
   /** Mound visit, pitching change, review and the inning break show in progress. */
@@ -596,6 +598,8 @@ export interface World {
   breakShow: import('./breaks').BreakShow | null;
   /** The last close call at a base (for a challenge): when, what, who, how close; `used` once it has been considered. */
   lastClose: { tick: number; call: 'out' | 'safe'; runnerId: string; base: number; margin: number; used: boolean } | null;
+  /** The pitch clock (`clock.ts`). */
+  clock: import('./clock').ClockRT;
   /** Tick of the last pickoff throw (the pitcher steps off the rubber after one). */
   pickoffTick: number;
   /** Mound visits so far per team, challenges used per team, pitches since the last visit. */

@@ -38,6 +38,9 @@ export const HINT_OF: Record<UmpireCallKind, AnimHint> = {
   homerun: 'ump_homerun',
   time: 'ump_time',
   play_ball: 'ump_fair', // a point toward the pitcher: "Play ball!"
+  // a pitch-clock violation: time first (then the ball / strike signal, a gesture-only follow-up in the queue)
+  clock_violation_ball: 'ump_time',
+  clock_violation_strike: 'ump_time',
 };
 
 export const umpFor = (w: World, key: UmpKey): UmpireRT => w.umpires.find((u) => u.key === key)!;
@@ -187,6 +190,12 @@ export function tickUmpires(w: World): void {
         continue;
       }
       const u = umpFor(w, c.ump);
+      if (c.gesture) {
+        u.anim = c.gesture;
+        u.animStart = w.tick;
+        u.animUntil = w.tick + secToTicks(1.0);
+        continue;
+      }
       u.anim = HINT_OF[c.kind];
       u.animStart = w.tick;
       u.animUntil = w.tick + secToTicks(c.kind === 'ball' || c.kind === 'ball_four' ? 0.6 : 1.3);

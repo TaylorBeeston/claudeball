@@ -275,6 +275,21 @@ export interface GameState {
   deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** who is on deck and on the benches (for the side cast), when the sim knows */
   side?: SideInfo;
+  /** the pitch clock (the sim's `pitchClock`; null / absent: no clock) */
+  pitchClock?: PitchClockView | null;
+}
+
+/** The pitch clock as the sim shows it (see `src/sim/README.md`, "The pitch clock"): rule seconds. */
+export interface PitchClockView {
+  running: boolean;
+  remainingSec: number;
+  limitSec: number;
+  kind: 'pitch' | 'betweenBatters' | 'break' | 'pitchingChange' | 'timeout';
+  disengagementsLeft: number;
+  batterAlertBy: number;
+  timeoutAvailable: boolean;
+  visitsLeft?: { home: number; away: number };
+  violation: { on: 'pitcher' | 'batter'; result: 'ball' | 'strike'; time: number } | null;
 }
 
 /** what kind of non-pitch time the game is in (the sim's `lullKind`) */

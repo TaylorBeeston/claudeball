@@ -56,6 +56,10 @@ export interface Situation {
   scoreDiff: number;
   /** who is on 1st / 2nd / 3rd (player ids, live runners at their last touched base) */
   runners: { first: string | null; second: string | null; third: string | null };
+  /** (additive) the pitch clock: rule seconds left (null: not running / no clock), the pitcher's disengagements left, the batter's time-out still available */
+  clockSec?: number | null;
+  disengagementsLeft?: number;
+  timeoutAvailable?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -418,7 +422,14 @@ export type DecisionRequest = { [K in DecisionKind]: RequestOf<K> }[DecisionKind
 export type Answer<K extends DecisionKind> = DecisionOf<K> | undefined | Pending | PromiseLike<DecisionOf<K> | undefined>;
 
 /** Implement any subset; a missing method (or a returned `undefined`) means "let the AI decide". */
-export type DecisionProvider = { [K in DecisionKind]?: (req: RequestOf<K>) => Answer<K> };
+export type DecisionProvider = { [K in DecisionKind]?: (req: RequestOf<K>) => Answer<K> } & {
+  /**
+   * Answer against the pitch clock (a human at the controls): a deferred answer to a `pitch` / `pickoff` question asked while the clock runs does NOT
+   * pause the game: the clock keeps running and, if it runs out first, the violation is called and the question withdrawn. Default false: every deferred
+   * answer pauses the game (the same game as an instant answer).
+   */
+  clocked?: boolean;
+};
 
 /** The complete built-in AI: every kind answered from the request alone (delegate to it from your own provider). */
 export type FullDecisionProvider = { [K in DecisionKind]: (req: RequestOf<K>) => DecisionOf<K> };

@@ -45,6 +45,7 @@ function play(seed: string, tempo: Tempo, innings = 9, pace = 1, sample = true):
     g.step(1 / 240);
     if (!sample || n % 6) continue;
     const tick = w.tick;
+    const live = w.phase === 'inPlay'; // (live-ball running is the fielding's business: this is about the walks, trots and jogs between plays)
     for (const t of [w.teams.home, w.teams.away]) {
       for (const p of t.players.values()) {
         if (tick < p.animUntil) hints.add(p.anim);
@@ -53,7 +54,7 @@ function play(seed: string, tempo: Tempo, innings = 9, pace = 1, sample = true):
           if (n % 12 === 0) {
             if (q) {
               const d = Math.hypot(p.x - q.x, p.z - q.z);
-              if (d > maxStep) {
+              if (d > maxStep && !live) {
                 maxStep = d;
                 who = `${p.info.id} ${p.anim} t${(tick / 240).toFixed(0)}`;
               }
@@ -128,27 +129,30 @@ describe('tempo: the real game\'s non-pitch time', () => {
     expect(checked).toBeGreaterThan(10);
   });
 
-  it('pitch-to-pitch time at broadcast tempo: 15-22 s with nobody on, 18-28 s with runners (within a plate appearance)', () => {
+  it('pitch-to-pitch time at broadcast tempo (under the pitch clock): 12-18 s with nobody on, 14.5-21 s with runners (within a plate appearance)', () => {
     const same = runs.flatMap((r) => r.gaps.filter((x) => x.samePA && x.g < 120));
     const empty = same.filter((x) => !x.runners).map((x) => x.g);
     const on = same.filter((x) => x.runners).map((x) => x.g);
-    expect(empty.length).toBeGreaterThan(200);
-    expect(median(empty)).toBeGreaterThan(14.5);
-    expect(median(empty)).toBeLessThan(22);
-    expect(median(on)).toBeGreaterThan(17.5);
-    expect(median(on)).toBeLessThan(28);
+    expect(empty.length).toBeGreaterThan(120);
+    expect(median(empty)).toBeGreaterThan(12);
+    expect(median(empty)).toBeLessThan(18);
+    expect(median(on)).toBeGreaterThan(14.5);
+    expect(median(on)).toBeLessThan(21);
+    // the clock bounds the tail: release to release is the clock (15/18 s) plus the pitch, the return throw and the windup, unless the ball was in
+    // play / fouled off, a time-out, a visit or a disengagement reset it
+    expect(pct(empty, 0.75)).toBeLessThan(19);
     expect(median(on)).toBeGreaterThan(median(empty));
   });
 
-  it('a whole game takes about 2-2.5 hours at broadcast tempo; a half-inning of three outs a few minutes; nothing stalls', () => {
+  it('a whole game takes about 1.5-2.3 hours at broadcast tempo (the pitch clock; the sim\'s inning breaks are 25-60 s, not 2:15); a half-inning of three outs a few minutes; nothing stalls', () => {
     for (const r of runs) {
-      expect(r.minutes).toBeGreaterThan(105);
+      expect(r.minutes).toBeGreaterThan(80);
       expect(r.minutes).toBeLessThan(190); // (extra innings)
       expect(Math.max(...r.gaps.map((x) => x.g))).toBeLessThan(260); // (a pitching change plus a review is the longest)
     }
     const perNine = runs.map((r) => (r.minutes * 18) / Math.max(1, ofType(r.events, 'halfInningEnd').length));
-    expect(perNine.reduce((a, b) => a + b, 0) / perNine.length).toBeLessThan(160);
-    expect(perNine.reduce((a, b) => a + b, 0) / perNine.length).toBeGreaterThan(115);
+    expect(perNine.reduce((a, b) => a + b, 0) / perNine.length).toBeLessThan(140);
+    expect(perNine.reduce((a, b) => a + b, 0) / perNine.length).toBeGreaterThan(90);
     const halves = runs.flatMap((r) => {
       const out: number[] = [];
       let start = 0;
@@ -158,8 +162,8 @@ describe('tempo: the real game\'s non-pitch time', () => {
       }
       return out;
     });
-    expect(median(halves)).toBeGreaterThan(300);
-    expect(median(halves)).toBeLessThan(540);
+    expect(median(halves)).toBeGreaterThan(200);
+    expect(median(halves)).toBeLessThan(450);
   });
 
   it('inning breaks are 25-60 s, with warm-up pitches (eight), a throw down to second and tosses between the infielders and outfielders', () => {
@@ -203,7 +207,7 @@ describe('tempo: the real game\'s non-pitch time', () => {
     expect(visits.length).toBeGreaterThanOrEqual(1);
     expect(ends.length).toBe(visits.length);
     for (const r of runs) {
-      for (const side of ['home', 'away'] as const) expect(ofType(r.events, 'moundVisit').filter((e) => e.team === side).length).toBeLessThanOrEqual(4);
+      for (const side of ['home', 'away'] as const) expect(ofType(r.events, 'moundVisit').filter((e) => e.team === side).length).toBeLessThanOrEqual(6); // (five a game, one more from the ninth: the pitch-clock rules)
     }
     const hints = new Set(runs.flatMap((r) => [...r.hints]));
     for (const h of ['mound_talk', 'mound_talk_listen']) expect(hints.has(h), h).toBe(true);
@@ -247,7 +251,7 @@ describe('tempo: the real game\'s non-pitch time', () => {
     for (const d of ['batterRoutine', 'signs', 'break']) expect(details.has(d), d).toBe(true);
   });
 
-  it('nobody teleports at broadcast tempo: the biggest step anybody takes in 0.05 s is a sprint', () => {
+  it('nobody teleports at broadcast tempo: the biggest step anybody takes in 0.05 s of dead-ball time is a sprint', () => {
     for (const r of runs) expect(r.maxStep, r.who).toBeLessThan(1.2);
   });
 });

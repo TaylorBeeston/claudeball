@@ -1,3 +1,4 @@
+import { clockDisplay } from './pitchClockView';
 import {
   AdditiveBlending,
   Box3,
@@ -475,6 +476,17 @@ export function buildStadium(env: Environment): Stadium {
     g.font = '700 30px Arial, sans-serif';
     g.fillStyle = '#7f93ad';
     cols.forEach((n, i) => g.fillText(String(n), x0 + cw * i + cw / 2, 44));
+    // the pitch clock's field, top left (amber under 10 s, red under 5)
+    const clk = clockDisplay(s);
+    if (clk.visible) {
+      g.textAlign = 'left';
+      g.font = '700 22px Arial, sans-serif';
+      g.fillText('CLOCK', 28, 44);
+      g.font = '800 40px Arial, sans-serif';
+      g.fillStyle = clk.flash || clk.level === 'red' ? '#ff5048' : clk.level === 'amber' ? '#ffd24a' : '#f2f5fa';
+      g.fillText(clk.text, 112, 46);
+      g.textAlign = 'center';
+    }
     ['R', 'H', 'E'].forEach((t, i) => g.fillText(t, xr + 70 * i + 35, 44));
     const totals = s.stats ? { away: s.stats.away.totals, home: s.stats.home.totals } : null;
     (['away', 'home'] as const).forEach((side, r) => {

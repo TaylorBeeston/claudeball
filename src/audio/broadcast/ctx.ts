@@ -43,6 +43,10 @@ export interface BoothCtx extends ChatCtx {
   sim?: { dueUp?(side: 'home' | 'away', n: number): { id: string; name: string }[]; box?(): unknown };
   /** the sim's lull (non-pitch time: a break, a mound visit ...): its kind, planned length and what is left (seconds) */
   lull?: { kind: string; sec: number; remaining?: number } | null;
+  /** the pitch clock (the sim's `pitchClock`): seconds left, its limit and kind, the pitcher's disengagements left */
+  clock?: { running: boolean; remaining: number; limit: number; kind: string; disengagementsLeft: number } | null;
+  /** the pitcher's working pace (his `delivery.tempo`: 0.75 slow ... 1.25 quick) */
+  pitcherTempo?: number;
 }
 
 export const lastNameOf = (full: string) => {
@@ -73,6 +77,8 @@ export function ctxFromRaw(rs: any, extra: { crowd?: number; lastPlay?: string; 
     person: (id) => byId.get(String(id)),
     time: rs.time,
     sim: extra.game ? { dueUp: (side, n) => extra.game.dueUp?.(side, n) ?? [], box: () => extra.game.getBoxScore?.() ?? null } : undefined,
+    clock: rs.pitchClock ? { running: !!rs.pitchClock.running, remaining: Number(rs.pitchClock.remainingSec), limit: Number(rs.pitchClock.limitSec), kind: String(rs.pitchClock.kind), disengagementsLeft: Number(rs.pitchClock.disengagementsLeft) } : null,
+    pitcherTempo: pi?.delivery?.tempo,
     lull: rs.lull && rs.lullKind ? { kind: String(rs.lullKind), sec: Number(rs.lullSec ?? 0), remaining: rs.lullRemaining != null ? Number(rs.lullRemaining) : undefined } : null,
   };
 }

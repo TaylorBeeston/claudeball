@@ -140,6 +140,8 @@ export interface ThrowContext {
   /** Leverage of the moment 0..1 (composure) and the pitcher's rattled state 0..1. */
   pressure?: number;
   rattled?: number;
+  /** How rushed the delivery is 0..1 (the pitch clock nearly out): a slightly less repeatable release. */
+  rushed?: number;
   rng: Rng;
   env: Environment;
 }
@@ -190,7 +192,7 @@ export function throwPitch(p: PlayerInfo, slot: ArmSlot, spec: PitchSpec, target
   if (rng.next() < 0.024 + 0.0005 * (60 - ctl) + 0.0004 * (50 - p.ratings.consistency) + 0.04 * f) sigmaPos *= 4.0;
   if (ctx.careful) sigmaPos *= 0.82;
   // the pitch's own command, composure under pressure / after trouble, and the shorter motion from the stretch
-  sigmaPos *= clamp(1 + 0.006 * (50 - (spec.command ?? ctl)), 0.75, 1.3) * composureScale(p.ratings, ctx.pressure ?? 0, ctx.rattled ?? 0) * (ctx.stretch ? STRETCH_COMMAND : 1);
+  sigmaPos *= clamp(1 + 0.006 * (50 - (spec.command ?? ctl)), 0.75, 1.3) * composureScale(p.ratings, ctx.pressure ?? 0, ctx.rattled ?? 0) * (ctx.stretch ? STRETCH_COMMAND : 1) * (1 + 0.12 * (ctx.rushed ?? 0));
   const sigmaAng = sigmaPos / (rel.z - PLATE_FRONT_Z);
   // horizontal miss is a bit smaller than vertical for most pitchers
   dir = norm({ x: dir.x + rng.normal(0, sigmaAng * 0.95), y: dir.y + rng.normal(0, sigmaAng * 1.1), z: dir.z });

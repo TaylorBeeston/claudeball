@@ -368,6 +368,17 @@ export class CrowdModel {
       case 'passedBall':
         this.shot('ooh', 0.3, 0.1);
         break;
+      case 'pitchClockViolation': {
+        // the home crowd likes a violation against the visitors (a little cheer) and boos one against its own man (at the umpire, really)
+        const againstHome = ev.team === 'home';
+        this.shot('ooh', 0.3, 0.05);
+        if (againstHome) {
+          this.shot('boo', 0.4, 0.4);
+          this.shot('groan', 0.3, 0.3);
+        } else this.shot('cheer_short', 0.35 * L, 0.35);
+        this.note('clock violation');
+        break;
+      }
       case 'balk':
         this.shot('ooh', 0.35, 0.1);
         this.shot('boo_few', 0.25, 0.5);

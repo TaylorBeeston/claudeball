@@ -591,6 +591,14 @@ export function finishPlay(w: World): void {
   if (play.kind === 'battedBall') rules.resolveBattedBall(w);
   else if (play.kind === 'droppedThird') rules.resolveDroppedThird(w);
   else if (play.kind === 'steal' || play.kind === 'pickoff' || play.kind === 'looseBall') rules.resolveOtherPlay(w);
+  // the pitcher's third disengagement had to retire a runner: it did not (and nobody moved up on it), so it is a balk
+  if (play.kind === 'pickoff' && play.thirdDisengagement && !play.outsThisPlay.length && !w.gameOver && !w.runners.some((r) => r.state === 'live' && r.base > r.origin)) {
+    fixupRunners(w);
+    resetFielders(w);
+    w.clock.used = 0;
+    rules.balk(w, 'disengagement');
+    return;
+  }
   else if (play.kind === 'deadBall') {
     /* walk / HBP already recorded */
   }

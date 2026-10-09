@@ -5,6 +5,7 @@
  * plate umpire brushes the plate (before the first pitch of the game the crew meets at the plate, then takes the field). The infield and outfield balls are only for show (`GameStateSnapshot.extraBalls`); the warm-up ball is the real one.
  */
 import { emit } from './events';
+import { showClock } from './clock';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import { giveBall, setAnim } from './util';
@@ -70,6 +71,7 @@ export function beginBreak(w: World): number {
   w.breakShow = show;
   w.extraBalls = [];
   setLull(w, 'break', 'break', planned / 240);
+  if (!first) showClock(w, 'break', planned / 240 / Math.max(1, w.cfg.pace)); // (the break clock; the pregame has none)
   emit(w, { type: 'breakStart', inning: w.inning, half: w.half, sec: planned / 240, ...(first ? { pregame: true } : {}) });
   return planned;
 }

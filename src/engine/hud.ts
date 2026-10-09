@@ -1,6 +1,7 @@
 import { MPS_TO_MPH, M_TO_FT, DIM } from './dims';
 import type { GameEvent, GameState, PersonInfo, TeamStatsView } from './types';
 import { cardFor, type ShotInfo, type SubjectCard } from './subjectCard';
+import { clockDisplay } from './pitchClockView';
 import { arsenalText, batLine, batterBars, batterTotals, boxBatters, boxPitchers, gradeColor, pitcherBars, pitcherTotals, pitLine, type RatingBar } from './hudStats';
 
 const CSS = /* css */ `
@@ -37,6 +38,19 @@ const CSS = /* css */ `
 .cb-dots{display:flex;gap:calc(var(--u)*.5)}
 .cb-dots u{width:max(7px,calc(var(--u)*1.3));height:max(7px,calc(var(--u)*1.3));border-radius:50%;background:rgba(255,255,255,.16);text-decoration:none}
 .cb-dots.b u.on{background:#4dd26a}.cb-dots.s u.on{background:#ff6a4d}.cb-dots.o u.on{background:#ffcf4a}
+/* the pitch clock: a compact cell at the end of the scorebug (digits, a label, the disengagement pips); amber under 10 s, red under 5, flashing on a violation */
+.cb-clk{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*.3);min-width:calc(var(--u)*6.4);margin-left:calc(var(--u)*.8);padding:0 calc(var(--u)*.9);border-left:1px solid rgba(255,255,255,.12);transition:opacity .25s}
+.cb-clk.off{display:none}
+.cb-clk .d{font-size:max(17px,calc(var(--u)*3.6));line-height:1;font-variant-numeric:tabular-nums;min-width:2ch;text-align:center;padding:calc(var(--u)*.25) calc(var(--u)*.5);border-radius:calc(var(--u)*.5);background:rgba(0,0,0,.35);transition:color .2s,background .2s}
+.cb-clk .lb{font-size:max(8px,calc(var(--u)*1.15));letter-spacing:.14em;opacity:.75}
+.cb-clk .pp{display:flex;gap:calc(var(--u)*.4);height:max(5px,calc(var(--u)*.8))}
+.cb-clk .pp u{width:max(5px,calc(var(--u)*.8));height:max(5px,calc(var(--u)*.8));border-radius:50%;background:rgba(255,255,255,.18);text-decoration:none}
+.cb-clk .pp u.on{background:#7ec8ff}
+.cb-clk.amber .d{color:#ffcf4a}
+.cb-clk.red .d{color:#fff;background:#d6322a}
+.cb-clk.viol .d{color:#fff;background:#d6322a;animation:cbclk .5s steps(2,jump-none) infinite}
+@keyframes cbclk{to{background:rgba(0,0,0,.35)}}
+@media (prefers-reduced-motion:reduce){.cb-clk.viol .d{animation:none}}
 .cb-call{padding:calc(var(--u)*.7) calc(var(--u)*1.8);font-weight:800;font-size:max(14px,calc(var(--u)*2.6));letter-spacing:.14em;background:rgba(10,12,18,.92);border-radius:calc(var(--u)*.6);border-left:calc(var(--u)*.6) solid #ffcf4a;opacity:0;transform:translateY(calc(var(--u)*1));transition:opacity .2s,transform .2s;position:absolute;left:0;bottom:calc(100% + var(--u)*1)}
 .cb-call.show{opacity:1;transform:none}
 .cb-pt{position:absolute;right:var(--mr);bottom:calc(var(--mb) + var(--tick-h));width:clamp(64px,min(calc(var(--u)*19),22vh,17vw),calc(var(--u)*19));background:var(--panel);border-radius:calc(var(--u)*1.1);padding:calc(var(--u)*1.1);box-shadow:0 calc(var(--u)*.6) calc(var(--u)*2) rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.1);transition:opacity .4s}
@@ -178,6 +192,13 @@ export class Hud {
   private dotsS = el('div', 'cb-dots s');
   private dotsO = el('div', 'cb-dots o');
   private call = el('div', 'cb-call');
+  /** the pitch clock cell (redrawn only when what it shows changes, polled at 10 Hz) */
+  private clk = el('div', 'cb-clk off');
+  private clkDigits = el('div', 'd');
+  private clkLabel = el('div', 'lb');
+  private clkPips = el('div', 'pp');
+  private clkKey = '';
+  private clkPoll = 0;
   private pt = el('div', 'cb-pt');
   private ptCanvas = document.createElement('canvas');
   private ptSpeed = el('div', 'spd');
@@ -209,7 +230,7 @@ export class Hud {
   private box = el('div', 'cb-box');
   private boxOpen = false;
   private haveUmpCalls = false;
-  private pendingCaps: { text: string; delay: number }[] = [];
+  private pendingCaps: { text: string; delay: number; sec?: number }[] = [];
   private boxTimer = 0;
   private lastState: GameState | null = null;
   private active = true;
@@ -251,7 +272,10 @@ export class Hud {
     cnt.append(mk('B', this.dotsB, 3), mk('S', this.dotsS, 2), mk('O', this.dotsO, 2));
     // rearrange: count row shows B S together
     mid.append(this.inn, dia, cnt);
-    this.bug.append(teams, mid);
+    this.clkPips.append(el('u'), el('u'));
+    this.clk.append(this.clkDigits, this.clkLabel, this.clkPips);
+    this.clk.setAttribute('aria-label', 'Pitch clock');
+    this.bug.append(teams, mid, this.clk);
 
     this.ptCanvas.width = 360;
     this.ptCanvas.height = 400;
@@ -538,7 +562,7 @@ export class Hud {
         this.haveUmpCalls = true;
         const cap = CALL_CAPTIONS[e.kind];
         // the caption lands on the gesture's peak, not on the ruling: the umpire's clip reaches it a moment after the call
-        if (cap) this.pendingCaps.push({ text: cap, delay: CALL_PEAK[e.kind] ?? 0.3 });
+        if (cap) this.pendingCaps.push({ text: cap, delay: CALL_PEAK[e.kind] ?? 0.3, sec: CALL_HOLD[e.kind] });
         break;
       }
       case 'half_inning':
@@ -571,10 +595,24 @@ export class Hud {
     this.tick.innerHTML = this.lines.map((l) => `<span>${escapeHtml(l)}</span>`).join('');
   }
 
-  private flashCall(t: string) {
+  private flashCall(t: string, sec = 1.6) {
     this.call.textContent = t;
     this.call.classList.add('show');
-    this.callTimer = 1.6;
+    this.callTimer = sec;
+  }
+
+  /** The pitch clock cell: polled at 10 Hz, the DOM touched only when what it shows changes. */
+  private updateClock(s: GameState, dt: number) {
+    if ((this.clkPoll -= dt) > 0) return;
+    this.clkPoll = 0.1;
+    const d = clockDisplay(s);
+    if (d.key === this.clkKey) return;
+    this.clkKey = d.key;
+    this.clk.className = `cb-clk${d.visible ? '' : ' off'}${d.flash ? ' viol' : d.level !== 'normal' ? ' ' + d.level : ''}`;
+    this.clkDigits.textContent = d.text;
+    this.clkLabel.textContent = d.label;
+    this.clkPips.style.visibility = d.pips ? 'visible' : 'hidden';
+    if (d.pips) d.pips.forEach((on, i) => this.clkPips.children[i].classList.toggle('on', on));
   }
 
   showReplay(on: boolean, teamColor?: string, caption?: string | null) {
@@ -689,10 +727,11 @@ export class Hud {
     for (let i = this.pendingCaps.length - 1; i >= 0; i--) {
       const c = this.pendingCaps[i];
       if ((c.delay -= dt) <= 0) {
-        this.flashCall(c.text);
+        this.flashCall(c.text, c.sec);
         this.pendingCaps.splice(i, 1);
       }
     }
+    this.updateClock(s, dt);
     if (this.boxOpen && (this.boxTimer -= dt) < 0) {
       this.boxTimer = 0.5;
       this.renderBox(s);
@@ -787,12 +826,16 @@ export class Hud {
 export const CALL_CAPTIONS: Record<string, string> = {
   ball: 'BALL', ball_four: 'BALL FOUR', strike_called: 'STRIKE', strikeLooking: 'STRIKE', strike_swinging: 'STRIKE', strikeSwinging: 'STRIKE', strike: 'STRIKE',
   strikeout: 'STRIKEOUT', foul: 'FOUL', foul_tip: 'FOUL TIP', foulTip: 'FOUL TIP', fair: 'FAIR', safe: 'SAFE', out: 'OUT', homerun: 'HOME RUN', homeRun: 'HOME RUN', time: 'TIME',
+  clock_violation_ball: 'PITCH CLOCK VIOLATION · AUTOMATIC BALL', clock_violation_strike: 'PITCH CLOCK VIOLATION · AUTOMATIC STRIKE',
 };
+
+/** captions that stay up longer than the usual 1.6 s */
+export const CALL_HOLD: Record<string, number> = { clock_violation_ball: 3.2, clock_violation_strike: 3.2 };
 
 /** seconds from the call to the gesture's peak (the event frame of the umpire clips) */
 export const CALL_PEAK: Record<string, number> = {
   ball: 0.25, ball_four: 0.25, strike_called: 0.333, strikeLooking: 0.333, strike_swinging: 0.375, strikeSwinging: 0.375, strike: 0.333, strikeout: 0.375, foul: 0.292, foul_tip: 0.292, foulTip: 0.292,
-  fair: 0.25, safe: 0.375, out: 0.375, homerun: 0.25, homeRun: 0.25, time: 0.25,
+  fair: 0.25, safe: 0.375, out: 0.375, homerun: 0.25, homeRun: 0.25, time: 0.25, clock_violation_ball: 0.25, clock_violation_strike: 0.25,
 };
 
 function escapeHtml(s: string) {

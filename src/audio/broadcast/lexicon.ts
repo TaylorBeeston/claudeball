@@ -134,6 +134,11 @@ export const LEX: Record<string, string[]> = {
   'hbp': [
     '$b is hit by the pitch!', 'Hit by the pitch! $b takes first.', 'That one got $b, hit by pitch.', 'Plunked! $b takes first base.', '$b is hit, and the umpire sends $b to first.', 'Ouch. $b is hit by the pitch.',
   ],
+  // the pitch clock (MUST: a violation changes the count; SHOULD: a time-out the umpire would not grant, no mound visits left)
+  'clock.viol.pitcher': ['Pitch clock violation on $p. That is an automatic ball.', 'The clock runs out on $p, and that is an automatic ball.', 'He did not get the pitch off in time! Violation on the pitcher, ball.', 'And the umpire calls time... the clock hit zero on $p. Automatic ball.', 'Too slow! A pitch clock violation, and $b gets a ball without a pitch.'],
+  'clock.viol.batter': ['Pitch clock violation on $b. He was not ready, automatic strike.', '$b was not in the box in time, and that is an automatic strike.', 'The umpire calls a violation on the hitter! Automatic strike on $b.', 'He was still out of the box at eight seconds. Strike called on $b.', 'A clock violation on the batter: that is a free strike for $p.'],
+  'time.denied': ['$b asks for time, and the umpire says no.', 'He wanted time, but he has already used his timeout this at-bat.', 'No time for him. He has to stay in the box.', 'Time is denied. He has used his one timeout.', 'He tried to call time, and he does not get it.'],
+  'visits.none': ['The catcher starts out to the mound and has to turn back. They are out of mound visits.', 'No more mound visits for $fldTeam. $p is on his own out there.', 'They have used all five mound visits, so nobody can go out and settle him down.', 'The catcher would like to go talk to him, but they are out of visits.'],
   'balk': ['Balk! The runners move up.', 'Balk called, the runners advance.', 'The umpire calls a balk, and the runners move up a base.', 'That is a balk.', 'Balk. Everyone moves up.'],
   // -- batted balls (SHOULD at contact) --
   'contact.grounder': ['Ground ball to $pos...', 'Chopper to $pos...', 'Bouncer to the $side side...', 'On the ground to $pos...', 'Hit on the ground, to $pos...', 'Ground ball, up the middle...'],
@@ -351,10 +356,12 @@ export const EVENT_KEYS: Record<string, string[]> = {
   tag: ['tag.hit'],
   tagAttempt: ['tag.try'],
   tagAvoided: ['tag.miss'],
+  pitchClockViolation: ['clock.viol.pitcher', 'clock.viol.batter'],
+  timeDenied: ['time.denied', 'visits.none'],
 };
 
 /** sim events the booth deliberately says nothing about (they are sounds, gestures or bookkeeping) */
-export const SILENT_EVENTS = ['windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart'];
+export const SILENT_EVENTS = ['windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart', 'pitchClockStart', 'pitchClockReset', 'disengagement'];
 
 export const lexiconStats = () => Object.fromEntries(Object.entries(LEX).map(([k, v]) => [k, v.reduce((a, t) => a + variants(t), 0)]));
 
@@ -533,6 +540,16 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
       push('steal.go', 'should', { slots: { r: person(c, ev.runnerId) ? lastNameOf(person(c, ev.runnerId)!.name) : 'the runner', base: baseWord(Number(ev.toBase)) }, excited: true, ttl: 3 });
       break;
     }
+    case 'pitchClockViolation': {
+      // the umpire's ruling changes the count: a MUST, with the analyst's reaction
+      const onPitcher = ev.on === 'pitcher';
+      push(onPitcher ? 'clock.viol.pitcher' : 'clock.viol.batter', 'must', { ttl: 12, react: say(['Ooh.', 'That one will sting.', 'You cannot do that.', 'Unforced error.', 'Wow.'], {}, rng) ?? undefined });
+      break;
+    }
+    case 'timeDenied':
+      if (ev.reason === 'noMoundVisits') push('visits.none', 'should', { ttl: 10, slots: { fldTeam: c.half === 'top' ? c.teams.home : c.teams.away } });
+      else push('time.denied', 'should', { ttl: 6 });
+      break;
     case 'pickoffAttempt':
       push('pickoff', 'should', { slots: { base: baseWord(Number(ev.base)) }, ttl: 3 });
       break;

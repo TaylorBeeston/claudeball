@@ -103,8 +103,8 @@ export function intentionalWalk(w: World): void {
   emit(w, { type: 'playEnd', description: w.lastPlay });
 }
 
-/** Balk: dead ball, every runner advances one base, the pitch does not count. */
-export function balk(w: World): void {
+/** Balk: dead ball, every runner advances one base, the pitch does not count (`why`: an illegal motion, or a third disengagement that got no out). */
+export function balk(w: World, why: 'motion' | 'disengagement' = 'motion'): void {
   emit(w, { type: 'call', call: { kind: 'balk', time: w.tick / 240, balls: w.count.balls, strikes: w.count.strikes } });
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
@@ -121,7 +121,7 @@ export function balk(w: World): void {
   w.phase = 'inPlay';
   w.stealing.clear();
   inplay.startDeadBallMovement(w);
-  w.lastPlay = `Balk called on ${w.pitcher.info.name}.`;
+  w.lastPlay = why === 'disengagement' ? `Balk called on ${w.pitcher.info.name}: a third disengagement.` : `Balk called on ${w.pitcher.info.name}.`;
   emit(w, { type: 'playEnd', description: w.lastPlay });
 }
 
