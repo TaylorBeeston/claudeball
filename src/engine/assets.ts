@@ -24,6 +24,7 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import shipped from '../../assets/shipped.json';
 import { FLAGS } from './flags';
+import { applyMaterialPolicy } from './materials';
 import { simplifyMeshes } from './lodSimplify';
 
 export interface CharacterTemplate {
@@ -187,8 +188,11 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
   if (ball) out.ball = ball.scene;
   if (bat) out.bat = bat.scene;
   if (donut) out.donut = donut.scene;
+  for (const g of [ball, bat, donut]) if (g) policyAll(g.scene);
   chars.forEach((c, i) => {
     if (!c) return;
+    // physically plausible values per material (the GLBs' factors were glossy for plastic / leather / vinyl: materials.ts)
+    policyAll(c.scene, renderer);
     const clips = new Map<string, AnimationClip>();
     for (const clip of c.animations) clips.set(clip.name, clip);
     const defaults = new Set<string>();
@@ -237,7 +241,34 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
 }
 
 /** Texture wrapping, filtering and z-fight mitigation for the ground layers. */
+/** Apply the materials policy to every material under `root` (once per material); players' textures also get anisotropic filtering (they had none:
+ * cloth seen at an angle smeared and swam at a distance). */
+function policyAll(root: Object3D, renderer?: WebGLRenderer) {
+  const seen = new Set<Material>();
+  const aniso = renderer ? Math.min(4, renderer.capabilities.getMaxAnisotropy()) : 1;
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    for (const mat of (Array.isArray(m.material) ? m.material : [m.material]) as Material[]) {
+      if (seen.has(mat)) continue;
+      seen.add(mat);
+      applyMaterialPolicy(mat);
+      if (aniso > 1) {
+        const sm = mat as MeshStandardMaterial;
+        for (const key of ['map', 'normalMap', 'roughnessMap'] as const) {
+          const t = sm[key] as Texture | null | undefined;
+          if (t && t.anisotropy < aniso) {
+            t.anisotropy = aniso;
+            t.needsUpdate = true;
+          }
+        }
+      }
+    }
+  });
+}
+
 function prepWorld(root: Group, renderer: WebGLRenderer): Group {
+  policyAll(root);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const seen = new Set<Texture>();
   const decals = /^(Chalk|Dirt|Dirt_Cutouts|WarningTrack|Mound|Grass_Infield|HomePlate|Base_|PitchersRubber)/;

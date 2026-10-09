@@ -4,6 +4,7 @@
  * (batter's hands to the sim's bat) are applied on top of the mixer output each frame.
  */
 import { FEATHERED, addEdgeAttribute } from './facialHair';
+import { applyMaterialPolicy, fabricSheenColor } from './materials';
 import {
   AnimationAction,
   AnimationMixer,
@@ -269,12 +270,15 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
         map: b.map, normalMap: b.normalMap, normalScale: b.normalScale.clone(), roughnessMap: b.roughnessMap, metalnessMap: b.metalnessMap,
         aoMap: b.aoMap, aoMapIntensity: b.aoMapIntensity, roughness: b.roughness, metalness: b.metalness, side: b.side,
       });
-      pm.sheen = fabric ? 0.7 : 0.45;
-      pm.sheenRoughness = fabric ? 0.55 : 0.75;
-      pm.sheenColor = new Color(fabric ? 0xffffff : 0xff9a80);
+      // skin: a warm rim (cheap subsurface look); fabric: the policy's faint sheen in the cloth's own colour (a white 0.7 sheen was a milky haze
+      // over every jersey, worst from afar)
+      pm.sheen = fabric ? 0 : 0.45;
+      pm.sheenRoughness = 0.75;
+      pm.sheenColor = new Color(0xff9a80);
       pm.name = b.name;
       m = pm;
     } else m = b.clone();
+    applyMaterialPolicy(m);
     m.userData = {};
     if (skin) shadeSkin(m);
     if (name === 'hair_beard') {
@@ -290,6 +294,7 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     if (name === 'hair_beard') shadeHair(m, true, false);
     if (name === 'hair') shadeHair(m);
     m.color = new Color(color);
+    if (fabric) fabricSheenColor(m as MeshPhysicalMaterial, m.color);
     // the fibre texture is dark on top of the hair colour: a beard read as a black mask; lift it toward the scalp hair's value
     if (name === 'hair_beard') m.color.multiplyScalar(1.6);
     reg(m);
