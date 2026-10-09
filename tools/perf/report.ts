@@ -16,6 +16,7 @@ interface Result {
     passes: Record<string, { cpu: Stat; gpu: Stat; calls: Stat; tris: Stat }>;
     calls: Stat; triangles: Stat; geometries: Stat; textures: Stat; programs: Stat; heapMB: Stat; allocMBperFrame: Stat;
     gcEvents: number; allocMBps: number; longFramesOver25ms: number; gpuTimer: boolean;
+    mainMs?: Stat; outs?: Record<string, Stat>;
   };
 }
 export interface Run { meta: Record<string, unknown>; device?: Record<string, unknown>; results: Result[] }
@@ -24,10 +25,10 @@ const f1 = (x: number) => x.toFixed(1);
 const k = (x: number) => (x / 1000).toFixed(0) + 'k';
 
 export function summaryTable(rs: Result[]): string {
-  const L = ['| preset | scene | canvas | fps med | fps p5 | frame ms med / p95 / p99 | js ms | gpu ms | render-cpu ms | calls | tris | heap MB | alloc MB/s | GCs | >25ms |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
+  const L = ['| preset | scene | canvas | fps med | fps p5 | frame ms med / p95 / p99 | js ms | main ms (js + outside, mean) | gpu ms | render-cpu ms | calls | tris | heap MB | alloc MB/s | GCs | >25ms |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of rs) {
     const s = r.stats;
-    L.push(`| ${r.preset}${r.tod !== 'day' ? '/' + r.tod : ''} | ${r.scene} | ${r.canvas} | ${f1(s.fps.median)} | ${f1(s.fps.p5)} | ${f1(s.frameMs.median)} / ${f1(s.frameMs.p95)} / ${f1(s.frameMs.p99)} | ${f1(s.jsMs.median)} | ${s.gpuTimer ? f1(s.gpuMs.median) : 'n/a'} | ${f1(s.renderCpuMs.median)} | ${s.calls.median.toFixed(0)} | ${k(s.triangles.median)} | ${s.heapMB.median.toFixed(0)} | ${(s.allocMBps ?? s.allocMBperFrame.median * 60).toFixed(1)} | ${s.gcEvents} | ${s.longFramesOver25ms} |`);
+    L.push(`| ${r.preset}${r.tod !== 'day' ? '/' + r.tod : ''} | ${r.scene} | ${r.canvas} | ${f1(s.fps.median)} | ${f1(s.fps.p5)} | ${f1(s.frameMs.median)} / ${f1(s.frameMs.p95)} / ${f1(s.frameMs.p99)} | ${f1(s.jsMs.median)} | ${s.mainMs ? f1(s.mainMs.mean) : '-'} | ${s.gpuTimer ? f1(s.gpuMs.median) : 'n/a'} | ${f1(s.renderCpuMs.median)} | ${s.calls.median.toFixed(0)} | ${k(s.triangles.median)} | ${s.heapMB.median.toFixed(0)} | ${(s.allocMBps ?? s.allocMBperFrame.median * 60).toFixed(1)} | ${s.gcEvents} | ${s.longFramesOver25ms} |`);
   }
   return L.join('\n');
 }

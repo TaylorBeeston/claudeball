@@ -16,26 +16,51 @@ export type RawEvent = { type: string; time?: number } & Record<string, unknown>
 
 /** Sound effects, all synthesised by `synth.ts`. */
 export type SfxId =
-  | 'bat_crack' // buckets 0..2: weak .. hard
-  | 'bat_thud' // dull contact: topped / off the end
+  // the bat (wood)
+  | 'bat_crack' // buckets 0..2: ordinary, solid, the sweet spot
+  | 'bat_thud' // poor contact: 0 jammed, 1 off the end
   | 'bat_tick' // foul tip
   | 'bunt_tap'
+  | 'bat_drop' // the bat on the dirt after a hit
+  | 'bat_rack' // a bat into the dugout rack
+  | 'bat_tap' // the bat knocking dirt off the spikes
   | 'swing_whoosh'
-  | 'pitch_whoosh'
-  | 'mitt_pop' // buckets 0..2 by pitch speed
-  | 'glove_pop' // buckets 0..1: soft / firm
-  | 'ground_bounce' // grass
-  | 'dirt_thud' // infield dirt / warning track
-  | 'wall_thud'
-  | 'fence_rattle'
-  | 'seat_thump'
-  | 'throw_whip'
+  | 'pitch_whoosh' // the pitch past the plate (the dish only): 0 off-speed, 1 fastball
+  // gloves and hands
+  | 'mitt_pop' // buckets 0..3 by pitch speed
+  | 'mitt_block' // a pitch in the dirt blocked
+  | 'mitt_creak' // the catcher framing
+  | 'glove_pop' // 0 soft, 1 firm, 2 hard, 3 fly ball, 4 grounder scooped, 5 webbing / edge
+  | 'bare_smack'
+  | 'glove_transfer' // the ball from the glove to the throwing hand
+  | 'thigh_slap'
+  // the ball on things
+  | 'ground_bounce' // grass: 0 soft, 1 hard
+  | 'dirt_thud' // 0 infield dirt, 1 warning track
+  | 'plate_bounce' // the plate / the mound
+  | 'wall_thud' // the padded wall: 0 a fielder, 1 the ball
+  | 'fence_rattle' // chain link
+  | 'backstop_bang'
+  | 'seat_thump' // a ball (or a seat) in the stands: plastic clack
+  | 'seat_scramble' // fans scrambling for a ball
+  | 'body_thump' // hit by pitch
+  // through the air
+  | 'throw_whip' // 0 a lob, 1 a throw, 2 a hard throw
+  // tags, slides, feet, bases
   | 'tag_slap'
   | 'tag_miss' // the glove swishes through air (tagAvoided)
-  | 'slide_scuff'
-  | 'footstep'
-  | 'base_thud'
-  | 'body_thump'
+  | 'slide_scuff' // 0 feet first, 1 head first
+  | 'footstep' // 0 grass, 1 infield dirt, 2 warning track
+  | 'base_thud' // 0 a bag, 1 home plate
+  // gear and rituals
+  | 'helmet_tap'
+  | 'velcro'
+  | 'rosin_poof'
+  | 'rail_thump'
+  | 'ump_gear'
+  | 'pouch'
+  | 'ball_rub'
+  // stadium
   | 'firework'
   | 'replay_whoosh'
   | 'pa_click'

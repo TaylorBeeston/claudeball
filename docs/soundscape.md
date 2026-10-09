@@ -28,6 +28,34 @@ whenever they speak.
   On a home-run roar the dip is shallower, so the moment stays big under the call.
 - **The camera whooshes and replay stings** are part of the broadcast package. They stay clean and centred, outside the park.
 
+## The foley: what each sound is and when you hear it
+
+All synthesised (nothing sampled), several variations each, played in rotation with a little pitch and level variation, so a repeat
+never sounds identical. Each one is heard by the mics near where it happens, so the outfield is far and faint and the plate is close.
+
+| sound | what it is | when |
+|---|---|---|
+| catcher's mitt pop | the iconic pop: a leather crack, a tiny paper-like snap of the laces, the pocket slapping shut, a low thump that grows with the pitch's speed; four speeds (under 80, 80-88, 88-95, 95+ mph) | every pitch caught; deader when caught off the edge of the mitt |
+| block | a thud on the chest protector, a dull mitt, a puff of dirt | a pitch in the dirt |
+| framing creak | the mitt's leather creaking as he holds it still | a pitch on the corner, caught clean |
+| fielder's glove | soft (a return), firm (a throw), hard (a line drive, a pickoff), the outfield "thwup", the grounder scoop, the webbing / edge | every catch, by what was caught and how; backhands thinner, a juggle grabs twice |
+| bare hand | a skin smack | a tag with the bare hand; a ball kid picking up a ball |
+| transfer | leather rustle, the ball into the palm | the ball moved from the glove to the throwing hand |
+| bat | the crack (ordinary, solid, the sweet spot: brighter and sharper), a jammed "thunk", a "tock" off the end, a foul tip, a bunt; wood, no metallic ring | contact, by exit speed and launch angle |
+| bat on the ground | wooden knocks on the dirt | the batter dropping the bat as he runs |
+| the pitch | a faint whip as the ball passes the plate | heard only by the dish behind home |
+| throws | a zip that rises and falls as it passes, the seams fluttering; lob / throw / hard throw | every throw and return |
+| bounces | grass (a soft thud), infield dirt (a puff and the skitter of grit), the warning track (crunchy), the plate and mound (hard) | every bounce, by where it lands |
+| the wall | padding (a deep thud), the top rail (rings) | a ball or a fielder into the wall |
+| backstop | the padding and the net rattling | a wild pitch or passed ball reaching the backstop |
+| seats | a plastic clack, then fans scrambling | a home run landing; a foul fly into the stands (or the net behind home) |
+| body | a dull thud and cloth | hit by pitch |
+| tags and slides | the glove swiped across the jersey and the impact; a miss through the air; the slide's scrape, cloth and dust | tags, slides |
+| feet and bases | cleats on grass / dirt / the track (only near the base and plate mics), a foot on a bag or the plate | runners |
+| rituals | Velcro batting gloves, a knock on the helmet, the bat against the spikes, the rosin bag, the umpire's pouch and gear, gloves slapped on thighs, the dugout rail, a bat into the rack | between pitches and batters, time-outs, runs, the end of a half-inning |
+
+Not covered (the sim has no event for them): a barehanded catch, a batted ball hitting a runner or a fielder.
+
 ## The knobs (Settings > Sound)
 
 | setting | what it does |
@@ -76,6 +104,9 @@ For the booth and PA lines the tool uses your first recording in `~/claudeball-v
 | `final-impulse.wav` | one bat crack and the park's answer |
 | `final-duck.wav` | a booth line over the crowd |
 | `final-organ.wav` | the organ through the PA |
+| `foley-montage.wav` | every catch, the bat, the ball on things and the rituals in a row, through the mics |
+| `foley-game.wav` | the game moment with the new foley |
+| `foley/<sound>.wav` | each foley sound, every variation in a row (`npx tsx tools/audio/foley.ts` remakes them with a table of measurements) |
 
 `?audiodebug=1` in the game shows a live panel with a meter per microphone, the duck, the crowd sections and the venue.
 The technical details are in `src/audio/README.md` (*The park soundscape*).
