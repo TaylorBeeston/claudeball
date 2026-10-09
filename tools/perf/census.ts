@@ -25,7 +25,7 @@ async function main() {
     const cdp = await chrome.ctx.newCDPSession(page);
     await applyDesktopViewport(cdp, 1920, 1080);
     await page.addInitScript('window.__name = (f) => f;'); // tsx/esbuild keepNames helper used inside evaluate() callbacks
-    await page.goto(`${base}?autostart=1&noaudio=1&seed=15&quality=${opt('preset', 'high')}&bench=1&scenes=wide&frames=100000`, { waitUntil: 'load' });
+    await page.goto(`${base}?autostart=1&noaudio=1&seed=15&quality=${opt('preset', 'high')}&bench=1&scenes=${opt('scene', 'wide')}&frames=100000`, { waitUntil: 'load' });
     await page.waitForFunction(() => (window as unknown as { __bench?: unknown }).__bench !== undefined, null, { timeout: 180000 });
     await sleep(4000);
     const data = await page.evaluate(() => {

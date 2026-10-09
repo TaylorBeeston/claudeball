@@ -10,6 +10,8 @@ import path from 'node:path';
  */
 function cbAssets(): Plugin {
   const dir = () => path.resolve(process.env.CB_ASSETS_DIR ?? 'assets');
+  // the build's output folder (`vite build --outDir dist-dbg` too: the perf tools' unminified build)
+  let outDir = path.resolve('dist');
   const types: Record<string, string> = {
     '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.json': 'application/json',
     '.ktx2': 'image/ktx2', '.jpg': 'image/jpeg', '.png': 'image/png', '.bin': 'application/octet-stream',
@@ -44,6 +46,9 @@ function cbAssets(): Plugin {
   };
   return {
     name: 'cb-assets',
+    configResolved(c) {
+      outDir = path.resolve(c.root, c.build.outDir);
+    },
     configureServer(server) {
       server.middlewares.use('/assets', (req, res, next) => {
         // `import x from '../../assets/shipped.json'` goes through Vite's module pipeline (`?import`), not the static file route
@@ -81,8 +86,8 @@ function cbAssets(): Plugin {
       } catch {
         console.warn('\n[cb-assets] WARNING: assets/derived.json is missing: run `npm run assets:derive`\n');
       }
-      fs.cpSync(src, path.resolve('dist/assets'), { recursive: true, filter: shipped });
-      fs.writeFileSync(path.resolve('dist/assets/asset_sizes.json'), JSON.stringify(sizes()));
+      fs.cpSync(src, path.join(outDir, 'assets'), { recursive: true, filter: shipped });
+      fs.writeFileSync(path.join(outDir, 'assets/asset_sizes.json'), JSON.stringify(sizes()));
     },
   };
 }
@@ -97,8 +102,12 @@ function cbHdriManifest(): Plugin {
     const dir = path.resolve('public/hdri');
     return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^sky_\w+\.hdr$/.test(f)).sort() : [];
   };
+  let outDir = path.resolve('dist');
   return {
     name: 'cb-hdri-manifest',
+    configResolved(c) {
+      outDir = path.resolve(c.root, c.build.outDir);
+    },
     configureServer(server) {
       server.middlewares.use('/hdri/index.json', (_req, res) => {
         res.setHeader('Content-Type', 'application/json');
@@ -107,8 +116,8 @@ function cbHdriManifest(): Plugin {
       });
     },
     closeBundle() {
-      fs.mkdirSync(path.resolve('dist/hdri'), { recursive: true });
-      fs.writeFileSync(path.resolve('dist/hdri/index.json'), JSON.stringify(list()));
+      fs.mkdirSync(path.join(outDir, 'hdri'), { recursive: true });
+      fs.writeFileSync(path.join(outDir, 'hdri/index.json'), JSON.stringify(list()));
     },
   };
 }

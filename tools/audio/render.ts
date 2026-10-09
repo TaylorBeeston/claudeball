@@ -3,7 +3,7 @@
  * checked by numbers now. Renders go to ~/claudeball-audio-renders/ (never into the repo).
  *
  *   npx tsx tools/audio/render.ts [--tag NAME] [--out DIR] [--scenes game,impulse,duck,organ] [--venue dry|normal|big] [--lowpower]
- *                                 [--voice FILE.wav | --no-voice] [--json]
+ *                                 [--voice FILE.wav | --no-voice] [--json] [--sr 32000]
  *
  * The booth / PA lines use the first recording in ~/claudeball-voice/wavs (the owner's own voice, local only) when it exists, else a
  * synthetic speech-like signal. Output per scene: `<tag>-<scene>.wav` (24-bit stereo) and one `<tag>-analysis.json`.
@@ -27,6 +27,7 @@ const out = opt('out', path.join(os.homedir(), 'claudeball-audio-renders'))!;
 const scenes = (opt('scenes', 'game,impulse,duck,organ') ?? '').split(',').filter(Boolean);
 const venue = opt('venue');
 const lowPower = flag('lowpower');
+const rate = opt('sr') ? Number(opt('sr')) : undefined;
 const debug = { noConvolver: flag('no-convolver'), noOversample: flag('no-oversample'), noWorklet: flag('no-worklet'), noBeds: flag('no-beds'), noShots: flag('no-shots'), linearShapers: false };
 const reps = Number(opt('reps', '1'));
 const partsArg = opt('parts');
@@ -114,10 +115,10 @@ async function main() {
     const run = async (o: Record<string, unknown>) =>
       page.evaluate((o) => (window as unknown as { cbAudio: { render: (o: unknown) => Promise<{ sr: number; channels: string[]; renderMs: number; seconds: number; info: Record<string, unknown> }> } }).cbAudio.render(o), o);
     for (const scene of scenes) {
-      let r = await run({ scene, voice, settings, lowPower, debug, parts });
+      let r = await run({ scene, voice, settings, lowPower, sr: rate, debug, parts });
       // CPU: the fastest of `reps` renders (the machine is shared: the minimum is the graph's own cost)
       for (let i = 1; i < reps; i++) {
-        const again = await run({ scene, voice, settings, lowPower, debug, parts });
+        const again = await run({ scene, voice, settings, lowPower, sr: rate, debug, parts });
         if (again.renderMs < r.renderMs) r = again;
       }
       const chs = r.channels.map(fromB64);
@@ -138,7 +139,7 @@ async function main() {
       };
       if (flag('null-clip')) {
         // the same render with the soft clippers made linear: what the clippers did (the residual, relative to the signal)
-        const lin = (await run({ scene, voice, settings, lowPower, debug: { ...debug, linearShapers: true }, parts })).channels.map(fromB64);
+        const lin = (await run({ scene, voice, settings, lowPower, sr: rate, debug: { ...debug, linearShapers: true }, parts })).channels.map(fromB64);
         let es = 0, er = 0, worst = -200;
         const win = Math.round(r.sr * 0.4);
         for (let c = 0; c < chs.length; c++)
@@ -158,7 +159,7 @@ async function main() {
       }
       if (flag('determinism')) {
         // the same scene again: every sample must match (seeded noise, seeded crowd, scheduled on the audio clock)
-        const again = (await run({ scene, voice, settings, lowPower, debug, parts })).channels.map(fromB64);
+        const again = (await run({ scene, voice, settings, lowPower, sr: rate, debug, parts })).channels.map(fromB64);
         let maxDiff = 0;
         let first = -1;
         for (let c = 0; c < chs.length; c++)
@@ -176,7 +177,7 @@ async function main() {
         const stems: Record<string, unknown> = {};
         for (const f of fams) {
           const only = Object.fromEntries(fams.map((k) => [k, k === f]));
-          const sr2 = await run({ scene, voice, settings, lowPower, debug, parts: only });
+          const sr2 = await run({ scene, voice, settings, lowPower, sr: rate, debug, parts: only });
           const c2 = sr2.channels.map(fromB64);
           const mom = loudnessSeries(c2, sr2.sr, 'momentary');
           stems[f] = { lufs: +lufsIntegrated(c2, sr2.sr).toFixed(1), momentaryMax: +Math.max(...mom).toFixed(1), truePeakDb: +db(truePeak(c2)).toFixed(1) };
@@ -210,8 +211,8 @@ async function main() {
       }
       if (scene === 'duck') {
         // the same scene with the booth muted into the master (its key still drives the duck) vs no booth at all: the park bus's duck
-        const silent = await run({ scene, voice, settings, lowPower, boothSilent: true });
-        const none = await run({ scene, voice, settings, lowPower, parts: { booth: false } });
+        const silent = await run({ scene, voice, settings, lowPower, sr: rate, boothSilent: true });
+        const none = await run({ scene, voice, settings, lowPower, sr: rate, parts: { booth: false } });
         const es = rmsEnvelope(mono(silent.channels.map(fromB64)), r.sr, 30, 10);
         const en = rmsEnvelope(mono(none.channels.map(fromB64)), r.sr, 30, 10);
         const diff = Array.from(es, (v, i) => +(v - en[i]).toFixed(2));

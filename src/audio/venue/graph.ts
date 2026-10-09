@@ -22,7 +22,12 @@
  * Per-frame JS is zero: one-shot pickups are computed when a sound is triggered (`mics.ts`), continuous sources are wired once.
  */
 import { DUCK_DEFAULTS, PROCESSOR_NAME, duckStep, newDuckState, workletSource, type DuckParams } from './duck';
-import { stadiumIR, VENUES, type VenuePreset } from './ir';
+import { VENUES, type VenuePreset } from './ir';
+import { irFor } from '../synthJobs';
+import type { Rendered } from '../dsp';
+
+/** makes the stadium IR somewhere else (a worker); null: not available */
+export type IrSource = (venue: VenuePreset, sr: number, lowPower: boolean) => Promise<Rendered | null>;
 import { MICS, PLACES, SPEAKERS, micPan, micsFor, pickupOne, pickups, type MicDef, type MicId, type Pickup } from './mics';
 import type { Vec3 } from '../types';
 
@@ -36,6 +41,9 @@ export type Perspective = 'broadcast' | 'close';
 export interface Strip {
   def: MicDef;
   input: GainNode;
+  /** far pickups come in here: one shared air-absorption low-pass into `input` (made on first use; a filter per far copy of every
+   * one-shot cost a node per sound, and filters in series commute, so sharing it changes nothing) */
+  far: AudioNode | null;
   send: GainNode;
   meter: AnalyserNode | null;
 }
@@ -48,7 +56,7 @@ export interface Played {
 }
 
 /** loudness trims of the park's source families into the mic array (set by measurement, see the README's tuning guide) */
-export const TRIM = { sfx: 1.2, crowd: 0.38, bed: 0.85, pa: 0.5, ump: 0.55 };
+export const TRIM = { sfx: 1.6, crowd: 0.38, bed: 0.85, pa: 0.5, ump: 0.55 };
 
 const dbToGain = (d: number) => Math.pow(10, d / 20);
 
@@ -110,14 +118,17 @@ export class VenueGraph {
   readonly ready: Promise<void>;
   /** per mic strip level meters (only with `meters`: ?audiodebug=1) */
   readonly meters: boolean;
+  /** where the IR is made (the mixer's synthesis worker); null or a null result: here, after the gesture */
+  private irSource: IrSource | null;
   readonly stats = { worklet: 'none' as 'none' | 'loading' | 'on' | 'failed', irMs: 0, nodes: 0 };
 
-  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean; linearShapers?: boolean } } = {}) {
+  constructor(ctx: BaseAudioContext, o: { lowPower?: boolean; venue?: VenuePreset; perspective?: Perspective; meters?: boolean; ir?: IrSource; profile?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noComp?: boolean; linearShapers?: boolean } } = {}) {
     this.ctx = ctx;
     this.lowPower = !!o.lowPower;
     this.venue = o.venue ?? 'normal';
     this.perspective = o.perspective ?? 'broadcast';
     this.meters = !!o.meters;
+    this.irSource = o.ir ?? null;
     this.mics = micsFor(this.lowPower);
     let n = 0;
     const count = <T extends AudioNode>(x: T): T => (n++, x);
@@ -229,7 +240,7 @@ export class VenueGraph {
         meter.fftSize = 512;
         tone.connect(meter);
       }
-      this.strips.set(def.id, { def, input, send, meter });
+      this.strips.set(def.id, { def, input, far: null, send, meter });
     }
 
     // ---- PA system: band-limited horns with a little drive, a few clusters around the bowl
@@ -325,13 +336,21 @@ export class VenueGraph {
       d.delayTime.value = Math.min(0.99, delay);
       from.connect(d).connect(gg);
     } else from.connect(gg);
-    if (p.far) {
-      const air = count(this.ctx.createBiquadFilter());
-      air.type = 'lowpass';
-      air.frequency.value = AIR_HZ;
-      air.Q.value = 0.6;
-      gg.connect(air).connect(s.input);
-    } else gg.connect(s.input);
+    gg.connect(p.far ? this.farIn(s, count) : s.input);
+  }
+
+  /** the strip's shared far input (air absorption), made on first use */
+  private farIn(s: Strip, count: <T extends AudioNode>(x: T) => T = (x) => x): AudioNode {
+    if (s.far) return s.far;
+    const air = count(this.ctx.createBiquadFilter());
+    air.type = 'lowpass';
+    air.frequency.value = AIR_HZ;
+    air.Q.value = 0.6;
+    air.channelCount = 1;
+    air.channelCountMode = 'explicit';
+    air.connect(s.input);
+    s.far = air;
+    return air;
   }
 
   /** a continuous source at a fixed place: its top `k` mics, each through a delay (relative flight time) and a gain */
@@ -357,15 +376,6 @@ export class VenueGraph {
       g.gain.value = Math.min(4, gain * p.gain);
       src.connect(g);
       let tail: AudioNode = g;
-      if (p.far) {
-        const air = this.ctx.createBiquadFilter();
-        air.type = 'lowpass';
-        air.frequency.value = AIR_HZ;
-        air.Q.value = 0.6;
-        g.connect(air);
-        tail = air;
-        nodes.push(air);
-      }
       if (p.proximityDb > 1) {
         const ls = this.ctx.createBiquadFilter();
         ls.type = 'lowshelf';
@@ -375,7 +385,7 @@ export class VenueGraph {
         tail = ls;
         nodes.push(ls);
       }
-      tail.connect(s.input);
+      tail.connect(p.far ? this.farIn(s) : s.input);
       src.start(when + p.delay);
       end = Math.max(end, when + p.delay + (buffer.duration || 0) / rate);
       srcs.push(src);
@@ -474,27 +484,19 @@ export class VenueGraph {
   private async loadIr() {
     const conv = this.conv;
     if (!conv) return;
-    // generate after the gesture has returned (a few tens of ms of maths)
-    await new Promise((r) => setTimeout(r, 0));
+    const venue = this.venue;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
-      const ir = stadiumIR(this.ctx.sampleRate, this.venue);
-      if (this.lowPower) {
-        // phones: one channel, at most 1.6 s (faded): ~1/3 of the stereo 2.3 s convolution
-        const n = Math.min(ir.ch[0].length, Math.floor(1.6 * this.ctx.sampleRate));
-        const x = ir.ch[0].slice(0, n);
-        const fade = Math.floor(0.3 * this.ctx.sampleRate);
-        for (let i = n - fade; i < n; i++) x[i] *= (n - i) / fade;
-        for (let i = 0; i < n; i++) x[i] = (x[i] + ir.ch[1][i]) * Math.SQRT1_2;
-        const b = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
-        b.copyToChannel(x as Float32Array<ArrayBuffer>, 0);
-        conv.buffer = b;
-      } else {
-        const b = this.ctx.createBuffer(2, ir.ch[0].length, this.ctx.sampleRate);
-        b.copyToChannel(ir.ch[0] as Float32Array<ArrayBuffer>, 0);
-        b.copyToChannel(ir.ch[1] as Float32Array<ArrayBuffer>, 1);
-        conv.buffer = b;
+      // made in the worker (a few tens of ms of maths on a desktop, 100+ on a phone), or here after the gesture has returned
+      let r = this.irSource ? await this.irSource(venue, this.ctx.sampleRate, this.lowPower).catch(() => null) : null;
+      if (!r) {
+        await new Promise((res) => setTimeout(res, 0));
+        r = irFor(venue, this.ctx.sampleRate, this.lowPower);
       }
+      if (venue !== this.venue || this.conv !== conv) return; // the venue changed meanwhile: its own load sets the IR
+      const b = this.ctx.createBuffer(r.ch.length, r.ch[0].length, r.sr);
+      r.ch.forEach((c, i) => b.copyToChannel(c as Float32Array<ArrayBuffer>, i));
+      conv.buffer = b;
     } catch {
       /* no reverb */
     }

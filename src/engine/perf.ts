@@ -6,6 +6,8 @@
  *   - `frame`  ms between two rAF callbacks (what the player sees), `js` ms the engine's tick took on the main thread
  *   - `laps`   an additive split of `js` (sim, director, puppets, ..., render): `perf.lap('name')` closes the section that started at the last lap
  *   - `subs`   nested costs that overlap the laps (mixer, IK, getState, ...): `const t = perf.t(); ...; perf.sub('name', t)`
+ *   - `outs`   main-thread work outside the rAF tick (the audio controller's timer tick, the phone duck follower ...): `perf.outside('audio', t)`;
+ *              credited to the next frame (the interval it delays), so `js + outs` is what the main thread spent per frame (`mainMs`)
  *   - `passes` per render pass (shadow, main, gtao, dof, bloom, output, grade): CPU ms (submit cost, children excluded), GPU ms (timer queries, a few
  *              frames late), draw calls and triangles (diff of `renderer.info`)
  *   - `info`   geometries / textures / programs, JS heap and its drops (garbage collections), long animation frames
@@ -31,6 +33,8 @@ export interface FrameRec {
   js: number;
   laps: Record<string, number>;
   subs: Record<string, number>;
+  /** main-thread ms spent outside the tick since the previous frame (timers: audio ...) */
+  outs: Record<string, number>;
   passes: Record<string, PassRec>;
   calls: number;
   tris: number;
@@ -108,6 +112,7 @@ class Perf {
   private overlayAt = 0;
   private extra: (() => Record<string, string | number>) | null = null;
   private scaleNow = 1;
+  private pendingOuts: Record<string, number> = {};
 
   // ---- frame -----------------------------------------------------------------------------------------------------------
 
@@ -121,6 +126,7 @@ class Perf {
       js: 0,
       laps: {},
       subs: {},
+      outs: this.pendingOuts,
       passes: {},
       calls: 0,
       tris: 0,
@@ -135,6 +141,7 @@ class Perf {
       gpuDone: !this.gpuTimer,
     };
     this.loafBuf = 0;
+    this.pendingOuts = {};
     if (this.lastHeap) {
       const d = (heap - this.lastHeap) / 1048576;
       if (d < -0.25) f.gcMB = -d;
@@ -210,6 +217,12 @@ class Perf {
     const f = this.cur;
     if (!f) return;
     f.subs[name] = (f.subs[name] ?? 0) + (performance.now() - t0);
+  }
+
+  /** main-thread work outside the frame's tick (a timer callback) that began at `t0`: credited to the next frame */
+  outside(name: string, t0: number) {
+    if (!this.on) return;
+    this.pendingOuts[name] = (this.pendingOuts[name] ?? 0) + (performance.now() - t0);
   }
 
   // ---- render passes ----------------------------------------------------------------------------------------------------
@@ -367,7 +380,7 @@ class Perf {
     if (this.gpuTimer) fr = fr.filter((f) => f.gpuDone);
     fr = fr.slice(-n);
     const fps = fr.map((f) => (f.frame > 0 ? 1000 / f.frame : 0)).filter((x) => x > 0);
-    const keys = <K extends 'laps' | 'subs'>(k: K) => [...new Set(fr.flatMap((f) => Object.keys(f[k])))];
+    const keys = <K extends 'laps' | 'subs' | 'outs'>(k: K) => [...new Set(fr.flatMap((f) => Object.keys(f[k])))];
     const passNames = [...new Set(fr.flatMap((f) => Object.keys(f.passes)))];
     const col = (fn: (f: FrameRec) => number) => stat(fr.map(fn));
     const out = {
@@ -384,6 +397,9 @@ class Perf {
       renderCpuMs: col((f) => Perf.renderCpuOf(f)),
       laps: Object.fromEntries(keys('laps').map((k) => [k, col((f) => f.laps[k] ?? 0)])),
       subs: Object.fromEntries(keys('subs').map((k) => [k, col((f) => f.subs[k] ?? 0)])),
+      /** main-thread work outside the tick per frame (audio timers ...), and tick + that */
+      outs: Object.fromEntries(keys('outs').map((k) => [k, col((f) => f.outs[k] ?? 0)])),
+      mainMs: col((f) => { let s = f.js; for (const k in f.outs) s += f.outs[k]; return s; }),
       passes: Object.fromEntries(
         passNames.map((p) => [
           p,
@@ -464,6 +480,8 @@ class Perf {
     L.push(`laps  ${Object.entries(s.laps).filter(([k]) => k !== 'end').map(([k, v]) => `${k} ${v.median.toFixed(1)}`).join('  ')}`);
     const subs = Object.entries(s.subs).filter(([, v]) => v.median >= 0.05);
     if (subs.length) L.push(`subs  ${subs.map(([k, v]) => `${k} ${v.median.toFixed(2)}`).join('  ')}`);
+    const outs = Object.entries(s.outs);
+    if (outs.length) L.push(`outside the tick (mean ms/frame)  ${outs.map(([k, v]) => `${k} ${v.mean.toFixed(2)} (max ${v.max.toFixed(1)})`).join('  ')}   main ${f(s.mainMs)}`);
     L.push('pass        cpu   gpu  calls   tris');
     for (const [k, v] of Object.entries(s.passes)) L.push(`${k.padEnd(10)} ${v.cpu.median.toFixed(1).padStart(5)} ${(s.gpuTimer ? v.gpu.median.toFixed(1) : '-').padStart(5)} ${v.calls.median.toFixed(0).padStart(6)} ${(v.tris.median / 1000).toFixed(0).padStart(5)}k`);
     L.push(`total draw calls ${s.calls.median.toFixed(0)}  tris ${(s.triangles.median / 1000).toFixed(0)}k  geo ${s.geometries.median.toFixed(0)}  tex ${s.textures.median.toFixed(0)}  prog ${s.programs.median.toFixed(0)}`);

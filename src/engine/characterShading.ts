@@ -11,6 +11,7 @@
  */
 import { Color, DoubleSide, Material, MeshPhysicalMaterial, MeshStandardMaterial, ShaderChunk, SkinnedMesh } from 'three';
 import type { QualityName } from './quality';
+import { POLICY, applyMaterialPolicy } from './materials';
 
 export type ShadingTier = 'off' | 'basic' | 'full';
 
@@ -110,8 +111,10 @@ function configure(m: Material) {
       s.depthWrite = true;
     }
   } else if (kind === 'leather') {
-    (m as MeshPhysicalMaterial).clearcoat = on ? 0.25 : 0;
-    (m as MeshPhysicalMaterial).clearcoatRoughness = 0.42;
+    // the policy's coat (materials.ts): a faint one on polished cleats and the belt, none on gloves / chest protectors (0.25 everywhere made them plastic)
+    const cc = POLICY[m.name.replace(/\.\d+$/, '')]?.clearcoat;
+    (m as MeshPhysicalMaterial).clearcoat = on && cc ? cc[0] : 0;
+    (m as MeshPhysicalMaterial).clearcoatRoughness = cc ? cc[1] : 0.5;
   } else if (kind === 'eye') {
     // a little wet gloss; strong environment reflections on the eyeball (and the cornea over it) whited the whole eye out under a day sky
     (m as MeshPhysicalMaterial).clearcoat = on ? 0.35 : 0;
@@ -148,6 +151,7 @@ export function shadeHair(m: Material, cards?: boolean, strandSpecular = true): 
 
 const upgraded = new Map<Material, Material>();
 
+
 /** The named material as it should look in this tier: eyes and leather become clear-coated physical materials (cached per source material). */
 export function upgradeMaterial(mat: Material): Material {
   const name = mat.name.replace(/\.\d+$/, '');
@@ -162,6 +166,7 @@ export function upgradeMaterial(mat: Material): Material {
   });
   pm.name = b.name;
   pm.userData = { ...b.userData, cbShade: kind };
+  applyMaterialPolicy(pm);
   if (kind === 'eye') {
     // a living eye in daylight: the iris is darker than its pale texture reads under a strong sun (more contrast against the sclera), and the upper
     // eyeball sits in the shadow of the lid and brow (without both, sunlit eyes turned into white discs: the "dead stare")

@@ -315,8 +315,9 @@ function tickKid(w: World, s: StaffRT, live: boolean): void {
   const threatened = live && Math.hypot(b.x - s.x, b.z - s.z) < 24;
   if (threatened && s.task !== 'retreat' && (s.task === 'idle' || s.task === 'sit' || s.task === 'run')) {
     s.task = 'retreat';
-    const away = Math.hypot(s.x, s.z) || 1;
-    s.goal = { x: s.homeX + (s.x / away) * 3, z: s.homeZ + (s.z / away) * 3 };
+    // along the wall, 3 m further from the plate (his chair is against the side wall: straight away from the plate would be into it)
+    const sx = Math.sign(s.homeX) || 1;
+    s.goal = { x: s.homeX + sx * 3 * Math.SQRT1_2, z: s.homeZ + 3 * Math.SQRT1_2 };
     s.speed = 5.5;
     setAnimS(w, s, 'ballkid_run', 1.2);
   }
@@ -334,6 +335,8 @@ function tickKid(w: World, s: StaffRT, live: boolean): void {
         s.speed = 3.5;
       } else {
         s.goal = null;
+        // seated on his chair, facing the field (he came back facing whichever way he walked)
+        s.facing = Math.atan2(-s.homeX, 20 - s.homeZ);
         if (s.anim !== 'ballkid_sit' && w.tick >= s.animUntil) setAnimS(w, s, 'ballkid_sit', 60);
       }
       if (d && !d.kid && !live && d.state === 'resting') {
