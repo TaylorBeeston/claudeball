@@ -645,7 +645,9 @@ export class CameraDirector {
       const shot: BrollShot = { kind: beat, subject: subjects[beat], variant: this.brollSeq * 97 + 11, hold: Math.min(3.2, lull.remaining - 0.8), transition: 'cut' };
       return shot;
     }
-    const seed = ++this.brollSeq * 1013 + Math.floor(live.time * 10);
+    // the count moves on only when a shot is planned (planning is retried every frame while nothing fits): the same game picks the
+    // same B-roll at any frame rate
+    const seed = (this.brollSeq + 1) * 1013 + Math.floor(live.time * 10);
     const shot = planNext({
       lull: { kind: lull.kind as never, remaining: lull.remaining },
       available,
@@ -655,6 +657,7 @@ export class CameraDirector {
       reactionTeam: reaction ? reaction.team : null,
       shownThisLull: this.shownThisLull,
     });
+    if (shot) this.brollSeq++;
     if (shot && shot.kind === 'dugoutReaction') this.reaction = null;
     return shot;
   }
