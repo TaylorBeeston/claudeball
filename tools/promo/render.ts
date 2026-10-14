@@ -129,6 +129,7 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
       if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + v.dur - 0.5) continue;
       const t0 = v.at - v.pre + s.t - vin;
+      if (cutList().some((c, i) => c.black && t0 >= starts[i] - 0.3 && t0 < starts[i] + c.beats * BEAT)) continue; // no caption over a card
       out.push(quote(ev, t0, Math.min(v.at - v.pre + v.dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
     }
   }

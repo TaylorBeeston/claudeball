@@ -83,7 +83,10 @@ export const CUTS: Cut[] = [
  */
 export interface VoiceTrack {
   shot: string;
-  /** the booth line (its start) that lands on timeline second `at`; the track runs from `pre` seconds before it for `dur` */
+  /**
+   * the booth line (its start) that lands on timeline second `at`: a text it contains, or `event:<name>` = the first booth line from
+   * the moment that engine event happens (the call: its words differ from take to take); the track runs from `pre` seconds before it
+   */
   line: string;
   at: number;
   pre: number;
@@ -92,14 +95,22 @@ export interface VoiceTrack {
 }
 export const VOICE: VoiceTrack[] = [
   // the bomb: "And that one is gone! Sanders launches a home run." as it climbs into the upper deck
-  { shot: 'bomb-broadcast', line: 'that one is gone', at: 25.0, pre: 0.3, dur: 3.6, db: 0 },
+  { shot: 'bomb-broadcast', line: 'event:homerun', at: 25.0, pre: 0.3, dur: 3.6, db: 0 },
   // the walk-off: the call as the ball lands, over the fireworks (wo-flight's own booth)
-  { shot: 'wo-flight', line: 'Walk-off', at: 63.6, pre: 0.3, dur: 5.6, db: 0 },
+  { shot: 'wo-flight', line: 'event:homerun', at: 63.6, pre: 0.3, dur: 3.9, db: 0 },
 ];
 
 /** where a voice track starts in its shot (output seconds): its line's start minus `pre`, or null when the take has no such line */
-export function voiceIn(v: VoiceTrack, m: { speech: { t: number; ev: unknown }[] } | undefined): number | null {
-  const s = m?.speech.find((x) => (x.ev as { type: string; text?: string }).type === 'speechStart' && (x.ev as { text?: string }).text?.includes(v.line));
+export function voiceIn(v: VoiceTrack, m: { fps: number; speech: { t: number; ev: unknown }[]; info: { i: number; events: string[] }[] } | undefined): number | null {
+  if (!m) return null;
+  const booth = (x: { ev: unknown }) => (x.ev as { type: string; channel?: string }).type === 'speechStart' && (x.ev as { channel?: string }).channel === 'booth';
+  let s;
+  if (v.line.startsWith('event:')) {
+    const f = m.info.find((x) => x.events.includes(v.line.slice(6)));
+    if (!f) return null;
+    const t = f.i / m.fps;
+    s = m.speech.find((x) => booth(x) && x.t >= t - 0.25);
+  } else s = m.speech.find((x) => booth(x) && (x.ev as { text?: string }).text?.includes(v.line));
   return s ? s.t - v.pre : null;
 }
 

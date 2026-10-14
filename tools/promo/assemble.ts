@@ -3,7 +3,7 @@
  * the phone composite), the audio mix (each cut's game audio from its shot, the booth where the edit wants it, the music bed ducked
  * under the booth, the produced effects; loudness to -14 LUFS, true peak under -1 dBTP; stems exported), and the encode.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { db, lufsIntegrated, loudnessRange, truePeak } from '../../src/audio/venue/analysis';
@@ -213,20 +213,39 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
 }
 
 /** H.264 high, yuv420p, faststart, AAC 320k; film grain added at the encode */
+/** integrated loudness and true peak of a media file's audio, by ffmpeg's EBU R128 meter (it reports on stderr) */
+function r128(file: string): { lufs: number; tp: number } {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-af', 'ebur128=peak=true', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  return parseR128(String(r.stderr ?? ''));
+}
+function parseR128(s: string) {
+  const sum = s.slice(s.lastIndexOf('Summary:'));
+  const i = /I:\s+(-?[\d.]+) LUFS/.exec(sum), p = /Peak:\s+(-?[\d.]+) dBFS/.exec(sum.slice(sum.indexOf('True peak')));
+  return { lufs: i ? +i[1] : NaN, tp: p ? +p[1] : NaN };
+}
+
 export function encode(L: Layout, pic: string, ovl: string, wav: string, file: string, opts: { bitrate: string; preview?: boolean }, log: (s: string) => void) {
   const grain = L.H >= 2000 ? 5 : 4;
+  // AAC adds inter-sample overshoot: encode the audio alone, measure its true peak, and trim the gain so the file stays under -1 dBTP
+  const probe = file.replace(/\.mp4$/, '.probe.m4a');
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wav, '-c:a', 'aac', '-b:a', '320k', '-ar', '48000', probe]);
+  const m = r128(probe);
+  fs.rmSync(probe, { force: true });
+  const trim = Number.isFinite(m.tp) && m.tp > -1.1 ? -(m.tp + 1.1) : 0;
+  log(`[encode] AAC round trip: ${m.lufs} LUFS, ${m.tp} dBTP${trim ? ` -> gain ${trim.toFixed(2)} dB` : ''}`);
   const args = [
     '-y', '-loglevel', 'error', '-stats',
     '-framerate', String(L.fps), '-i', path.join(pic, '%05d.jpg'),
     '-framerate', String(L.fps), '-i', path.join(ovl, '%05d.png'),
     '-i', wav,
     '-filter_complex', `[0:v][1:v]overlay=format=auto,noise=alls=${grain}:allf=t,format=yuv420p[v]`,
-    '-map', '[v]', '-map', '2:a',
+    '-map', '[v]', '-map', '2:a', '-af', `volume=${trim.toFixed(2)}dB`,
     '-c:v', 'libx264', '-profile:v', 'high', '-preset', opts.preview ? 'veryfast' : 'slow', '-b:v', opts.bitrate, '-maxrate', opts.bitrate.replace(/\d+/, (d) => String(Math.round(+d * 1.25))), '-bufsize', opts.bitrate.replace(/\d+/, (d) => String(+d * 2)),
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
     '-shortest', file,
   ];
-  execFileSync('ffmpeg', args, { stdio: 'inherit' });
-  log(`[encode] ${file} (${(fs.statSync(file).size / 1e6).toFixed(1)} MB)`);
+  execFileSync('ffmpeg', args, { stdio: ['ignore', 'ignore', 'inherit'] });
+  const f = r128(file);
+  log(`[encode] ${file} (${(fs.statSync(file).size / 1e6).toFixed(1)} MB): ${f.lufs} LUFS, true peak ${f.tp} dBTP`);
 }
