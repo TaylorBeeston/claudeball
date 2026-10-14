@@ -14,9 +14,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { build, startPreview, systemLoad } from '../perf/lib';
 import { PROMO_DIR, buildKey, cached, captureShot, openChrome, shotDir, type RenderSettings, type ShotManifest } from './capture';
-import { SHOTS } from './shots';
+import { SHOTS, VSHOTS } from './shots';
 import { buildPicture, encode, fillOverlay, layout, mix, overlayList } from './assemble';
-import { BEAT, CUTS, cutTimes } from './edit';
+import { BEAT, CUTS, VCUTS, VOICE, cutTimes, type Cut, type VoiceTrack } from './edit';
 import type { Overlay } from './overlay';
 import { renderOverlay } from './titles';
 
@@ -27,7 +27,25 @@ const opt = (k: string, d: string) => {
 };
 const flag = (k: string) => argv.includes(`--${k}`);
 
+const vertical = flag('vertical');
+/** the shots of this cut: the vertical cut has its own re-shoots (and the phone footage) */
+const shotList = () => (vertical ? [...VSHOTS, SHOTS.find((s) => s.id === 'phone-portrait')!] : SHOTS);
+const cutList = (): Cut[] => (vertical ? VCUTS : CUTS);
+const voiceList = (): VoiceTrack[] => (vertical ? VOICE.map((v) => ({ ...v, shot: `v-${v.shot}` })) : VOICE);
+
+/** full-size renders keep only the frames the edit uses (+-1 s); a preview keeps everything (free to re-edit) */
+function withKeep(list: typeof SHOTS): typeof SHOTS {
+  if (flag('preview') || flag('keep-all')) return list;
+  const cuts = cutList();
+  return list.map((s) => {
+    const r = cuts.filter((c) => c.shot === s.id && !c.black).map((c): [number, number] => [Math.max(0, +(c.in - 1).toFixed(2)), +(c.in + c.beats * BEAT + 1).toFixed(2)]);
+    return r.length ? { ...s, keep: r } : s;
+  });
+}
+
 export function settings(): RenderSettings {
+  // vertical: the 960x540 viewport on its side (540x960 CSS), at device scale 2 for 1080x1920
+  if (vertical) return { width: 960, height: 540, dpr: flag('preview') ? 1 : 2, fps: flag('preview') ? 30 : 60, format: 'jpeg', quality: flag('preview') ? 90 : 95, buildKey: '' };
   if (flag('preview')) return { width: 960, height: 540, dpr: 1, fps: 30, format: 'jpeg', quality: 90, buildKey: '' };
   if (flag('4k')) return { width: 1920, height: 1080, dpr: 2, fps: 60, format: 'jpeg', quality: 95, buildKey: '' };
   return { width: 1920, height: 1080, dpr: 1, fps: 60, format: 'jpeg', quality: 95, buildKey: '' };
@@ -41,18 +59,19 @@ const log = (s: string) => {
 
 async function capture(rs: RenderSettings): Promise<Map<string, ShotManifest>> {
   const only = opt('only', '').split(',').filter(Boolean);
-  const todo = SHOTS.filter((s) => (!only.length || only.includes(s.id)) && (flag('force') || !cached(s, rs)));
+  const all = withKeep(shotList());
+  const todo = all.filter((s) => (!only.length || only.includes(s.id)) && (flag('force') || !cached(s, rs)));
   const out = new Map<string, ShotManifest>();
-  for (const s of SHOTS) {
+  for (const s of all) {
     const m = cached(s, rs);
     if (m) out.set(s.id, m);
   }
   if (!todo.length) {
-    log(`[render] capture: all ${SHOTS.length} shots cached`);
+    log(`[render] capture: all ${all.length} shots cached`);
     return out;
   }
   const load = systemLoad();
-  log(`[render] capture: ${todo.length} of ${SHOTS.length} shots (${rs.width * rs.dpr}x${rs.height * rs.dpr} @ ${rs.fps}) | GPU ${load.gpu} | load ${load.loadavg.join(' ')}`);
+  log(`[render] capture: ${todo.length} of ${all.length} shots (${rs.width * rs.dpr}x${rs.height * rs.dpr} @ ${rs.fps}) | GPU ${load.gpu} | load ${load.loadavg.join(' ')}`);
   const srv = await startPreview();
   let chrome = await openChrome(rs);
   try {
@@ -78,10 +97,13 @@ function sheets(rs: RenderSettings, shots: Map<string, ShotManifest>) {
   fs.mkdirSync(dir, { recursive: true });
   for (const [id, m] of shots) {
     const sd = shotDir(id, rs);
-    const n = Math.min(24, m.frames);
+    // (a full-size render keeps only the frames the edit uses)
+    const have = m.info.map((f) => f.i).filter((i) => fs.existsSync(path.join(sd, `${String(i).padStart(5, '0')}.${m.ext}`)));
+    if (!have.length) continue;
+    const n = Math.min(24, have.length);
     const args: string[] = [];
     for (let k = 0; k < n; k++) {
-      const i = Math.round((k * (m.frames - 1)) / Math.max(1, n - 1));
+      const i = have[Math.round((k * (have.length - 1)) / Math.max(1, n - 1))];
       const f = m.info[i];
       args.push('-label', `${(i / m.fps).toFixed(2)}s ${f.sim.toFixed(2)} ${f.shot}`, path.join(sd, `${String(i).padStart(5, '0')}.${m.ext}`));
     }
@@ -95,7 +117,18 @@ function sheets(rs: RenderSettings, shots: Map<string, ShotManifest>) {
 function quotes(shots: Map<string, ShotManifest>): Overlay[] {
   const { starts } = cutTimes();
   const out: Overlay[] = [];
-  CUTS.forEach((c, i) => {
+  // (a caption never runs into a black card: the title, the end card)
+  const blackAt = (t: number) => Math.min(...cutList().map((c, i) => (c.black && starts[i] > t ? starts[i] : Infinity)));
+  const quote = (ev: { text?: string; name?: string; speaker?: string }, t0: number, t1: number): Overlay => ({ k: 'quote', t0, t1: Math.min(t1, blackAt(t0) - 0.15), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
+  for (const v of voiceList()) {
+    for (const s of shots.get(v.shot)?.speech ?? []) {
+      const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
+      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < v.in || s.t > v.in + v.dur - 0.5) continue;
+      const t0 = v.at + s.t - v.in;
+      out.push(quote(ev, t0, Math.min(v.at + v.dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
+    }
+  }
+  cutList().forEach((c, i) => {
     if (!c.quote) return;
     const m = shots.get(c.shot);
     const dur = c.beats * BEAT;
@@ -109,6 +142,51 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
   return out;
 }
 
+/**
+ * The README teaser: 9 s of the walk-off (pitch, contact, flight, fireworks) from the 1080p master, 1280x720, VP9 two-pass, no sound
+ * (a README plays it muted), under 3 MB; and a poster frame. Written to ~/claudeball-promo/ (copy to docs/media/ to commit).
+ */
+function teaser(log: (s: string) => void) {
+  const src = path.join(PROMO_DIR, 'promo-16x9-1080p60.mp4');
+  if (!fs.existsSync(src)) return log('[teaser] no 1080p master yet');
+  const { starts } = cutTimes();
+  const from = starts[CUTS.findIndex((c) => c.shot === 'wo-pitcher')];
+  const out = path.join(PROMO_DIR, 'teaser.webm');
+  const vf = 'scale=1280:720:flags=lanczos,fps=30';
+  for (const pass of [1, 2])
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from), '-t', '9', '-i', src, '-vf', vf, '-an', '-c:v', 'libvpx-vp9', '-b:v', '2300k', '-maxrate', '3000k', '-bufsize', '4600k', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '1', '-pass', String(pass), '-passlogfile', path.join(PROMO_DIR, 'teaser-pass'), ...(pass === 1 ? ['-f', 'null', '/dev/null'] : [out])]);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from + 8.2), '-i', src, '-frames:v', '1', '-vf', 'scale=1280:720', '-q:v', '3', path.join(PROMO_DIR, 'teaser.jpg')]);
+  log(`[teaser] ${out} (${(fs.statSync(out).size / 1e6).toFixed(2)} MB) + teaser.jpg`);
+}
+
+/** short WAVs of the key moments, to audition (the master and the stems): the title, the drop, the walk-off */
+function snippets(out: string, log: (s: string) => void) {
+  const { starts } = cutTimes();
+  const t = (shot: string, nth = 0) => starts[CUTS.map((c, i) => (c.shot === shot ? i : -1)).filter((i) => i >= 0)[nth]];
+  const moments: [string, number, number][] = [
+    ['title', t('open-face', 1) - 1.5, 5],
+    ['drop', t('bang-first') - 2.5, 7],
+    ['walkoff', t('wo-pitcher'), 12],
+    ['endcard', t('wo-broadcast', 1) - 1, 8],
+  ];
+  const dir = path.join(out, 'snippets');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [name, from, dur] of moments)
+    for (const f of ['master.wav', 'stems/music.wav', 'stems/game.wav', 'stems/voice.wav', 'stems/fx.wav'])
+      execFileSync('sox', [path.join(out, f), path.join(dir, `${name}-${path.basename(f, '.wav')}.wav`), 'trim', String(Math.max(0, from)), String(dur)]);
+  log(`[snippets] ${moments.length} moments x 5 -> ${dir}`);
+}
+
+/** a contact sheet of the finished video: a frame a second with its time */
+function contact(file: string, sheet: string, log: (s: string) => void) {
+  const tmp = fs.mkdtempSync(path.join(PROMO_DIR, 'contact-'));
+  execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-vf', "fps=1,scale=480:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=16:fontcolor=yellow:box=1:boxcolor=black@0.6", path.join(tmp, '%03d.jpg')]);
+  const files = fs.readdirSync(tmp).sort().map((f) => path.join(tmp, f));
+  execFileSync('montage', [...files, '-tile', '8x', '-geometry', '+2+2', '-background', '#111', sheet]);
+  fs.rmSync(tmp, { recursive: true, force: true });
+  log(`[contact] ${sheet}`);
+}
+
 async function main() {
   fs.mkdirSync(PROMO_DIR, { recursive: true });
   build(flag('no-build'));
@@ -116,25 +194,28 @@ async function main() {
   const stages = opt('stages', 'capture,sheets,titles,mix,picture,encode').split(',');
   const shots = await capture(rs);
   if (stages.includes('sheets')) sheets(rs, shots);
-  const tag = flag('preview') ? 'preview' : flag('4k') ? '4k' : '1080p';
+  const tag = `${vertical ? 'vertical-' : ''}${flag('preview') ? 'preview' : flag('4k') ? '4k' : '1080p'}`;
   const out = path.join(PROMO_DIR, 'edit', tag);
   fs.mkdirSync(out, { recursive: true });
-  const L = layout(rs);
+  const L = layout(rs, vertical);
   const ovl = path.join(out, 'ovl');
   if (stages.includes('titles')) {
     const chrome = await openChrome(rs);
     try {
-      const has = await renderOverlay(chrome, [...overlayList(L), ...quotes(shots)], L.W, L.H, L.fps, L.frames, ovl, log);
+      const has = await renderOverlay(chrome, [...overlayList(L, vertical), ...quotes(shots)], L.W, L.H, L.fps, L.frames, ovl, log);
       fillOverlay(L, has, ovl);
     } finally {
       await chrome.close();
     }
   }
-  if (stages.includes('mix')) mix(rs, shots, out, log);
-  const pic = stages.includes('picture') ? buildPicture(rs, shots, L, out, log) : path.join(out, 'pic');
+  if (stages.includes('mix')) mix(rs, shots, out, log, cutList(), voiceList());
+  const pic = stages.includes('picture') ? buildPicture(rs, shots, L, out, log, cutList()) : path.join(out, 'pic');
+  if (stages.includes('teaser')) teaser(log);
+  if (stages.includes('snippets')) snippets(out, log);
   if (stages.includes('encode')) {
-    const file = path.join(PROMO_DIR, flag('preview') ? 'promo-preview-540p30.mp4' : flag('4k') ? 'promo-16x9-2160p60.mp4' : 'promo-16x9-1080p60.mp4');
+    const file = path.join(PROMO_DIR, vertical ? (flag('preview') ? 'promo-preview-vertical-540x960.mp4' : 'promo-9x16-1080x1920.mp4') : flag('preview') ? 'promo-preview-540p30.mp4' : flag('4k') ? 'promo-16x9-2160p60.mp4' : 'promo-16x9-1080p60.mp4');
     encode(L, pic, ovl, path.join(out, 'master.wav'), file, { bitrate: flag('preview') ? '6M' : flag('4k') ? '60M' : '20M', preview: flag('preview') }, log);
+    contact(file, file.replace(/\.mp4$/, '-contact.jpg'), log);
   }
 }
 

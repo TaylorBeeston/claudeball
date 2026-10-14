@@ -42,26 +42,46 @@ export const CUTS: Cut[] = [
   { shot: 'bomb-flight', in: 0, beats: 3, park: -2, booth: null },
   { shot: 'robbed', in: 0.6, beats: 8, park: -3, booth: null },
   // drop: 30 - 50 s
-  { shot: 'bang-first', in: 9.0, beats: 6, park: -3, booth: null },
+  { shot: 'bang-first', in: 7.6, beats: 6, park: -3, booth: null },
   { shot: 'triple-play', in: 0.8, beats: 5, park: -4, booth: null },
   { shot: 'steal-third', in: 1.0, beats: 3, park: -4, booth: null },
   { shot: 'double-play', in: 0.6, beats: 3, park: -4, booth: null },
   { shot: 'face-card', in: 0.8, beats: 4, park: -6, booth: null },
-  { shot: 'pickoff', in: 4.0, beats: 4, park: -4, booth: null },
-  { shot: 'inside-park', in: 12.0, beats: 5, park: -3, booth: null },
-  { shot: 'bomb-broadcast', in: 7.0, beats: 5, park: -2, booth: null },
-  { shot: 'bomb-broadcast', in: 20.0, beats: 5, park: -4, booth: null },
+  { shot: 'pickoff', in: 5.4, beats: 4, park: -4, booth: null },
+  { shot: 'inside-park', in: 14.4, beats: 5, park: -3, booth: null },
+  { shot: 'bomb-broadcast', in: 8.95, beats: 5, park: -2, booth: null },
+  { shot: 'bomb-broadcast', in: 21.1, beats: 5, park: -4, booth: null },
   // the phone: 50 - 54 s
   { shot: 'phone-portrait', in: 1.0, beats: 8, phone: true, park: null, booth: null },
   // the walk-off: 54 - 66 s
   { shot: 'wo-pitcher', in: 0.2, beats: 3, park: -3, booth: null },
   { shot: 'wo-contact', in: 0.1, beats: 7, park: -12, booth: null },
-  { shot: 'wo-flight', in: 0.3, beats: 6, park: 0, booth: 0, quote: true },
-  { shot: 'wo-fireworks', in: 0.4, beats: 5, park: 0, booth: 0 },
-  { shot: 'wo-broadcast', in: 22.0, beats: 3, park: -2, booth: null },
+  { shot: 'wo-flight', in: 0.3, beats: 6, park: 0, booth: null },
+  { shot: 'wo-fireworks', in: 0.4, beats: 5, park: 0, booth: null },
+  { shot: 'wo-broadcast', in: 14.6, beats: 3, park: -2, booth: null },
   // end card: 66 - 74 s
   { shot: 'wo-broadcast', in: 25.0, beats: 16, black: true, park: null, booth: null },
 ];
+
+/**
+ * A continuous booth track laid over several cuts (the climax): the voice of shot `shot` from its second `in`, placed at timeline second
+ * `at`, for `dur` seconds, its lines captioned as quotes. (Each shot captures its own booth, so the calls of one moment differ shot to shot.)
+ */
+export interface VoiceTrack {
+  shot: string;
+  in: number;
+  at: number;
+  dur: number;
+  db: number;
+}
+export const VOICE: VoiceTrack[] = [
+  // wo-flight's booth, aligned with its picture (shot second 0.3 = the flight cut's first frame): "A long drive to left-center." at the
+  // contact, "Walk-off! He hit it out, and the game is over! ..." as the ball lands, over the fireworks
+  { shot: 'wo-flight', in: -0.6, at: 58.1, dur: 11.4, db: 0 },
+];
+
+/** the vertical cut: the same edit on the portrait re-shoots (`v-<shot>`); the phone beat is the phone footage itself, full frame */
+export const VCUTS: Cut[] = CUTS.map((c) => (c.phone ? { ...c, phone: false } : { ...c, shot: `v-${c.shot}` }));
 
 /** the start time (s) of every cut, and the total */
 export function cutTimes(): { starts: number[]; total: number } {

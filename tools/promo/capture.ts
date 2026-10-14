@@ -27,8 +27,14 @@ export interface PromoShot extends Omit<ShotSetup, 'fps' | 'frames' | 'randomSee
   randomSeed?: number;
   /** what the shot is for (shot list) */
   note?: string;
-  /** a phone-portrait shot (the vertical cut) */
+  /** output-second ranges whose frames are saved (the rest are played but not grabbed): set from the edit for full-size renders */
+  keep?: [number, number][];
+  /** a portrait shot (the vertical cut): the render settings' viewport turned on its side */
   portrait?: boolean;
+  /** a viewport of its own (CSS px and device scale), e.g. a phone's 412x892 @ 2.625, whatever the render settings */
+  viewport?: { w: number; h: number; dpr: number };
+  /** a touch device (mobile emulation, coarse pointer: the phone policies of the game apply) */
+  touch?: boolean;
   quality?: 'low' | 'medium' | 'high' | 'ultra';
 }
 
@@ -101,9 +107,9 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
   const t0 = Date.now();
   const page: Page = await chrome.ctx.newPage();
   const cdp: CDPSession = await chrome.ctx.newCDPSession(page);
-  const [w, h] = shot.portrait ? [rs.height, rs.width] : [rs.width, rs.height];
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: rs.dpr, mobile: !!shot.portrait });
-  if (shot.portrait) await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  const [w, h, dpr] = shot.viewport ? [shot.viewport.w, shot.viewport.h, shot.viewport.dpr] : shot.portrait ? [rs.height, rs.width, rs.dpr] : [rs.width, rs.height, rs.dpr];
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: !!shot.touch });
+  if (shot.touch) await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
   page.on('console', (m) => {
@@ -139,7 +145,8 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
     let msTick = 0, msShot = 0, msWrite = 0;
     const stride = rs.stride ?? 1;
     for (let i = 0; i < setup.frames; i++) {
-      if (stride > 1 && i % stride !== 0) {
+      const kept = !shot.keep || shot.keep.some(([a, b]) => i / rs.fps >= a - 1e-6 && i / rs.fps <= b + 1e-6);
+      if ((stride > 1 && i % stride !== 0) || !kept) {
         info.push(await page.evaluate(() => (window as unknown as { __promo: { frame(): Promise<ShotManifest['info'][number]> } }).__promo.frame()));
         continue;
       }
@@ -177,7 +184,7 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
         speech = a.speech.map((s) => ({ t: +(s.t - a.t0).toFixed(3), ev: s.ev }));
       }
     }
-    const m: ShotManifest = { id: shot.id, hash, frames: setup.frames, fps: rs.fps, size: [w * rs.dpr, h * rs.dpr], ext, gpu: ready.gpu, info, audio, speech, at: new Date().toISOString(), ms: Date.now() - t0 };
+    const m: ShotManifest = { id: shot.id, hash, frames: setup.frames, fps: rs.fps, size: [Math.round(w * dpr), Math.round(h * dpr)], ext, gpu: ready.gpu, info, audio, speech, at: new Date().toISOString(), ms: Date.now() - t0 };
     if (errors.length) fs.writeFileSync(path.join(dir, 'errors.txt'), errors.join('\n'));
     fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(m, null, 1));
     log(`[capture] ${shot.id}: ${setup.frames} frames in ${((Date.now() - t0) / 1000).toFixed(0)} s${errors.length ? ` (${errors.length} page errors, see errors.txt)` : ''}`);

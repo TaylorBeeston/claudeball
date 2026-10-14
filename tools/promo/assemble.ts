@@ -9,7 +9,7 @@ import path from 'node:path';
 import { db, lufsIntegrated, loudnessRange, truePeak } from '../../src/audio/venue/analysis';
 import { writeWav } from '../audio/render';
 import { shotDir, type RenderSettings, type ShotManifest } from './capture';
-import { BEAT, CUTS, cutTimes, musicPlan, overlays } from './edit';
+import { BEAT, CUTS, VOICE, cutTimes, musicPlan, overlays, type Cut, type VoiceTrack } from './edit';
 import { SR, dbGain, limit, readWav, type Stereo } from './dsp';
 import { renderMusic } from './music';
 import type { Overlay } from './overlay';
@@ -31,12 +31,15 @@ export function layout(rs: RenderSettings, portrait = false): Layout {
   return { W, H, fps: rs.fps, frames: Math.round(total * rs.fps), phoneRect };
 }
 
-export function overlayList(L: Layout): Overlay[] {
-  return overlays().map((o) => (o.k === 'phone' ? { ...o, rect: L.phoneRect } : o));
+export function overlayList(L: Layout, portrait = false): Overlay[] {
+  // (the vertical cut shows the phone footage full frame: no phone drawn round it)
+  return overlays()
+    .filter((o) => !(portrait && o.k === 'phone'))
+    .map((o) => (o.k === 'phone' ? { ...o, rect: L.phoneRect } : o));
 }
 
 /** the picture: out/pic/00000.jpg ... as symlinks (or composites) */
-export function buildPicture(rs: RenderSettings, shots: Map<string, ShotManifest>, L: Layout, out: string, log: (s: string) => void) {
+export function buildPicture(rs: RenderSettings, shots: Map<string, ShotManifest>, L: Layout, out: string, log: (s: string) => void, cuts: Cut[] = CUTS) {
   const pic = path.join(out, 'pic');
   fs.rmSync(pic, { recursive: true, force: true });
   fs.mkdirSync(pic, { recursive: true });
@@ -48,7 +51,7 @@ export function buildPicture(rs: RenderSettings, shots: Map<string, ShotManifest
     const t = f / L.fps;
     let ci = starts.length - 1;
     while (ci > 0 && starts[ci] > t + 1e-9) ci--;
-    const c = CUTS[ci];
+    const c = cuts[ci];
     const dst = path.join(pic, `${String(f).padStart(5, '0')}.jpg`);
     if (c.black) {
       fs.symlinkSync(black, dst);
@@ -69,7 +72,8 @@ export function buildPicture(rs: RenderSettings, shots: Map<string, ShotManifest
     }
     const size = m.size;
     if (size[0] !== L.W || size[1] !== L.H) {
-      execFileSync('magick', [src, '-resize', `${L.W}x${L.H}!`, '-quality', '95', dst]);
+      // another size or shape (the phone's viewport in the vertical cut): fill the frame, centred
+      execFileSync('magick', [src, '-resize', `${L.W}x${L.H}^`, '-gravity', 'center', '-extent', `${L.W}x${L.H}`, '-quality', '95', dst]);
       composites++;
     } else fs.symlinkSync(src, dst);
   }
@@ -91,13 +95,13 @@ const addInto = (dst: Stereo, src: Stereo, gain = 1) => {
 const loud = (s: Stereo) => lufsIntegrated(s as unknown as Float32Array[], SR);
 
 /** the mix: returns the master and writes the stems */
-export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: string, log: (s: string) => void): { master: Stereo; report: Record<string, number> } {
+export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: string, log: (s: string) => void, cuts: Cut[] = CUTS, voice: VoiceTrack[] = VOICE): { master: Stereo; report: Record<string, number> } {
   const { starts, total } = cutTimes();
   const n = Math.ceil(total * SR);
   const park = zeros(n), booth = zeros(n);
   const cache = new Map<string, { park: Stereo; booth: Stereo; t0: number }>();
   const fadeS = Math.round(0.012 * SR);
-  CUTS.forEach((c, i) => {
+  cuts.forEach((c, i) => {
     if (c.black || (c.park == null && c.booth == null)) return;
     const m = shots.get(c.shot);
     if (!m?.audio) return;
@@ -121,6 +125,22 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
       }
     }
   });
+  // continuous booth tracks over several cuts (the climax's call)
+  for (const v of voice) {
+    const m = shots.get(v.shot);
+    const file = path.join(shotDir(v.shot, rs), 'booth.wav');
+    if (!m?.audio || !fs.existsSync(file)) continue;
+    const src = readWav(file).ch as Stereo;
+    const from = Math.round((m.audio.t0 + v.in) * SR), at0 = Math.round(v.at * SR), len = Math.round(v.dur * SR), fl = Math.round(0.06 * SR);
+    const g = dbGain(v.db);
+    for (let k = 0; k < len; k++) {
+      const sI = from + k, d = at0 + k;
+      if (sI < 0 || sI >= src[0].length || d < 0 || d >= n) continue;
+      const env = Math.min(1, k / fl, (len - k) / fl);
+      booth[0][d] += src[0][sI] * g * env;
+      booth[1][d] += src[1][sI] * g * env;
+    }
+  }
   const plan = musicPlan();
   const mus = renderMusic(plan);
   const band = zeros(n);
