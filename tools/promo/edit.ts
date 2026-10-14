@@ -59,7 +59,7 @@ export const CUTS: Cut[] = [
   { shot: 'triple-play', in: 0.8, beats: 4, park: -4, booth: null },
   { shot: 'steal-third', in: 1.0, beats: 3, park: -4, booth: null },
   { shot: 'double-play', in: 0.6, beats: 3, park: -4, booth: null },
-  { shot: 'face-card', in: 0.8, beats: 4, park: -6, booth: null },
+  { shot: 'face-card', in: 0.6, beats: 4, park: -6, booth: null },
   { shot: 'clock-park', in: 2.6, beats: 3, park: -4, booth: null },
   { shot: 'clock-violation', in: 3.6, anchor: { shot: 'umpire', offset: 0.1, after: 2 }, beats: 3, park: -4, booth: null },
   { shot: 'inside-park', in: 14.4, beats: 4, park: -3, booth: null },

@@ -109,7 +109,14 @@ export const SHOTS: PromoShot[] = [
   { id: 'clock-violation', note: 'a pitch-clock violation on the batter: the umpire\'s signal and the HUD call-out', seed: 197, tod: 'dusk', start: 4021.5, anchor: 4025.3, dur: 7, hud: true, camera: director(false) },
   { id: 'pickoff', note: 'pickoff at night, the broadcast', seed: 157, tod: 'night', start: 3055.5, anchor: 3062.1, dur: 12, hud: true, camera: director(true) },
   { id: 'inside-park', note: 'inside-the-park home run: the broadcast', seed: 48, tod: 'day', start: 2444.5, anchor: 2460.97, dur: 22, hud: true, camera: director(true) },
-  { id: 'face-card', note: 'B-roll face close-up with the name card (20-80 ratings)', seed: ROB.seed, tod: 'day', start: 215.2, anchor: 216, dur: 4, hud: true, camera: director(false, true) },
+  {
+    id: 'face-card', note: 'the pitcher in close-up with the HUD\'s name card (20-80 ratings, today\'s line, the arsenal)', seed: ROB.seed, tod: 'day', start: 215.2, anchor: 216, dur: 4, hud: true,
+    card: { at: 0.15, kind: 'faceCloseup', subject: 'pitcher', hold: 3.6 },
+    camera: path([
+      { t: 0, pos: { at: 'face:pitcher', off: [0.55, 0.06, 3.4], local: true, lag: 0.4 }, look: at('face:pitcher', [0, -0.05, 0], 0.25), fov: 10, aperture: 1.1 },
+      { t: 4, pos: { at: 'face:pitcher', off: [0.4, 0.04, 3.0], local: true, lag: 0.4 }, look: at('face:pitcher', [0, -0.05, 0], 0.25), fov: 9, aperture: 1.1 },
+    ]),
+  },
   // ---- runs on a phone: the same game in a phone-portrait viewport (touch, the mobile HUD layout) ----------------------------------
   { id: 'phone-portrait', note: 'the broadcast on a phone: portrait viewport, mobile HUD', seed: WALKOFF.seed, tod: 'night', start: WALKOFF.windup - 1.5, anchor: WALKOFF.contact, dur: 8, hud: true, viewport: { w: 412, h: 892, dpr: 2.625 }, touch: true, audio: false, camera: director(false) },
   // ---- climax: the walk-off (night) ------------------------------------------------------------------------------------------

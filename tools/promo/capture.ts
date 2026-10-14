@@ -68,10 +68,16 @@ export interface ShotManifest {
   ms: number;
 }
 
+/**
+ * The promo runtime's behaviour revision: bump it when a change to `src/promo/` changes what a capture looks or sounds like (its own chunk
+ * is left out of the build key, so a change that only adds information, like a label, does not re-shoot everything).
+ */
+export const RUNTIME_REV = 1;
+
 export function buildKey(dist = path.join(ROOT, 'dist')): string {
   const b = path.join(dist, 'bundle');
-  const names = fs.existsSync(b) ? fs.readdirSync(b).filter((f) => /\.(js|css)$/.test(f)).sort() : [];
-  return crypto.createHash('sha1').update(names.join(',')).digest('hex').slice(0, 12);
+  const names = fs.existsSync(b) ? fs.readdirSync(b).filter((f) => /\.(js|css)$/.test(f) && !/^(runtime|cameraPath|clock)-/.test(f)).sort() : [];
+  return crypto.createHash('sha1').update(names.join(',') + `|promo-runtime-${RUNTIME_REV}`).digest('hex').slice(0, 12);
 }
 
 export function shotHash(shot: PromoShot, rs: RenderSettings): string {

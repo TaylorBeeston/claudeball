@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { build, startPreview, systemLoad } from '../perf/lib';
-import { PROMO_DIR, buildKey, cached, captureShot, openChrome, shotDir, type RenderSettings, type ShotManifest } from './capture';
+import { PROMO_DIR, buildKey, cached, captureShot, openChrome, shotDir, shotHash, type RenderSettings, type ShotManifest } from './capture';
 import { SHOTS, VSHOTS } from './shots';
 import { buildPicture, encode, fillOverlay, layout, mix, overlayList } from './assemble';
 import { BEAT, CUTS, VCUTS, VOICE, cutTimes, resolveIn, voiceIn, type Cut, type VoiceTrack } from './edit';
@@ -62,6 +62,19 @@ const log = (s: string) => {
 async function capture(rs: RenderSettings): Promise<Map<string, ShotManifest>> {
   const only = opt('only', '').split(',').filter(Boolean);
   const all = withKeep(shotList());
+  // --adopt KEY: shots captured under an earlier build key (a change known not to touch the picture or sound, e.g. tooling only) are
+  // re-stamped with the current one instead of being re-shot
+  const adopt = opt('adopt', '');
+  if (adopt)
+    for (const s of all) {
+      const f = path.join(shotDir(s.id, rs), 'manifest.json');
+      if (!fs.existsSync(f)) continue;
+      const m = JSON.parse(fs.readFileSync(f, 'utf8')) as ShotManifest;
+      if (m.hash !== shotHash(s, { ...rs, buildKey: adopt })) continue;
+      m.hash = shotHash(s, rs);
+      fs.writeFileSync(f, JSON.stringify(m, null, 1));
+      log(`[render] adopted ${s.id} from build ${adopt}`);
+    }
   const todo = all.filter((s) => (!only.length || only.includes(s.id)) && (flag('force') || !cached(s, rs)));
   const out = new Map<string, ShotManifest>();
   for (const s of all) {
@@ -145,6 +158,9 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
       out.push({ k: 'quote', t0, t1: Math.min(starts[i] + dur + 2.5, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4)), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
     }
   });
+  // one caption at a time: a line ends where the next begins
+  const q = out.filter((o): o is Extract<Overlay, { k: 'quote' }> => o.k === 'quote').sort((a, b) => a.t0 - b.t0);
+  for (let i = 0; i + 1 < q.length; i++) q[i].t1 = Math.min(q[i].t1, q[i + 1].t0 - 0.05);
   return out;
 }
 
@@ -160,7 +176,7 @@ function teaser(log: (s: string) => void) {
   const out = path.join(PROMO_DIR, 'teaser.webm');
   const vf = 'scale=1280:720:flags=lanczos,fps=30';
   for (const pass of [1, 2])
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from), '-t', '9', '-i', src, '-vf', vf, '-an', '-c:v', 'libvpx-vp9', '-b:v', '2300k', '-maxrate', '3000k', '-bufsize', '4600k', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '1', '-pass', String(pass), '-passlogfile', path.join(PROMO_DIR, 'teaser-pass'), ...(pass === 1 ? ['-f', 'null', '/dev/null'] : [out])]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from), '-t', '9', '-i', src, '-vf', vf, '-an', '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libvpx-vp9', '-b:v', '2300k', '-maxrate', '3000k', '-bufsize', '4600k', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '1', '-pass', String(pass), '-passlogfile', path.join(PROMO_DIR, 'teaser-pass'), ...(pass === 1 ? ['-f', 'null', '/dev/null'] : [out])]);
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from + 8.2), '-i', src, '-frames:v', '1', '-vf', 'scale=1280:720', '-q:v', '3', path.join(PROMO_DIR, 'teaser.jpg')]);
   log(`[teaser] ${out} (${(fs.statSync(out).size / 1e6).toFixed(2)} MB) + teaser.jpg`);
 }
@@ -216,13 +232,14 @@ async function main() {
   }
   if (stages.includes('mix')) mix(rs, shots, out, log, cutList(), voiceList());
   const pic = stages.includes('picture') ? buildPicture(rs, shots, L, out, log, cutList()) : path.join(out, 'pic');
-  if (stages.includes('teaser')) teaser(log);
   if (stages.includes('snippets')) snippets(out, log);
   if (stages.includes('encode')) {
     const file = path.join(PROMO_DIR, vertical ? (flag('preview') ? 'promo-preview-vertical-540x960.mp4' : 'promo-9x16-1080x1920.mp4') : flag('preview') ? 'promo-preview-540p30.mp4' : flag('4k') ? 'promo-16x9-2160p60.mp4' : 'promo-16x9-1080p60.mp4');
     encode(L, pic, ovl, path.join(out, 'master.wav'), file, { bitrate: flag('preview') ? '6M' : flag('4k') ? '60M' : '20M', preview: flag('preview') }, log);
     contact(file, file.replace(/\.mp4$/, '-contact.jpg'), log);
   }
+  // (from the encoded 1080p master: after the encode)
+  if (stages.includes('teaser') && !vertical && !flag('preview') && !flag('4k')) teaser(log);
 }
 
 main().catch((e) => {

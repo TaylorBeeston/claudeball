@@ -238,10 +238,11 @@ export function encode(L: Layout, pic: string, ovl: string, wav: string, file: s
     '-framerate', String(L.fps), '-i', path.join(pic, '%05d.jpg'),
     '-framerate', String(L.fps), '-i', path.join(ovl, '%05d.png'),
     '-i', wav,
-    '-filter_complex', `[0:v][1:v]overlay=format=auto,noise=alls=${grain}:allf=t,format=yuv420p[v]`,
+    // (the frames are full-range sRGB JPEG / PNG: convert to limited-range BT.709, as players expect, and say so in the stream)
+    '-filter_complex', `[0:v][1:v]overlay=format=auto,noise=alls=${grain}:allf=t,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v]`,
     '-map', '[v]', '-map', '2:a', '-af', `volume=${trim.toFixed(2)}dB`,
     '-c:v', 'libx264', '-profile:v', 'high', '-preset', opts.preview ? 'veryfast' : 'slow', '-b:v', opts.bitrate, '-maxrate', opts.bitrate.replace(/\d+/, (d) => String(Math.round(+d * 1.25))), '-bufsize', opts.bitrate.replace(/\d+/, (d) => String(+d * 2)),
-    '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-movflags', '+faststart',
     '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
     '-shortest', file,
   ];

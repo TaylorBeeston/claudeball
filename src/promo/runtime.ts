@@ -38,6 +38,10 @@ export interface ShotSetup {
   randomSeed: number;
   /** chatter level for the booth */
   chatter?: 'low' | 'normal' | 'high';
+  /** show the HUD's lower-third card for a player (the one the director's B-roll shows) at output second `at`: kind = the B-roll kind */
+  card?: { at: number; kind: string; subject: string; hold: number };
+  /** QA: a script run with `engine` once the shot is set up (hide a mesh, change a material: A/B one cause) */
+  debugEval?: string;
 }
 
 interface FrameInfo {
@@ -254,6 +258,7 @@ export class PromoRuntime {
     }
     console.log(`[promo] pre-roll done at ${e.liveState.time.toFixed(2)}`);
     if (this.audio) this.audio.t0 = this.audio.ctx.currentTime;
+    if (s.debugEval) new Function('engine', s.debugEval)(e);
     this.syncAnimations();
     this.firstCut = true;
     const gl = e.renderer.getContext();
@@ -362,6 +367,10 @@ export class PromoRuntime {
     e.sim.speed = speed;
     this.clock.advance(dt * 1000);
     this.applyCamera(e.liveState.time);
+    if (s.card && this.frameIndex === Math.round(s.card.at * s.fps)) {
+      const who = e.liveState.players.find((p) => p.id === s.card!.subject || p.role === s.card!.subject);
+      if (who) e.hud?.subjectShot({ kind: s.card.kind, subject: who.id, hold: s.card.hold }, e.liveState);
+    }
     e.tick(dt, true);
     const image = grab ? e.renderer.domElement.toDataURL(grab.type, grab.quality) : undefined;
     this.syncAnimations();
@@ -369,8 +378,10 @@ export class PromoRuntime {
       await this.waitVoices();
       await this.audio.to(this.audio.t0 + (this.frameIndex + 1) * dt);
     }
-    const d = e.director as unknown as { shot: string; hr?: { stage: string } | null };
-    const info: FrameInfo & { image?: string } = { i: this.frameIndex, sim: +e.liveState.time.toFixed(4), speed, shot: d.shot + (d.hr ? '-' + d.hr.stage : ''), replay: d.shot === 'replay', events: this.events, image, ...(this.qa && this.frameIndex % this.qa === 0 ? { occ: this.occlusion() } : {}) };
+    const d = e.director as unknown as { shot: string; hr?: { stage: string } | null; broll?: { shot?: { kind?: string } } | null };
+    // the shot as the edit can anchor on it: `replay`, `hrwall-wall`, `broll-faceCloseup` ...
+    const label = d.shot + (d.hr ? '-' + d.hr.stage : '') + (d.shot === 'broll' && d.broll?.shot?.kind ? '-' + d.broll.shot.kind : '');
+    const info: FrameInfo & { image?: string } = { i: this.frameIndex, sim: +e.liveState.time.toFixed(4), speed, shot: label, replay: d.shot === 'replay', events: this.events, image, ...(this.qa && this.frameIndex % this.qa === 0 ? { occ: this.occlusion() } : {}) };
     this.frameIndex++;
     return info;
   }
