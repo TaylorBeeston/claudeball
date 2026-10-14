@@ -8,7 +8,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { EXTMeshoptCompression, KHRMeshQuantization, KHRTextureBasisu, KHRTextureTransform, EXTTextureWebP } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { baseCamera, blocker, hrBeyond, hrWallCamera, segmentHitsBox, type Box } from '../sightLines';
+import { baseCamera, blocker, clearestCamera, hrBeyond, hrWallCamera, segmentHitsBox, type Box } from '../sightLines';
 
 const root = new URL('../../../', import.meta.url).pathname;
 const boxes: Box[] = [];
@@ -81,5 +81,19 @@ describe('sight lines', () => {
       }
     }
     expect(n).toBeGreaterThan(60);
+  });
+
+  it('the close-play replay camera moves off a line an umpire stands on (promo jank log P7)', () => {
+    const bag = { x: -19.4, y: 0.9, z: 19.4 };
+    const first = { x: -25.9, y: 1.25, z: 13.9 }, other = { x: -25.9, y: 1.25, z: 24.9 };
+    // the umpire half-way along the first camera's sight line for the whole replay
+    const ump = [{ x: -22.6, z: 16.7 }];
+    const r = clearestCamera([first, other], bag, [ump, ump, ump]);
+    expect(r.index).toBe(1);
+    expect(r.clearance).toBeGreaterThan(2);
+    // nobody in the way: the preferred camera stays
+    expect(clearestCamera([first, other], bag, [[{ x: -30, z: 30 }]]).index).toBe(0);
+    // someone at the bag is part of the play, not a blocker
+    expect(clearestCamera([first, other], bag, [[{ x: -19.6, z: 19.2 }]]).index).toBe(0);
   });
 });

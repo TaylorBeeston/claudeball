@@ -85,3 +85,30 @@ export function hrBeyond(fence: P3, dir: { x: number; z: number }, boxes: readon
   for (const b of boxes) if (p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z && p.y <= b.max.y) p.y = b.max.y + 2;
   return p;
 }
+
+/** horizontal distance from point p to the segment a-b (the part of it from `from` to `to` of its length) */
+function distToSegmentXZ(p: { x: number; z: number }, a: P3, b: P3, from = 0, to = 1): number {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const l2 = dx * dx + dz * dz || 1;
+  const u = Math.min(to, Math.max(from, ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2));
+  return Math.hypot(a.x + dx * u - p.x, a.z + dz * u - p.z);
+}
+
+/**
+ * Of the candidate cameras, the one whose view of `focus` stays clearest of the people who are not the subject (the base umpire,
+ * the base coach) over a whole replay: `blockers[f]` are their positions in frame f. The first candidate wins when it keeps them
+ * `enough` metres off the sight line (the near 15 % and the last 1.5 m before the subject do not count: someone right at the bag
+ * is part of the play, someone beside the lens is out of frame).
+ */
+export function clearestCamera(candidates: P3[], focus: P3, blockers: { x: number; z: number }[][], enough = 0.9): { cam: P3; clearance: number; index: number } {
+  let best = { cam: candidates[0], clearance: -1, index: 0 };
+  candidates.forEach((cam, index) => {
+    const len = Math.hypot(focus.x - cam.x, focus.z - cam.z) || 1;
+    const to = Math.max(0.15, 1 - 1.5 / len);
+    let worst = Infinity;
+    for (const fr of blockers) for (const p of fr) worst = Math.min(worst, distToSegmentXZ(p, cam, focus, 0.15, to));
+    if (index === 0 && worst >= enough) best = { cam, clearance: worst, index };
+    else if (best.clearance < enough && worst > best.clearance) best = { cam, clearance: worst, index };
+  });
+  return best;
+}
