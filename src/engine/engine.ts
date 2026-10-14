@@ -45,6 +45,7 @@ import { buildCrowdAtlas, loadCrowdAtlas, type AtlasPuppet, type CrowdAtlas } fr
 import { Box3, Mesh, MeshStandardMaterial, CircleGeometry } from 'three';
 import type { GameState } from './types';
 import { perf } from './perf';
+import { Fireworks } from './fireworks';
 import { FLAGS } from './flags';
 
 export interface EngineOptions {
@@ -104,6 +105,8 @@ export class Engine {
   private gbufferHidden: Object3D[] = [];
   /** the pitch clocks on the backstop and the batter's eye (one draw call) */
   private clocks = new ParkClocks();
+  /** the home team's home-run fireworks over centre field (one draw call, hidden when none are in the air) */
+  private fireworks = new Fireworks();
   private sbTimer = 0;
   private hudTimer = 0;
   private landed = false;
@@ -160,6 +163,8 @@ export class Engine {
     this.gbufferHidden.push(this.lights.group);
     this.scene.add(this.contact.mesh);
     this.gbufferHidden.push(this.contact.mesh);
+    this.scene.add(this.fireworks.points);
+    this.gbufferHidden.push(this.fireworks.points);
     this.gbufferHidden.push(this.env.stars);
 
     this.sim = new SimDriver(opts.seed ?? 20260928, opts.forceMock, opts.simConfig);
@@ -214,6 +219,8 @@ export class Engine {
       if (te.event.type === 'tag' && te.event.fielderId) this.players.noteTag(te.event.fielderId, te.event.result, te.simTime, te.event.runnerId);
       if (te.event.type === 'run') this.stadium.crowd.excite(1);
       if (te.event.type === 'robbed_hr') this.stadium.crowd.excite(0.8); // the groan / gasp
+      // the home team homers: the volley the sound plays too (fireworksPlan.ts)
+      if (te.event.type === 'homerun' && this.sim.state.half === 'bottom') this.fireworks.launch(Math.round(te.simTime * 10));
       if (te.event.type === 'out') this.stadium.crowd.excite(0.25);
     });
     this.sim.on((te) => {
@@ -736,6 +743,7 @@ export class Engine {
       if (state.inning >= 5 && !this.batted && !out.replaying && !this.sim.paused && fract(Math.sin(Math.floor(state.time * 3.3) * 12.9898) * 43758.5453) < 0.3 / 240) this.stadium.crowd.startWave();
     }
     this.clocks.update(state, dt);
+    this.fireworks.update(this.sim.paused ? 0 : dt, this.camera, this.renderer.domElement.height);
     if (perf.on) perf.lap('ball+props');
     this.hud?.update(state, dt);
     this.hud?.showReplay(out.replaying, state.half === 'top' ? state.teams.home.color : state.teams.away.color, out.label);

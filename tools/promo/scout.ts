@@ -77,10 +77,9 @@ export function scoutGame(seed: number, tempo: 'quick' | 'standard' | 'broadcast
         half = e.half;
         break;
       case 'windup':
-        if (!play.some((x) => x.type === 'contact')) {
-          playStart = e.time;
-          play = [];
-        }
+        // a new pitch starts a new play (a foul's contact must not carry over to the next pitch)
+        playStart = e.time;
+        play = [];
         break;
       case 'pitchReleased':
         lastPitch = { mph: e.mph, type: e.pitchType };

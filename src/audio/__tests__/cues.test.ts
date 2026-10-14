@@ -119,7 +119,7 @@ describe('big moments', () => {
     const home = m(ev, ctx({ half: 'bottom' }));
     expect(home.some((c) => c.kind === 'crowd' && c.id === 'roar_big' && (c.gain ?? 1) >= 1)).toBe(true);
     expect(sfx(home, 'seat_thump')).toHaveLength(1);
-    expect(sfx(home, 'firework')).toHaveLength(1);
+    expect(sfx(home, 'firework')).toHaveLength(3); // the volley the engine draws (fireworksPlan.ts)
     expect(home.some((c) => c.kind === 'organ' && c.id === 'hr_fanfare')).toBe(true);
     expect(says(home).some((s) => s.role === 'pbp' || s.role === 'color')).toBe(false); // the broadcast booth (src/audio/broadcast) calls it, not the cue mapper
     const away = m(ev, ctx({ half: 'top' }));

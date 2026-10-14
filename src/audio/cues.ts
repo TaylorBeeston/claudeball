@@ -7,6 +7,7 @@
 import { foulLanding } from './field';
 import { PLACES } from './venue/mics';
 import type { Cue, Importance, MapCtx, RawEvent, SpeakRole, Vec3 } from './types';
+import { FIREWORK_VOLLEY } from '../engine/fireworksPlan';
 
 const MPH = 0.44704;
 const FT = 3.28084;
@@ -489,7 +490,8 @@ export class CueMapper {
         out.push(cue.sfx('rail_thump', 1, { pos: hb ? PLACES.dugoutHome : PLACES.dugoutAway, gain: 0.7, delay: 0.4 }));
         if (hb) {
           out.push({ kind: 'organ', id: 'hr_fanfare', imp: 3, delay: 1.2, gain: 1 });
-          out.push(cue.sfx('firework', 3, { pos: { x: 0, y: 60, z: 130 }, gain: 0.6, delay: 1.6 }));
+          // the volley the engine draws (fireworksPlan.ts): one burst per shell, where and when it bursts
+          for (const sh of FIREWORK_VOLLEY) out.push(cue.sfx('firework', 3, { pos: sh.burst, gain: sh === FIREWORK_VOLLEY[0] ? 0.6 : 0.45, delay: sh.delay }));
         } else out.push(cue.crowd('boo', 2, 0.35, 0.6));
         this.spokenPlay = true;
         const who = b ? trimName(b.name) : 'The batter';
