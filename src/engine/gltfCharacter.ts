@@ -289,6 +289,9 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     if (name === 'stubble') {
       m.transparent = true;
       m.depthWrite = false;
+      // fades out over its last 3 cm (it ended in a hard line from the sideburn to the neck: promo jank log P9), a little lighter overall
+      Object.assign((m.defines ??= {}), { CB_FEATHER: '0.03', CB_FEATHER_SMOOTH: '' });
+      m.opacity *= 0.8;
       shadeHair(m, false, false);
     }
     if (name === 'hair_beard') shadeHair(m, true, false);
@@ -297,6 +300,7 @@ function tinted(base: Material, key: string, color: string): MeshStandardMateria
     if (fabric) fabricSheenColor(m as MeshPhysicalMaterial, m.color);
     // the fibre texture is dark on top of the hair colour: a beard read as a black mask; lift it toward the scalp hair's value
     if (name === 'hair_beard') m.color.multiplyScalar(1.6);
+    if (name === 'stubble') (m as MeshStandardMaterial).roughness = 1; // matte: no sheen on a film
     reg(m);
     matCache.set(key, m);
   }
