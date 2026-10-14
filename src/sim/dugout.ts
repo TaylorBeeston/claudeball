@@ -174,7 +174,8 @@ export function benchReact(w: World, e: GameEvent): void {
   }
   if (!team) return;
   for (const p of team.players.values()) {
-    if (p.dug !== 'bench' || p.route.length || seatStands(p.seat) || w.propRng.next() > share) continue;
+    // (the draw comes before the standing check: the prop stream stays the same however full the bench is)
+    if (p.dug !== 'bench' || p.route.length || w.propRng.next() > share || seatStands(p.seat)) continue;
     setAnim(w, p, hint, hint === 'bench_stand_up' ? 3.0 : 2.2);
   }
 }
