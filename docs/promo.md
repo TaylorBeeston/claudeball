@@ -28,6 +28,8 @@ reproduces the headless scout; the capture is the frame that was ticked).
 
 ## How the capture works
 
+Chrome runs **headless on the GPU** (`--headless=new`, Vulkan ANGLE on the RTX 4090: check the `ANGLE (NVIDIA ...)` line in the log); a headed
+window that the desktop hides stops getting frames and its screenshots stall (`CB_PROMO_HEADED=1` brings the window back).
 `?promo&autostart&noaudio` loads `src/promo/runtime.ts` (a lazy chunk, like the benchmark). It stops the engine's own loop and installs a
 **virtual clock** (`performance.now`, `Date.now`, timers, `requestAnimationFrame` only move when the driver advances them), seeds
 `Math.random`, fast-forwards the sim to the shot (unrendered), attaches the game's audio controller to an **OfflineAudioContext** (six
@@ -35,7 +37,12 @@ channels: the game's own broadcast mix, the park before the booth's duck, the bo
 Chrome profile) and waits for every line to be generated before time moves on, then plays a pre-roll and the shot. Per frame:
 camera (a scripted path or the broadcast director), the slow-motion ramp (`sim.speed`, with the sim stepped at 1/240 s for ultra slow
 motion), timers, `engine.tick`, HUD CSS animations moved to the virtual time, the audio rendered up to the frame's time, and the canvas
-read in the same task (~5 ms). Shots with the HUD need a page screenshot (~150 ms).
+read in the same task (~5 ms). Shots with the HUD need a page screenshot (~17 ms headless).
+
+**Takes.** The game is the same at any frame rate (the director's cuts land within a frame of each other at 30 and 60 fps), but the booth's
+*wording* changes from take to take, so the edit never pins a line by its text: a voice track is anchored on its event (the first booth
+line after the `homerun`), and cuts into a broadcast shot are anchored on what it shows (the first `replay`, `cutaway-crowd`, `homeplate`
+frame). Full-size renders save only the frames the edit uses (+-1 s) of shots without anchors; a preview saves everything.
 
 ## Storyboard (120 BPM, a bar = 2 s, 74 s)
 
@@ -43,7 +50,7 @@ read in the same task (~5 ms). Shots with the HUD need a page screenshot (~150 m
 |---|---|---|---|---|
 | 0-14 | cold open | night aerial orbit; crane down to the pitcher under the lights; the walk-off hitter's face; black | `CLAUDEBALL` slams in (gold glow, the ball spins to rest), "Two AIs. One ballgame. / Nothing scripted." | crowd murmur, pad + organ swell, heartbeat kick, boom + reverse crash on the title |
 | 14-30 | build: what's real | a 100.6 mph four-seamer tracked in slow motion; the mitt; the broadcast's strikeout; 123.8 mph contact in ultra slow motion; the ball into the upper deck; a home run robbed at the wall | EVERY PITCH IS PHYSICS · 100.6 MPH · REAL BAT–BALL CONTACT · 123.8 MPH · FIELDERS READ THE BALL | drums enter, bass, organ chops, whooshes on cuts, riser into the drop |
-| 30-50 | drop: the montage | bang-bang at first (0.02 s) with the CLOSE PLAY replay; a 5-4-3 triple play; a steal; a double play; a face close-up with the ratings card; a pickoff; an inside-the-park home run; the home-run broadcast (wall, crowd, fireworks) | 0.02 S · TRIPLE PLAY · EVERY PLAYER RATED · A BROADCAST THAT CALLS ITSELF · A LIVING BALLPARK | impact + flash, full band, organ lead, brass stabs |
+| 30-50 | drop: the montage | bang-bang at first (0.02 s) with the CLOSE PLAY replay; a 5-4-3 triple play; a steal; a double play; a face close-up with the ratings card; the park's pitch clock running into the red, a violation on the HUD; an inside-the-park home run; the crowd; the plate | 0.02 S · TRIPLE PLAY · EVERY PLAYER RATED · PITCH CLOCK · A BROADCAST THAT CALLS ITSELF · A LIVING BALLPARK | impact + flash, full band, organ lead, brass stabs |
 | 50-54 | the phone | the same game in a phone-portrait viewport (mobile HUD) inside a phone | RUNS IN YOUR BROWSER | breakdown |
 | 54-66 | the walk-off | bottom of the 9th, tied: the pitch from centre field; contact in ultra slow motion (the band drops out); the ball over the wall; fireworks; the plate | the booth's call, as captured | boom, silence, impact on the flight, the crowd and the booth, full band |
 | 66-74 | end card | logo, the URL, open source / MIT / GitHub, Built with Claude, credits | | organ chord, tail |
@@ -65,11 +72,13 @@ The shots are in `tools/promo/shots.ts` (seed, time of day, sim time, camera pat
 | bomb-flight | 40 | day | the ball into the upper deck | behind the plate, following the ball, 32 -> 20 deg |
 | robbed | 35 | day | the right fielder robs a home run (leap 228.404) | inside the wall, following the fielder, x0.3 at the leap |
 | bang-first | 197 | dusk | out at first by 0.02 s on a throw from right (4861.683) | director + HUD (the CLOSE PLAY replay) |
+| clock-park | 162 | night | the pitcher sets with 3.6 s left on the clock (236.35) | long lens over the pitcher's shoulder: batter, catcher and the backstop clocks |
+| clock-violation | 197 | dusk | a pitch-clock violation on the batter (4025.3) | director + HUD (the call-out and the umpire's signal) |
 | bomb-broadcast | 40 | dusk | the home-run sequence + fireworks | director + HUD |
 | triple-play | 23 | dusk | 5-4-3 triple play (441.4) | high behind the plate |
 | steal-third | 4 | day | steal of third (493.95) | low at third base |
 | double-play | 4 | day | the pivot at second (1763.67) | low behind second |
-| pickoff | 157 | night | pickoff (3062.1) | director + HUD |
+| pickoff | 157 | night | pickoff (3062.1) | director + HUD (not in the cut) |
 | inside-park | 48 | day | inside-the-park home run (2460.97) | director + HUD |
 | face-card | 35 | day | B-roll face close-up with the card | director (B-roll) + HUD |
 | phone-portrait | 162 | night | the walk-off pitch | director + mobile HUD, 9:16 viewport |
@@ -93,5 +102,7 @@ true-peak limiter at -1 dBTP; stems: `music.wav` (band), `fx.wav`, `game.wav`, `
 
 - [x] scout, capture runtime, gates, QA sweeps, first jank fixes (see `docs/promo-jank-log.md`)
 - [x] shot list v1, edit v1, typography, music, mix, assembly
-- [ ] first preview render and review; camera iteration (pitch-flight, pitch-mitt need better angles)
-- [ ] 1080p60 master, 4K, 9:16 vertical cut, teaser webm, contact sheet
+- [x] preview renders and reviews (v1-v4), camera iteration, report 1
+- [x] constraint suite (vitest, typecheck, Pages build, sanity --prod, perf:check), 30 / 60 fps take check
+- [ ] 1080p60 master (+ teaser, snippets, contact sheet) and a full-resolution check of the slow-motion contact frames
+- [ ] 4K60 master, 9:16 vertical cut (preview first), README teaser commit
