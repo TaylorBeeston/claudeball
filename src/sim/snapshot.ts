@@ -1,5 +1,5 @@
 import { groundHeight } from './field';
-import { BENCH_SIT_LIFT, dugoutFloorY } from './venue';
+import { BENCH_SIT_LIFT, dugoutFloorY, seatStands } from './venue';
 import { umpStance } from './umpires';
 import { teamStats } from './stats';
 import { routineDetail, ticOf } from './tempo';
@@ -22,7 +22,7 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
   if (w.tick < p.animUntil) return { anim: p.anim, t: Math.min(1, (w.tick - p.animStart) / Math.max(1, p.animDur)) };
   if (p.anim === 'celebrate' && w.gameOver) return { anim: 'celebrate', t: 0 };
   const sp = Math.hypot(p.vx, p.vz);
-  if (p.dug === 'bench' && !p.route.length) return { anim: 'bench_sit', t: 0 };
+  if (p.dug === 'bench' && !p.route.length) return { anim: seatStands(p.seat) ? 'idle' : 'bench_sit', t: 0 };
   if (p.dug === 'deck' && sp < 0.3) return { anim: 'ondeck_ready', t: 0 };
   if (p.gait === 'walk' && sp > 0.25) return { anim: 'walk', t: 0 };
   if (sp > 1.2) return { anim: p.gait === 'trot' ? 'trot' : p.gait === 'turn' ? 'run_turn' : 'run', t: 0 };
