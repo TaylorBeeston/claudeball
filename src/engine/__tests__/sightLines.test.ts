@@ -95,5 +95,8 @@ describe('sight lines', () => {
     expect(clearestCamera([first, other], bag, [[{ x: -30, z: 30 }]]).index).toBe(0);
     // someone at the bag is part of the play, not a blocker
     expect(clearestCamera([first, other], bag, [[{ x: -19.6, z: 19.2 }]]).index).toBe(0);
+    // the runner going past the lens (not a side figure, but right beside the camera) moves it too; far from the lens he is the play
+    expect(clearestCamera([first, other], bag, [[{ x: -24.9, z: 14.9, side: false }]]).index).toBe(1);
+    expect(clearestCamera([first, other], bag, [[{ x: -20.6, z: 18.3, side: false }]]).index).toBe(0);
   });
 });

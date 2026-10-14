@@ -831,12 +831,14 @@ export class CameraDirector {
     const out = c.pos.clone().sub(centre).setY(0);
     if (out.lengthSq() < 1) out.set(0, 0, -1);
     out.normalize();
-    const side = new Vector3(-out.z, 0, out.x);
+    const across = new Vector3(-out.z, 0, out.x);
     const focus = c.pos.clone().setY(0.9);
     // the people who are not the play (umpires, base coaches) must not stand between the low camera and the bag: of a few
     // placements round the base, the one that stays clearest of them through the whole replay (promo jank log P7)
-    const blockers = frames.filter((_, i) => i % 6 === 0).map((f) => f.players.filter((p) => p.role === 'umpire' || p.role === 'coach' || p.role === 'coach1b' || p.role === 'coach3b').map((p) => ({ x: p.pos.x, z: p.pos.z })));
-    const ring = (o: number, s: number, y: number) => c.pos.clone().addScaledVector(out, o).addScaledVector(side, s).setY(y);
+    const side = (r: string) => r === 'umpire' || r === 'coach' || r === 'coach1b' || r === 'coach3b';
+    const onField = (r: string) => side(r) || r === 'runner' || r === 'batter' || isFielderRole(r as never) || r === 'pitcher' || r === 'catcher';
+    const blockers = frames.filter((_, i) => i % 6 === 0).map((f) => f.players.filter((p) => onField(p.role)).map((p) => ({ x: p.pos.x, z: p.pos.z, side: side(p.role) })));
+    const ring = (o: number, s: number, y: number) => c.pos.clone().addScaledVector(out, o).addScaledVector(across, s).setY(y);
     const pick = (list: Vector3[]) => {
       const r = clearestCamera(list, focus, blockers);
       return new Vector3(r.cam.x, r.cam.y, r.cam.z);

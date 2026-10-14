@@ -95,18 +95,19 @@ function distToSegmentXZ(p: { x: number; z: number }, a: P3, b: P3, from = 0, to
 }
 
 /**
- * Of the candidate cameras, the one whose view of `focus` stays clearest of the people who are not the subject (the base umpire,
- * the base coach) over a whole replay: `blockers[f]` are their positions in frame f. The first candidate wins when it keeps them
- * `enough` metres off the sight line (the near 15 % and the last 1.5 m before the subject do not count: someone right at the bag
- * is part of the play, someone beside the lens is out of frame).
+ * Of the candidate cameras, the one whose view of `focus` stays clearest over a whole replay: `blockers[f]` are the people in frame f.
+ * The people who are not the play (`side: true`: the base umpire, the base coach) count along the whole sight line, except the near
+ * 15 % and the last 1.5 m before the subject (someone right at the bag is part of the play, someone beside the lens is out of frame);
+ * everybody else (the runner, the fielders) only near the lens, in its first 45 %, where they would fill the frame. The first candidate
+ * wins when it keeps them `enough` metres off the line.
  */
-export function clearestCamera(candidates: P3[], focus: P3, blockers: { x: number; z: number }[][], enough = 0.9): { cam: P3; clearance: number; index: number } {
+export function clearestCamera(candidates: P3[], focus: P3, blockers: { x: number; z: number; side?: boolean }[][], enough = 0.9): { cam: P3; clearance: number; index: number } {
   let best = { cam: candidates[0], clearance: -1, index: 0 };
   candidates.forEach((cam, index) => {
     const len = Math.hypot(focus.x - cam.x, focus.z - cam.z) || 1;
     const to = Math.max(0.15, 1 - 1.5 / len);
     let worst = Infinity;
-    for (const fr of blockers) for (const p of fr) worst = Math.min(worst, distToSegmentXZ(p, cam, focus, 0.15, to));
+    for (const fr of blockers) for (const p of fr) worst = Math.min(worst, p.side === false ? distToSegmentXZ(p, cam, focus, 0, 0.45) : distToSegmentXZ(p, cam, focus, 0.15, to));
     if (index === 0 && worst >= enough) best = { cam, clearance: worst, index };
     else if (best.clearance < enough && worst > best.clearance) best = { cam, clearance: worst, index };
   });
