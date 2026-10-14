@@ -66,10 +66,10 @@ export const SHOTS: PromoShot[] = [
   { id: 'strikeout-hud', note: 'the broadcast: pitch cam, tracker, strike three', seed: HEAT.seed, tod: 'day', start: HEAT.windup - 0.6, anchor: HEAT.catch, dur: 4.5, hud: true, camera: director(false) },
   {
     id: 'contact-bomb', note: 'ultra slow motion: bat meets ball, 123.8 mph off the bat', seed: BOMB.seed, tod: 'day', start: BOMB.contact - 0.6, anchor: BOMB.contact, dur: 4.5, simDt: 1 / 240,
-    ramp: [{ sim: -0.6, speed: 1 }, { sim: -0.16, speed: 0.06 }, { sim: 0.06, speed: 0.06 }, { sim: 0.35, speed: 0.8 }],
+    ramp: [{ sim: -0.6, speed: 1 }, { sim: -0.06, speed: 1 }, { sim: -0.03, speed: 0.05 }, { sim: 0.08, speed: 0.05 }, { sim: 0.3, speed: 0.8 }],
     camera: path([
-      { t: -0.6, pos: [1.5, 0.8, 1.9], look: [-0.1, 0.74, 0.95], fov: 19, aperture: 0.8 },
-      { t: 0.4, pos: [1.25, 0.78, 1.6], look: [-0.1, 0.72, 0.95], fov: 16, aperture: 0.8 },
+      { t: -0.6, pos: [1.75, 1.0, 2.15], look: [-0.2, 0.85, 0.85], fov: 27, aperture: 0.7 },
+      { t: 0.4, pos: [1.5, 0.95, 1.9], look: [-0.2, 0.82, 0.85], fov: 23, aperture: 0.7 },
     ], 'sim'),
   },
   {
@@ -93,8 +93,8 @@ export const SHOTS: PromoShot[] = [
   {
     id: 'triple-play', note: 'a 5-4-3 triple play: behind the plate, following the ball round the horn', seed: 23, tod: 'dusk', start: 440.0, anchor: 441.4, dur: 4.6,
     camera: path([
-      { t: 0, pos: [0, 8.5, -21], look: at('ball', [0, 0, 0], 0.3), fov: 30, aperture: 0 },
-      { t: 4.6, pos: [0, 8, -19], look: at('ball', [0, 0, 0], 0.3), fov: 30, aperture: 0 },
+      { t: 0, pos: [0, 7.5, -14.5], look: at('ball', [0, 0, 0], 0.3), fov: 34, aperture: 0 },
+      { t: 4.6, pos: [0, 7, -13], look: at('ball', [0, 0, 0], 0.3), fov: 34, aperture: 0 },
     ]),
   },
   { id: 'steal-third', note: 'stolen base: slide into third', seed: 4, tod: 'day', start: 491.5, anchor: 493.95, dur: 4, camera: path([{ t: 0, pos: [27, 0.9, 27], look: [17, 0.6, 18], fov: 34, aperture: 0.5 }, { t: 4, pos: [26, 0.8, 25.5], look: [19.4, 0.5, 19.4], fov: 26, aperture: 0.5 }]) },
@@ -119,10 +119,10 @@ export const SHOTS: PromoShot[] = [
   },
   {
     id: 'wo-contact', note: 'walk-off contact, ultra slow motion', seed: WALKOFF.seed, tod: 'night', start: WALKOFF.contact - 0.45, anchor: WALKOFF.contact, dur: 4.2, simDt: 1 / 240,
-    ramp: [{ sim: -0.45, speed: 1 }, { sim: -0.14, speed: 0.06 }, { sim: 0.07, speed: 0.06 }, { sim: 0.4, speed: 0.9 }],
+    ramp: [{ sim: -0.45, speed: 1 }, { sim: -0.06, speed: 1 }, { sim: -0.03, speed: 0.05 }, { sim: 0.09, speed: 0.05 }, { sim: 0.35, speed: 0.9 }],
     camera: path([
-      { t: -0.45, pos: [-1.9, 1.0, 1.7], look: [0.4, 0.95, 0.6], fov: 30, aperture: 0.7 },
-      { t: 0.45, pos: [-1.4, 0.95, 1.3], look: [0.3, 1.0, 0.7], fov: 27, aperture: 0.7 },
+      { t: -0.45, pos: [-1.9, 1.1, 2.0], look: [0.3, 1.0, 0.8], fov: 28, aperture: 0.7 },
+      { t: 0.45, pos: [-1.6, 1.05, 1.7], look: [0.25, 1.0, 0.8], fov: 24, aperture: 0.7 },
     ], 'sim'),
   },
   {

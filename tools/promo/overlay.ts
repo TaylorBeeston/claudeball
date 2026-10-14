@@ -224,7 +224,8 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, els: Overlay[], t: nu
         const pad = 30 * U;
         const w = Math.min(W - 80 * U, tw + pad * 2);
         const h = size * 2.5;
-        const x = (W - w) / 2, y = portrait ? H * 0.82 : H - h - 64 * U;
+        // top centre, clear of the captions (bottom left / right) and the broadcast's scorebug
+        const x = (W - w) / 2, y = portrait ? H * 0.12 : 44 * U;
         ctx.globalAlpha = fade * 0.86;
         ctx.fillStyle = NAVY;
         ctx.beginPath();
