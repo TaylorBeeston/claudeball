@@ -16,6 +16,7 @@ import { BASES, toScene } from './dims';
 import { isFielderRole } from './roles';
 import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
+import { baseCamera, hrWallCamera, type Box } from './sightLines';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
 import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
@@ -119,6 +120,8 @@ export class CameraDirector {
   private playOuts = 0;
   /** B-roll planner state */
   readonly landmarks: Landmarks;
+  /** the park's solid blocks (batter's eye, dugouts): rigs that could film them from behind move until they see their subject */
+  occluders: Box[] = [];
   /** where a player's face is (the engine plugs in the puppets' head bones) */
   faceLookup: ((id: string, out: Vector3) => Vector3 | null) | null = null;
   brollEnabled = true;
@@ -1016,11 +1019,8 @@ export class CameraDirector {
       }
       case 'base': {
         const t = this.baseTarget;
-        const c = new Vector3(0, 0, 19.4);
-        const out = t.clone().sub(c).setY(0);
-        if (out.lengthSq() < 1) out.set(0, 0, 1);
-        out.normalize();
-        d.pos.set(t.x + out.x * 11 + out.z * 6, 2.4, t.z + out.z * 11 - out.x * 6);
+        const bc = baseCamera(t, this.occluders);
+        d.pos.set(bc.x, bc.y, bc.z);
         const follow = ball.clone().lerp(t, 0.55);
         d.tgt.copy(follow).setY(1.2);
         const dist = d.pos.distanceTo(d.tgt);
@@ -1171,8 +1171,8 @@ export class CameraDirector {
         // ball leaving the park, seen in profile from just inside the fence; keep it framed as it flies into the seats
         const h = this.hr;
         if (h) {
-          const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(h.side);
-          d.pos.copy(h.pos).addScaledVector(perp, 26).addScaledVector(h.dir, -12).setY(5.5);
+          const wc = hrWallCamera(h.pos, h.dir, h.side, this.occluders);
+          d.pos.set(wc.x, wc.y, wc.z);
           this.ballSm.lerp(ball, 1 - Math.exp(-dt * 10));
           d.tgt.copy(this.ballSm);
           const dist = d.pos.distanceTo(d.tgt);

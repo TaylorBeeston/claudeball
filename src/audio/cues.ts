@@ -517,7 +517,7 @@ export class CueMapper {
           if (hb) out.push({ kind: 'organ', id: c.runners.some(Boolean) || r !== 'single' ? 'rally' : 'charge', imp: 2, delay: 1.2, gain: 1 });
         } else if (r === 'walk' || r === 'intentional walk') {
           if (hb) out.push({ kind: 'organ', id: 'charge', imp: 2, delay: 1.2, gain: 0.9 });
-        } else if (r === 'double play') {
+        } else if (r === 'double play' || r === 'triple play') {
           out.push(cue.crowd(hb ? 'groan' : 'cheer_short', 2, 0.8, 0.3));
         }
         break;

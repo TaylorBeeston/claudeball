@@ -443,8 +443,10 @@ export function resolveBattedBall(w: World): void {
       desc = `${name} lays down a sacrifice bunt, ${chain}.`;
       opts = { ab: false, sh: true, rbi: runs };
     } else {
-      result = dp ? 'double play' : 'groundout';
-      desc = dp ? `${name} grounds into a double play, ${chain}.` : `${name} grounds out, ${chain}.`;
+      // three outs on one grounder (a 5-4-3 around the horn with two on and nobody out) is a triple play, not a double play
+      const tp = play.outsThisPlay.length >= 3;
+      result = tp ? 'triple play' : dp ? 'double play' : 'groundout';
+      desc = tp ? `${name} grounds into a triple play, ${chain}!` : dp ? `${name} grounds into a double play, ${chain}.` : `${name} grounds out, ${chain}.`;
       opts = { ab: true, rbi: dp ? 0 : runs };
     }
   } else {

@@ -295,6 +295,15 @@ export class Engine {
       this.lights.setTowers(this.stadium.towers);
       this.clocks.place(a.stadium as Object3D);
     }
+    // the solid blocks a broadcast camera must not film from behind (sightLines.ts)
+    for (const name of ['Dugout_1B', 'Dugout_3B', 'DugoutRoof_1B', 'DugoutRoof_3B', 'BattersEye']) {
+      {
+        const o = a.field?.getObjectByName(name) ?? a.stadium?.getObjectByName(name);
+        if (!o) continue;
+        const b = new Box3().setFromObject(o);
+        this.director.occluders.push({ name, min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } });
+      }
+    }
     if (a.ball) this.ball.useModel(a.ball, this.env);
     if (a.bat) this.bat.useModel(a.bat, this.env);
     this.bat.useDonut(a.donut ?? null);
