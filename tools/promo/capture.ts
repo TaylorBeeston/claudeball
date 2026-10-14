@@ -96,7 +96,7 @@ const fromB64 = (s: string) => {
 
 /** one Chrome for many shots: the persistent profile keeps the HD voice model in its cache */
 export async function openChrome(rs: RenderSettings): Promise<Chrome> {
-  return launchChrome({ width: Math.min(rs.width, 1920), height: Math.min(rs.height, 1080), profile: path.join(PROMO_DIR, 'chrome-profile'), uncapped: true });
+  return launchChrome({ width: Math.min(rs.width, 1920), height: Math.min(rs.height, 1080), profile: path.join(PROMO_DIR, 'chrome-profile'), uncapped: true, headless: process.env.CB_PROMO_HEADED !== '1' });
 }
 
 export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, rs: RenderSettings, log: (s: string) => void = console.log): Promise<ShotManifest> {
