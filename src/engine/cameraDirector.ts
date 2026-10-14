@@ -74,8 +74,11 @@ export interface DirectorOutput {
 
 export class CameraDirector {
   auto = true;
-  /** the benchmark runner's scripted camera (null = the director decides) */
-  bench: { pos: Vector3; tgt: Vector3; fov: number; aperture: number } | null = null;
+  /**
+   * the benchmark runner's / promo's scripted camera (null = the director decides): `focus` metres (default: the distance to `tgt`),
+   * `roll` radians, `cut` = a hard cut this frame (no pan motion blur from the previous camera)
+   */
+  bench: { pos: Vector3; tgt: Vector3; fov: number; aperture: number; focus?: number; roll?: number; cut?: boolean } | null = null;
   /** [3B side (+X), 1B side (−X)] camera/target pairs aimed at the real dugouts */
   dugoutShots: { pos: Vector3; target: Vector3 }[] = [];
   replaysEnabled = true;
@@ -465,13 +468,18 @@ export class CameraDirector {
       this.tgt.copy(b.tgt);
       this.camera.position.copy(b.pos);
       this.camera.lookAt(b.tgt);
-      if (this.camera.fov !== b.fov || this.camera.near !== 0.3) {
+      if (b.roll) this.camera.rotateZ(b.roll);
+      // close-ups (a ball at the bat, a glove) need a nearer near plane than the broadcast cameras
+      const near = Math.min(0.3, Math.max(0.02, (b.focus ?? b.pos.distanceTo(b.tgt)) * 0.1));
+      if (this.camera.fov !== b.fov || this.camera.near !== near) {
         this.camera.fov = b.fov;
-        this.camera.near = 0.3;
+        this.camera.near = near;
         this.camera.far = 700;
         this.camera.updateProjectionMatrix();
       }
-      return { renderState: live, focus: b.pos.distanceTo(b.tgt), aperture: b.aperture, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
+      const cut = !!b.cut;
+      b.cut = false;
+      return { renderState: live, focus: b.focus ?? b.pos.distanceTo(b.tgt), aperture: b.aperture, label: null, shot: this.shot, cut, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
     }
     if (!this.auto) {
       this.orbit.update();

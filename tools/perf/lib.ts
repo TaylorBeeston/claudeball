@@ -85,6 +85,8 @@ export interface ChromeOpts {
   width?: number;
   height?: number;
   extraFlags?: string[];
+  /** a persistent profile directory (kept on close: the promo's downloaded HD voices live in its cache); default a throwaway one */
+  profile?: string;
 }
 
 export interface Chrome {
@@ -99,7 +101,8 @@ export interface Chrome {
 
 export async function launchChrome(o: ChromeOpts = {}): Promise<Chrome> {
   const port = await freePort();
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cbperf-chrome-'));
+  const profile = o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), 'cbperf-chrome-'));
+  if (o.profile) fs.mkdirSync(o.profile, { recursive: true });
   const angle = o.angle ?? 'gl';
   const flags = [
     `--user-data-dir=${profile}`,
@@ -150,7 +153,7 @@ export async function launchChrome(o: ChromeOpts = {}): Promise<Chrome> {
       await browser!.close().catch(() => {});
       proc.kill();
       await sleep(300);
-      fs.rmSync(profile, { recursive: true, force: true });
+      if (!o.profile) fs.rmSync(profile, { recursive: true, force: true });
     },
   };
 }

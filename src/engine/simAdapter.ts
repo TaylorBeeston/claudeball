@@ -80,6 +80,8 @@ export class SimDriver {
   hold = false;
   /** the most real time a frame may spend stepping the sim before it carries the rest over (the benchmark lifts it, so the game does not depend on frame time) */
   stepBudgetMs = 10;
+  /** the fixed step the sim is advanced by (and the renderer interpolates between); the promo capture uses 1/240 for smooth ultra slow motion */
+  stepDt = SIM_DT;
   /** true while fast-forwarding to the next half inning; listeners should not cut cameras */
   skipping = false;
 
@@ -168,9 +170,9 @@ export class SimDriver {
     if (!this.paused && !this.hold) {
       this.acc += Math.min(realDt, 0.1) * this.speed;
       const maxSteps = 600;
-      while (this.acc >= SIM_DT && steps < maxSteps) {
+      while (this.acc >= this.stepDt && steps < maxSteps) {
         this.stepOnce();
-        this.acc -= SIM_DT;
+        this.acc -= this.stepDt;
         steps++;
         if (performance.now() > budgetEnd && !this.skipping) break;
       }
@@ -188,16 +190,16 @@ export class SimDriver {
           }
         }
       }
-      if (this.acc > SIM_DT * 4) this.acc = 0; // fell behind: drop time rather than spiral
+      if (this.acc > this.stepDt * 4) this.acc = 0; // fell behind: drop time rather than spiral
     }
     this.stepsThisFrame = steps;
     if (perf.on) perf.sub('sim.steps', t0adv);
-    return { state: interpolateState(this.prev, this.curr, this.acc / SIM_DT), alpha: this.acc / SIM_DT, steps };
+    return { state: interpolateState(this.prev, this.curr, this.acc / this.stepDt), alpha: this.acc / this.stepDt, steps };
   }
 
   private stepOnce() {
     const t0 = perf.t();
-    this.game.step(SIM_DT);
+    this.game.step(this.stepDt);
     if (perf.on) perf.sub('sim.step', t0);
     const t1 = perf.t();
     this.prev = this.curr;
@@ -210,7 +212,7 @@ export class SimDriver {
       const inZone = Math.abs(x) < 0.216 + 0.036 && y > 0.5 - 0.036 && y < 1.05 + 0.036;
       for (const l of this.crossListeners) l(x, y, inZone);
     }
-    this.histAcc += SIM_DT;
+    this.histAcc += this.stepDt;
     if (this.histAcc >= HISTORY_DT) {
       this.histAcc -= HISTORY_DT;
       this.history.push(this.curr);
