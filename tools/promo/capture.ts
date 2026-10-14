@@ -43,6 +43,8 @@ export interface RenderSettings {
   quality: number;
   /** the build the frames come from (dist bundle names carry content hashes) */
   buildKey: string;
+  /** QA sweeps: tick `stride` frames per saved picture (the game still runs at `fps`) */
+  stride?: number;
 }
 
 export interface ShotManifest {
@@ -53,7 +55,7 @@ export interface ShotManifest {
   size: [number, number];
   ext: string;
   gpu: string;
-  info: { i: number; sim: number; speed: number; shot: string; replay: boolean; events: string[] }[];
+  info: { i: number; sim: number; speed: number; shot: string; replay: boolean; events: string[]; occ?: { hit: string; at: number; dist: number; cam: number[]; tgt: number[] } | null }[];
   audio: { file: string; sr: number; t0: number } | null;
   speech: { t: number; ev: unknown }[];
   at: string;
@@ -126,6 +128,7 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
       audio: shot.audio !== false,
       randomSeed: shot.randomSeed ?? shot.seed * 7919 + Math.round(shot.start * 10),
     };
+    if (rs.stride && rs.stride > 1) await page.evaluate((n) => ((window as unknown as { __promo: { qa: number } }).__promo.qa = n), rs.stride);
     const ready = await page.evaluate((s) => (window as unknown as { __promo: { setup(s: unknown): Promise<{ sim: number; gpu: string }> } }).__promo.setup(s), setup as unknown as Record<string, unknown>);
     log(`[capture] ${shot.id}: seed ${shot.seed} at sim ${ready.sim.toFixed(2)} | ${ready.gpu}`);
     if (!/NVIDIA/.test(ready.gpu)) log(`[capture] WARNING: not on the NVIDIA GPU (${ready.gpu})`);
@@ -134,7 +137,12 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
     let last = Date.now();
     const tFrames = Date.now();
     let msTick = 0, msShot = 0, msWrite = 0;
+    const stride = rs.stride ?? 1;
     for (let i = 0; i < setup.frames; i++) {
+      if (stride > 1 && i % stride !== 0) {
+        info.push(await page.evaluate(() => (window as unknown as { __promo: { frame(): Promise<ShotManifest['info'][number]> } }).__promo.frame()));
+        continue;
+      }
       const a = performance.now();
       // HUD shots need the page (DOM over the canvas): a CDP screenshot (~100-200 ms); everything else reads the canvas in the draw's own task (~5 ms)
       const grab = setup.hud ? undefined : { type: rs.format === 'png' ? 'image/png' : 'image/jpeg', quality: rs.quality / 100 };
@@ -159,7 +167,12 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
       const a = await page.evaluate(() => (window as unknown as { __promo: { finishAudio(): Promise<{ sr: number; channels: string[]; t0: number; speech: { t: number; ev: unknown }[] } | null> } }).__promo.finishAudio());
       if (a) {
         const chs = a.channels.map(fromB64);
-        writeWav(path.join(dir, 'audio.wav'), chs, a.sr);
+        // the game's own broadcast mix, and the stems the edit mixes from: the park (before the booth's duck) and the booth
+        writeWav(path.join(dir, 'audio.wav'), chs.slice(0, 2), a.sr);
+        if (chs.length >= 6) {
+          writeWav(path.join(dir, 'park.wav'), chs.slice(2, 4), a.sr);
+          writeWav(path.join(dir, 'booth.wav'), chs.slice(4, 6), a.sr);
+        }
         audio = { file: 'audio.wav', sr: a.sr, t0: a.t0 };
         speech = a.speech.map((s) => ({ t: +(s.t - a.t0).toFixed(3), ev: s.ev }));
       }

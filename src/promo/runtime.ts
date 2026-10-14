@@ -9,7 +9,7 @@
  *
  * Everything that moves is driven by the virtual clock (`clock.ts`) and a seeded Math.random, so a re-shoot gives the same frames.
  */
-import { Vector3 } from 'three';
+import { Raycaster, Vector3, type Mesh, type Object3D } from 'three';
 import type { Engine } from '../engine/engine';
 import { attachAudio, type AudioController } from '../audio';
 import { hdManager } from '../audio/hd';
@@ -62,7 +62,8 @@ class PromoAudio {
   readonly sr = 48000;
 
   async attach(engine: Engine, seconds: number, chatter: string) {
-    const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(this.sr * seconds), sampleRate: this.sr });
+    // six channels: the game's own broadcast mix (0-1), the park before the booth's duck (2-3), the booth (4-5): the edit ducks and masters itself
+    const ctx = new OfflineAudioContext({ numberOfChannels: 6, length: Math.ceil(this.sr * seconds), sampleRate: this.sr });
     Object.defineProperty(ctx, 'state', { get: () => 'running' });
     this.ctx = ctx;
     const W = window as unknown as { AudioContext: unknown };
@@ -83,10 +84,35 @@ class PromoAudio {
     } finally {
       W.AudioContext = Orig;
     }
+    this.stems(ctx);
     await this.audio.mixer.whenReady();
     console.log('[promo] audio: graph ready, hd engine ' + !!hdManager.engine);
     this.audio.onSpeech((ev) => this.speech.push({ t: ctx.currentTime, ev }));
     if (!hdManager.engine) throw new Error('HD voices are not active: browser speech cannot be captured');
+  }
+
+  private stems(ctx: OfflineAudioContext) {
+    const g = this.audio?.mixer.graph;
+    if (!g) throw new Error('no venue graph');
+    ctx.destination.channelCount = 6;
+    ctx.destination.channelInterpretation = 'discrete';
+    const merger = ctx.createChannelMerger(6);
+    merger.connect(ctx.destination);
+    const tap = (node: AudioNode, ch: number) => {
+      // a stereo up-mix first (a mono booth lands on both sides), then into its two channels
+      const st = ctx.createGain();
+      st.channelCount = 2;
+      st.channelCountMode = 'explicit';
+      st.channelInterpretation = 'speakers';
+      const sp = ctx.createChannelSplitter(2);
+      node.connect(st).connect(sp);
+      sp.connect(merger, 0, ch);
+      sp.connect(merger, 1, ch + 1);
+    };
+    g.out.disconnect();
+    tap(g.out, 0);
+    tap(g.parkBus, 2);
+    tap(g.boothOut, 4);
   }
 
   /** busy: an HD line being generated (the frame waits for it in real time; the virtual clock does not move) */
@@ -144,6 +170,11 @@ export class PromoRuntime {
   constructor(readonly e: Engine) {
     this.clock.install();
     e.stop();
+    // the player's controls (the ☰ button and its drawer, which a real mouse moving over the capture window would open) are not
+    // part of the broadcast picture
+    const st = document.createElement('style');
+    st.textContent = '.cb-ctl{display:none!important}';
+    document.head.append(st);
     e.sim.on((te) => {
       const t = te.event.type;
       if (t !== 'broadcast') this.events.push(t);
@@ -319,6 +350,9 @@ export class PromoRuntime {
   }
 
   /** `grab`: the drawn canvas as a JPEG / PNG data URL, read in the same task as the draw (the HUD is not in it: HUD shots use a page screenshot) */
+  /** QA sweeps: add the occlusion probe to every `qa`-th frame's info (0 = off) */
+  qa = 0;
+
   async frame(grab?: { type: 'image/jpeg' | 'image/png'; quality: number }): Promise<FrameInfo & { image?: string }> {
     const s = this.shot!;
     const e = this.e;
@@ -336,9 +370,37 @@ export class PromoRuntime {
       await this.audio.to(this.audio.t0 + (this.frameIndex + 1) * dt);
     }
     const d = e.director as unknown as { shot: string; hr?: { stage: string } | null };
-    const info: FrameInfo & { image?: string } = { i: this.frameIndex, sim: +e.liveState.time.toFixed(4), speed, shot: d.shot + (d.hr ? '-' + d.hr.stage : ''), replay: d.shot === 'replay', events: this.events, image };
+    const info: FrameInfo & { image?: string } = { i: this.frameIndex, sim: +e.liveState.time.toFixed(4), speed, shot: d.shot + (d.hr ? '-' + d.hr.stage : ''), replay: d.shot === 'replay', events: this.events, image, ...(this.qa && this.frameIndex % this.qa === 0 ? { occ: this.occlusion() } : {}) };
     this.frameIndex++;
     return info;
+  }
+
+  private statics: Object3D[] | null = null;
+  private ray = new Raycaster();
+  /**
+   * QA: is the camera's view of its subject blocked by the park itself? A ray from the camera to the director's look-at point against the
+   * field and stadium meshes (netting, glass and decals ignored); the first hit closer than 85 % of the way, by mesh name.
+   */
+  occlusion(): { hit: string; at: number; dist: number; cam: number[]; tgt: number[] } | null {
+    const e = this.e;
+    if (!this.statics) {
+      this.statics = [];
+      const a = (e as unknown as { assets?: { field?: Object3D; stadium?: Object3D } }).assets;
+      for (const root of [a?.field, a?.stadium])
+        root?.traverse((o) => {
+          if ((o as Mesh).isMesh && !/Net|Glass|Decal|Line|Glare|Light|Crowd|Spectator|Shadow|Sky/i.test(o.name)) this.statics!.push(o);
+        });
+    }
+    const cam = e.camera.position;
+    const tgt = (e.director as unknown as { tgt: Vector3 }).tgt;
+    const dir = tgt.clone().sub(cam);
+    const dist = dir.length();
+    if (dist < 0.5) return null;
+    this.ray.set(cam, dir.normalize());
+    this.ray.far = dist * 0.85;
+    const hits = this.ray.intersectObjects(this.statics, false);
+    const h = hits.find((x) => (x.object as Mesh).visible !== false);
+    return h ? { hit: h.object.name, at: +h.distance.toFixed(2), dist: +dist.toFixed(2), cam: cam.toArray().map((v) => +v.toFixed(2)), tgt: tgt.toArray().map((v) => +v.toFixed(2)) } : null;
   }
 
   async finishAudio() {
