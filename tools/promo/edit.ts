@@ -26,6 +26,19 @@ export interface Cut {
   phone?: boolean;
   /** black instead of a picture (title card) */
   black?: boolean;
+  /**
+   * where to start by what the shot shows rather than by seconds (a broadcast's take can differ between frame rates): the first frame
+   * whose director shot starts with `shot` (at or after second `after`), plus `offset`; overrides `in`
+   */
+  anchor?: { shot: string; offset: number; after?: number };
+}
+
+/** the cut's in-point in this capture of its shot */
+export function resolveIn(c: Cut, m: { fps: number; info: { i: number; shot: string }[] } | undefined): number {
+  if (!c.anchor || !m) return c.in;
+  const a = c.anchor;
+  const f = m.info.find((x) => x.i / m.fps >= (a.after ?? 0) && x.shot.startsWith(a.shot));
+  return f ? f.i / m.fps + a.offset : c.in;
 }
 
 export const CUTS: Cut[] = [
@@ -42,15 +55,16 @@ export const CUTS: Cut[] = [
   { shot: 'bomb-flight', in: 0, beats: 3, park: -2, booth: null },
   { shot: 'robbed', in: 0.6, beats: 8, park: -3, booth: null },
   // drop: 30 - 50 s
-  { shot: 'bang-first', in: 7.6, beats: 6, park: -3, booth: null },
-  { shot: 'triple-play', in: 0.8, beats: 5, park: -4, booth: null },
+  { shot: 'bang-first', in: 7.6, anchor: { shot: 'replay', offset: 0.5 }, beats: 6, park: -3, booth: null },
+  { shot: 'triple-play', in: 0.8, beats: 4, park: -4, booth: null },
   { shot: 'steal-third', in: 1.0, beats: 3, park: -4, booth: null },
   { shot: 'double-play', in: 0.6, beats: 3, park: -4, booth: null },
   { shot: 'face-card', in: 0.8, beats: 4, park: -6, booth: null },
-  { shot: 'pickoff', in: 5.4, beats: 4, park: -4, booth: null },
-  { shot: 'inside-park', in: 14.4, beats: 5, park: -3, booth: null },
-  { shot: 'bomb-broadcast', in: 8.95, beats: 5, park: -2, booth: null },
-  { shot: 'bomb-broadcast', in: 21.1, beats: 5, park: -4, booth: null },
+  { shot: 'clock-park', in: 2.6, beats: 3, park: -4, booth: null },
+  { shot: 'clock-violation', in: 3.6, anchor: { shot: 'umpire', offset: 0.1, after: 2 }, beats: 3, park: -4, booth: null },
+  { shot: 'inside-park', in: 14.4, beats: 4, park: -3, booth: null },
+  { shot: 'bomb-broadcast', in: 8.95, anchor: { shot: 'cutaway-crowd', offset: 0.1 }, beats: 5, park: -2, booth: null },
+  { shot: 'bomb-broadcast', in: 21.1, anchor: { shot: 'homeplate', offset: 0.1 }, beats: 5, park: -4, booth: null },
   // the phone: 50 - 54 s
   { shot: 'phone-portrait', in: 1.0, beats: 8, phone: true, park: null, booth: null },
   // the walk-off: 54 - 66 s
@@ -58,7 +72,7 @@ export const CUTS: Cut[] = [
   { shot: 'wo-contact', in: 0.1, beats: 7, park: -12, booth: null },
   { shot: 'wo-flight', in: 0.3, beats: 6, park: 0, booth: null },
   { shot: 'wo-fireworks', in: 0.4, beats: 5, park: 0, booth: null },
-  { shot: 'wo-broadcast', in: 14.6, beats: 3, park: -2, booth: null },
+  { shot: 'wo-broadcast', in: 14.6, anchor: { shot: 'homeplate', offset: 0.05 }, beats: 3, park: -2, booth: null },
   // end card: 66 - 74 s
   { shot: 'wo-broadcast', in: 25.0, beats: 16, black: true, park: null, booth: null },
 ];
@@ -69,16 +83,25 @@ export const CUTS: Cut[] = [
  */
 export interface VoiceTrack {
   shot: string;
-  in: number;
+  /** the booth line (its start) that lands on timeline second `at`; the track runs from `pre` seconds before it for `dur` */
+  line: string;
   at: number;
+  pre: number;
   dur: number;
   db: number;
 }
 export const VOICE: VoiceTrack[] = [
-  // wo-flight's booth, aligned with its picture (shot second 0.3 = the flight cut's first frame): "A long drive to left-center." at the
-  // contact, "Walk-off! He hit it out, and the game is over! ..." as the ball lands, over the fireworks
-  { shot: 'wo-flight', in: -0.6, at: 58.1, dur: 11.4, db: 0 },
+  // the bomb: "And that one is gone! Sanders launches a home run." as it climbs into the upper deck
+  { shot: 'bomb-broadcast', line: 'that one is gone', at: 25.0, pre: 0.3, dur: 3.6, db: 0 },
+  // the walk-off: the call as the ball lands, over the fireworks (wo-flight's own booth)
+  { shot: 'wo-flight', line: 'Walk-off', at: 63.6, pre: 0.3, dur: 5.6, db: 0 },
 ];
+
+/** where a voice track starts in its shot (output seconds): its line's start minus `pre`, or null when the take has no such line */
+export function voiceIn(v: VoiceTrack, m: { speech: { t: number; ev: unknown }[] } | undefined): number | null {
+  const s = m?.speech.find((x) => (x.ev as { type: string; text?: string }).type === 'speechStart' && (x.ev as { text?: string }).text?.includes(v.line));
+  return s ? s.t - v.pre : null;
+}
 
 /** the vertical cut: the same edit on the portrait re-shoots (`v-<shot>`); the phone beat is the phone footage itself, full frame */
 export const VCUTS: Cut[] = CUTS.map((c) => (c.phone ? { ...c, phone: false } : { ...c, shot: `v-${c.shot}` }));
@@ -94,7 +117,7 @@ export function cutTimes(): { starts: number[]; total: number } {
   return { starts, total: t };
 }
 
-const at = (shot: string, nth = 0) => {
+export const at = (shot: string, nth = 0) => {
   const { starts } = cutTimes();
   const idx = CUTS.map((c, i) => (c.shot === shot ? i : -1)).filter((i) => i >= 0)[nth];
   return { t0: starts[idx], t1: starts[idx] + CUTS[idx].beats * BEAT };
@@ -104,7 +127,7 @@ const at = (shot: string, nth = 0) => {
 export function overlays(): Overlay[] {
   const { total } = cutTimes();
   const pitch = at('pitch-flight'), ko = at('strikeout-hud'), bat = at('contact-bomb'), fly = at('bomb-flight'), rob = at('robbed');
-  const bang = at('bang-first'), tp = at('triple-play'), face = at('face-card'), itp = at('inside-park'), park = at('bomb-broadcast', 0);
+  const bang = at('bang-first'), tp = at('triple-play'), face = at('face-card'), itp = at('inside-park'), park = at('bomb-broadcast', 0), clock = at('clock-park'), viol = at('clock-violation');
   const phone = at('phone-portrait');
   const title = at('open-face', 1);
   const end = at('wo-broadcast', 1);
@@ -123,8 +146,9 @@ export function overlays(): Overlay[] {
     { k: 'stat', t0: bang.t0 + 0.3, t1: bang.t1 - 0.1, value: '0.02 s', label: 'bang-bang at first', side: 'right' },
     { k: 'caption', t0: tp.t0 + 0.2, t1: tp.t1 - 0.1, text: 'Triple play', sub: '5-4-3, around the horn' },
     { k: 'caption', t0: face.t0 + 0.1, t1: face.t1 - 0.1, text: 'Every player rated', sub: '20-80 scouting grades drive the sim', side: 'right' },
+    { k: 'caption', t0: clock.t0 + 0.1, t1: viol.t1 - 0.1, text: 'Pitch clock', sub: 'MLB rules: the timer, the violations, the umpire\'s call' },
     { k: 'caption', t0: itp.t0 + 0.2, t1: itp.t1 - 0.1, text: 'A broadcast that calls itself', sub: 'cameras, replays, a two-man booth' },
-    { k: 'caption', t0: park.t0 + 0.2, t1: park.t1 - 0.1, text: 'A living ballpark', sub: 'crowd, organ, PA, a pitch clock', side: 'right' },
+    { k: 'caption', t0: park.t0 + 0.2, t1: park.t1 - 0.1, text: 'A living ballpark', sub: 'crowd, organ, PA, fireworks', side: 'right' },
     { k: 'phone', t0: phone.t0, t1: phone.t1, rect: [0, 0, 0, 0] },
     { k: 'caption', t0: phone.t0 + 0.3, t1: phone.t1 - 0.1, text: 'Runs in your browser', sub: 'desktop or phone · free · open source' },
     { k: 'fill', t0: end.t0 - 0.35, t1: end.t0, color: '#000', a0: 0, a1: 1 },

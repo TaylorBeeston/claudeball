@@ -16,7 +16,7 @@ import { build, startPreview, systemLoad } from '../perf/lib';
 import { PROMO_DIR, buildKey, cached, captureShot, openChrome, shotDir, type RenderSettings, type ShotManifest } from './capture';
 import { SHOTS, VSHOTS } from './shots';
 import { buildPicture, encode, fillOverlay, layout, mix, overlayList } from './assemble';
-import { BEAT, CUTS, VCUTS, VOICE, cutTimes, type Cut, type VoiceTrack } from './edit';
+import { BEAT, CUTS, VCUTS, VOICE, cutTimes, resolveIn, voiceIn, type Cut, type VoiceTrack } from './edit';
 import type { Overlay } from './overlay';
 import { renderOverlay } from './titles';
 
@@ -38,6 +38,8 @@ function withKeep(list: typeof SHOTS): typeof SHOTS {
   if (flag('preview') || flag('keep-all')) return list;
   const cuts = cutList();
   return list.map((s) => {
+    // (a cut anchored on what the broadcast shows keeps the whole take: the anchor is only known once it is captured)
+    if (cuts.some((c) => c.shot === s.id && c.anchor)) return s;
     const r = cuts.filter((c) => c.shot === s.id && !c.black).map((c): [number, number] => [Math.max(0, +(c.in - 1).toFixed(2)), +(c.in + c.beats * BEAT + 1).toFixed(2)]);
     return r.length ? { ...s, keep: r } : s;
   });
@@ -121,11 +123,13 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
   const blackAt = (t: number) => Math.min(...cutList().map((c, i) => (c.black && starts[i] > t ? starts[i] : Infinity)));
   const quote = (ev: { text?: string; name?: string; speaker?: string }, t0: number, t1: number): Overlay => ({ k: 'quote', t0, t1: Math.min(t1, blackAt(t0) - 0.15), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
   for (const v of voiceList()) {
+    const vin = voiceIn(v, shots.get(v.shot));
+    if (vin === null) continue;
     for (const s of shots.get(v.shot)?.speech ?? []) {
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
-      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < v.in || s.t > v.in + v.dur - 0.5) continue;
-      const t0 = v.at + s.t - v.in;
-      out.push(quote(ev, t0, Math.min(v.at + v.dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
+      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + v.dur - 0.5) continue;
+      const t0 = v.at - v.pre + s.t - vin;
+      out.push(quote(ev, t0, Math.min(v.at - v.pre + v.dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
     }
   }
   cutList().forEach((c, i) => {
@@ -134,8 +138,9 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
     const dur = c.beats * BEAT;
     for (const s of m?.speech ?? []) {
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
-      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < c.in - 0.3 || s.t > c.in + dur - 0.4) continue;
-      const t0 = Math.max(starts[i], starts[i] + s.t - c.in);
+      const cin = resolveIn(c, m);
+      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < cin - 0.3 || s.t > cin + dur - 0.4) continue;
+      const t0 = Math.max(starts[i], starts[i] + s.t - cin);
       out.push({ k: 'quote', t0, t1: Math.min(starts[i] + dur + 2.5, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4)), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
     }
   });

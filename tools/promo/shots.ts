@@ -99,6 +99,14 @@ export const SHOTS: PromoShot[] = [
   },
   { id: 'steal-third', note: 'stolen base: slide into third', seed: 4, tod: 'day', start: 491.5, anchor: 493.95, dur: 4, camera: path([{ t: 0, pos: [27, 0.9, 27], look: [17, 0.6, 18], fov: 34, aperture: 0.5 }, { t: 4, pos: [26, 0.8, 25.5], look: [19.4, 0.5, 19.4], fov: 26, aperture: 0.5 }]) },
   { id: 'double-play', note: 'the pivot at second', seed: 4, tod: 'day', start: 1762.4, anchor: 1763.67, dur: 3.4, camera: path([{ t: 0, pos: [-9, 1.3, 47], look: [0, 0.9, 38.8], fov: 17, aperture: 0.5 }, { t: 3.4, pos: [-8.5, 1.2, 46], look: [-3, 0.9, 36], fov: 22, aperture: 0.5 }]) },
+  {
+    id: 'clock-park', note: 'the pitch clock on the backstop runs into the red as the pitcher sets (3.6 s left at the windup)', seed: WALKOFF.seed, tod: 'night', start: 232.4, anchor: 236.35, dur: 4.6,
+    camera: path([
+      { t: 0, pos: [1.0, 2.3, 23.5], look: [1.6, 1.3, -10], fov: 15, aperture: 0.35, focus: at('batter', [0, 1.3, 0]) },
+      { t: 4.6, pos: [0.9, 2.2, 23], look: [1.9, 1.3, -10], fov: 13.5, aperture: 0.35, focus: at('batter', [0, 1.3, 0]) },
+    ]),
+  },
+  { id: 'clock-violation', note: 'a pitch-clock violation on the batter: the umpire\'s signal and the HUD call-out', seed: 197, tod: 'dusk', start: 4021.5, anchor: 4025.3, dur: 7, hud: true, camera: director(false) },
   { id: 'pickoff', note: 'pickoff at night, the broadcast', seed: 157, tod: 'night', start: 3055.5, anchor: 3062.1, dur: 12, hud: true, camera: director(true) },
   { id: 'inside-park', note: 'inside-the-park home run: the broadcast', seed: 48, tod: 'day', start: 2444.5, anchor: 2460.97, dur: 22, hud: true, camera: director(true) },
   { id: 'face-card', note: 'B-roll face close-up with the name card (20-80 ratings)', seed: ROB.seed, tod: 'day', start: 215.2, anchor: 216, dur: 4, hud: true, camera: director(false, true) },

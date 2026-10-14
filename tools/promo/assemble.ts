@@ -9,7 +9,7 @@ import path from 'node:path';
 import { db, lufsIntegrated, loudnessRange, truePeak } from '../../src/audio/venue/analysis';
 import { writeWav } from '../audio/render';
 import { shotDir, type RenderSettings, type ShotManifest } from './capture';
-import { BEAT, CUTS, VOICE, cutTimes, musicPlan, overlays, type Cut, type VoiceTrack } from './edit';
+import { BEAT, CUTS, VOICE, cutTimes, musicPlan, overlays, resolveIn, voiceIn, type Cut, type VoiceTrack } from './edit';
 import { SR, dbGain, limit, readWav, type Stereo } from './dsp';
 import { renderMusic } from './music';
 import type { Overlay } from './overlay';
@@ -59,7 +59,7 @@ export function buildPicture(rs: RenderSettings, shots: Map<string, ShotManifest
     }
     const m = shots.get(c.shot);
     if (!m) throw new Error(`shot ${c.shot} is not captured`);
-    const sf = Math.min(m.frames - 1, Math.max(0, Math.round((c.in + (t - starts[ci])) * m.fps)));
+    const sf = Math.min(m.frames - 1, Math.max(0, Math.round((resolveIn(c, m) + (t - starts[ci])) * m.fps)));
     const src = path.join(shotDir(c.shot, rs), `${String(sf).padStart(5, '0')}.${m.ext}`);
     if (c.phone) {
       // the portrait capture inside the phone, over the night park (the aerial, blurred and darkened)
@@ -112,7 +112,7 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
       cache.set(c.shot, { park: readWav(p).ch as Stereo, booth: readWav(b).ch as Stereo, t0: m.audio.t0 });
     }
     const a = cache.get(c.shot)!;
-    const from = Math.round((a.t0 + c.in) * SR), at0 = Math.round(starts[i] * SR), len = Math.round(c.beats * BEAT * SR);
+    const from = Math.round((a.t0 + resolveIn(c, m)) * SR), at0 = Math.round(starts[i] * SR), len = Math.round(c.beats * BEAT * SR);
     for (const [src, dst, g] of [[a.park, park, c.park], [a.booth, booth, c.booth]] as const) {
       if (g == null) continue;
       const gain = dbGain(g);
@@ -130,8 +130,13 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
     const m = shots.get(v.shot);
     const file = path.join(shotDir(v.shot, rs), 'booth.wav');
     if (!m?.audio || !fs.existsSync(file)) continue;
+    const vin = voiceIn(v, m);
+    if (vin === null) {
+      log(`[mix] WARNING: ${v.shot} has no booth line "${v.line}" in this take`);
+      continue;
+    }
     const src = readWav(file).ch as Stereo;
-    const from = Math.round((m.audio.t0 + v.in) * SR), at0 = Math.round(v.at * SR), len = Math.round(v.dur * SR), fl = Math.round(0.06 * SR);
+    const from = Math.round((m.audio.t0 + vin) * SR), at0 = Math.round((v.at - v.pre) * SR), len = Math.round(v.dur * SR), fl = Math.round(0.06 * SR);
     const g = dbGain(v.db);
     for (let k = 0; k < len; k++) {
       const sI = from + k, d = at0 + k;

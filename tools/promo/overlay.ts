@@ -293,7 +293,8 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, els: Overlay[], t: nu
         line('taylorbeeston.github.io/claudeball', cy + size * 1.55, (portrait ? 58 : 72) * U, GOLD, 0.6, DISPLAY, false, 0.03);
         line('OPEN SOURCE  ·  MIT  ·  github.com/TaylorBeeston/claudeball', cy + size * 2.2, 34 * U, '#c9ced8', 0.8);
         line('BUILT WITH CLAUDE', cy + size * 2.85, 44 * U, '#ffffff', 1.0, SMALL, true, 0.18);
-        line('three.js  ·  Poly Haven  ·  ambientCG (CC0)  ·  Anton (OFL)  ·  every frame and sound rendered by the game itself', H - 60 * U, 24 * U, '#7d8594', 1.3, SMALL, false, 0.06);
+        line('Footage, game sound and booth: rendered by the game itself  ·  music written in code for this trailer', H - 92 * U, 24 * U, '#9aa1ad', 1.3, SMALL, false, 0.06);
+        line('three.js  ·  Poly Haven, ambientCG (CC0)  ·  Anton (OFL)  ·  Kokoro-82M voices (Apache-2.0)', H - 56 * U, 24 * U, '#7d8594', 1.4, SMALL, false, 0.06);
         ctx.globalAlpha = 1;
         break;
       }
