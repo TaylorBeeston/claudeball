@@ -78,6 +78,7 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     celebrateUntil: 0,
     nearMiss: 9,
     goBack: 0,
+    slideProg: 0,
     strikeSeen: p.stride.last?.tick ?? 0,
     protectTo: 0,
     tagLine: null,

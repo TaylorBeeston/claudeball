@@ -252,6 +252,8 @@ export interface RunnerRT {
   asking: boolean;
   /** The slide he is in (null = running), when it began, and the base whose bag he is touching (0 = none). */
   slideKind: 'feet' | 'head' | 'hookL' | 'hookR' | 'diveBack' | null;
+  /** How far through the slide clip he is (0..1). */
+  slideProg: number;
   slideAt: number;
   contactBase: number;
   /** A sidestep away from a tag he has seen coming. */
