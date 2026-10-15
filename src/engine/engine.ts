@@ -729,7 +729,7 @@ export class Engine {
       if (sim.distanceTo(this.players.heldPos) < 1.5) this.ball.released(this.players.heldPos, sim);
     }
     this.ball.heldByPlayer = held;
-    this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying);
+    this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying, dt > 0 ? animDt / dt : 1);
 
     // batted distance once it first lands
     if (!this.landed && !out.replaying && state.ball.visible && state.ball.pos.y < 0.12 && state.ball.pos.z > 1) {

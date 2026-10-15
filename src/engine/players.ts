@@ -149,7 +149,12 @@ export class BallView {
     this.popT = 0.05;
   }
 
-  update(state: GameState, dt: number, camPos: Vector3, showTrail: boolean) {
+  /**
+   * `timeScale`: playback speed (slow motion < 1). The streak is a shutter (1/90 s of travel) in the viewer's time, so it shortens with the
+   * playback; the tracer (a broadcast graphic for live flight) fades out under half speed: at 0.05x its last 90 frames were a solid
+   * ribbon through the bat and the hitter's legs (promo jank log P10)
+   */
+  update(state: GameState, dt: number, camPos: Vector3, showTrail: boolean, timeScale = 1) {
     const b = state.ball;
     this.spin.visible = b.visible && !this.heldByPlayer;
     toScene(b.pos, this.worldPos);
@@ -167,14 +172,14 @@ export class BallView {
     if (b.visible && !this.heldByPlayer && sp > 12) {
       this.streak.visible = true;
       const v = new Vector3(b.vel.x, b.vel.y, b.vel.z);
-      const len = Math.min(sp * (1 / 90), 1.6);
+      const len = Math.min(sp * (1 / 90) * Math.min(1, timeScale), 1.6);
       this.streak.position.copy(this.worldPos);
       this.streak.scale.set(1, 1, len);
       this.streak.lookAt(this.worldPos.clone().sub(v));
       (this.streak.material as MeshBasicMaterial).opacity = Math.min(0.3, (sp - 12) / 90);
     } else this.streak.visible = false;
     // tracer
-    if (showTrail && b.visible && !this.heldByPlayer && sp > 10) {
+    if (showTrail && timeScale >= 0.5 && b.visible && !this.heldByPlayer && sp > 10) {
       this.trailOn = Math.min(1, this.trailOn + dt * 6);
       this.trailPts.push(this.worldPos.clone());
       if (this.trailPts.length > 90) this.trailPts.shift();

@@ -4,6 +4,8 @@
 
 **Play it: https://taylorbeeston.github.io/claudeball/**
 
+[![A walk-off home run at night, rendered by the game: click for the 9-second teaser](docs/media/teaser.jpg)](docs/media/teaser.webm)
+
 3D baseball in the browser: two AIs play a full, physically simulated game, shown like a TV broadcast.
 Nothing is scripted — pitch flight, bat–ball contact, batted balls, fielding, throws, baserunning and the managers'
 decisions all come from the simulation in `src/sim`; `src/engine` (three.js) only renders what the sim reports.
@@ -26,6 +28,8 @@ Other commands:
 npm test                      # vitest: simulation tests
 npx tsc --noEmit              # typecheck src/sim, src/engine and scripts
 npm run sim -- 60 7           # headless season: 60 games, seed 7, league stats (R/G, AVG, K%, BB%, ...)
+npm run promo:scout           # the trailer: find highlights in simulated games (see docs/promo.md)
+npm run promo:render          # the trailer: render it frame by frame with the real engine and its own sound
 ```
 
 ### Sky HDRIs are optional
