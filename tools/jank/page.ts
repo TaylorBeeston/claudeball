@@ -299,7 +299,10 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   const e = w.engine;
   const V = e.camera.position.constructor;
   if (!studio || studio.pu.__role !== role) {
-    if (studio) studio.pu.root.removeFromParent();
+    if (studio) {
+      studio.pu.root.removeFromParent();
+      studio.batObj.removeFromParent();
+    }
     const src = e.liveState.players.find((p: any) => p.role === role) ?? e.liveState.players.find((p: any) => p.role !== 'umpire');
     const snap = { ...src, id: `jank-studio-${role}`, role, anim: 'idle', pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, facing: 0, hasBall: false };
     const pu = e.players.makePuppet(snap);
@@ -312,6 +315,9 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   }
   const { pu, bones, batObj } = studio;
   for (const p of e.players.puppets.values()) if (p !== pu) p.root.visible = false;
+  // the game's own bats (the batter's, a dropped one) stay out of the picture
+  if (e.bat?.obj) e.bat.obj.visible = false;
+  if (e.droppedBat) e.droppedBat.visible = false;
   pu.root.visible = true;
   for (let i = 0; i < NB; i++) {
     bones[i].quaternion.set(sn.lq[i * 4], sn.lq[i * 4 + 1], sn.lq[i * 4 + 2], sn.lq[i * 4 + 3]);

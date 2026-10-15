@@ -289,8 +289,10 @@ function pickWorst(files: [string, (s: string) => boolean][], top: number): Pick
     const cands: (Pick & { score: number })[] = [];
     for (const e of r.entries) {
       if (!src(e.src)) continue;
+      const kre = new RegExp(opt('kinds', '.')), cre = new RegExp(opt('clips', '.'));
+      if (!cre.test(e.clip)) continue;
       for (const [k, s] of Object.entries(e.kinds)) {
-        if (!s.worst) continue;
+        if (!s.worst || !kre.test(k)) continue;
         const role = e.src.startsWith('game') ? e.file : String(e.file).includes('umpire') ? 'umpire' : String(e.file).includes('coach') ? 'coach1b' : String(e.file).includes('ballkid') ? 'ballkid' : 'fielder';
         cands.push({ label: `${name.replace('.json', '')} ${e.src} ${e.file} ${e.clip}`, kind: k, excess: s.max, snap: s.worst, score: s.score, role });
       }
@@ -347,8 +349,8 @@ export async function doSheets(top: number) {
     top,
   );
   if (!picks.length) return console.log('[jank] sheets: nothing to draw (run static / game first)');
-  const dir = path.join(OUT, 'sheets');
-  fs.rmSync(dir, { recursive: true, force: true });
+  const dir = path.join(OUT, opt('sheet-dir', 'sheets'));
+  if (!flag('keep')) fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   await withGame('autostart&seed=24&tempo=standard&innings=1&quality=medium&noaudio&tod=day&replays=0&nodof&hud=0', async (page) => {
     await page.evaluate(() => {
