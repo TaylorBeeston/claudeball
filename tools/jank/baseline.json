@@ -331,5 +331,337 @@
    "frames": 1,
    "score": 0.015
   }
+ },
+ "staticRuntime": {
+  "joint:neck.pitch": {
+   "frames": 6540,
+   "score": 120.502
+  },
+  "foot:slide": {
+   "frames": 8423,
+   "score": 169.5
+  },
+  "joint:ankle.swing": {
+   "frames": 9465,
+   "score": 148.881
+  },
+  "spike:Arm": {
+   "frames": 505,
+   "score": 8.357
+  },
+  "spike:ForeArm": {
+   "frames": 645,
+   "score": 11.614
+  },
+  "joint:forearm.pron": {
+   "frames": 4015,
+   "score": 148.118
+  },
+  "joint:shoulder.twist": {
+   "frames": 4910,
+   "score": 118.904
+  },
+  "spike:Hand": {
+   "frames": 690,
+   "score": 12.903
+  },
+  "body:hand-torso@heavy": {
+   "frames": 2160,
+   "score": 28.449
+  },
+  "body:hand-torso": {
+   "frames": 215,
+   "score": 1.443
+  },
+  "body:hand-torso@lean": {
+   "frames": 75,
+   "score": 0.334
+  },
+  "body:hand-torso@stocky": {
+   "frames": 1175,
+   "score": 16.115
+  },
+  "body:hand-torso@muscular": {
+   "frames": 455,
+   "score": 6.437
+  },
+  "bat:grip": {
+   "frames": 264,
+   "score": 2.781
+  },
+  "joint:hip.twist": {
+   "frames": 4535,
+   "score": 31.987
+  },
+  "joint:hip.flex": {
+   "frames": 2945,
+   "score": 102.356
+  },
+  "bat:hand-axis": {
+   "frames": 100,
+   "score": 2.706
+  },
+  "body:arm-head": {
+   "frames": 10,
+   "score": 0.28
+  },
+  "joint:shoulder.post": {
+   "frames": 1130,
+   "score": 8.724
+  },
+  "joint:shoulder.behind": {
+   "frames": 540,
+   "score": 9.019
+  },
+  "body:elbow-torso": {
+   "frames": 195,
+   "score": 6.468
+  },
+  "body:elbow-torso@lean": {
+   "frames": 170,
+   "score": 5.465
+  },
+  "body:elbow-torso@stocky": {
+   "frames": 490,
+   "score": 10.437
+  },
+  "body:elbow-torso@muscular": {
+   "frames": 205,
+   "score": 7.75
+  },
+  "body:elbow-torso@heavy": {
+   "frames": 830,
+   "score": 13.772
+  },
+  "bat:order": {
+   "frames": 15,
+   "score": 0.306
+  },
+  "bat:body": {
+   "frames": 221,
+   "score": 2.809
+  },
+  "joint:wrist.swing": {
+   "frames": 40,
+   "score": 0.571
+  },
+  "joint:wrist.split": {
+   "frames": 20,
+   "score": 0.88
+  },
+  "foot:below": {
+   "frames": 4131,
+   "score": 58.166
+  },
+  "spike:UpLeg": {
+   "frames": 205,
+   "score": 6.467
+  },
+  "foot:float": {
+   "frames": 30,
+   "score": 0.451
+  },
+  "flip:ForeArm": {
+   "frames": 75,
+   "score": 2.391
+  },
+  "flip:Hand": {
+   "frames": 120,
+   "score": 3.816
+  },
+  "joint:hip.abd": {
+   "frames": 905,
+   "score": 6.392
+  },
+  "joint:knee.off": {
+   "frames": 2350,
+   "score": 53.562
+  },
+  "spike:Leg": {
+   "frames": 175,
+   "score": 4.73
+  },
+  "joint:knee.flex": {
+   "frames": 2030,
+   "score": 81.931
+  },
+  "joint:spine.pitch": {
+   "frames": 1490,
+   "score": 29.392
+  },
+  "joint:ankle.twist": {
+   "frames": 2450,
+   "score": 89.355
+  },
+  "spike:Neck": {
+   "frames": 10,
+   "score": 0.126
+  },
+  "joint:spine.roll": {
+   "frames": 460,
+   "score": 3.522
+  },
+  "spike:Foot": {
+   "frames": 55,
+   "score": 0.827
+  },
+  "joint:knee.twist": {
+   "frames": 1845,
+   "score": 56.582
+  },
+  "joint:spine.yaw": {
+   "frames": 470,
+   "score": 5.067
+  },
+  "bat:ground": {
+   "frames": 181,
+   "score": 1.216
+  }
+ },
+ "fadesRuntime": {
+  "spike:Arm": {
+   "frames": 118,
+   "score": 3.447
+  },
+  "body:elbow-torso": {
+   "frames": 79,
+   "score": 2.26
+  },
+  "body:elbow-torso@lean": {
+   "frames": 58,
+   "score": 1.687
+  },
+  "body:elbow-torso@stocky": {
+   "frames": 200,
+   "score": 5.971
+  },
+  "body:elbow-torso@muscular": {
+   "frames": 121,
+   "score": 3.462
+  },
+  "body:elbow-torso@heavy": {
+   "frames": 227,
+   "score": 6.869
+  },
+  "flip:Arm": {
+   "frames": 46,
+   "score": 2.214
+  },
+  "spike:ForeArm": {
+   "frames": 48,
+   "score": 0.322
+  },
+  "spike:Hand": {
+   "frames": 32,
+   "score": 0.277
+  },
+  "body:hand-torso@heavy": {
+   "frames": 68,
+   "score": 1.777
+  },
+  "body:hand-torso@stocky": {
+   "frames": 51,
+   "score": 1.381
+  },
+  "foot:below": {
+   "frames": 1220,
+   "score": 15.453
+  },
+  "bat:grip": {
+   "frames": 75,
+   "score": 2.239
+  },
+  "foot:slide": {
+   "frames": 6403,
+   "score": 197.718
+  },
+  "bat:hand-axis": {
+   "frames": 46,
+   "score": 1.426
+  },
+  "bat:body": {
+   "frames": 1,
+   "score": 0.023
+  },
+  "bat:order": {
+   "frames": 13,
+   "score": 0.625
+  },
+  "body:hand-torso@muscular": {
+   "frames": 25,
+   "score": 0.733
+  },
+  "body:hand-torso": {
+   "frames": 16,
+   "score": 0.477
+  },
+  "body:hand-torso@lean": {
+   "frames": 15,
+   "score": 0.37
+  },
+  "spike:Neck": {
+   "frames": 13,
+   "score": 0.036
+  },
+  "joint:shoulder.behind": {
+   "frames": 14,
+   "score": 0.262
+  },
+  "joint:forearm.pron": {
+   "frames": 12,
+   "score": 0.591
+  },
+  "joint:shoulder.twist": {
+   "frames": 28,
+   "score": 1.235
+  },
+  "flip:Hand": {
+   "frames": 3,
+   "score": 0.06
+  },
+  "spike:UpLeg": {
+   "frames": 34,
+   "score": 0.772
+  },
+  "spike:Foot": {
+   "frames": 20,
+   "score": 0.568
+  },
+  "joint:hip.twist": {
+   "frames": 162,
+   "score": 5.553
+  },
+  "joint:ankle.twist": {
+   "frames": 141,
+   "score": 4.625
+  },
+  "spike:Leg": {
+   "frames": 6,
+   "score": 0.254
+  },
+  "joint:hip.abd": {
+   "frames": 19,
+   "score": 0.249
+  },
+  "flip:Leg": {
+   "frames": 5,
+   "score": 0.169
+  },
+  "joint:shoulder.post": {
+   "frames": 11,
+   "score": 0.169
+  },
+  "flip:UpLeg": {
+   "frames": 6,
+   "score": 0.218
+  },
+  "flip:Foot": {
+   "frames": 8,
+   "score": 0.317
+  },
+  "flip:ForeArm": {
+   "frames": 1,
+   "score": 0.05
+  }
  }
 }

@@ -46,17 +46,17 @@ export interface RunFile {
 
 // ---- static / fades ----------------------------------------------------------------------------------------------------------------
 
-export async function doStatic(snapshots = true): Promise<RunFile> {
+export async function doStatic(snapshots = true, constrained = flag('constrain')): Promise<RunFile> {
   const agg = new Agg();
   agg.snapshots = snapshots;
   const t0 = Date.now();
-  await runStatic(shippedPlayers(), manifestLoops(), agg, flag('constrain'));
+  await runStatic(shippedPlayers(), manifestLoops(), agg, constrained);
   const r = { meta: { kind: 'static', files: shippedPlayers(), ms: Date.now() - t0, git: git() }, entries: agg.list() };
   console.log(`[jank] static: ${r.entries.reduce((a, e) => a + (e.src === 'static' ? e.frames : 0), 0)} clip frames in ${r.meta.ms} ms`);
   return r;
 }
 
-export async function doFades(snapshots = true): Promise<RunFile> {
+export async function doFades(snapshots = true, constrain = flag('constrain')): Promise<RunFile> {
   const list = fs.existsSync(TRANSITIONS) ? (JSON.parse(fs.readFileSync(TRANSITIONS, 'utf8')) as { transitions: Transition[] }).transitions : [];
   if (!list.length) console.log('[jank] fades: no tools/jank/transitions.json yet (run the game sweep first)');
   const agg = new Agg();
@@ -65,7 +65,7 @@ export async function doFades(snapshots = true): Promise<RunFile> {
   const files = await loadFiles(shippedPlayers());
   for (const tx of list) {
     const f = files.find((x) => x.name === (tx.file || 'player_base')) ?? files[0];
-    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : 'game', flag('constrain'));
+    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : 'game', constrain);
   }
   console.log(`[jank] fades: ${list.length} transitions`);
   return { meta: { kind: 'fades', n: list.length, git: git() }, entries: agg.list() };
