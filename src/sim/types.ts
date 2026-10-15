@@ -519,6 +519,8 @@ export interface GameStateSnapshot {
   deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** (additive) live box-score stats for every player who has appeared, for a HUD. */
   stats?: { home: TeamStatsSnapshot; away: TeamStatsSnapshot };
+  /** (additive) the plate appearance is over (strikeout, walk, ball put in play): `balls` / `strikes` still hold its final count until the next batter steps in. */
+  paDone?: boolean;
   gameOver: boolean;
   winner: TeamSide | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };

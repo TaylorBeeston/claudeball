@@ -45,6 +45,7 @@ interface RSState {
   pitchClock?: import('./types').PitchClockView | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
+  paDone?: boolean;
   gameOver: boolean;
   winner: 'home' | 'away' | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
@@ -327,6 +328,7 @@ export class RealSimAdapter implements GameLike {
       players,
       umpireCall: { seq: this.callSeq, kind: call ? (CALL_KIND[call.kind] ?? 'none') : 'none' },
       count: { balls: s.balls, strikes: s.strikes },
+      paOver: !!s.paDone,
       outs: s.outs,
       inning: s.inning,
       half: s.half,

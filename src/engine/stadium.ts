@@ -532,8 +532,9 @@ export function buildStadium(env: Environment): Stadium {
         g.fill();
       }
     };
-    lights('B', s.count.balls, 3, '#3fd26a', 34, 268);
-    lights('S', s.count.strikes, 2, '#ff5048', 34, 308);
+    const cnt = s.paOver ? { balls: 0, strikes: 0 } : s.count; // a finished plate appearance's count clears, like the scorebug
+    lights('B', cnt.balls, 3, '#3fd26a', 34, 268);
+    lights('S', cnt.strikes, 2, '#ff5048', 34, 308);
     lights('O', s.outs, 2, '#ff5048', 34, 348);
     g.textAlign = 'left';
     g.fillStyle = '#ffd24a';
