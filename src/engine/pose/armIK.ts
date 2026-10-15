@@ -58,8 +58,18 @@ export interface ArmGoal {
   keepEnd?: boolean;
   /** limit the middle bone's own twist (deg; a shin's twist about itself) */
   twistLimit?: number;
-  /** the elbow swivel (deg from the clip's) chosen last frame: kept unless another is clearly better (no elbow hopping) */
-  polePrev?: number;
+  /**
+   * a grip held since last frame: last frame's elbow swivel, fist roll and pronation. The grip then follows them within a few degrees per
+   * frame (no elbow hops, no hand flipping to the other end of its twist range); without it (the grip is taken) every swivel is searched.
+   */
+  track?: GripTrack;
+}
+
+/** the grip state carried from frame to frame (deg) */
+export interface GripTrack {
+  pole: number;
+  roll: number;
+  pron: number;
 }
 
 export interface ArmOut {
@@ -72,6 +82,11 @@ export interface ArmOut {
   miss: number;
   /** the elbow swivel used (deg from the clip's) */
   pole: number;
+  /** the fist's roll about the grip line (deg from the clip's) and the forearm's pronation (deg from neutral) used */
+  roll: number;
+  pron: number;
+  /** degrees the hand still needed past the pronation / wrist range (0: the grip is held inside a human range) */
+  over: number;
 }
 
 export const ARM_LIMITS = {
@@ -83,6 +98,11 @@ export const ARM_LIMITS = {
   wrist: 72,
   /** the rest pose is this many degrees from neutral (limits.ts PRON_REST) */
   restPron: 20,
+  /** how far the fist may roll about a round handle from the clip's grip, deg */
+  roll: 90,
+  /** while a grip is held: the most the elbow swivel / the fist's roll may change in one frame, deg */
+  poleStep: 10,
+  rollStep: 15,
 };
 
 export function armRest(restU: number[], restUf: number[], qUpper: number[], qFore: number[], qHand: number[], side: 1 | -1, flexZ: 1 | -1 = 1): ArmRest {
@@ -135,22 +155,38 @@ const pronOf = (total: number, side: number) => side * total - ARM_LIMITS.restPr
 const limits = () => ((globalThis as { __armLimits?: typeof ARM_LIMITS }).__armLimits ?? ARM_LIMITS);
 
 /**
- * With a grip line to follow, the elbow's swivel (the upper arm's rotation about the shoulder -> wrist line) is searched too: a bat at an angle
- * the forearm alone cannot reach (it would need more than the pronation / wrist range) is reached the way a hitter does it, by moving the
- * elbow. The swivel nearest the clip's that keeps the hand in range wins.
+ * With a grip line to follow, the elbow's swivel (the upper arm's rotation about the shoulder -> wrist line) and the fist's roll about the
+ * handle (a handle is round) are chosen too: a bat at an angle the forearm alone cannot reach (it would need more than the pronation / wrist
+ * range) is reached the way a hitter does it, by moving the elbow and turning the handle in the fist. When the grip is taken every swivel is
+ * tried; while it is held (`goal.track`), the swivel and the roll follow last frame's within a few degrees per frame (a local minimum, refined
+ * continuously): a hand that cannot stay in range drifts there instead of hopping to another solution.
  */
 export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3): ArmOut {
   if (!goal.gripDir || !goal.gripLocal) return solveArmPole(rest, pose, goal, iters, 0).out;
-  const prev = goal.polePrev ?? 0;
-  // degrees past the hand's range cost most; moving the elbow away from the clip's swivel costs a little, away from last frame's more
-  const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3 + Math.abs(ang - prev) * 0.5;
+  const LIM = limits();
+  const tr = goal.track;
+  // degrees past the hand's range cost most; a swivel away from the clip's costs a little
+  const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3;
+  if (tr) {
+    // held: the swivel within a step of last frame's, the minimum of a parabola through three samples
+    const s = LIM.poleStep ?? 10;
+    const p0 = Math.max(-120, Math.min(120, tr.pole));
+    const r0 = solveArmPole(rest, pose, goal, iters, p0);
+    const c0 = cost(r0, p0);
+    if (r0.over < 1e-3 && Math.abs(p0) < 1e-3) return r0.out;
+    const cm = cost(solveArmPole(rest, pose, goal, iters, p0 - s), p0 - s), cp = cost(solveArmPole(rest, pose, goal, iters, p0 + s), p0 + s);
+    const curv = cm - 2 * c0 + cp;
+    let x = curv > 1e-9 ? (s * (cm - cp)) / (2 * curv) : cm < cp ? -s : s;
+    if (curv <= 1e-9 && Math.min(cm, cp) >= c0) x = 0;
+    x = Math.max(-s, Math.min(s, x));
+    if (Math.abs(x) < 1e-3) return r0.out;
+    return solveArmPole(rest, pose, goal, iters, Math.max(-120, Math.min(120, p0 + x))).out;
+  }
   const base = solveArmPole(rest, pose, goal, iters, 0);
-  if (base.over < 1 && Math.abs(prev) < 1) return base.out;
+  if (base.over < 1) return base.out;
   let best = base, bestCost = cost(base, 0);
-  const tried = new Set([0]);
-  for (const ang of [Math.round(prev / 5) * 5, ...Array.from({ length: 24 }, (_, i) => (i % 2 ? -1 : 1) * (Math.floor(i / 2) + 1) * 10)]) {
-    if (tried.has(ang) || Math.abs(ang) > 120) continue;
-    tried.add(ang);
+  for (let i = 0; i < 24; i++) {
+    const ang = (i % 2 ? -1 : 1) * (Math.floor(i / 2) + 1) * 10;
     const r = solveArmPole(rest, pose, goal, iters, ang);
     const c = cost(r, ang);
     if (c < bestCost) {
@@ -182,7 +218,7 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
   const nCur = qrot(aUc, n[0], n[1], n[2]) as number[];
   let qHand = qq(pose.qHand), qUpper = qq(pose.qUpper), qFore = qq(pose.qFore);
   let E = pose.E.slice(), W = pose.H.slice();
-  let over = 0;
+  let over = 0, roll = 0, pron = 0;
   for (let it = 0; it < iters; it++) {
     // the wrist that puts the fist on the target with the current hand estimate
     const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
@@ -217,14 +253,20 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
     if (qHandGoal) {
       // the twist the hand needs about the forearm axis (forearm without its own twist first), then shared and clamped
       const aF0 = qmul(aU, flex);
-      const relGoal = qmul(qinv(aF0), anat(qHandGoal, rest.qHand));
+      const relGoal0 = qmul(qinv(aF0), anat(qHandGoal, rest.qHand));
+      const LIM = limits();
+      // a handle is round: the fist may roll about the grip line (here in the forearm's frame) to keep the forearm and wrist in range
+      const gF = norm(qrot(qinv(aF0), goal.gripDir![0], goal.gripDir![1], goal.gripDir![2]) as number[]);
+      roll = pickRoll(relGoal0, gF, uf, side, LIM, goal.track);
+      const relGoal = roll ? qmul(qaxisAngle(gF[0], gF[1], gF[2], roll * DEG), relGoal0) : relGoal0;
       const sw = [0, 0, 0, 1];
       let total = twistAngle(relGoal, uf[0], uf[1], uf[2], sw) / DEG;
-      const pr = pronOf(total, side);
-      over = Math.max(0, pr - limits().pron, -limits().sup - pr);
-      const LIM = limits();
-      const prC = Math.max(-LIM.sup, Math.min(LIM.pron, pr));
-      total = side * (prC + ARM_LIMITS.restPron);
+      let pr = pronOf(total, side);
+      // held: the same turn as last frame's, not 360 deg away (past the range, the hand stays at the limit it was at instead of flipping)
+      if (goal.track) pr += Math.round((goal.track.pron - pr) / 360) * 360;
+      over = Math.max(0, pr - LIM.pron, -LIM.sup - pr);
+      pron = Math.max(-LIM.sup, Math.min(LIM.pron, pr));
+      total = side * (pron + ARM_LIMITS.restPron);
       // wrist bend limited
       const sAng = 2 * Math.acos(Math.min(1, Math.abs(sw[3])));
       over += Math.max(0, sAng / DEG - LIM.wrist);
@@ -245,5 +287,71 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
   }
   const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
   const miss = len(sub([W[0] + fo[0], W[1] + fo[1], W[2] + fo[2]], goal.target));
-  return { out: { qUpper, qFore, qHand, elbow: E, wrist: W, miss, pole: poleDeg }, over };
+  return { out: { qUpper, qFore, qHand, elbow: E, wrist: W, miss, pole: poleDeg, roll, pron, over }, over };
+}
+
+/** degrees past the pronation / supination and wrist-bend range of a forearm -> hand rotation (`pronRef`: unwrap toward it) */
+function overOf(rel: Q, uf: number[], side: number, LIM: typeof ARM_LIMITS, pronRef?: number) {
+  const sw = [0, 0, 0, 1];
+  let pr = pronOf(twistAngle(rel, uf[0], uf[1], uf[2], sw) / DEG, side);
+  if (pronRef !== undefined) pr += Math.round((pronRef - pr) / 360) * 360;
+  const sAng = (2 * Math.acos(Math.min(1, Math.abs(sw[3])))) / DEG;
+  return Math.max(0, pr - LIM.pron, -LIM.sup - pr) + Math.max(0, sAng - LIM.wrist);
+}
+
+/**
+ * The fist's roll about the grip line (deg from the clip's grip). Taking the grip: the clip's roll when that keeps the forearm and wrist in
+ * range, else the in-range roll nearest it (its edge found by bisection), else the roll leaving the least past range. Holding it: within a
+ * step of last frame's, the best of a few samples refined by a parabola, with a slight pull back toward the clip's.
+ */
+function pickRoll(rel0: Q, g: number[], uf: number[], side: number, LIM: typeof ARM_LIMITS, tr?: GripTrack): number {
+  const lim = LIM.roll ?? 0;
+  if (lim <= 0) return 0;
+  const at = (r: number) => overOf(r ? qmul(qaxisAngle(g[0], g[1], g[2], r * DEG), rel0) : rel0, uf, side, LIM, tr?.pron);
+  const cost = (r: number, o: number) => o * 4 + Math.abs(r) * 0.1;
+  if (tr) {
+    const s = LIM.rollStep ?? 15, r0 = Math.max(-lim, Math.min(lim, tr.roll));
+    const lo = Math.max(-lim, r0 - s), hi = Math.min(lim, r0 + s);
+    // five samples across the window, then a parabola through the best and its neighbours
+    const xs = [lo, (lo + r0) / 2, r0, (r0 + hi) / 2, hi], cs = xs.map((x) => cost(x, at(x)));
+    let k = 0;
+    for (let i = 1; i < 5; i++) if (cs[i] < cs[k]) k = i;
+    if (k === 0 || k === 4) return xs[k];
+    const h1 = xs[k] - xs[k - 1], h2 = xs[k + 1] - xs[k];
+    if (h1 < 1e-6 || h2 < 1e-6) return xs[k];
+    // vertex of the parabola through three unevenly spaced points
+    const d1 = (cs[k] - cs[k - 1]) / h1, d2 = (cs[k + 1] - cs[k]) / h2, c2 = (d2 - d1) / (h1 + h2);
+    if (c2 <= 1e-12) return xs[k];
+    const x = (xs[k - 1] + xs[k]) / 2 - d1 / (2 * c2);
+    return Math.max(xs[k - 1], Math.min(xs[k + 1], x));
+  }
+  if (at(0) < 1e-3) return 0;
+  const N = Math.ceil(lim / 10), step = lim / N;
+  const grid: { r: number; o: number }[] = [];
+  for (let i = -N; i <= N; i++) grid.push({ r: i * step, o: at(i * step) });
+  let best = 0, bestC = cost(0, grid[N].o);
+  const tryR = (r: number, o: number) => {
+    const c = cost(r, o);
+    if (c < bestC) {
+      best = r;
+      bestC = c;
+    }
+  };
+  for (let i = 0; i < grid.length; i++) {
+    tryR(grid[i].r, grid[i].o);
+    // the edge of an in-range interval: bisect between an in-range and an out-of-range neighbour
+    const j = i + 1;
+    if (j < grid.length && grid[i].o < 1e-3 !== grid[j].o < 1e-3) {
+      let a = grid[i].r, b = grid[j].r;
+      const aIn = grid[i].o < 1e-3;
+      for (let k = 0; k < 6; k++) {
+        const m = (a + b) / 2;
+        if (at(m) < 1e-3 === aIn) a = m;
+        else b = m;
+      }
+      const e = aIn ? a : b;
+      tryR(e, at(e));
+    }
+  }
+  return best;
 }

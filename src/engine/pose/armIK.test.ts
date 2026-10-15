@@ -3,8 +3,8 @@ import path from 'node:path';
 import { loadRig, sampleClip, type RigFile } from '../../../tools/jank/glb';
 import { B, PARENT, fk, type PoseLocals } from './skeleton';
 import { measureJoints, restInfo, type RestInfo } from './limits';
-import { qinv, qmul, qrot } from './qmath';
-import { armRest, solveArm, softReach, type ArmRest } from './armIK';
+import { qaxisAngle, qinv, qmul, qrot } from './qmath';
+import { ARM_LIMITS, armRest, solveArm, softReach, type ArmRest, type GripTrack } from './armIK';
 
 let rig: RigFile, R: RestInfo;
 const ROOT = path.resolve(__dirname, '../../..');
@@ -14,6 +14,7 @@ beforeAll(async () => {
   fk(rig.rest, rw, rw);
   R = restInfo(rw);
 });
+const dot3 = (x: number[], y: number[]) => x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
 const sl = (a: Float64Array, i: number, n: number) => Array.from(a.subarray(i * n, i * n + n));
 const restOf = (side: 'Left' | 'Right'): ArmRest => {
   const rw = R.rest;
@@ -100,9 +101,49 @@ describe('analytic arm IK', () => {
     const g1 = qrot(fixed.qHand, a[0], a[1], a[2]) as number[];
     const err = (Math.acos(Math.min(1, (g1[0] * dir[0] + g1[1] * dir[1] + g1[2] * dir[2]) / n)) * 180) / Math.PI;
     expect(err).toBeLessThan(25);
-    // the next frame, the same goal: the same swivel
-    const again = solveArm(rest, pose, { ...goal, polePrev: fixed.pole });
-    expect(again.pole).toBe(fixed.pole);
+    // the next frame, the same goal, the grip held: at most a step from that swivel
+    const again = solveArm(rest, pose, { ...goal, track: { pole: fixed.pole, roll: fixed.roll, pron: fixed.pron } });
+    expect(Math.abs(again.pole - fixed.pole)).toBeLessThanOrEqual(ARM_LIMITS.poleStep + 1e-9);
+  });
+  it('a held grip follows a turning bat continuously: the fist rolls on the round handle, the elbow and the hand never hop', () => {
+    const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
+    const w = fk(L0, undefined, R.rest);
+    const g = rig.attach.get('Bat_Grip')!;
+    const a = qrot(g.q, 0, 1, 0, [0, 0, 0]) as number[];
+    const hp = sl(w.wp, B.RightHand, 3);
+    const rest = restOf('Right');
+    const pose = { S: sl(w.wp, B.RightArm, 3), E: sl(w.wp, B.RightForeArm, 3), H: hp, qUpper: sl(w.wq, B.RightArm, 4), qFore: sl(w.wq, B.RightForeArm, 4), qHand: sl(w.wq, B.RightHand, 4) };
+    const g0 = qrot(pose.qHand, a[0], a[1], a[2]) as number[];
+    const errOf = (q: number[], d: number[]) => (Math.acos(Math.min(1, dot3(qrot(q, a[0], a[1], a[2]) as number[], d))) * 180) / Math.PI;
+    const sweep = (roll: number) => {
+      const lim = (globalThis as { __armLimits?: typeof ARM_LIMITS });
+      lim.__armLimits = { ...ARM_LIMITS, roll };
+      let track: GripTrack | undefined, sum = 0, maxPole = 0, maxRoll = 0, maxPron = 0;
+      // the bat turned a half turn about the vertical in 4.5 deg steps (a swing at 60 fps turns it about that fast)
+      for (let i = 0; i <= 40; i++) {
+        const d = qrot(qaxisAngle(0, 1, 0, (i * 4.5 * Math.PI) / 180), g0[0], g0[1], g0[2]) as number[];
+        const out = solveArm(rest, pose, { target: [hp[0] + 0.05, hp[1], hp[2]], fist: [0.024, 0.074, -0.028], gripLocal: a, gripDir: d, track });
+        sum += errOf(out.qHand, d);
+        if (track) {
+          maxPole = Math.max(maxPole, Math.abs(out.pole - track.pole));
+          maxRoll = Math.max(maxRoll, Math.abs(out.roll - track.roll));
+          maxPron = Math.max(maxPron, Math.abs(out.pron - track.pron));
+        }
+        track = { pole: out.pole, roll: out.roll, pron: out.pron };
+      }
+      delete lim.__armLimits;
+      return { mean: sum / 41, maxPole, maxRoll, maxPron };
+    };
+    // the fist kept on the clip's roll leaves the grip line ~11 deg off the bat on average; rolling it on the handle, ~1 deg
+    const fixed = sweep(0), rolled = sweep(90);
+    expect(rolled.mean).toBeLessThan(fixed.mean / 4);
+    expect(rolled.mean).toBeLessThan(3);
+    for (const r of [fixed, rolled]) {
+      expect(r.maxPole).toBeLessThanOrEqual(ARM_LIMITS.poleStep + 1e-6);
+      expect(r.maxRoll).toBeLessThanOrEqual(ARM_LIMITS.rollStep + 1e-6);
+      // no flip to the other end of the twist range
+      expect(r.maxPron).toBeLessThan(40);
+    }
   });
   it('an unreachable target: no NaN, no hyperextension, the fist as close as the soft reach allows', () => {
     const L = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);

@@ -39,7 +39,7 @@ import { makeOnDeckBat } from './ondeckProp';
 import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { armRest, solveArm as solveArmIK, type ArmRest } from './pose/armIK';
+import { armRest, solveArm as solveArmIK, type ArmRest, type GripTrack } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose } from './pose/constrain';
@@ -1559,7 +1559,8 @@ export class GltfPuppet implements PuppetLike {
     // the sim's bat is where the bat is: the fists stay on it for the whole swing (the hinge-aware solver keeps the elbows plausible; the old
     // fades for elbows in the trunk / low pitches let the hands leave the bat, which is what made the bat look wrongly held)
     this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
-    if (this.ikW > 0.02 && env.batGrip) {
+    if (!(this.ikW > 0.02 && env.batGrip)) this.armTrack.Left = this.armTrack.Right = null;
+    else {
       // the fists close on the handle (the bottom hand is the model's Left for both batting sides: lefties are mirrored), each fist's grip
       // line along the bat with the barrel toward the thumb
       const g = env.batGrip;
@@ -2222,8 +2223,8 @@ export class GltfPuppet implements PuppetLike {
   /** distance (m) of the top hand's fist from the knob along the handle (the model's Bat_Grip), and the bottom hand's */
   private gripTop = 0.135;
   private gripBottom = 0.05;
-  /** the elbow swivel each arm's grip solve chose last frame (deg from the clip's) */
-  private armPole = { Left: 0, Right: 0 };
+  /** each arm's grip as last frame's solve left it (swivel, fist roll, pronation), null when the hands were not on the bat last frame */
+  private armTrack: Record<'Left' | 'Right', GripTrack | null> = { Left: null, Right: null };
   private initArms() {
     const rig = this.rig;
     rig.refresh();
@@ -2274,8 +2275,8 @@ export class GltfPuppet implements PuppetLike {
       const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
       gripDir = a.toArray();
     }
-    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, polePrev: gripDir ? this.armPole[side] : undefined });
-    this.armPole[side] = gripDir ? out.pole : 0;
+    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, track: gripDir ? (this.armTrack[side] ?? undefined) : undefined });
+    if (gripDir) this.armTrack[side] = { pole: out.pole, roll: out.roll, pron: out.pron };
     // rig rotations -> locals, blended from the clip's locals by w
     const qSh = rig.quat(sh, new Quaternion());
     const nU = new Quaternion().fromArray(out.qUpper), nF = new Quaternion().fromArray(out.qFore), nH = new Quaternion().fromArray(out.qHand);
