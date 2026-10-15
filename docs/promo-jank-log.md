@@ -43,4 +43,5 @@ spectrogram; a booth track now ends at a pause: it finishes a word that ends wit
 - **A new analyst line can cut off the running one mid-word**: in a capture of the seed 162 walk-off the director started "Wow!" for the
   analyst while "That is a grown-man swing." (expected 1.0 s, 2.7 s as the HD voice spoke it) was still playing; the booth sink cancels a
   voice's running line when that voice starts a new one, so the first line stopped 2.2 s in. The director times lines by its own estimate,
-  not by the voice's real length; not in the final cut (its takes do not hit it), so left for a booth thread.
+  not by the voice's real length. The 4K take hits it too, harmlessly: "That is a grown-man swing." is cancelled by "Wow!" 20 ms after
+  its last word, in the clip's trailing silence (the caption counts it as said). Left for a booth thread.
