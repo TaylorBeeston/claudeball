@@ -103,7 +103,8 @@ export function obstruction(w: World, r: RunnerRT, f: PlayerRT): void {
   const type1 = playOn(w, r);
   const to = Math.min(4, type1 ? r.base + 1 : Math.max(r.target, r.base + 1));
   emit(w, { type: 'obstruction', runnerId: r.p.info.id, fielderId: f.info.id, base: to, deadBall: type1, pos: { x: r.p.x, y: 0, z: r.p.z } });
-  scheduleCall(w, nearestUmp(w, r.p.x, r.p.z), 'time', 0.2, { playerId: r.p.info.id });
+  // (the ball is dead: the plate umpire calls time; with play on the umpires let it run and give the base after it)
+  if (type1) scheduleCall(w, 'plate', 'time', 0.2, { playerId: r.p.info.id });
   if (!type1) {
     // play on: he cannot be put out short of `to`, and gets it after the play if he does not make it
     r.protectTo = to;

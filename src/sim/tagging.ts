@@ -101,6 +101,8 @@ const LIMB_PATH: Record<SlideKind, [number, number][]> = {
   head: [[0.14, 0.05], [0.3, 0.03], [0.44, 0.01], [0.65, 0], [0.77, 0], [0.84, 0], [0.87, 0], [0.88, 0], [0.88, 0], [0.88, 0], [0.88, 0], [0.87, 0], [0.86, 0]],
   diveBack: [[0.37, 0], [0.5, 0], [0.61, 0], [0.74, 0], [0.86, 0], [0.87, 0], [0.88, 0], [0.88, 0], [0.87, 0], [0.86, 0], [0.86, 0], [0.86, 0], [0.86, 0]],
 };
+/** A hooking foot takes the bag this far to the side of its middle (m): its side corner. */
+const BAG_HALF_SIDE = 0.15;
 /** Seconds the sim gives a slide hint (the engine seeks the clip over them). */
 const SLIDE_S = 0.9;
 
@@ -196,7 +198,9 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
   // leads with to the bag (a hook: the body past it on one side, the foot catching it)
   p.slideDecel = SLIDE_FRICTION;
   const end = LIMB_PATH[kind][LIMB_PATH[kind].length - 1];
-  const ax = bp.x - left.x * end[1], az = bp.z - left.z * end[1];
+  // (a hook: the body goes past wide, the foot takes the side corner of the bag, not the front of it where the glove waits)
+  const wide = end[1] === 0 ? 0 : Math.sign(end[1]) * BAG_HALF_SIDE;
+  const ax = bp.x - left.x * (end[1] + wide), az = bp.z - left.z * (end[1] + wide);
   const al = Math.hypot(ax - p.x, az - p.z) || 1;
   p.vx = ((ax - p.x) / al) * speed;
   p.vz = ((az - p.z) / al) * speed;

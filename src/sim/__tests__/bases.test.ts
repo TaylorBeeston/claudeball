@@ -124,7 +124,7 @@ describe('runners time their steps onto the bag', () => {
     r.p.x = b.x + 0.05;
     r.p.z = b.z;
     expect(standsOn(r.p, 2)).toBe(true);
-    r.p.x = b.x + 0.8;
+    r.p.x = b.x + 1.0;
     expect(standsOn(r.p, 2)).toBe(false);
   });
 });

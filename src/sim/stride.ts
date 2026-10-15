@@ -255,7 +255,7 @@ export function shoeOn(b: number, st: { x: number; z: number; dir: number }): bo
 
 /** Standing on (or stepping onto) the bag: a man at rest or moving slowly with his body over it or beside it puts a foot on it. */
 export function standsOn(p: PlayerRT, b: number): boolean {
-  return Math.hypot(p.vx, p.vz) < 2.0 && distToBase(b, p.x, p.z) <= 0.3;
+  return Math.hypot(p.vx, p.vz) < 2.0 && distToBase(b, p.x, p.z) <= 0.45;
 }
 
 /**
