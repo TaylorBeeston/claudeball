@@ -50,7 +50,7 @@ export async function doStatic(snapshots = true): Promise<RunFile> {
   const agg = new Agg();
   agg.snapshots = snapshots;
   const t0 = Date.now();
-  await runStatic(shippedPlayers(), manifestLoops(), agg);
+  await runStatic(shippedPlayers(), manifestLoops(), agg, flag('constrain'));
   const r = { meta: { kind: 'static', files: shippedPlayers(), ms: Date.now() - t0, git: git() }, entries: agg.list() };
   console.log(`[jank] static: ${r.entries.reduce((a, e) => a + (e.src === 'static' ? e.frames : 0), 0)} clip frames in ${r.meta.ms} ms`);
   return r;
@@ -258,6 +258,7 @@ export function writeReport() {
   if (st) {
     parts.push('## Static sweep: every clip, raw (no runtime override)', '', `Files: ${(st.meta.files as string[]).join(', ')}`, '');
     parts.push(mdFamilies('Violations by kind', st.entries, (s) => s === 'static'), '', mdClips('Worst clips', st.entries, (s) => s === 'static', 40), '');
+    if (st.entries.some((e) => e.src === 'static-constrained')) parts.push(mdFamilies('The same clips through the runtime constraint layer (pose/constrain.ts)', st.entries, (s) => s === 'static-constrained'), '');
   }
   if (fd) parts.push('## Crossfade sweep: what the blend adds (in neither clip)', '', mdFamilies('Violations by kind', fd.entries, () => true), '', mdClips('Worst transitions', fd.entries, () => true, 30), '');
   if (gm) {

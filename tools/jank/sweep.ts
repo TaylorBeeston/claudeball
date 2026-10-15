@@ -16,6 +16,7 @@ import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation
 export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
+import { constrainPose, constrainOptsFor } from '../../src/engine/pose/constrain';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
@@ -45,7 +46,7 @@ export function shippedPlayers(): string[] {
 }
 
 /** sweep one clip (looping clips get a wrap-around tail so a pop at the loop point counts) */
-export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false) {
+export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false, constrain = false) {
   const clip = rig.clips.get(clipName)!;
   const fl = clipFlags(clipName);
   const tr = newTrack();
@@ -54,10 +55,12 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const model = mirrored ? MIRROR : IDENT;
   const n = Math.max(1, Math.round(clip.duration * FPS));
   const tail = loop ? 3 : 0;
-  const src = mirrored ? `static-mirror` : 'static';
+  const src = constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
   for (let i = 0; i <= n + tail; i++) {
     const t = i <= n ? i / FPS : (i - n) / FPS;
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
+    // what the runtime constraint layer makes of the clip (the game applies it every frame)
+    if (constrain) constrainPose(L, info.R, constrainOptsFor(clipName));
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
     validateFrame({ L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, info, tr, v);
@@ -115,11 +118,12 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   }
 }
 
-export async function runStatic(files: string[], manifestLoops: Set<string>, agg = new Agg()): Promise<Agg> {
+export async function runStatic(files: string[], manifestLoops: Set<string>, agg = new Agg(), constrained = false): Promise<Agg> {
   for (const { name, rig, info } of await loadFiles(files)) {
     for (const c of rig.clips.keys()) {
       sweepClip(agg, name, rig, info, c, manifestLoops.has(c));
       if (BAT_CLIPS[c]) sweepClip(agg, name, rig, info, c, manifestLoops.has(c), true);
+      if (constrained) sweepClip(agg, name, rig, info, c, manifestLoops.has(c), false, true);
     }
   }
   return agg;

@@ -54,6 +54,10 @@ export interface ArmGoal {
   /** optional: the hand-local grip line and the rig-space direction it should run along */
   gripLocal?: V3;
   gripDir?: V3;
+  /** keep the end bone's rig rotation (a planted foot keeps its orientation) */
+  keepEnd?: boolean;
+  /** limit the middle bone's own twist (deg; a shin's twist about itself) */
+  twistLimit?: number;
 }
 
 export interface ArmOut {
@@ -70,17 +74,17 @@ export const ARM_LIMITS = {
   /** soft clamp: the last few percent of reach approach full extension asymptotically */
   soft: 0.96,
   /** pronation (from neutral, thumb-forward) and supination limits, deg; the wrist's bend limit, deg */
-  pron: 95,
-  sup: 95,
-  wrist: 75,
+  pron: 88,
+  sup: 88,
+  wrist: 72,
   /** the rest pose is this many degrees from neutral (limits.ts PRON_REST) */
   restPron: 20,
 };
 
-export function armRest(restU: number[], restUf: number[], qUpper: number[], qFore: number[], qHand: number[], side: 1 | -1): ArmRest {
+export function armRest(restU: number[], restUf: number[], qUpper: number[], qFore: number[], qHand: number[], side: 1 | -1, flexZ: 1 | -1 = 1): ArmRest {
   const u = norm(restU.slice());
-  // anterior (+Z) made perpendicular to the upper arm
-  const n = norm([-u[2] * u[0], -u[2] * u[1], 1 - u[2] * u[2]]);
+  // the flexion side made perpendicular to the upper segment: anterior (+Z) for an elbow, posterior (-Z) for a knee
+  const n = norm([-flexZ * u[2] * u[0], -flexZ * u[2] * u[1], flexZ - flexZ * u[2] * u[2]]);
   return { u, uf: norm(restUf.slice()), n, qUpper: qUpper.slice(), qFore: qFore.slice(), qHand: qHand.slice(), side };
 }
 
@@ -132,7 +136,8 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   // the clip's frames, its forearm twist about the forearm axis and its wrist (hand vs forearm)
   const aUc = anat(pose.qUpper, rest.qUpper), aFc = anat(pose.qFore, rest.qFore), aHc = anat(pose.qHand, rest.qHand);
   const relF = qmul(qinv(aUc), aFc);
-  const twClip = twistAngle(relF, uf[0], uf[1], uf[2]) / DEG;
+  let twClip = twistAngle(relF, uf[0], uf[1], uf[2]) / DEG;
+  if (goal.twistLimit !== undefined) twClip = Math.max(-goal.twistLimit, Math.min(goal.twistLimit, twClip));
   const relH = qmul(qinv(aFc), aHc);
   // the hand's target rig rotation: the smallest turn from the clip's hand that puts its grip line along the target axis
   let qHandGoal: number[] | null = null;
@@ -198,7 +203,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
     }
     const aF = qmul(qmul(aU, flex), qaxisAngle(uf[0], uf[1], uf[2], twF * DEG));
     qFore = qmul(aF, rest.qFore) as number[];
-    qHand = qmul(qmul(aF, relHand), rest.qHand) as number[];
+    qHand = goal.keepEnd ? qq(pose.qHand) : (qmul(qmul(aF, relHand), rest.qHand) as number[]);
   }
   const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
   const miss = len(sub([W[0] + fo[0], W[1] + fo[1], W[2] + fo[2]], goal.target));

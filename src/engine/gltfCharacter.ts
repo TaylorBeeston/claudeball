@@ -40,6 +40,9 @@ import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, ty
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armRest, solveArm as solveArmIK, type ArmRest } from './pose/armIK';
+import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
+import { restInfo, type RestInfo } from './pose/limits';
+import { constrainOptsFor, constrainPose } from './pose/constrain';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -645,7 +648,8 @@ export class GltfPuppet implements PuppetLike {
     }
     this.rig = new Rig(this.model);
     this.initArms();
-    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand']) {
+    this.initConstraints();
+    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot']) {
       const b = this.bones[n];
       if (b) this.clipPose.set(b, b.quaternion.clone());
     }
@@ -1541,6 +1545,8 @@ export class GltfPuppet implements PuppetLike {
       this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW, { gripDir: axis });
     }
     this.reachIK(snap, env, dt);
+    // joints back inside a human range (pose/constrain.ts): elbow / knee hinges, forearm pronation shared with the hand, wrist
+    this.constrain(snap);
     this.clearElbows(snap, dt);
     if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
@@ -2075,6 +2081,52 @@ export class GltfPuppet implements PuppetLike {
     const l = this.bones.LeftArm, r = this.bones.RightArm;
     if (!l || !r) return null;
     return out.copy(l.getWorldPosition(new Vector3())).add(r.getWorldPosition(new Vector3())).multiplyScalar(0.5);
+  }
+
+  /** the rig as plain arrays for the constraint layer: its rest frames and a scratch pose */
+  private poseRest: RestInfo | null = null;
+  private poseL: PoseLocals = newLocals();
+  private poseBones: (Bone | undefined)[] = [];
+  private initConstraints() {
+    const bones = BONES.map((n) => this.bones[n]);
+    if (bones.some((b) => !b)) return;
+    this.poseBones = bones;
+    const L = this.poseL;
+    this.readPose();
+    // the Hips' parent (the Armature, scaled for the ball kid) in rig space
+    this.model.updateMatrixWorld(true);
+    this.rig.refresh();
+    const m = new Matrix4().copy(this.model.matrixWorld).invert().multiply(bones[0]!.parent!.matrixWorld);
+    const p = new Vector3(), q = new Quaternion(), sc = new Vector3();
+    m.decompose(p, q, sc);
+    L.base.set([q.x, q.y, q.z, q.w, p.x, p.y, p.z, sc.x]);
+    const rw = fk(L);
+    fk(L, rw, rw);
+    this.poseRest = restInfo(rw);
+  }
+  private readPose() {
+    const L = this.poseL;
+    for (let i = 0; i < NB; i++) {
+      const b = this.poseBones[i]!;
+      L.lq[i * 4] = b.quaternion.x;
+      L.lq[i * 4 + 1] = b.quaternion.y;
+      L.lq[i * 4 + 2] = b.quaternion.z;
+      L.lq[i * 4 + 3] = b.quaternion.w;
+      L.lp[i * 3] = b.position.x;
+      L.lp[i * 3 + 1] = b.position.y;
+      L.lp[i * 3 + 2] = b.position.z;
+    }
+  }
+  private constrain(snap: PlayerSnap) {
+    if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;
+    this.readPose();
+    // a bat in the hands (the batter's, the on-deck hitter's): the hands' twist stays as the clip / the bat IK made it
+    const holdsBat = snap.role === 'batter' || snap.role === 'ondeck';
+    const mask = constrainPose(this.poseL, this.poseRest, constrainOptsFor(this.currentName, holdsBat));
+    if (!mask) return;
+    for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
+    this.refreshMatrices();
+    this.rig.refresh();
   }
 
   /** per arm: rest frames for the arm solver, the fist point and grip line in the hand's frame (from the model's Bat_Grip) */

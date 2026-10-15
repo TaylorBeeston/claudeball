@@ -14,25 +14,30 @@
 import { DEG, qaxisAngle, qinv, qmul, twistAngle, type Q } from './qmath';
 import { B, NB, PARENT, type PoseLocals, type PoseWorld, fk, newWorld } from './skeleton';
 import type { RestInfo } from './limits';
+import { armRest, solveArm, type ArmRest } from './armIK';
 
-/** ease x into [lo, hi]: unchanged inside [lo + m, hi - m], approaching the limit asymptotically past it (C1-continuous) */
+/**
+ * Soft limit: x unchanged inside [lo, hi] (a valid pose is never touched); past a limit it eases into an overshoot band of width m, approaching
+ * lo - m / hi + m asymptotically (C1-continuous, so a clip sweeping through a limit has no kink).
+ */
 export function softClamp(x: number, lo: number, hi: number, m: number): number {
-  if (x > hi - m) return hi - m + m * Math.tanh((x - (hi - m)) / m);
-  if (x < lo + m) return lo + m - m * Math.tanh((lo + m - x) / m);
+  if (x > hi) return hi + m * Math.tanh((x - hi) / m);
+  if (x < lo) return lo - m * Math.tanh((lo - x) / m);
   return x;
 }
 
+/** where the soft limits start (deg); each eases into `margin` more (so the hard ranges are these + margin) */
 export const CONSTRAINT = {
-  elbow: { lo: 0, hi: 150, off: 18 },
-  knee: { lo: 0, hi: 150, off: 12 },
+  elbow: { lo: 0, hi: 145, off: 14 },
+  knee: { lo: 0, hi: 147, off: 10, twist: 30 },
   /** pronation / supination from neutral (deg) */
-  pron: 95,
-  sup: 95,
-  wrist: 80,
-  ankle: 55,
-  ankleTwist: 30,
-  /** easing margins (deg) */
-  margin: 12,
+  pron: 88,
+  sup: 88,
+  wrist: 72,
+  ankle: 50,
+  ankleTwist: 24,
+  /** easing band (deg) */
+  margin: 6,
   restPron: 20,
 };
 
@@ -59,7 +64,7 @@ const restQ = (rest: PoseWorld, i: number) => Array.from(rest.wq.subarray(i * 4,
  * direction; the swing into the hinge part (about u x flexion side) and the rest; clamp the bend, ease the off-plane part, keep the twist.
  * Returns true when it changed the pose.
  */
-function hinge(L: PoseLocals, w: PoseWorld, R: RestInfo, up: number, mid: number, flexZ: number, lim: { lo: number; hi: number; off: number }, m: number): boolean {
+function hinge(L: PoseLocals, w: PoseWorld, R: RestInfo, up: number, mid: number, flexZ: number, lim: { lo: number; hi: number; off: number; twist?: number }, m: number): boolean {
   const u = Array.from(R.dir.subarray(up * 3, up * 3 + 3)), uf = Array.from(R.dir.subarray(mid * 3, mid * 3 + 3));
   // flexion side perpendicular to u, hinge axis
   const n = [-flexZ * u[2] * u[0], -flexZ * u[2] * u[1], flexZ - flexZ * u[2] * u[2]];
@@ -83,13 +88,16 @@ function hinge(L: PoseLocals, w: PoseWorld, R: RestInfo, up: number, mid: number
   const off = Math.hypot(ox[0], ox[1], ox[2]) / DEG;
   const flex = bend + restBend / DEG;
   const flex2 = softClamp(flex, lim.lo, lim.hi, m);
-  const off2 = off > lim.off - m ? softClamp(off, -1e9, lim.off, m) : off;
-  if (Math.abs(flex2 - flex) < 0.05 && Math.abs(off2 - off) < 0.05) return false;
+  const off2 = softClamp(off, -1e9, lim.off, m);
+  // the bone's twist about itself: kept (the elbow's is pronation, handled with the hand), limited for the shin
+  const twD = tw / DEG;
+  const tw2 = lim.twist !== undefined ? softClamp(twD, -lim.twist, lim.twist, m) : twD;
+  if (Math.abs(flex2 - flex) < 0.05 && Math.abs(off2 - off) < 0.05 && Math.abs(tw2 - twD) < 0.05) return false;
   const k = off > 1e-9 ? off2 / off : 0;
   const v2 = [a[0] * (flex2 - restBend / DEG) * DEG + ox[0] * k, a[1] * (flex2 - restBend / DEG) * DEG + ox[1] * k, a[2] * (flex2 - restBend / DEG) * DEG + ox[2] * k];
   const g = Math.hypot(v2[0], v2[1], v2[2]);
   const swing2 = g > 1e-9 ? qaxisAngle(v2[0] / g, v2[1] / g, v2[2] / g, g) : [0, 0, 0, 1];
-  const rel2 = qmul(swing2, qaxisAngle(uf[0], uf[1], uf[2], tw));
+  const rel2 = qmul(swing2, qaxisAngle(uf[0], uf[1], uf[2], tw2 * DEG));
   setRig(L, w, R.rest, mid, qmul(qmul(aU, rel2), restQ(R.rest, mid)));
   return true;
 }
@@ -105,8 +113,8 @@ function forearm(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right
   const tf = twistAngle(relF, uf[0], uf[1], uf[2], swF) / DEG, th = twistAngle(relH, uf[0], uf[1], uf[2], swH) / DEG;
   let total = tf + th;
   const pr = sg * total - CONSTRAINT.restPron;
-  let pr2 = pr - 360 * Math.round(pr / 360);
-  pr2 = softClamp(pr2, -CONSTRAINT.sup, CONSTRAINT.pron, m);
+  // no wrapping at +-180: the sum of the two twists is continuous where a wrapped angle would make the clamp jump from one limit to the other
+  const pr2 = softClamp(pr, -CONSTRAINT.sup, CONSTRAINT.pron, m);
   const total2 = sg * (pr2 + CONSTRAINT.restPron);
   // the wrist's bend
   const s = Math.hypot(swH[0], swH[1], swH[2]);
@@ -131,7 +139,7 @@ function forearm(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right
 }
 
 /** the ankle: bend and twist about the shin limited */
-function ankle(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right', m: number): boolean {
+function ankle(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right', m: number, bend: boolean): boolean {
   const sh = B[`${side}Leg`], ft = B[`${side}Foot`];
   const us = Array.from(R.dir.subarray(sh * 3, sh * 3 + 3));
   const rel = qmul(qinv(anatQ(w, sh)), anatQ(w, ft));
@@ -139,7 +147,7 @@ function ankle(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right',
   const s = Math.hypot(sw[0], sw[1], sw[2]);
   const ang = (2 * Math.atan2(s, Math.abs(sw[3]))) / DEG;
   const tw2 = softClamp(tw, -CONSTRAINT.ankleTwist, CONSTRAINT.ankleTwist, m);
-  const ang2 = softClamp(ang, -1e9, CONSTRAINT.ankle, m);
+  const ang2 = bend ? softClamp(ang, -1e9, CONSTRAINT.ankle, m) : ang;
   if (Math.abs(tw2 - tw) < 0.05 && Math.abs(ang2 - ang) < 0.05) return false;
   const swing = s > 1e-9 ? qaxisAngle(sw[0] / s, sw[1] / s, sw[2] / s, ang2 * DEG * (sw[3] < 0 ? -1 : 1)) : [0, 0, 0, 1];
   const rel2 = qmul(swing, qaxisAngle(us[0], us[1], us[2], tw2 * DEG));
@@ -147,29 +155,94 @@ function ankle(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right',
   return true;
 }
 
+const legRests = new WeakMap<RestInfo, Record<'Left' | 'Right', ArmRest>>();
+function legRest(R: RestInfo, side: 'Left' | 'Right'): ArmRest {
+  let r = legRests.get(R);
+  if (!r) {
+    const mk = (s: 'Left' | 'Right') => {
+      const [u, l, f] = [B[`${s}UpLeg`], B[`${s}Leg`], B[`${s}Foot`]];
+      const d = (i: number) => Array.from(R.dir.subarray(i * 3, i * 3 + 3));
+      return armRest(d(u), d(l), restQ(R.rest, u), restQ(R.rest, l), restQ(R.rest, f), s === 'Left' ? 1 : -1, -1);
+    };
+    legRests.set(R, (r = { Left: mk('Left'), Right: mk('Right') }));
+  }
+  return r[side];
+}
+
+/**
+ * A knee bent sideways, backwards or twisted: re-solve the leg with the two-bone solver so the knee bends in its hinge plane at the clip's
+ * swivel, with the ankle where it was and the foot keeping its orientation (a planted foot stays planted). A knee folded past full flexion
+ * cannot be opened without moving the foot and is left alone (slides).
+ */
+function leg(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right'): boolean {
+  const [u, l, f] = [B[`${side}UpLeg`], B[`${side}Leg`], B[`${side}Foot`]];
+  const sl = (a: Float64Array, i: number, n: number) => Array.from(a.subarray(i * n, i * n + n));
+  // measure: the bend's out-of-plane part and the shin's own twist (as hinge() does), and hyperextension
+  const lr = legRest(R, side);
+  const aU = anatQ(w, u), aM = anatQ(w, l);
+  const rel = qmul(qinv(aU), aM);
+  const tw = twistAngle(rel, lr.uf[0], lr.uf[1], lr.uf[2], sw) / DEG;
+  const d = [w.wp[f * 3] - w.wp[l * 3], w.wp[f * 3 + 1] - w.wp[l * 3 + 1], w.wp[f * 3 + 2] - w.wp[l * 3 + 2]];
+  const dl = Math.hypot(d[0], d[1], d[2]) || 1;
+  const t: number[] = [0, 0, 0];
+  const qa = aU;
+  // the shin direction in the thigh's anatomical frame
+  const x = d[0] / dl, y = d[1] / dl, z = d[2] / dl;
+  const iq = qinv(qa);
+  const tx = 2 * (iq[1] * z - iq[2] * y), ty = 2 * (iq[2] * x - iq[0] * z), tz = 2 * (iq[0] * y - iq[1] * x);
+  t[0] = x + iq[3] * tx + (iq[1] * tz - iq[2] * ty);
+  t[1] = y + iq[3] * ty + (iq[2] * tx - iq[0] * tz);
+  t[2] = z + iq[3] * tz + (iq[0] * ty - iq[1] * tx);
+  const a = [lr.u[1] * lr.n[2] - lr.u[2] * lr.n[1], lr.u[2] * lr.n[0] - lr.u[0] * lr.n[2], lr.u[0] * lr.n[1] - lr.u[1] * lr.n[0]];
+  const off = Math.asin(Math.max(-1, Math.min(1, t[0] * a[0] + t[1] * a[1] + t[2] * a[2]))) / DEG;
+  const flex = Math.atan2(t[0] * lr.n[0] + t[1] * lr.n[1] + t[2] * lr.n[2], t[0] * lr.u[0] + t[1] * lr.u[1] + t[2] * lr.u[2]) / DEG;
+  const lim = CONSTRAINT.knee;
+  if (Math.abs(off) <= lim.off && Math.abs(tw) <= lim.twist && flex >= lim.lo - 0.5) return false;
+  const out = solveArm(lr, { S: sl(w.wp, u, 3), E: sl(w.wp, l, 3), H: sl(w.wp, f, 3), qUpper: sl(w.wq, u, 4), qFore: sl(w.wq, l, 4), qHand: sl(w.wq, f, 4) }, { target: sl(w.wp, f, 3), fist: [0, 0, 0], keepEnd: true, twistLimit: lim.twist }, 2);
+  setRig(L, w, R.rest, u, out.qUpper);
+  setRig(L, w, R.rest, l, out.qFore);
+  setRig(L, w, R.rest, f, out.qHand);
+  return true;
+}
+
 export interface ConstrainOpts {
   arms?: boolean;
   legs?: boolean;
+  /** forearm pronation per side (off for a hand holding a bat on its grip: turning that hand would turn the bat away from the other hand) */
+  pron?: { Left: boolean; Right: boolean };
+  /** the ankle's bend and twist (off by default: on a planted foot either moves the toes into / off the ground; correcting it needs the leg IK
+   *  of phase B2, which can move the twist up to the hip) */
+  ankles?: boolean;
 }
 
 /**
  * Put the pose's elbows, knees, forearms, wrists and ankles back inside their ranges (in place). Returns a bit mask of the bones it changed
  * (bit i = bone i) so the caller writes back only those.
  */
-export function constrainPose(L: PoseLocals, R: RestInfo, o: ConstrainOpts = { arms: true, legs: true }): number {
+export function constrainPose(L: PoseLocals, R: RestInfo, o: ConstrainOpts = {}): number {
   const w = fk(L, W, R.rest);
   const m = CONSTRAINT.margin;
   let mask = 0;
   for (const side of ['Left', 'Right'] as const) {
     if (o.arms !== false) {
       if (hinge(L, w, R, B[`${side}Arm`], B[`${side}ForeArm`], 1, CONSTRAINT.elbow, m)) mask |= 1 << B[`${side}ForeArm`];
-      if (forearm(L, w, R, side, m)) mask |= (1 << B[`${side}ForeArm`]) | (1 << B[`${side}Hand`]);
+      if ((o.pron?.[side] ?? true) && forearm(L, w, R, side, m)) mask |= (1 << B[`${side}ForeArm`]) | (1 << B[`${side}Hand`]);
     }
     if (o.legs !== false) {
-      if (hinge(L, w, R, B[`${side}UpLeg`], B[`${side}Leg`], -1, CONSTRAINT.knee, m)) mask |= 1 << B[`${side}Leg`];
-      if (ankle(L, w, R, side, m)) mask |= 1 << B[`${side}Foot`];
+      if (leg(L, w, R, side)) mask |= (1 << B[`${side}UpLeg`]) | (1 << B[`${side}Leg`]) | (1 << B[`${side}Foot`]);
+      if (o.ankles && ankle(L, w, R, side, m, true)) mask |= 1 << B[`${side}Foot`];
     }
   }
   void NB;
   return mask;
+}
+
+/** clips that hold a bat on its grip (their hands' twist is left alone: it would turn the bat away from the other hand) */
+const BAT_HELD = /^(batting_stance|swing|batter_|ondeck_)/;
+/** slides, dives and pop-ups fold the legs past what the leg solver can fix without moving the feet (they need re-authored clips, phase B2) */
+const LEGS_FREE = /^(slide|dive|pop_up|coach_slide)/;
+
+/** what the constraint layer does to a clip by its name (the game and the static sweep agree) */
+export function constrainOptsFor(clip: string, holdsBat = BAT_HELD.test(clip)): ConstrainOpts {
+  return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat } };
 }
