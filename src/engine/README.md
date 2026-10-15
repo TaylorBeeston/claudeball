@@ -105,7 +105,7 @@ A robbed home run (`robbedHomeRun`, engine event `robbed_hr`) is cued as: the fi
 then the play again from the second-angle replay camera. While any replay plays the live sim waits (`SimDriver.hold`; replay animation keeps running), so the next pitch is not missed.
 `wallContact` is mapped to `wall_contact` but does not change the camera (the follow shot already tracks the carom).
 A contested `out` / `safe` (`closePlay` or |`margin`| < 0.10 s) cuts to the umpire making the call, then plays a slow-motion (0.3x) replay from a low camera at the base with a slow push-in and a
-`CLOSE PLAY` caption, then a normal-speed replay from the opposite side; a `tag` event puts the low base camera on the tag. HUD captions (`STRIKE`, `BALL`, `SAFE`, `OUT`, …) come from `umpire_call`.
+`CLOSE PLAY` caption, then a normal-speed replay from the opposite side (its own `replayEnd` / `replayStart` pair, same caption); a `tag` event puts the low base camera on the tag. HUD captions (`STRIKE`, `BALL`, `SAFE`, `OUT`, …) come from `umpire_call`.
 HUD: name cards show 20-80 rating bars, today's line and the pitch arsenal; `B` toggles the box score.
 Dev URL params: `?seed=N` picks the sim seed (seed 12: leap + robbed home run at 59 s; seed 24: home run at 21 s with trot, base touches and celebration).
 Tests: `npm test` (headLook maths + mirror-safe rig).
@@ -113,7 +113,8 @@ Tests: `npm test` (headLook maths + mirror-safe rig).
 ## B-roll, broadcast events and cards
 During the sim's lulls (`lull` / `lullKind` / `lullRemaining`) the director (`broll.ts`) plans B-roll: walk-up, face close-up (rack focus), on-deck, dugout, pitcher's face, catcher's signs, shake-off,
 lead-off, base coaches, bullpen, crowd, scoreboard, aerial, sky, mound wide / huddle, manager walking, bullpen door, reliever jogging, umpire huddle. Holds are 2.5-6 s, a kind never repeats within 4 shots,
-nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag).
+nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag); a play
+that was already replayed right after it ended (a close play, a home run, a replayed hit) comes back only in a half-inning break, at least 30 s later.
 
 **`Engine.broadcast.on(cb)`** (also mirrored into the sim event path as `{type: 'broadcast', event}`, for hosts that only read `sim.on`; a game with a raw sim bus must subscribe to `engine.broadcast`) delivers:
 | event | fields |

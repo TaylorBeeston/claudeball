@@ -123,6 +123,8 @@ interface VoiceState {
   cut: boolean;
   lastEnd: number;
   clauseEnds: number[];
+  /** the estimated length of the line (seconds) */
+  est: number;
 }
 
 export interface DirectorOpts {
@@ -138,8 +140,8 @@ export interface DirectorOpts {
 
 export class Director {
   readonly voices: Record<VoiceId, VoiceState> = {
-    pxp: { item: null, start: 0, end: 0, cut: false, lastEnd: -99, clauseEnds: [] },
-    color: { item: null, start: 0, end: 0, cut: false, lastEnd: -99, clauseEnds: [] },
+    pxp: { item: null, start: 0, end: 0, cut: false, lastEnd: -99, clauseEnds: [], est: 0 },
+    color: { item: null, start: 0, end: 0, cut: false, lastEnd: -99, clauseEnds: [], est: 0 },
   };
   private pending: Item[] = [];
   private folds = new Map<string, Fold & { at: number }>();
@@ -156,6 +158,11 @@ export class Director {
   private dur: (text: string, excited?: boolean) => number;
   private ends: (text: string, excited?: boolean) => number[];
   topicSource: ((t: number) => Topic | null) | null;
+  /**
+   * The sink: is this voice's line still sounding (or still being synthesised)? A line that runs past its estimate (an HD voice is often much
+   * slower than the words suggest) then keeps its voice busy until the sink reports its real end, so the next line never cuts it mid-word.
+   */
+  sounding: ((voice: VoiceId) => boolean) | null = null;
   /** debug / tests */
   readonly stats = { started: 0, cuts: 0, foldedIn: 0, foldDropped: 0, shouldDropped: 0, topicsStarted: 0, topicsAborted: 0, segments: 0, segmentTurns: 0, segmentSkipped: 0 };
 
@@ -331,6 +338,7 @@ export class Director {
     v.item = item;
     v.start = t;
     v.end = t + est;
+    v.est = est;
     v.cut = false;
     v.clauseEnds = this.ends(text, item.excited);
     this.stats.started++;
@@ -341,10 +349,14 @@ export class Director {
   tick(t: number): Action[] {
     const actions: Action[] = [];
     if (this.suppressed) return actions;
-    // lines whose estimated end has passed are over (the sink normally reports it earlier)
+    // lines whose estimated end has passed are over (the sink normally reports it earlier), unless the sink says the voice is still
+    // talking: then the line is held open (an interjection still waits for its last moments) until its real end, within a cap for an engine
+    // that never reports one
     for (const id of ['pxp', 'color'] as VoiceId[]) {
       const v = this.voices[id];
-      if (v.item && t >= v.end) this.finish(id, v.end);
+      if (!v.item) continue;
+      if (t >= v.start + v.est && t < v.start + Math.max(3 * v.est, v.est + 6) && this.sounding?.(id)) v.end = Math.max(v.end, t + this.cfg.interjectOverlap + 0.05);
+      else if (t >= v.end) this.finish(id, v.end);
     }
     // expiry
     this.pending = this.pending.filter((p) => {

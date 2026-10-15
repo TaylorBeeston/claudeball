@@ -250,6 +250,8 @@ export interface GameState {
   players: PlayerSnap[];
   umpireCall: UmpireCall;
   count: { balls: number; strikes: number };
+  /** the plate appearance is over: `count` is its final count (a 3-2 strikeout, ball four) until the next batter steps in; the scorebug shows 0-0 */
+  paOver?: boolean;
   outs: number;
   inning: number;
   half: 'top' | 'bottom';

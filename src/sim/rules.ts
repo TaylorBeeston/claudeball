@@ -331,7 +331,11 @@ export function afterPlayOver(w: World): void {
 
 export function endHalfInning(w: World): void {
   w.battingTeam.lob += w.runners.filter((r) => r.state === 'live' && r.base >= 1 && !r.dead).length;
-  emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half });
+  // decided before the event goes out, so listeners never announce a half inning that will not be played
+  const home = w.teams.home.runs, away = w.teams.away.runs;
+  const last = w.inning >= w.cfg.innings;
+  const winner: TeamSide | null = w.half === 'top' ? (last && home > away ? 'home' : null) : last && home !== away ? (home > away ? 'home' : 'away') : null;
+  emit(w, { type: 'halfInningEnd', inning: w.inning, half: w.half, final: winner !== null });
   // clear bases, ball to pitcher
   for (const r of w.runners) toBench(w, r.p);
   for (const r of w.exiting) toBench(w, r.p);
@@ -340,17 +344,13 @@ export function endHalfInning(w: World): void {
   w.paDone = false;
   const bat = w.batter;
   if (bat) toBench(w, bat);
+  if (winner) {
+    endGame(w, winner);
+    return;
+  }
   if (w.half === 'top') {
-    if (w.inning >= w.cfg.innings && w.teams.home.runs > w.teams.away.runs) {
-      endGame(w, 'home');
-      return;
-    }
     w.half = 'bottom';
   } else {
-    if (w.inning >= w.cfg.innings && w.teams.home.runs !== w.teams.away.runs) {
-      endGame(w, w.teams.home.runs > w.teams.away.runs ? 'home' : 'away');
-      return;
-    }
     w.half = 'top';
     w.inning++;
   }

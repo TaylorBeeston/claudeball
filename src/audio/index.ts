@@ -226,6 +226,7 @@ export class AudioController {
     // EXPERIMENT (off by default, URL flag only): a tiny in-browser language model for colour lines, validated; see src/audio/README.md
     if (new URLSearchParams(location.search).get('lm') === '1' && hdSupported()) void import('./broadcast/lmClient').then((m) => m.startLm()).then((lm) => (this.booth.lm = lm)).catch(() => {});
     this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
+    this.booth.director.sounding = (v) => this.sink.sounding(v);
     this.syncSpeech();
     this.raw = rawBusOf(host.sim.game);
     this.mapper = new CueMapper({ detailed: !!this.raw, crowdCues: false }); // the crowd model makes the crowd sounds

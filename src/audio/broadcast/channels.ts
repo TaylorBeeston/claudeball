@@ -122,6 +122,11 @@ export class BoothSink {
     }
   }
 
+  /** this voice's line is still running (synthesising or sounding): it has not reported its end and was not cut */
+  sounding(voice: VoiceId) {
+    return !!this.lines[voice];
+  }
+
   get speaking() {
     return !!(this.lines.pxp || this.lines.color);
   }

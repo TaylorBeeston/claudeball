@@ -736,7 +736,9 @@ export class Hud {
       this.boxTimer = 0.5;
       this.renderBox(s);
     }
-    const key = `${s.score.away}|${s.score.home}|${s.inning}${s.half}|${s.outs}|${s.count.balls}${s.count.strikes}|${s.runners.join()}`;
+    // a finished plate appearance's count (ball four, strike three) is not shown while the next batter walks up
+    const cnt = s.paOver ? { balls: 0, strikes: 0 } : s.count;
+    const key = `${s.score.away}|${s.score.home}|${s.inning}${s.half}|${s.outs}|${cnt.balls}${cnt.strikes}|${s.runners.join()}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
       const t = [s.teams.away, s.teams.home];
@@ -749,8 +751,8 @@ export class Hud {
       this.inn.innerHTML = `<i>${s.half === 'top' ? '▲' : '▼'}</i>${s.inning}`;
       s.runners.forEach((r, i) => this.bases[i].classList.toggle('on', r));
       const setDots = (d: HTMLElement, n: number) => Array.from(d.children).forEach((u, i) => u.classList.toggle('on', i < n));
-      setDots(this.dotsB, s.count.balls);
-      setDots(this.dotsS, s.count.strikes);
+      setDots(this.dotsB, cnt.balls);
+      setDots(this.dotsS, cnt.strikes);
       setDots(this.dotsO, s.outs);
     }
     // cards
