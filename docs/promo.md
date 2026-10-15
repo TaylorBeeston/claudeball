@@ -100,9 +100,15 @@ true-peak limiter at -1 dBTP; stems: `music.wav` (band), `fx.wav`, `game.wav`, `
 
 ## TODO (resume here)
 
-- [x] scout, capture runtime, gates, QA sweeps, first jank fixes (see `docs/promo-jank-log.md`)
-- [x] shot list v1, edit v1, typography, music, mix, assembly
-- [x] preview renders and reviews (v1-v4), camera iteration, report 1
-- [x] constraint suite (vitest, typecheck, Pages build, sanity --prod, perf:check), 30 / 60 fps take check
-- [ ] 1080p60 master (+ teaser, snippets, contact sheet) and a full-resolution check of the slow-motion contact frames
-- [ ] 4K60 master, 9:16 vertical cut (preview first), README teaser commit
+- [x] scout, capture runtime, gates, QA sweeps, jank fixes P1-P10 (see `docs/promo-jank-log.md`)
+- [x] shot list, edit, typography, music, mix, assembly; previews v1-v4, report 1
+- [x] constraint suite (vitest, typecheck, Pages build, sanity --prod, perf:check); 30 / 60 fps take check
+- [x] 1080p60 master, README teaser (`docs/media/teaser.webm`), snippets, contact sheet, report 2
+- [ ] 4K60 master and the 9:16 vertical cut (`--4k`, `--vertical`), report 3
+- [ ] fireworks: denser rising trail (`fireworks.ts`, done in source), then re-shoot `wo-fireworks`, `wo-broadcast`, `wo-flight`,
+      `bomb-broadcast` in all three formats with `--adopt <previous build key> --force --only ...`
+
+Re-shooting after an engine change: every shot's cache key includes the build, so a change re-shoots everything. When the change can
+only affect some shots, record the old key (`npx tsx -e "import { buildKey } from './tools/promo/capture'; console.log(buildKey())"`),
+rebuild, run `promo:render -- --adopt <old key> --stages capture --only none` for each format, then `--force --only <shots>`.
+Never rebuild `dist/` while a capture is running (every shot loads the page from it).
