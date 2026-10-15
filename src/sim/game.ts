@@ -2,6 +2,8 @@ import { BATTER_X, ballFollowsHolder, startGame, startPlateAppearance, tickLob, 
 import { tickInPlay } from './inplay';
 import { afterPlayOver } from './rules';
 import { stepPlayer } from './movement';
+import { refreshBodies, separate } from './bodies';
+import { contactRules } from './contact';
 import { tickRunners } from './running';
 import { createWorld } from './setup';
 import { pendingDecisions, resolveDecision } from './dispatch';
@@ -146,6 +148,9 @@ export class Game {
     tickStaff(w);
     tickUmpires(w);
     for (const t of [w.teams.home, w.teams.away]) for (const p of t.players.values()) if (p.onField) stepPlayer(p, w);
+    // bodies do not pass through each other: what still overlaps after the moves is pushed apart, and the rules look at the contacts
+    contactRules(w, separate(w));
+    refreshBodies(w);
   }
 
   on<T extends GameEventType>(type: T, cb: (e: Extract<GameEvent, { type: T }>) => void): () => void;

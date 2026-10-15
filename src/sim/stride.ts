@@ -35,9 +35,13 @@ export interface Stride {
   last: Strike | null;
   /** the strike before `last` */
   prev: Strike | null;
+  /** the step in progress is the one aimed at a touch: where his body goes for it (kept until the foot comes down) */
+  lock: { bx: number; bz: number; tx: number; tz: number; gait: Gait } | null;
+  /** steps to the touch he is aiming at (0 = none): within two he goes for the bag and does not steer around anyone (bodies.ts) */
+  aimK: number;
 }
 
-export const newStride = (): Stride => ({ next: 0, dist: 0, len: 0, last: null, prev: null });
+export const newStride = (): Stride => ({ next: 0, dist: 0, len: 0, last: null, prev: null, lock: null, aimK: 0 });
 
 /**
  * The gait clips, slowest first: ground speed the clip is authored for (its stance-foot speed), step length (half the distance
@@ -89,7 +93,11 @@ function offsets(g: Gait, foot: Foot, mirrored: boolean): { fwd: number; side: n
 
 /** Where a foot lands for a body at (x, z) facing `facing` moving at `speed`. */
 export function footPoint(x: number, z: number, facing: number, speed: number, foot: Foot, turning: boolean, mirrored = false): { x: number; z: number } {
-  const o = offsets(gaitFor(speed, turning), foot, mirrored);
+  return footFrom(x, z, facing, gaitFor(speed, turning), foot, mirrored);
+}
+
+function footFrom(x: number, z: number, facing: number, g: Gait, foot: Foot, mirrored: boolean): { x: number; z: number } {
+  const o = offsets(g, foot, mirrored);
   const fx = Math.sin(facing), fz = Math.cos(facing);
   // the player's left (+X when he faces +Z)
   const lx = fz, lz = -fx;
@@ -117,10 +125,13 @@ export function stepStride(w: World, p: PlayerRT): Strike | null {
   // the foot comes down: where it is now, less the bit of this tick past the strike
   const back = (s.dist - s.len) / speed;
   const x = p.x - p.vx * back, z = p.z - p.vz * back;
-  const f = footPoint(x, z, p.facing, speed, s.next, turning, mirroredOf(w, p));
+  // (the step aimed at a touch lands as planned even if he eased up or sped up on the way: the plan's gait)
+  const f = s.lock ? footFrom(x, z, p.facing, s.lock.gait, s.next, mirroredOf(w, p)) : footPoint(x, z, p.facing, speed, s.next, turning, mirroredOf(w, p));
   const strike: Strike = { x: f.x, z: f.z, tick: w.tick, foot: s.next, dir: p.facing };
   s.prev = s.last;
   s.last = strike;
+  s.lock = null;
+  s.aimK = Math.max(0, s.aimK - 1);
   s.next = s.next === 0 ? 1 : 0;
   s.dist -= s.len;
   s.len = naturalStep(speed, turning);
@@ -141,20 +152,35 @@ export function aimStep(w: World, p: PlayerRT, tx: number, tz: number, opts: { m
   const s = p.stride;
   const speed = Math.hypot(p.vx, p.vz);
   if (speed < 1.0 || s.len === 0) return null;
+  // (the last step before the touch is committed: he does not re-plan it while it is in the air)
+  if (s.lock && Math.hypot(s.lock.tx - tx, s.lock.tz - tz) < 0.05) {
+    s.aimK = 1;
+    return { k: 1, bx: s.lock.bx, bz: s.lock.bz };
+  }
+  s.aimK = 0;
   const turning = p.gait === 'turn';
   const L = naturalStep(speed, turning);
   const maxSteps = opts.maxSteps ?? STEP_AIM.maxSteps;
   const lo = opts.lo ?? STEP_AIM.lo, hi = opts.hi ?? STEP_AIM.hi;
-  const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
-  const lx = fz, lz = -fx;
   const g = gaitFor(speed, turning);
   const mir = mirroredOf(w, p);
   let best = 0, bestErr = Infinity, bestLen = 0, bestX = 0, bestZ = 0;
   for (let k = 1; k <= Math.ceil(maxSteps); k++) {
     const foot: Foot = (k % 2 === 1 ? s.next : 1 - s.next) as Foot;
-    // where his body must be when that foot comes down
+    // where his body must be when that foot comes down: the foot lands ahead of and beside the body along the way he will be running
+    // then, which is toward that very point (he steers there): settle the two in a couple of rounds
     const o = offsets(g, foot, mir);
-    const bx = tx - fx * o.fwd - lx * o.side, bz = tz - fz * o.fwd - lz * o.side;
+    let fx = Math.sin(p.facing), fz = Math.cos(p.facing), bx = tx, bz = tz;
+    for (let it = 0; it < 3; it++) {
+      const ql = Math.hypot(bx - p.x, bz - p.z);
+      if (ql > 0.3) {
+        fx = (bx - p.x) / ql;
+        fz = (bz - p.z) / ql;
+      }
+      bx = tx - fx * o.fwd - fz * o.side;
+      bz = tz - fz * o.fwd + fx * o.side;
+    }
+    // (heading and body point agree: he runs straight at it, so the distance to it is what his steps must cover)
     const along = (bx - p.x) * fx + (bz - p.z) * fz;
     if (along <= 0) continue;
     if (along > maxSteps * L) break;
@@ -172,6 +198,8 @@ export function aimStep(w: World, p: PlayerRT, tx: number, tz: number, opts: { m
   }
   if (!best) return null;
   s.len = bestLen;
+  s.aimK = best;
+  if (best === 1) s.lock = { bx: bestX, bz: bestZ, tx, tz, gait: g };
   return { k: best, bx: bestX, bz: bestZ };
 }
 
@@ -225,19 +253,28 @@ export function shoeOn(b: number, st: { x: number; z: number; dir: number }): bo
   return false;
 }
 
-/** Standing on the bag: a player at rest with his body over it has his feet on it. */
+/** Standing on (or stepping onto) the bag: a man at rest or moving slowly with his body over it or beside it puts a foot on it. */
 export function standsOn(p: PlayerRT, b: number): boolean {
-  return Math.hypot(p.vx, p.vz) < 1.0 && distToBase(b, p.x, p.z) <= 0.12;
+  return Math.hypot(p.vx, p.vz) < 2.0 && distToBase(b, p.x, p.z) <= 0.3;
 }
 
-/** The point a runner's foot aims for at base `b` coming from `from` (a unit vector of his way in): the middle, or the inside corner when he rounds it. */
-export function touchPoint(b: number, rounding: boolean): { x: number; z: number } {
-  if (b % 4 === 0) return { x: 0, z: PLATE_DEPTH * 0.55 };
-  const c = BASE_POS[b];
-  if (!rounding) return { x: c.x, z: c.z };
-  // toward the infield (the mound): the inside half of the bag, where the left foot pushes off into the turn
-  const mx = 0 - c.x, mz = 18.44 - c.z;
-  const l = Math.hypot(mx, mz) || 1;
-  const k = clamp(BAG_HALF * 0.55, 0, BAG_HALF);
-  return { x: c.x + (mx / l) * k, z: c.z + (mz / l) * k };
+/**
+ * The point a runner's ankle aims for at base `b`, coming in along the unit vector `dIn`: the shoe's front just over the near edge
+ * of the bag (runners are taught to hit the front of the bag: the shortest way to it), toward its inside corner when he rounds it.
+ */
+export function touchPoint(b: number, rounding: boolean, dIn: { x: number; z: number }): { x: number; z: number } {
+  // (home: the runner from third comes in along the plate's slanted edge, so he aims near its middle)
+  const c = b % 4 === 0 ? { x: 0, z: 0.25 } : BASE_POS[b];
+  // ankle this far short of the middle: the front of the shoe about half-way onto the bag (a margin either way for a step a little off)
+  const back = b % 4 === 0 ? 0.08 : BAG_HALF + TOE - 0.19;
+  let x = c.x - dIn.x * back, z = c.z - dIn.z * back;
+  if (rounding && b % 4 !== 0) {
+    // toward the infield (the mound): the inside half of the bag, where the left foot pushes off into the turn
+    const mx = 0 - c.x, mz = 18.44 - c.z;
+    const l = Math.hypot(mx, mz) || 1;
+    const k = clamp(BAG_HALF * 0.55, 0, BAG_HALF);
+    x += (mx / l) * k;
+    z += (mz / l) * k;
+  }
+  return { x, z };
 }

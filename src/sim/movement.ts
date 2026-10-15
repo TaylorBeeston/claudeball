@@ -3,6 +3,7 @@ import { fenceAt } from './field';
 import { LEGS_PER_SPRINT_SECOND, brakeDecel, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
 import { clamp } from './math';
 import { stepStride } from './stride';
+import { steer } from './bodies';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
 
@@ -109,14 +110,17 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     // plan the stop with the braking a person can actually do, starting far enough out to arrive near the spot at a walk
     if (g.stop) sp = Math.min(vmax, Math.sqrt(2 * Math.min(brakeDecel(p.info.ratings), p.accel * 0.9) * Math.max(0, d - 0.02)));
     if (d < 0.03 && g.stop) sp = 0;
-    const tvx = d > 1e-6 ? (dx / d) * sp : 0;
-    const tvz = d > 1e-6 ? (dz / d) * sp : 0;
+    let tvx = d > 1e-6 ? (dx / d) * sp : 0;
+    let tvz = d > 1e-6 ? (dz / d) * sp : 0;
+    // around anyone in the way (bodies.ts: who gives way to whom)
+    [tvx, tvz] = steer(w, p.info.id, p.x, p.z, tvx, tvz);
     dvx = tvx - p.vx;
     dvz = tvz - p.vz;
   } else {
-    // coast to a stop
-    dvx = -p.vx;
-    dvz = -p.vz;
+    // coast to a stop (or step out of the way of somebody coming: bodies.ts)
+    const [sx, sz] = canMove && p.onField ? steer(w, p.info.id, p.x, p.z, 0, 0) : [0, 0];
+    dvx = sx - p.vx;
+    dvz = sz - p.vz;
   }
   const dvl = Math.hypot(dvx, dvz);
   const maxDv = p.accel * (g && canMove ? 1 : 1.3) * TICK;

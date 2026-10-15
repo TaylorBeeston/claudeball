@@ -1,3 +1,4 @@
+import * as contact from './contact';
 import * as appeals from './appeals';
 import { emit } from './events';
 import { toBench } from './dugout';
@@ -182,6 +183,11 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
 
 export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean, info: { margin?: number } = {}): void {
   if (r.state !== 'live' || w.outs >= 3) return;
+  // obstructed earlier on this run: he cannot be put out short of the base he was running to
+  if (r.protectTo && (outType === 'tag' || outType === 'force' || outType === 'caughtStealing' || outType === 'pickoff') && (base === null || base <= r.protectTo)) {
+    contact.obstructedSafe(w, r);
+    return;
+  }
   r.state = 'out';
   w.outs++;
   creditOut(w, r.p);

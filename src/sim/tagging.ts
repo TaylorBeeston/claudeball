@@ -8,6 +8,7 @@
  * Force plays are a foot on the bag with the ball secure before the runner touches it.
  */
 import { emit } from './events';
+import * as contact from './contact';
 import { BASE_POS } from './field';
 import { clamp } from './math';
 import * as fielding from './fielding';
@@ -31,9 +32,10 @@ export const SLIDE_HINT: Record<SlideKind, AnimHint> = { feet: 'slide_feet', hea
  */
 export const limbLength = (k: SlideKind | null) => (k === 'feet' ? 0.85 : k === 'head' ? 0.86 : k === 'diveBack' ? 0.86 : k ? 0.75 : 0);
 
-/** Dirt friction a sliding body can have (m/s^2): he picks where to start so it stops him with the limb on the bag, within these. */
-export const SLIDE_DECEL_MIN = 4;
-export const SLIDE_DECEL_MAX = 9;
+/** Dirt friction on a sliding body (m/s^2, a friction coefficient of about 0.5): he slides into the bag still moving. */
+export const SLIDE_FRICTION = 5;
+/** Once the leading foot / hand is on the bag the bag stops him: his leg (or arms) fold over about this much (m). */
+export const BAG_STOP = 0.45;
 
 /** Seconds for a body at speed v decelerating at a to cover distance s (Infinity if it stops first). */
 export function timeToCover(v: number, a: number, s: number): number {
@@ -90,6 +92,14 @@ export function runnerBody(r: RunnerRT): Body {
     tz += -d.x * s;
   }
   return { cx: p.x, cz: p.z, tx, tz, radius: 0.14 };
+}
+
+/** The sliding runner's leading foot / hand is on the bag: the bag stops his body within `BAG_STOP` (a pop-up / the leg folding). */
+export function bagStops(r: RunnerRT): void {
+  const p = r.p;
+  if (!r.slideKind || p.slideDecel <= 0) return;
+  const v = Math.hypot(p.vx, p.vz);
+  p.slideDecel = Math.max(p.slideDecel, (v * v) / (2 * BAG_STOP));
 }
 
 /** Does the sliding runner's leading foot / hand reach the bag (or plate) of `b`? (On his feet he touches with a footstrike: stride.ts.) */
@@ -163,9 +173,8 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
   if (dd > slideStart(b, kind === 'hookL' || kind === 'hookR')) return null;
   r.slideKind = kind;
   r.slideAt = w.tick;
-  // from here the slide is the dirt's friction: enough to stop him with the leading foot / hand over the bag
-  const stopAt = Math.max(0.3, dd - limbLength(kind) * 0.8);
-  p.slideDecel = clamp((speed * speed) / (2 * stopAt), SLIDE_DECEL_MIN, SLIDE_DECEL_MAX);
+  // from here the slide is the dirt's friction, until the bag stops him (`bagStops`)
+  p.slideDecel = SLIDE_FRICTION;
   setAnim(w, p, SLIDE_HINT[kind], 0.9);
   return slideAim(r, b);
 }
@@ -183,8 +192,7 @@ export function limbArrival(r: RunnerRT, b: number, speed: number, dist: number)
   const hook = b === 4;
   const L = limbLength(hook ? 'hookL' : 'feet');
   const d0 = Math.min(dRun, slideStart(b, hook));
-  const a = clamp((speed * speed) / (2 * Math.max(0.3, d0 - L * 0.8)), SLIDE_DECEL_MIN, SLIDE_DECEL_MAX);
-  return (dRun - d0) / speed + timeToCover(speed, a, d0 - dist - L);
+  return (dRun - d0) / speed + timeToCover(speed, SLIDE_FRICTION, d0 - dist - L);
 }
 
 /** A hook slide aims a little to the side of the bag; the leading foot swings out and in around the glove (see `runnerBody`). */
@@ -341,6 +349,11 @@ export function tickTagging(w: World): void {
     }
     w.tags = still;
   }
+  for (const r of w.runners) {
+    if (!r.tagLine) continue;
+    if (w.tick > r.tagLine.until || r.state !== 'live') r.tagLine = null;
+    else if (contact.baselineCheck(w, r)) r.tagLine = null;
+  }
   // start
   if (!fielding) return;
   const H = fielding;
@@ -432,6 +445,11 @@ function startSweep(w: World, F: PlayerRT, r: RunnerRT): void {
     F.facing = Math.atan2(dir.x, dir.z);
   }
   w.tags.push(sweep);
+  // his line to the base as the tag comes: he may not go more than 3 ft off it to get away (contact.baselineCheck)
+  if (!r.tagLine && sweep.base) {
+    const tb = bpos(sweep.base);
+    r.tagLine = { x0: p.x, z0: p.z, bx: tb.x, bz: tb.z, until: w.tick + ticks + secToTicks(0.6) };
+  }
   F.tagReady = w.tick + ticks + secToTicks(0.35);
   setAnim(w, F, hand === 'glove' ? 'tag_glove' : 'tag_hand', TAG_CLIP_S);
   F.lookAt = null;

@@ -542,7 +542,11 @@ export type OutType =
   | 'caughtStealing'
   | 'tagUp'
   | 'batterInterference'
-  | 'appeal';
+  | 'appeal'
+  /** a runner ran into a fielder fielding a batted ball (6.01(a)(10)) */
+  | 'interference'
+  /** more than 3 ft off his line avoiding a tag (5.09(b)(1)) */
+  | 'baseline';
 
 interface EBase {
   time: number;
@@ -671,6 +675,14 @@ export type GameEvent =
   /** `pos` is the runner's body; `touch` (additive) the point of the foot / hand that was on the bag, and which limb it was. */
   | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3; touch?: Vec3; limb?: 'foot' | 'hand' })
   /** A runner went past a bag with no foot on it: he `knows` (and goes back to touch it), or carries on believing he touched it (`seen` = a fielder noticed). `by`: how far his nearest footstrike was off the bag (m). */
+  /** A fielder without the ball (and not fielding it) impeded a runner: `deadBall` when a play was being made on him (he is given `base` at once), else he cannot be put out short of `base` (`awarded`: he is given it now). */
+  | (EBase & { type: 'obstruction'; runnerId: string; fielderId: string; base: number; deadBall: boolean; awarded?: boolean; pos: Vec3 })
+  /** A runner ran into a fielder fielding a batted ball: he is out, the ball is dead. */
+  | (EBase & { type: 'interference'; runnerId: string; fielderId: string; pos: Vec3 })
+  /** A runner went more than 3 ft off his line avoiding a tag: out. */
+  | (EBase & { type: 'outOfBaseline'; runnerId: string; offM: number; pos: Vec3 })
+  /** Two bodies ran into each other (closing at `speed` m/s); `kinds`: their classes (F fielder, R runner, B batter, U umpire, C coach, ... see bodies.ts). */
+  | (EBase & { type: 'collision'; aId: string; bId: string; kinds: string; speed: number; pos: Vec3 })
   /** The defense appeals a missed base: the ball goes to the fielder at the bag (`start`), he steps on it and the umpire calls the runner out (`out`). */
   | (EBase & { type: 'appeal'; stage: 'start' | 'out'; fielderId: string; runnerId: string; base: number })
   | (EBase & { type: 'baseMissed'; playerId: string; base: number; knows: boolean; by: number; seen?: boolean; pos: Vec3 })

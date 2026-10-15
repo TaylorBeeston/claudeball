@@ -271,6 +271,10 @@ export interface RunnerRT {
   goBack: number;
   /** The last footstrike already checked for a touch (tick). */
   strikeSeen: number;
+  /** Obstructed with play going on: he cannot be put out short of this base and is given it after the play (0 = none). */
+  protectTo: number;
+  /** His line to the base when a tag attempt came (5.09(b)(1): no more than 3 ft off it), until the attempt is over. */
+  tagLine: { x0: number; z0: number; bx: number; bz: number; until: number } | null;
   /** The bag he is approaching and the closest his body has come to it (m), to tell when he has gone past it. */
   apBase: number;
   apMin: number;
@@ -563,6 +567,12 @@ export interface World {
   exiting: RunnerRT[];
   /** Bases run past without a touch since the last pitch (appealable). */
   misses: MissedBase[];
+  /** The bodies on the field after the last tick's moves (bodies.ts), by id, and the tick of each pair's last `collision` event. */
+  bodies: import('./bodies').Body[];
+  bodyById: Map<string, import('./bodies').Body>;
+  collisionTick: Map<string, number>;
+  /** The next hitter, told to go on deck while still walking in to the dugout: he goes when he gets there. */
+  deckNext: PlayerRT | null;
   /** A missed-base appeal being made after the play. */
   appeal: import('./appeals').AppealRT | null;
   /** Tag sweeps in progress (open-field) and gloves set at a bag. */

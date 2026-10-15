@@ -48,6 +48,15 @@ describe('players come from the bench, warm up on deck and walk to the plate', (
     const walkTimes: number[] = [];
     const onDeckEvents: string[] = [];
     g.on('onDeck', (e) => onDeckEvents.push(e.playerId));
+    // a hitter who is not leading off an inning comes up from the on-deck circle (the man on deck when an inning ends leads off the next one from the bench)
+    let leadoff = true, upFromDeck = 0, upOther = 0;
+    g.on('halfInningStart', () => (leadoff = true));
+    g.on('batterUp', (e) => {
+      const seq = rolesSeen.get(e.batterId) ?? [];
+      if (leadoff) leadoff = false;
+      else if (seq[seq.length - 1] === 'ondeck') upFromDeck++;
+      else upOther++;
+    });
     g.on('windup', () => {
       const b = w.batter;
       if (!b) return;
@@ -90,7 +99,9 @@ describe('players come from the bench, warm up on deck and walk to the plate', (
       }
     }
     expect(fromDeck).toBeGreaterThanOrEqual(8);
-    expect(fromDeck).toBeGreaterThan(fromBench * 2);
+    expect(fromBench).toBeGreaterThan(0);
+    expect(upFromDeck).toBeGreaterThanOrEqual(8);
+    expect(upOther).toBeLessThanOrEqual(Math.max(1, upFromDeck * 0.15));
     expect(onDeckEvents.length).toBeGreaterThanOrEqual(8);
     // at the circle
     for (const [id, p] of deckAt) {

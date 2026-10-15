@@ -188,6 +188,24 @@ const COVER_ORDER: Record<number, string[]> = {
   4: ['C', 'P', '1B'],
 };
 
+/**
+ * Where a fielder covering base b stands to take a throw from (sx, sz): beside the bag, toward the throw, off the runner's lane into
+ * it (the base path from the base before), with a foot on the bag (`footOnBase` reaches 0.65 m from its middle).
+ */
+export function coverSpot(b: number, sx: number, sz: number): { x: number; z: number } {
+  const bp = bpos(b);
+  const prev = bpos(b - 1);
+  const il = Math.hypot(bp.x - prev.x, bp.z - prev.z) || 1;
+  const ix = (bp.x - prev.x) / il, iz = (bp.z - prev.z) / il;
+  // the two sides of the runner's lane: the one the throw comes from
+  let px = -iz, pz = ix;
+  if ((sx - bp.x) * px + (sz - bp.z) * pz < 0) {
+    px = -px;
+    pz = -pz;
+  }
+  return { x: bp.x + px * 0.46 - ix * 0.05, z: bp.z + pz * 0.46 - iz * 0.05 };
+}
+
 export function defenseAI(w: World): void {
   const play = w.play!;
   const ball = w.ball;
@@ -285,15 +303,12 @@ export function defenseAI(w: World): void {
   for (const b of [1, 2, 3, 4]) {
     const F = covers[b];
     if (!F || F === holder || F === primary) continue;
-    const bp = bpos(b);
-    // stand a little inside the bag toward the ball
-    const dx = ball.body.x - bp.x;
-    const dz = ball.body.z - bp.z;
-    const dl = Math.hypot(dx, dz) || 1;
+    // beside the bag on the side the throw comes from, a foot on it, out of the runner's way (6.01(h), 6.01(i): without the ball he may not block it)
+    const spot = coverSpot(b, ball.body.x, ball.body.z);
     F.plan.kind = 'cover';
     F.plan.base = b;
-    F.plan.tx = bp.x + (dx / dl) * 0.5;
-    F.plan.tz = bp.z + (dz / dl) * 0.5;
+    F.plan.tx = spot.x;
+    F.plan.tz = spot.z;
     setGoal(F, F.plan.tx, F.plan.tz, true, 1);
     F.lookAt = { x: ball.body.x, z: ball.body.z };
   }

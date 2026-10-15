@@ -26,6 +26,8 @@ function runnerAt(w: World, from: number, to: number, dist: number, speed: numbe
   const b = BASE_POS[to % 4];
   const d = unit(b.x - a.x, b.z - a.z);
   const r = from === 0 ? makeRunner(w, w.batter!, true) : addRunner(w, from);
+  // (nobody at the plate in the runner's way: the batter is the batter-runner, or he has stepped away)
+  if (from > 0 && w.batter) w.batter.onField = false;
   r.base = from;
   r.target = to;
   r.want = want;
@@ -103,7 +105,7 @@ describe('runners time their steps onto the bag', () => {
           for (let i = 0; i < 240 * 4 && !(r.base >= to); i++) l.g.step(1 / 240);
           const t = touches(l.events, r.p.info.id, to);
           expect(r.base, `${from}->${to} want ${want} at ${speed} m/s phase ${phase}`).toBeGreaterThanOrEqual(to);
-          expect(r.touched[to]).toBe(true);
+          expect(r.touched[to], `${from}->${to} want ${want} at ${speed} m/s phase ${phase}: ${JSON.stringify(ofType(l.events, "baseMissed"))}`).toBe(true);
           expect(t.length).toBe(1);
           // the point of the foot (or the slide's limb) is on the bag
           expect(t[0].limb).toBeDefined();
@@ -115,14 +117,14 @@ describe('runners time their steps onto the bag', () => {
     expect(n).toBe(96);
   });
 
-  it('standing on the bag is a touch; standing next to it is not', () => {
+  it('standing on the bag (or right beside it, a foot on it) is a touch; standing off it is not', () => {
     const l = lab('stand');
     const r = addRunner(l.w, 1);
     const b = BASE_POS[2];
     r.p.x = b.x + 0.05;
     r.p.z = b.z;
     expect(standsOn(r.p, 2)).toBe(true);
-    r.p.x = b.x + 0.55;
+    r.p.x = b.x + 0.8;
     expect(standsOn(r.p, 2)).toBe(false);
   });
 });
