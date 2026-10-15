@@ -18,9 +18,14 @@ export function linePieces(text: string): string[] {
 /**
  * The part of `text` (a line that starts sounding at sample `from` of `x`) heard by sample `until`: its pieces whose speech has ended
  * by then (a piece ends at a pause of `gap` seconds or more under `floorDb`). '' when not even the first piece is over.
+ * `end`: the line's own end (its `speechEnd`, at sample `at`): a line that finished before `until` is heard whole (the next voice may
+ * follow it too closely for a pause); one cut or cancelled before it is heard up to there, a piece that had gone quiet counting as said.
  */
-export function heardText(text: string, x: Float32Array, from: number, until: number, { sr = SR, gap = 0.25, floorDb = -50 } = {}): string {
+export function heardText(text: string, x: Float32Array, from: number, until: number, { sr = SR, gap = 0.25, floorDb = -50, end }: { sr?: number; gap?: number; floorDb?: number; end?: { at: number; finished: boolean } } = {}): string {
   const pieces = linePieces(text);
+  const over = !!end && end.at <= until;
+  if (over && end!.finished) return text;
+  if (over) until = end!.at;
   const blk = Math.round(0.02 * sr), floor = 10 ** (floorDb / 10), need = Math.ceil((gap * sr) / blk);
   const quiet = (i: number) => {
     let s = 0;
@@ -28,8 +33,8 @@ export function heardText(text: string, x: Float32Array, from: number, until: nu
     return s / blk < floor;
   };
   let ended = 0, spoke = false, run = 0, runStart = 0;
-  // (a pause that starts before `until` may run past it)
-  for (let i = from; i < until + need * blk && ended < pieces.length; i += blk) {
+  // (a pause that starts before `until` may run past it; after the line's end nothing more of it comes)
+  for (let i = from; i < (over ? until : until + need * blk) && ended < pieces.length; i += blk) {
     if (!quiet(i)) {
       spoke = true;
       run = 0;
@@ -43,5 +48,6 @@ export function heardText(text: string, x: Float32Array, from: number, until: nu
       run = 0;
     }
   }
-  return pieces.slice(0, ended).join(' ');
+  if (over && spoke && run > 0) ended++;
+  return pieces.slice(0, Math.min(ended, pieces.length)).join(' ');
 }

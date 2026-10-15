@@ -25,6 +25,14 @@ describe('booth captions say what the voice track plays', () => {
     expect(heardText(CALL, TAKE, 0, 2.0 * SR, { sr: SR })).toBe('High fly ball.');
     expect(heardText(CALL, TAKE, 0, 9 * SR, { sr: SR })).toBe(CALL);
   });
+  it("uses the line's own end: whole when it finished, up to there when it was cut (the 4K walk-off: the analyst followed at once)", () => {
+    // "It's a walk-off home run!" 0.36-1.70, then the analyst from 1.80 (no pause), the track ends at 4.0
+    const x = track([[0.36, 1.7], [1.8, 3.9]]);
+    expect(heardText("It's a walk-off home run!", x, 0, 4 * SR, { sr: SR, end: { at: 2.3 * SR, finished: true } })).toBe("It's a walk-off home run!");
+    // a line cancelled after its words (in the clip's trailing silence) is heard; one cancelled mid-piece is not
+    expect(heardText('That is a grown-man swing.', track([[0.3, 2.0]]), 0, 4 * SR, { sr: SR, end: { at: 2.23 * SR, finished: false } })).toBe('That is a grown-man swing.');
+    expect(heardText(CALL, TAKE, 0, 9 * SR, { sr: SR, end: { at: 4.2 * SR, finished: false } })).toBe('High fly ball. Way back. Gone!');
+  });
   it('a gap inside a piece is not the end of one, and a piece cut by the track is not captioned', () => {
     expect(heardText(CALL, TAKE, 0, 2.63 * SR, { sr: SR })).toBe('High fly ball.');
     expect(heardText(CALL, TAKE, 0, 0.8 * SR, { sr: SR })).toBe('');

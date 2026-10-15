@@ -159,7 +159,9 @@ function quotes(rs: RenderSettings, shots: Map<string, ShotManifest>): Overlay[]
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
       if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + dur - 0.5) continue;
       // only the words the track plays (it stops at a pause, often before the end of a long call)
-      const heard = heardText(ev.text ?? '', mono, Math.round((t0a + s.t) * SR), Math.round((t0a + vin + dur) * SR));
+      const e = shots.get(v.shot)!.speech.find((x) => (x.ev as { type: string; id?: number }).type === 'speechEnd' && (x.ev as { id?: number }).id === (ev as { id?: number }).id);
+      const end = e ? { at: Math.round((t0a + e.t) * SR), finished: (e.ev as { reason?: string }).reason === 'finished' } : undefined;
+      const heard = heardText(ev.text ?? '', mono, Math.round((t0a + s.t) * SR), Math.round((t0a + vin + dur) * SR), { end });
       if (!heard) continue;
       const t0 = v.at - v.pre + s.t - vin;
       if (cutList().some((c, i) => c.black && t0 >= starts[i] - 0.3 && t0 < starts[i] + c.beats * BEAT)) continue; // no caption over a card
