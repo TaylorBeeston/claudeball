@@ -39,7 +39,8 @@ import { makeOnDeckBat } from './ondeckProp';
 import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
+import { armRest, solveArm as solveArmIK, type ArmRest } from './pose/armIK';
+import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
@@ -643,7 +644,8 @@ export class GltfPuppet implements PuppetLike {
       if (lg && sk.isSkinnedMesh && m.name !== 'Eyes_Cornea' && lg.morphAttributes.position?.length === m.geometry.morphAttributes.position?.length) this.lodSwap.push({ m, full: m.geometry, lod: lg });
     }
     this.rig = new Rig(this.model);
-    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm']) {
+    this.initArms();
+    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand']) {
       const b = this.bones[n];
       if (b) this.clipPose.set(b, b.quaternion.clone());
     }
@@ -1251,6 +1253,8 @@ export class GltfPuppet implements PuppetLike {
     rig.rotate(s2, q);
   }
 
+  private tmpAxis = new Vector3();
+  private tmpT = new Vector3();
   private lowPitch = false;
   private swingSeen = false;
   /** Latches, when a swing starts, whether the pitch is going to cross the plate below ~0.75 m (predicted from the ball's flight). */
@@ -1525,16 +1529,19 @@ export class GltfPuppet implements PuppetLike {
     // where even the swivelled elbow cannot get out of the torso (hands the sim placed too close to the body), fade the bat IK toward the clip pose
     this.trackPitchHeight(snap, env);
     // a low pitch: the hitter's hands come down and the clip's own pose is the better guide than hands pinned to the sim's bat
-    const ikWant = Math.min(this.elbowClear < -0.005 ? 0.25 : 1, this.lowPitch ? 0.3 : 1);
-    this.ikFade += (ikWant - this.ikFade) * (1 - Math.exp(-dt * (ikWant < 1 ? 14 : 5)));
-    this.ikW += ((wantIK ? this.ikFade : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
+    // the sim's bat is where the bat is: the fists stay on it for the whole swing (the hinge-aware solver keeps the elbows plausible; the old
+    // fades for elbows in the trunk / low pitches let the hands leave the bat, which is what made the bat look wrongly held)
+    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
     if (this.ikW > 0.02 && env.batGrip) {
-      // the hand nearest the knob is the model's Left hand for both batting sides (lefties are mirrored)
-      this.solveArm('Left', env.batGrip.bottom, this.ikW);
-      this.solveArm('Right', env.batGrip.top, this.ikW);
+      // the fists close on the handle (the bottom hand is the model's Left for both batting sides: lefties are mirrored), each fist's grip
+      // line along the bat with the barrel toward the thumb
+      const g = env.batGrip;
+      const axis = this.tmpAxis.copy(g.tip).sub(g.knob).normalize();
+      this.armIK('Left', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripBottom), this.ikW, { gripDir: axis });
+      this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW, { gripDir: axis });
     }
     this.reachIK(snap, env, dt);
-    this.clearElbows(snap);
+    this.clearElbows(snap, dt);
     if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
@@ -1859,15 +1866,11 @@ export class GltfPuppet implements PuppetLike {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;
       if (hand) {
-        // put the POCKET (not the wrist) on the target: a few passes, since the pocket offset turns with the hand
+        // put the POCKET (the fist for a bare-hand tag) on the target: the solver carries the hand-local offset
         const goal = target;
         this.reachLean(hand, pocket, side, goal, this.gloveW);
-        for (let it = 0; it < 4; it++) {
-          this.rig.refresh();
-          const hw = hand.getWorldPosition(new Vector3());
-          const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(hw) : new Vector3();
-          this.solveArm(side, goal.clone().sub(off), this.gloveW);
-        }
+        const fist = pocket ? hand.worldToLocal(pocket.getWorldPosition(new Vector3())) : undefined;
+        this.armIK(side, goal, this.gloveW, { fist });
       }
     }
     this.driveGlove(snap);
@@ -1906,11 +1909,16 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  /** per arm: the swivel applied last frame (rad) and the side it was on */
+  private swivel = { Left: 0, Right: 0 };
   /**
-   * Keep both elbows outside the torso (the trunk grows with the build morphs): an elbow that ended up inside, from the clip pose or from
-   * the batter's hand IK, is pushed out radially and the forearm re-aimed at the hand, which stays where it was. Records the clearance.
+   * Keep both elbows outside the torso (the trunk grows with the build morphs) and the head: an elbow that the clip or the IK put inside is
+   * swivelled out around the shoulder -> hand axis. The whole arm turns rigidly (the elbow hinge keeps its bend, the hand stays where it is and
+   * keeps its orientation), the side is kept from frame to frame (hysteresis) and the swivel eases in and out at a limited rate: it used to
+   * jump to the nearest clear angle every frame and re-aim the forearm, which flipped arms up to 180 deg in one frame and bent elbows sideways.
+   * Records the clearance.
    */
-  private clearElbows(snap: PlayerSnap) {
+  private clearElbows(snap: PlayerSnap, dt = 1 / 60) {
     const spine = this.bones.Spine2;
     if (!spine) return;
     const rig = this.rig;
@@ -1939,8 +1947,10 @@ export class GltfPuppet implements PuppetLike {
       const Hp = rig.pos(hand, new Vector3());
       const headClear = (e: V3) => (headC ? armHeadClearance([Sp.x, Sp.y, Sp.z], e, [Hp.x, Hp.y, Hp.z], headC, this.headVol) : Infinity);
       let clear = Math.min(torsoClearance(loc.x, loc.y, loc.z, this.torso), headClear([E.x, E.y, E.z]));
-      if (clear < 0.008 && !(globalThis as { __noElbowFix?: boolean }).__noElbowFix) {
-        // swivel the elbow around the shoulder→hand axis: the hand stays where the clip / IK put it, only the elbow leaves the trunk
+      const off = (globalThis as { __noElbowFix?: boolean }).__noElbowFix;
+      const prev = this.swivel[side];
+      let want = 0;
+      if (clear < 0.008 && !off) {
         const S = rig.pos(arm, new Vector3());
         const H = rig.pos(hand, new Vector3());
         const tmp = new Vector3();
@@ -1948,12 +1958,24 @@ export class GltfPuppet implements PuppetLike {
           tmp.set(p[0], p[1], p[2]).sub(Ps).applyQuaternion(Qi);
           return Math.min(torsoClearance(tmp.x, tmp.y, tmp.z, this.torso), headClear(p));
         };
-        const r = swivelElbow([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, 0.02);
-        if (r.angle !== 0) {
-          rig.aim(arm, fore, new Vector3(r.elbow[0], r.elbow[1], r.elbow[2]), 1);
-          rig.aim(fore, hand, H, 1);
-        }
-        clear = r.clear;
+        want = swivelTarget([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, prev > 0.01 ? 1 : prev < -0.01 ? -1 : 0, 0.02);
+      }
+      // ease toward it at up to ~10 rad/s (a third of a turn in 0.1 s), and back to the clip's own swivel when clear
+      const maxStep = 10 * Math.min(dt, 0.1);
+      const applied = prev + Math.max(-maxStep, Math.min(maxStep, want - prev));
+      this.swivel[side] = Math.abs(applied) < 1e-4 ? 0 : applied;
+      if (this.swivel[side] !== 0) {
+        const S = rig.pos(arm, new Vector3());
+        const H = rig.pos(hand, new Vector3());
+        const axis = H.clone().sub(S).normalize();
+        const qh = rig.quat(hand, new Quaternion());
+        rig.rotate(arm, new Quaternion().setFromAxisAngle(axis, this.swivel[side]));
+        // the hand keeps its orientation (a bat stays in the same line through the fist)
+        const qh2 = rig.quat(hand, new Quaternion());
+        rig.rotate(hand, qh.multiply(qh2.invert()));
+        const E2 = rig.pos(fore, new Vector3());
+        const l2 = E2.clone().sub(Ps).applyQuaternion(Qi);
+        clear = Math.min(torsoClearance(l2.x, l2.y, l2.z, this.torso), headClear([E2.x, E2.y, E2.z]));
       }
       worst = Math.min(worst, clear);
       if (headC) {
@@ -2055,30 +2077,69 @@ export class GltfPuppet implements PuppetLike {
     return out.copy(l.getWorldPosition(new Vector3())).add(r.getWorldPosition(new Vector3())).multiplyScalar(0.5);
   }
 
-  private solveArm(side: 'Left' | 'Right', targetWorld: Vector3, w: number) {
-    const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
-    if (!arm || !fore || !hand) return;
+  /** per arm: rest frames for the arm solver, the fist point and grip line in the hand's frame (from the model's Bat_Grip) */
+  private arms: Partial<Record<'Left' | 'Right', { rest: ArmRest; fist: Vector3; grip: Vector3 }>> = {};
+  /** distance (m) of the top hand's fist from the knob along the handle (the model's Bat_Grip), and the bottom hand's */
+  private gripTop = 0.135;
+  private gripBottom = 0.05;
+  private initArms() {
     const rig = this.rig;
+    rig.refresh();
+    const g = this.batGrip;
+    // the handle point nearest the wrist is where the fist closes (Bat_Grip: origin = knob, +Y = barrel, in the right hand's frame)
+    const axis = g ? new Vector3(0, 1, 0).applyQuaternion(g.quaternion) : new Vector3(-0.764, 0, -0.645);
+    const knob = g ? g.position.clone() : new Vector3(0.127, 0.074, 0.059);
+    const s0 = -knob.dot(axis);
+    const fistR = knob.clone().addScaledVector(axis, s0);
+    if (g) {
+      this.gripTop = s0 * this.bodyScale;
+      this.gripBottom = Math.max(0.02, this.gripTop - 0.085 * this.bodyScale);
+    }
+    for (const side of ['Left', 'Right'] as const) {
+      const arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
+      if (!arm || !fore || !hand) continue;
+      const S = rig.pos(arm, new Vector3()), E = rig.pos(fore, new Vector3()), H = rig.pos(hand, new Vector3());
+      const q = (b: Object3D) => rig.quat(b, new Quaternion()).toArray();
+      // the left hand's frame is the right's mirrored with X negated
+      const mx = side === 'Right' ? 1 : -1;
+      this.arms[side] = {
+        rest: armRest(E.clone().sub(S).normalize().toArray(), H.clone().sub(E).normalize().toArray(), q(arm), q(fore), q(hand), side === 'Left' ? 1 : -1),
+        fist: new Vector3(mx * fistR.x, fistR.y, fistR.z),
+        grip: new Vector3(mx * axis.x, axis.y, axis.z),
+      };
+    }
+  }
+
+  /**
+   * Reach with one arm (pose/armIK.ts): the fist point (`fist`, hand-local; default the grip in the fist) goes to `targetWorld`; with `gripDir`
+   * (world) the hand also turns so its grip line runs along it, barrel toward the thumb. The elbow keeps the clip's swivel and bends only in
+   * its hinge plane; `w` blends from the clip pose.
+   */
+  private armIK(side: 'Left' | 'Right', targetWorld: Vector3, w: number, o: { fist?: Vector3; gripDir?: Vector3 } = {}) {
+    const A = this.arms[side];
+    const sh = this.bones[`${side}Shoulder`], arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
+    if (!A || !sh || !arm || !fore || !hand || w <= 0) return;
+    const rig = this.rig;
+    rig.refresh();
+    const S = rig.pos(arm, new Vector3()), E = rig.pos(fore, new Vector3()), H = rig.pos(hand, new Vector3());
+    const qU = rig.quat(arm, new Quaternion()), qF = rig.quat(fore, new Quaternion()), qH = rig.quat(hand, new Quaternion());
+    // the fist offset in rig units, in the hand's rig frame (the Armature may be scaled: measure it through the hand's own matrix)
+    const fistLocal = o.fist ?? A.fist;
+    const fp = rig.toRig(hand.localToWorld(fistLocal.clone()), new Vector3()).sub(H).applyQuaternion(qH.clone().invert());
     const target = rig.toRig(targetWorld, new Vector3());
-    const S = rig.pos(arm, new Vector3());
-    const E0 = rig.pos(fore, new Vector3());
-    const H0 = rig.pos(hand, new Vector3());
-    const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0);
-    const dir = target.clone().sub(S);
-    let d = dir.length();
-    if (d < 1e-4) return;
-    dir.divideScalar(d);
-    d = Math.min(Math.max(d, 0.1), L1 + L2 - 0.005);
-    const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d);
-    const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-    // keep the elbow where the animation put it: pole = current elbow offset from the shoulder→target line
-    const pole = E0.clone().sub(S);
-    pole.addScaledVector(dir, -pole.dot(dir));
-    if (pole.lengthSq() < 1e-6) pole.set(0, -1, 0);
-    pole.normalize();
-    const E = S.clone().addScaledVector(dir, a).addScaledVector(pole, h);
-    rig.aim(arm, fore, E, w);
-    rig.aim(fore, hand, target, w);
+    let gripDir: number[] | undefined;
+    if (o.gripDir) {
+      const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
+      gripDir = a.toArray();
+    }
+    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir });
+    // rig rotations -> locals, blended from the clip's locals by w
+    const qSh = rig.quat(sh, new Quaternion());
+    const nU = new Quaternion().fromArray(out.qUpper), nF = new Quaternion().fromArray(out.qFore), nH = new Quaternion().fromArray(out.qHand);
+    arm.quaternion.slerp(qSh.clone().invert().multiply(nU), w);
+    fore.quaternion.slerp(nU.clone().invert().multiply(nF), w);
+    hand.quaternion.slerp(nF.clone().invert().multiply(nH), w);
+    arm.updateMatrixWorld(true);
   }
 
   /**

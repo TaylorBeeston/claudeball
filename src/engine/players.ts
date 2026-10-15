@@ -222,7 +222,7 @@ export class BallView {
 export class BatView {
   readonly mesh: Mesh;
   readonly obj = new Group();
-  readonly grip = { top: new Vector3(), bottom: new Vector3() };
+  readonly grip = { top: new Vector3(), bottom: new Vector3(), knob: new Vector3(), tip: new Vector3() };
   visible = false;
   private q = new Quaternion();
 
@@ -329,6 +329,8 @@ export class BatView {
     this.obj.quaternion.copy(this.q);
     this.grip.bottom.set(0, 0.12, 0).applyQuaternion(this.q).add(this.obj.position);
     this.grip.top.set(0, 0.26, 0).applyQuaternion(this.q).add(this.obj.position);
+    this.grip.knob.copy(this.obj.position);
+    this.grip.tip.set(0, 0.86, 0).applyQuaternion(this.q).add(this.obj.position);
   }
 }
 
