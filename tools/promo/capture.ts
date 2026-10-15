@@ -127,7 +127,14 @@ export async function captureShot(chrome: Chrome, url: string, shot: PromoShot, 
   await page.waitForFunction(() => !!(window as unknown as { __promo?: unknown }).__promo, null, { timeout: 300000 });
   try {
     if (shot.audio !== false) {
-      const v = await page.evaluate(() => (window as unknown as { __promo: { voices(): Promise<string> } }).__promo.voices());
+      // the voice library comes from a CDN (the model from the browser cache): a network blip should not fail the shot
+      let v = '';
+      for (let k = 0; k < 4; k++) {
+        v = await page.evaluate(() => (window as unknown as { __promo: { voices(): Promise<string> } }).__promo.voices());
+        if (v === 'ready') break;
+        log(`[capture] ${shot.id}: HD voices not ready (${v}), retrying`);
+        await new Promise((r) => setTimeout(r, 5000 * (k + 1)));
+      }
       if (v !== 'ready') throw new Error(`HD voices: ${v}`);
     }
     const setup: ShotSetup = {
