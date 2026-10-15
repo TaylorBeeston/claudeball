@@ -98,6 +98,10 @@ export interface PlayerRT {
   after: Goal | null;
   /** Tick of his next warm-up swing while on deck. */
   nextSwing: number;
+  /** His footsteps: the foot that lands next, the step in progress, the last footstrikes (see stride.ts). */
+  stride: import('./stride').Stride;
+  /** Sliding: the dirt slows him at this rate (m/s^2) and he cannot steer; 0 = on his feet. */
+  slideDecel: number;
 }
 
 export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';
@@ -261,6 +265,26 @@ export interface RunnerRT {
   outTick: number;
   /** A run scored on a home run: he celebrates at the plate until then. */
   celebrateUntil: number;
+  /** The closest any of his footstrikes came to the bag he is heading for (m), reset when he touches it. */
+  nearMiss: number;
+  /** He has run past this base without a foot on it and knows it: he goes back to touch it (0 = none). */
+  goBack: number;
+  /** The last footstrike already checked for a touch (tick). */
+  strikeSeen: number;
+  /** The bag he is approaching and the closest his body has come to it (m), to tell when he has gone past it. */
+  apBase: number;
+  apMin: number;
+}
+
+/** A base a runner ran past without touching it (he believes he did): the defense may appeal until the next pitch. */
+export interface MissedBase {
+  r: RunnerRT;
+  base: number;
+  /** a fielder saw it */
+  seen: boolean;
+  tick: number;
+  /** settled: appealed, or no longer appealable */
+  done: boolean;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -535,6 +559,8 @@ export interface World {
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
   /** Runners who are out or scored and are walking off the field (still on screen). */
   exiting: RunnerRT[];
+  /** Bases run past without a touch since the last pitch (appealable). */
+  misses: MissedBase[];
   /** Tag sweeps in progress (open-field) and gloves set at a bag. */
   tags: TagSweep[];
   bagTags: BagTag[];

@@ -12,6 +12,8 @@
  */
 import { createGame } from '../../src/sim/game';
 import { BASE_POS } from '../../src/sim/field';
+import { shoeOn } from '../../src/sim/stride';
+import { runnerBody } from '../../src/sim/tagging';
 import type { PlayerRT, World } from '../../src/sim/world';
 
 const args = process.argv.slice(2);
@@ -50,6 +52,7 @@ export function distToBag(b: number, x: number, z: number): number {
 interface Pass { id: string; base: number; minCentre: number; touched: boolean; footOn: boolean; strikes: number; crossed: boolean; at: string; trot: boolean }
 const passes: Pass[] = [];
 let hasStride = false;
+const missed = { knows: 0, unaware: 0, seen: 0, list: [] as string[] };
 
 const t0 = Date.now();
 for (let i = 0; i < N; i++) {
@@ -65,11 +68,17 @@ for (let i = 0; i < N; i++) {
       p.trot ||= e.trot;
     }
   });
+  g.on('baseMissed', (e) => {
+    if (e.knows) missed.knows++;
+    else missed.unaware++;
+    if (e.seen) missed.seen++;
+    missed.list.push(`${seed0}-${i} t=${(w.tick / 240).toFixed(2)} ${e.playerId} base ${e.base} by ${(e.by * 100).toFixed(0)} cm ${e.knows ? 'knows' : 'unaware'}${e.seen ? ' seen' : ''}`);
+  });
   let n = 0;
   while (!g.over && n++ < 240 * 6 * 3600) {
     g.step(1 / 240);
     for (const r of [...w.runners, ...w.exiting]) {
-      const P = r.p as PlayerRT & { stride?: { last?: { x: number; z: number; tick: number } } };
+      const P = r.p as PlayerRT & { stride?: { last?: { x: number; z: number; tick: number; dir: number } } };
       const id = P.info.id;
       const st = P.stride?.last;
       const fresh = !!st && st.tick !== lastStrike.get(id);
@@ -84,20 +93,25 @@ for (let i = 0; i < N; i++) {
         let ps = open.get(key);
         if (dc < 1.2 && r.state === 'live') {
           // (a runner already credited with this base is standing on it, leading off or going back: not a pass)
-          if (!ps && r.base >= b) continue;
+          // (nor is one who is not on his way to it: the inning is over, or he is going back)
+          if (!ps && (r.base >= b || r.target < b)) continue;
           if (!ps) {
             ps = { id, base: b, minCentre: 9, touched: false, footOn: false, strikes: 0, crossed: false, at: `${seed0}-${i} t=${(w.tick / 240).toFixed(2)}`, trot: r.dead };
             open.set(key, ps);
           }
           const d = distToBag(b, P.x, P.z);
           ps.minCentre = Math.min(ps.minCentre, d);
-          if (d === 0) ps.crossed = true;
+          if (d === 0 && r.target >= b) ps.crossed = true;
           if (fresh && st) {
             ps.strikes++;
-            if (distToBag(b, st.x, st.z) <= 0.05) ps.footOn = true;
+            if (shoeOn(b, st)) ps.footOn = true;
           }
-          // a slide: the leading limb reaching the bag is the touch
-          if (r.slideKind) ps.footOn ||= false;
+          // a slide: the leading limb reaching the bag is the touch; standing on the bag too
+          if (r.slideKind) {
+            const body = runnerBody(r);
+            if (distToBag(b, body.tx, body.tz) <= 0.04) ps.footOn = true;
+          }
+          if (Math.hypot(P.vx, P.vz) < 1 && d <= 0.12) ps.footOn = true;
         } else if (ps) {
           passes.push(ps);
           open.delete(key);
@@ -120,5 +134,7 @@ console.log(`passes within 1.2 m of a bag: ${passes.length}   with a baseTouch: 
 console.log(`touched, no foot on the bag: ${noFoot.length} (${((100 * noFoot.length) / Math.max(1, touched.length)).toFixed(1)}% of touches)${hasStride ? '' : `   [proxy: body centre never within ${FOOT_REACH} m of the bag]`}`);
 console.log(`crossed the bag, no touch: ${crossedNoTouch.length}`);
 console.log(`closest approach of the body centre to the bag square, per touch: ${hist.map((lo, k) => `${lo}-${hist[k + 1] ?? '+'}m ${h[k]}`).join('  ')}`);
+console.log(`missed bags (sim): ${missed.knows} went back, ${missed.unaware} ran on unaware (${missed.seen} seen by a fielder)`);
+for (const m of missed.list.slice(0, list)) console.log(`  missed: ${m}`);
 for (const p of noFoot.slice(0, list)) console.log(`  no foot: ${p.at} ${p.id} base ${p.base} centre ${(p.minCentre * 100).toFixed(0)} cm${p.trot ? ' (trot)' : ''} strikes ${p.strikes}`);
 for (const p of crossedNoTouch.slice(0, list)) console.log(`  crossed: ${p.at} ${p.id} base ${p.base}`);

@@ -12,7 +12,7 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   'rng.ts': { count: 7, why: 'the generator itself (normal() and helpers)' },
   'pitchai.ts': { count: 14, why: 'AI mixed strategy for pitch selection / location (aiRng): a decision, not an outcome' },
   'manager.ts': { count: 4, why: 'AI mixed strategy for intentional walk / bunt (aiRng)' },
-  'running.ts': { count: 4, why: 'AI pickoff mixed strategy (aiRng), by the disengagements the pitcher has left (pitch clock)' },
+  'running.ts': { count: 6, why: 'AI pickoff mixed strategy (aiRng), by the disengagements the pitcher has left (pitch clock); perception: whether a runner who ran past a bag without a foot on it feels it, whether a fielder saw it (aiRng, only on a miss)' },
   'handling.ts': { count: 2, why: 'AI casual behaviour: whether the infield tosses the ball around after an out with nobody on (aiRng)' },
   'dugout.ts': { count: 3, why: 'show only: when the on-deck hitter takes his next warm-up swing (propRng, a stream nothing in the physics or decisions reads); which bench players cheer for a hit (propRng, show only)' },
   'staff.ts': { count: 3, why: 'AI: whether a runner takes his base coach\'s call (aiRng, once per runner and play); show only: whether the ball kid tosses a ball to a fan, whether the coach gives signs (propRng)' },

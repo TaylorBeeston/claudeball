@@ -14,6 +14,7 @@ import * as fielding from './fielding';
 import * as rules from './rules';
 import * as running from './running';
 import { setGoal } from './movement';
+import { distToBase } from './stride';
 import { setAnim } from './util';
 import type { AnimHint } from './types';
 import type { PlayerRT, RunnerRT, World } from './world';
@@ -24,8 +25,24 @@ const bpos = (b: number) => BASE_POS[b % 4];
 
 export const SLIDE_HINT: Record<SlideKind, AnimHint> = { feet: 'slide_feet', head: 'slide_head', hookL: 'slide_hook_left', hookR: 'slide_hook_right', diveBack: 'dive_back' };
 
-/** How far past his centre the leading foot / hand reaches (m). */
-export const limbLength = (k: SlideKind | null) => (k === 'feet' ? 1.0 : k === 'head' ? 1.25 : k === 'diveBack' ? 1.2 : k ? 0.95 : 0);
+/**
+ * How far past his hips the leading foot / hand reaches in the slide (m): measured from the shipped slide clips
+ * (`tools/contact/clipfeet.ts`: toe or hand minus hips, through the slide), so the limb the sim counts on the bag is the one drawn there.
+ */
+export const limbLength = (k: SlideKind | null) => (k === 'feet' ? 0.85 : k === 'head' ? 0.86 : k === 'diveBack' ? 0.86 : k ? 0.75 : 0);
+
+/** Dirt friction a sliding body can have (m/s^2): he picks where to start so it stops him with the limb on the bag, within these. */
+export const SLIDE_DECEL_MIN = 4;
+export const SLIDE_DECEL_MAX = 9;
+
+/** Seconds for a body at speed v decelerating at a to cover distance s (Infinity if it stops first). */
+export function timeToCover(v: number, a: number, s: number): number {
+  if (s <= 0) return 0;
+  if (a <= 0) return s / Math.max(0.1, v);
+  const disc = v * v - 2 * a * s;
+  if (disc < 0) return Infinity;
+  return (v - Math.sqrt(disc)) / a;
+}
 /** Reach of a fielder's glove / bare hand from his body, and the lunge he can add (m). */
 export const GLOVE_REACH = 0.72;
 export const HAND_REACH = 0.65;
@@ -75,14 +92,11 @@ export function runnerBody(r: RunnerRT): Body {
   return { cx: p.x, cz: p.z, tx, tz, radius: 0.14 };
 }
 
-/** Does the runner's foot / hand (or body) touch the bag of `b`? */
-export function touchesBag(r: RunnerRT, b: number): boolean {
-  const bp = bpos(b);
-  const p = r.p;
-  if (Math.hypot(p.x - bp.x, p.z - bp.z) < 0.9) return true;
+/** Does the sliding runner's leading foot / hand reach the bag (or plate) of `b`? (On his feet he touches with a footstrike: stride.ts.) */
+export function slideTouches(r: RunnerRT, b: number): boolean {
   if (!r.slideKind) return false;
   const body = runnerBody(r);
-  return Math.hypot(body.tx - bp.x, body.tz - bp.z) < 0.45;
+  return distToBase(b, body.tx, body.tz) <= 0.04;
 }
 
 function distToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
@@ -123,8 +137,10 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
   const dd = Math.hypot(p.x - bp.x, p.z - bp.z);
   const speed = Math.hypot(p.vx, p.vz);
   if (r.slideKind) {
-    if (dd > 5.6 || w.tick - r.slideAt > 200) r.slideKind = null; // slide is over
-    else return slideAim(r, b);
+    if (dd > 5.6 || w.tick - r.slideAt > 200) {
+      r.slideKind = null; // slide is over
+      p.slideDecel = 0;
+    } else return slideAim(r, b);
     return null;
   }
   const trigger = returning ? dd > 0.5 && dd < 3.0 : dd < 4.8;
@@ -144,11 +160,31 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
     else if (speed > 7.4 && p.info.ratings.baserunning > 58) kind = 'head';
   } else if (speed > 7.6 && p.info.ratings.baserunning > 60) kind = 'head';
   // a hook has to be started earlier: the body needs the room to swing out around the glove
-  if (kind !== 'hookL' && kind !== 'hookR' && dd > 3.4) return null;
+  if (dd > slideStart(b, kind === 'hookL' || kind === 'hookR')) return null;
   r.slideKind = kind;
   r.slideAt = w.tick;
+  // from here the slide is the dirt's friction: enough to stop him with the leading foot / hand over the bag
+  const stopAt = Math.max(0.3, dd - limbLength(kind) * 0.8);
+  p.slideDecel = clamp((speed * speed) / (2 * stopAt), SLIDE_DECEL_MIN, SLIDE_DECEL_MAX);
   setAnim(w, p, SLIDE_HINT[kind], 0.9);
   return slideAim(r, b);
+}
+
+/** Distance from the bag at which a slide into base b starts (m): a hook needs the room to swing out around the glove (see `updateSlide`). */
+const slideStart = (b: number, hook: boolean) => (hook || b === 4 ? 4.8 : 3.4);
+
+/**
+ * When the runner's leading foot / hand will be `dist` from the bag (s), as a fielder reads it: on his feet at his speed until he
+ * slides, then the slide's friction (the one he is in, or the one he will make).
+ */
+export function limbArrival(r: RunnerRT, b: number, speed: number, dist: number): number {
+  const dRun = Math.hypot(r.p.x - bpos(b).x, r.p.z - bpos(b).z);
+  if (r.slideKind) return timeToCover(speed, r.p.slideDecel, dRun - dist - limbLength(r.slideKind));
+  const hook = b === 4;
+  const L = limbLength(hook ? 'hookL' : 'feet');
+  const d0 = Math.min(dRun, slideStart(b, hook));
+  const a = clamp((speed * speed) / (2 * Math.max(0.3, d0 - L * 0.8)), SLIDE_DECEL_MIN, SLIDE_DECEL_MAX);
+  return (dRun - d0) / speed + timeToCover(speed, a, d0 - dist - L);
 }
 
 /** A hook slide aims a little to the side of the bag; the leading foot swings out and in around the glove (see `runnerBody`). */
@@ -227,7 +263,7 @@ export function tickTagging(w: World): void {
         // he starts the clip so that its contact frame is when the runner reaches the glove (the catcher's block clip is longer)
         const lead = g.F === w.catcher ? BLOCK_CONTACT_S - 0.1 : TAG_CONTACT_S; // (a runner who slides at the plate is slower than his approach speed)
         const spd = Math.max(1.5, Math.hypot(r.p.vx, r.p.vz));
-        const tc = (dRun - GLOVE_SET - 0.5) / spd;
+        const tc = limbArrival(r, g.base, spd, GLOVE_SET);
         if (dRun < 2.4 || tc <= lead) {
           g.frozen = true;
           const rr = g.F.info.ratings;

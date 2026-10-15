@@ -664,7 +664,10 @@ export type GameEvent =
   | (EBase & { type: 'ballTossedToFan'; ballKidId: string; pos: Vec3 })
   | (EBase & { type: 'batBoyRetrieve'; batBoyId: string; pos: Vec3 })
   /** A runner touched a base (also for dead-ball trots): `trot` is true when it is not a live-ball touch. */
-  | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3 })
+  /** `pos` is the runner's body; `touch` (additive) the point of the foot / hand that was on the bag, and which limb it was. */
+  | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3; touch?: Vec3; limb?: 'foot' | 'hand' })
+  /** A runner went past a bag with no foot on it: he `knows` (and goes back to touch it), or carries on believing he touched it (`seen` = a fielder noticed). `by`: how far his nearest footstrike was off the bag (m). */
+  | (EBase & { type: 'baseMissed'; playerId: string; base: number; knows: boolean; by: number; seen?: boolean; pos: Vec3 })
   | (EBase & { type: 'substitution'; team: TeamSide; inId: string; outId: string; reason: string })
   | (EBase & { type: 'pitchingChange'; team: TeamSide; inId: string; outId: string })
   | (EBase & { type: 'plateAppearanceEnd'; batterId: string; result: string })

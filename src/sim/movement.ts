@@ -2,6 +2,7 @@ import { emit } from './events';
 import { fenceAt } from './field';
 import { LEGS_PER_SPRINT_SECOND, brakeDecel, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
 import { clamp } from './math';
+import { stepStride } from './stride';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
 
@@ -88,7 +89,18 @@ export function stepPlayer(p: PlayerRT, w: World): void {
   let dvx = 0;
   let dvz = 0;
   const canMove = w.tick >= p.reactUntil;
-  if (g && canMove) {
+  if (p.slideDecel > 0) {
+    // sliding: no steering, the dirt takes his speed
+    const sp0 = Math.hypot(p.vx, p.vz);
+    const k = sp0 > 1e-6 ? Math.max(0, sp0 - p.slideDecel * TICK) / sp0 : 0;
+    p.vx *= k;
+    p.vz *= k;
+    if (sp0 * k < 0.2) p.slideDecel = 0; // he has come to rest
+    p.x += p.vx * TICK;
+    p.z += p.vz * TICK;
+    stepStride(w, p);
+    return;
+  } else if (g && canMove) {
     const dx = g.x - p.x;
     const dz = g.z - p.z;
     const d = Math.hypot(dx, dz);
@@ -137,6 +149,7 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     }
   }
   const sp = Math.hypot(p.vx, p.vz);
+  stepStride(w, p);
   // hard running tires the legs (durability decides how much it costs); walking and standing recover
   if (sp > 0.85 * p.vmax) p.legs = Math.min(1, p.legs + TICK * LEGS_PER_SPRINT_SECOND);
   else if (sp < 0.5 * p.vmax) p.legs = Math.max(0, p.legs - TICK * LEGS_RECOVERY_PER_SECOND);
