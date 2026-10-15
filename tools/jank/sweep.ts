@@ -10,7 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadRig, sampleClip, blendLocals, type RigFile } from './glb';
-import { B, type PoseLocals, newLocals, localPoint, fk, newWorld } from '../../src/engine/pose/skeleton';
+import { B, type PoseLocals, newLocals, localPoint, fk, newWorld, copyLocals } from '../../src/engine/pose/skeleton';
+import { Inertia, useInertia } from '../../src/engine/pose/inertia';
 import { qrot } from '../../src/engine/pose/qmath';
 import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
 export { gripBat };
@@ -92,23 +93,46 @@ export interface Transition {
  * One cross-fade the way three plays it: the old action keeps playing (looping or clamped) at weight 1 - k, the new one from toT at k, k linear
  * over `fade` s; a frame counts as `blend` when the blended pose breaks a limit that neither clip breaks at that instant.
  */
-export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, tx: Transition, loops: Set<string>) {
+export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, tx: Transition, loops: Set<string>, mode: 'game' | 'crossfade' | 'inertia' = 'game', constrain = false) {
+  const crossfade = mode === 'crossfade' || (mode === 'game' && !useInertia(tx.from, tx.to));
   const A = rig.clips.get(tx.from), Bc = rig.clips.get(tx.to);
   if (!A || !Bc) return;
   const fl = clipFlags(tx.to);
   const trBlend = newTrack(), trA = newTrack(), trB = newTrack();
   const vb: Violation[] = [], va: Violation[] = [], vB: Violation[] = [];
   const LA = newLocals(), LB = newLocals(), L = newLocals();
-  const n = Math.ceil((tx.fade + 0.1) * FPS);
+  const n = Math.ceil((tx.fade * (crossfade ? 1 : 1.5) + 0.1) * FPS);
   const at = (c: typeof A, t: number) => (loops.has(c.name) ? t % Math.max(1e-6, c.duration) : Math.min(t, c.duration));
   const key = `${tx.from} > ${tx.to}`;
   // the frame before the fade starts, so a pop on the first blended frame is seen
+  // the game's transition (pose/inertia.ts): the new clip at once, the old pose as an offset decaying over 1.5 x the fade; `crossfade` models
+  // three's crossFadeTo (the game before B1)
+  const inert = new Inertia();
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
     sampleClip(A, at(A, tx.fromT + i / FPS), rig.rest, LA);
     sampleClip(Bc, at(Bc, tx.toT + t), rig.rest, LB);
-    const k = i < 0 ? 0 : Math.min(1, t / Math.max(1e-6, tx.fade));
-    blendLocals(LA, LB, k, L);
+    if (crossfade) {
+      const k = i < 0 ? 0 : Math.min(1, t / Math.max(1e-6, tx.fade));
+      blendLocals(LA, LB, k, L);
+    } else if (i < 0) {
+      copyLocals(LA, L);
+    } else {
+      if (i === 0) {
+        // the pose that was showing: the old clip one frame back
+        const P = sampleClip(A, at(A, tx.fromT - 1 / FPS), rig.rest);
+        inert.start(P.lq, P.lp, tx.fade * 1.5);
+      }
+      copyLocals(LB, L);
+      inert.apply(L, 1 / FPS);
+    }
+    // the game's passes after the mixer (pose/neck.ts, pose/constrain.ts), on the blend and on both clips alike
+    if (constrain) {
+      for (const [P, c] of [[L, tx.to], [LA, tx.from], [LB, tx.to]] as const) {
+        limitNeck(P, info.R);
+        constrainPose(P, info.R, constrainOptsFor(c));
+      }
+    }
     const dt = i === -2 ? 0 : 1 / FPS;
     const bat = BAT_CLIPS[tx.to] && BAT_CLIPS[tx.from] ? gripBat(L, info, IDENT, BAT_CLIPS[tx.to]) : null;
     validateFrame({ L, model: IDENT, ground: flat, dt, ...fl, locomotion: fl.locomotion || LOCOMOTION.has(tx.from), airborne: fl.airborne || AIRBORNE.test(tx.from), ballistic: fl.ballistic || BALLISTIC.test(tx.from), bat }, info, trBlend, vb);
@@ -118,7 +142,7 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     const worst = new Map<string, number>();
     for (const x of [...va, ...vB]) worst.set(x.kind, Math.max(worst.get(x.kind) ?? 0, x.excess));
     const own = vb.filter((x) => x.excess > (worst.get(x.kind) ?? 0) + (x.kind.startsWith('joint') ? 3 : 0.01));
-    agg.add('fade', file, key, own, 1 / FPS, () => snap(L, IDENT, { file, clip: key, from: tx.from, to: tx.to, fromT: tx.fromT, toT: tx.toT, fade: tx.fade, t, k }));
+    agg.add('fade', file, key, own, 1 / FPS, () => snap(L, IDENT, { file, clip: key, from: tx.from, to: tx.to, fromT: tx.fromT, toT: tx.toT, fade: tx.fade, t, mode: crossfade ? "crossfade" : "inertia" }));
   }
 }
 

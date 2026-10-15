@@ -218,7 +218,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
         agg.add(vis ? 'game' : 'game-off', p.role, clip, vF, animDt || dt);
         continue;
       }
-      const fading = mixerFading(pu.mixer);
+      const fading = mixerFading(pu.mixer) || !!pu.inertia?.active;
       const clipEx = new Map<string, number>();
       for (const x of vC) clipEx.set(x.kind, Math.max(clipEx.get(x.kind) ?? 0, x.excess));
       const byAttr: Record<string, Violation[]> = { clip: [], blend: [], override: [] };

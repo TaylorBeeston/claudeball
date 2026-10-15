@@ -65,7 +65,7 @@ export async function doFades(snapshots = true): Promise<RunFile> {
   const files = await loadFiles(shippedPlayers());
   for (const tx of list) {
     const f = files.find((x) => x.name === (tx.file || 'player_base')) ?? files[0];
-    sweepFade(agg, f.name, f.rig, f.info, tx, loops);
+    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : 'game', flag('constrain'));
   }
   console.log(`[jank] fades: ${list.length} transitions`);
   return { meta: { kind: 'fades', n: list.length, git: git() }, entries: agg.list() };

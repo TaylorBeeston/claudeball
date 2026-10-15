@@ -44,6 +44,7 @@ import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose } from './pose/constrain';
 import { limitNeck } from './pose/neck';
+import { Inertia, useInertia } from './pose/inertia';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -650,10 +651,12 @@ export class GltfPuppet implements PuppetLike {
     this.rig = new Rig(this.model);
     this.initArms();
     this.initConstraints();
-    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot', 'Hips', 'LeftUpLeg', 'RightUpLeg']) {
+    // every rig bone: the passes after the mixer (look, IK, constraints, inertialization) may change any of them
+    for (const n of BONES) {
       const b = this.bones[n];
       if (b) this.clipPose.set(b, b.quaternion.clone());
     }
+    if (this.bones.Hips) this.clipHipsPos.copy(this.bones.Hips.position);
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
       const a = this.mixer.clipAction(clip);
@@ -1000,7 +1003,15 @@ export class GltfPuppet implements PuppetLike {
     a.play();
     // walking up to / away from the box swings the head from forward to the stance's over-the-shoulder look: blend that slowly
     const stanceBlend = snap.role === 'batter' && (name === 'swing' || name === 'batting_stance' || this.currentName === 'swing' || this.currentName === 'batting_stance');
-    if (this.current) this.current.crossFadeTo(a, stanceBlend ? 0.3 : this.isLoop(name) ? 0.2 : 0.1, false);
+    const fade = stanceBlend ? 0.3 : this.isLoop(name) ? 0.2 : 0.1;
+    if (this.current) {
+      // inertialization instead of a crossfade (pose/inertia.ts): the new clip at full weight now, the old pose as a decaying offset
+      if (this.poseRest && useInertia(this.currentName, name) && !(globalThis as { __crossfade?: boolean }).__crossfade) {
+        this.readClipPose();
+        this.inertia.start(this.poseL.lq, this.poseL.lp, fade * 1.5);
+        this.current.stop();
+      } else this.current.crossFadeTo(a, fade, false);
+    }
     this.current = a;
     this.currentName = name;
     // the plate umpire's whisk broom is out only while he brushes the plate
@@ -1467,6 +1478,7 @@ export class GltfPuppet implements PuppetLike {
     // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
     // was applied again on top, every frame. Put every bone we modify back to its clip pose before the mixer runs.
     for (const [bone, q] of this.clipPose) bone.quaternion.copy(q);
+    if (this.bones.Hips) this.bones.Hips.position.copy(this.clipHipsPos);
     // LOD1: seated / standing extras far from the camera animate at half rate and skip look-at and IK
     const lod1 = this.offscreen || (AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE) || (this.lodTier >= 2 && !FLAGS.noskip && !puppetIsKey(snap, env));
     this.lod1 = lod1;
@@ -1489,7 +1501,15 @@ export class GltfPuppet implements PuppetLike {
       this.lodAcc = 0;
     }
     if (perf.on) perf.sub('pup.mixer', tMix);
+    // the decaying offset of a clip switch (inertialization), on the mixer's pose, before anything else reads it
+    if (this.poseRest && (this.inertia.pending || this.inertia.active)) {
+      this.readPose();
+      this.inertia.apply(this.poseL, dt);
+      for (let i = 0; i < NB; i++) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
+      this.poseBones[0]!.position.fromArray(this.poseL.lp, 0);
+    }
     for (const [bone, q] of this.clipPose) q.copy(bone.quaternion);
+    if (this.bones.Hips) this.clipHipsPos.copy(this.bones.Hips.position);
 
     // Body yaw. In the box the sim turns the batter toward the pitcher (its `facing` is a look direction), but a hitter stands
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
@@ -2109,6 +2129,17 @@ export class GltfPuppet implements PuppetLike {
     const rw = fk(L);
     fk(L, rw, rw);
     this.poseRest = restInfo(rw);
+  }
+  private inertia = new Inertia();
+  private clipHipsPos = new Vector3();
+  /** the pose the clip (mixer + inertialization) showed last frame: the source of a clip switch's offset */
+  private readClipPose() {
+    this.readPose();
+    for (let i = 0; i < NB; i++) {
+      const q = this.clipPose.get(this.poseBones[i] as Bone);
+      if (q) this.poseL.lq.set([q.x, q.y, q.z, q.w], i * 4);
+    }
+    this.poseL.lp.set([this.clipHipsPos.x, this.clipHipsPos.y, this.clipHipsPos.z], 0);
   }
   private readPose() {
     const L = this.poseL;
