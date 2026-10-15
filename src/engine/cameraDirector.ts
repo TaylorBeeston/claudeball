@@ -540,11 +540,14 @@ export class CameraDirector {
       const r = this.replay;
       r.t += dt * r.speed * 60; // frames at 60 Hz
       if (r.t >= r.end - 1 && r.next) {
-        // slow-motion close play finished: the normal-speed replay from the second angle follows
+        // slow-motion close play finished: the normal-speed replay from the second angle follows, announced as its own replay
+        this.onBroadcast?.({ type: 'replayEnd', variant: r.variant, simTime: this.simNow });
         this.replay = r.next;
         this.ballSm.copy(r.next.focus ?? this.ballSm);
-        this.lastCutFrame = true;
+        this.cut('replay');
       } else if (r.t >= r.end - 1) {
+        // the play's queued lull replay counts its wait from now, not from the play: otherwise it followed this replay at once
+        if (this.deferred) this.deferred.at = this.clock;
         this.replay = null;
         this.inPlay = false;
         this.hr = null;
@@ -848,7 +851,7 @@ export class CameraDirector {
     };
     const cam1 = pick([ring(6.5, 5.5, 1.25), ring(6.5, -5.5, 1.25), ring(4, 7.5, 1.25), ring(4, -7.5, 1.25), ring(8.5, 2, 1.4), ring(-5, 6.5, 1.25), ring(-5, -6.5, 1.25)]);
     const cam2 = pick([ring(9, -9, 3.2), ring(9, 9, 3.2), ring(12, 0, 3.6), ring(-8, -8, 3.2)]);
-    const second: Replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam2, speed: 0.5, caption: null, focus };
+    const second: Replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam2, speed: 1, caption: 'CLOSE PLAY', focus };
     this.replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam1, speed: 0.3, caption: 'CLOSE PLAY', focus, next: second };
     this.ballSm.copy(focus);
     void live;

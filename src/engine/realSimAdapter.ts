@@ -46,6 +46,7 @@ interface RSState {
   pitchClock?: import('./types').PitchClockView | null;
   players: RSPlayer[];
   umpire: { lastCall: { kind: string; time: number } | null };
+  paDone?: boolean;
   gameOver: boolean;
   winner: 'home' | 'away' | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
@@ -250,7 +251,8 @@ export class RealSimAdapter implements GameLike {
         break;
       }
       case 'halfInningEnd': {
-        // announce the half that is about to start
+        // announce the half that is about to start (none after the half that ends the game)
+        if (e.final) break;
         const top = e.half === 'top';
         this.emit({ type: 'half_inning', inning: top ? Number(e.inning) : Number(e.inning) + 1, half: top ? 'bottom' : 'top' });
         break;
@@ -330,6 +332,7 @@ export class RealSimAdapter implements GameLike {
       players,
       umpireCall: { seq: this.callSeq, kind: call ? (CALL_KIND[call.kind] ?? 'none') : 'none' },
       count: { balls: s.balls, strikes: s.strikes },
+      paOver: !!s.paDone,
       outs: s.outs,
       inning: s.inning,
       half: s.half,

@@ -237,6 +237,7 @@ export function snapshot(w: World): GameStateSnapshot {
     deadBall: w.deadBall ? { pos: { x: w.deadBall.body.x, y: w.deadBall.body.y, z: w.deadBall.body.z }, state: w.deadBall.state } : null,
     stats: { home: teamStats(w, w.teams.home), away: teamStats(w, w.teams.away) },
     pendingDecision: w.dec.waiting > 0 ? (() => { for (const sl of w.dec.slots.values()) if (sl.state === 'wait') return { id: sl.id, decision: sl.kind, side: sl.side }; return null; })() : null,
+    paDone: w.paDone,
     gameOver: w.gameOver,
     winner: w.winner,
     teams: {

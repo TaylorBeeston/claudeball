@@ -522,6 +522,8 @@ export interface GameStateSnapshot {
   deadBall?: { pos: Vec3; state: 'rolling' | 'resting' | 'carried' | 'tossed' } | null;
   /** (additive) live box-score stats for every player who has appeared, for a HUD. */
   stats?: { home: TeamStatsSnapshot; away: TeamStatsSnapshot };
+  /** (additive) the plate appearance is over (strikeout, walk, ball put in play): `balls` / `strikes` still hold its final count until the next batter steps in. */
+  paDone?: boolean;
   gameOver: boolean;
   winner: TeamSide | null;
   teams: { home: { name: string; abbrev: string }; away: { name: string; abbrev: string } };
@@ -605,7 +607,7 @@ export interface PitchClockSnapshot {
 export type GameEvent =
   | (EBase & { type: 'gameStart' })
   | (EBase & { type: 'halfInningStart'; inning: number; half: 'top' | 'bottom' })
-  | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom' })
+  | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom'; /** this half ends the game: no other half follows */ final: boolean })
   | (EBase & { type: 'batterUp'; batterId: string; pitcherId: string })
   | (EBase & { type: 'windup'; pitcherId: string; pitchType?: PitchType })
   | (EBase & { type: 'pitchReleased'; pitcherId: string; pitchType: PitchType; mph: number; rpm: number; release: Vec3; targetX: number; targetY: number })
