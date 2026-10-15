@@ -51,6 +51,8 @@
   backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
 .cb-ui.modal .cb-panel {
+  /* positioned, so it paints above the layer's absolutely positioned scrim (a static panel sat under it, dimmed) */
+  position: relative;
   width: min(460px, 94vw); max-height: min(92vh, calc(100dvh - 2 * var(--cb-gap))); overflow-y: auto; overscroll-behavior: contain; padding: var(--cb-pad); display: flex; flex-direction: column; gap: var(--cb-gap);
   scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 }
