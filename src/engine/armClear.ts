@@ -140,7 +140,7 @@ export function swivelElbow(S: V3, H: V3, E: V3, clearance: (p: V3) => number, m
  * side is searched, and the other side is taken only when it is shorter by more than `hysteresis` (so the elbow never hops across the body
  * from one frame to the next). 0 when the elbow is already clear; the best angle found when nothing clears.
  */
-export function swivelTarget(S: V3, H: V3, E: V3, clearance: (p: V3) => number, prefer: 1 | -1 | 0, margin = 0.015, hysteresis = 0.6, step = (6 * Math.PI) / 180): number {
+export function swivelTarget(S: V3, H: V3, E: V3, clearance: (p: V3) => number, prefer: 1 | -1 | 0, margin = 0.015, hysteresis = 1.2, step = (6 * Math.PI) / 180): number {
   if (clearance(E) >= margin) return 0;
   const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
   const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -175,7 +175,10 @@ export function swivelTarget(S: V3, H: V3, E: V3, clearance: (p: V3) => number, 
   if (!p.ok && !m.ok) return p.c >= m.c ? p.th : m.th;
   if (!p.ok) return m.th;
   if (!m.ok) return p.th;
-  const pref = prefer === 1 ? p : prefer === -1 ? m : Math.abs(p.th) <= Math.abs(m.th) ? p : m;
+  // no side yet: the one where the clearance grows (local, so it does not jump as the arm swings past the trunk), unless it is much longer
+  const cp = clearance(at(step)), cm = clearance(at(-step));
+  let pref = prefer === 1 ? p : prefer === -1 ? m : Math.abs(cp - cm) > 1e-4 ? (cp > cm ? p : m) : Math.abs(p.th) <= Math.abs(m.th) ? p : m;
+  if (prefer === 0 && Math.abs(pref.th) > Math.abs((pref === p ? m : p).th) + hysteresis) pref = pref === p ? m : p;
   const other = pref === p ? m : p;
   return Math.abs(other.th) + hysteresis < Math.abs(pref.th) ? other.th : pref.th;
 }

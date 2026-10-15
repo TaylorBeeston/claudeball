@@ -1940,6 +1940,8 @@ export class GltfPuppet implements PuppetLike {
 
   /** per arm: the swivel applied last frame (rad) and the side it was on */
   private swivel = { Left: 0, Right: 0 };
+  /** last frame per arm: clearance before, swivel wanted, applied, clearance after (harness diagnostics) */
+  swivelDbg: Record<'Left' | 'Right', number[]> = { Left: [0, 0, 0, 0], Right: [0, 0, 0, 0] };
   /**
    * Keep both elbows outside the torso (the trunk grows with the build morphs) and the head: an elbow that the clip or the IK put inside is
    * swivelled out around the shoulder -> hand axis. The whole arm turns rigidly (the elbow hinge keeps its bend, the hand stays where it is and
@@ -1987,13 +1989,16 @@ export class GltfPuppet implements PuppetLike {
           tmp.set(p[0], p[1], p[2]).sub(Ps).applyQuaternion(Qi);
           return Math.min(torsoClearance(tmp.x, tmp.y, tmp.z, this.torso), headClear(p));
         };
-        want = swivelTarget([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, prev > 0.01 ? 1 : prev < -0.01 ? -1 : 0, 0.02);
+        // a swivel past ~60 deg turns the arm inside out (a hanging arm's shoulder-hand line runs along the trunk: no small swivel clears it)
+        const MAXSW = (60 * Math.PI) / 180;
+        want = Math.max(-MAXSW, Math.min(MAXSW, swivelTarget([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, prev > 0.01 ? 1 : prev < -0.01 ? -1 : 0, 0.02)));
       }
       // ease toward it quickly (up to ~30 rad/s: a sprinting arm's elbow passes the trunk in a few frames) and back to the clip's own swivel
       // slowly (~10 rad/s) once clear
       const maxStep = (Math.abs(want) > Math.abs(prev) ? 30 : 10) * Math.min(dt, 0.1);
       const applied = prev + Math.max(-maxStep, Math.min(maxStep, want - prev));
       this.swivel[side] = Math.abs(applied) < 1e-4 ? 0 : applied;
+      const dbg0 = clear;
       if (this.swivel[side] !== 0) {
         const S = rig.pos(arm, new Vector3());
         const H = rig.pos(hand, new Vector3());
@@ -2007,6 +2012,35 @@ export class GltfPuppet implements PuppetLike {
         const l2 = E2.clone().sub(Ps).applyQuaternion(Qi);
         clear = Math.min(torsoClearance(l2.x, l2.y, l2.z, this.torso), headClear([E2.x, E2.y, E2.z]));
       }
+      // still inside (the swivel was capped): lift the upper arm out to the side just enough, the forearm keeping its direction (the hand
+      // moves the few centimetres the elbow does); not for an arm on a bat or reaching with the glove, whose hand must stay on its target
+      const busy = this.ikW > 0.05 || (side === 'Left' && this.gloveW > 0.05);
+      if (clear < -0.005 && !off && !busy) {
+        const S = rig.pos(arm, new Vector3()), E3 = rig.pos(fore, new Vector3());
+        const l3 = E3.clone().sub(Ps).applyQuaternion(Qi);
+        // outward from the trunk at the elbow, in the spine frame, then rig space
+        const out = new Vector3(l3.x / this.torso.halfW, 0, (l3.z - this.torso.zOff) / this.torso.halfD);
+        if (out.lengthSq() < 1e-8) out.set(side === 'Left' ? 1 : -1, 0, 0);
+        out.normalize().applyQuaternion(Qi.clone().invert());
+        const ua = E3.clone().sub(S);
+        const axis = new Vector3().crossVectors(ua, out);
+        if (axis.lengthSq() > 1e-10) {
+          axis.normalize();
+          const ang = Math.asin(Math.min(1, (0.012 - clear) / Math.max(0.05, ua.length())));
+          const q = new Quaternion().setFromAxisAngle(axis, ang);
+          const qf = rig.quat(fore, new Quaternion());
+          rig.rotate(arm, q);
+          rig.rotate(fore, qf.multiply(rig.quat(fore, new Quaternion()).invert()));
+          const E4 = rig.pos(fore, new Vector3());
+          const l4 = E4.clone().sub(Ps).applyQuaternion(Qi);
+          clear = Math.min(torsoClearance(l4.x, l4.y, l4.z, this.torso), headClear([E4.x, E4.y, E4.z]));
+        }
+      }
+      const dg = this.swivelDbg[side];
+      dg[0] = dbg0;
+      dg[1] = want;
+      dg[2] = this.swivel[side];
+      dg[3] = clear;
       worst = Math.min(worst, clear);
       if (headC) {
         // what is left after the fix, measured from the final bone positions (the number the per-frame assertion watches)
