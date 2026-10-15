@@ -62,3 +62,7 @@ tools/visual/out/
 /assets/optimized/players_1k/player_catcher.glb
 /assets/optimized/players/player_manager.glb
 /assets/optimized/players_1k/player_manager.glb
+
+# verify-claudeball (.claude/skills/verify-claudeball): its prod build and the proof artifacts of verification runs
+dist-verify/
+verify-evidence/
