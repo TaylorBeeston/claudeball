@@ -135,9 +135,12 @@ Booth lines laid over several cuts:
 crash, bass, a drawbar organ with a Leslie (an original call-and-answer lead), brass-like stabs, a pad, a riser, and a separate effects
 stem (impacts, booms, whooshes, reverse crashes) placed on the edit's cuts. The game audio of each cut comes from its own shot's capture
 (the park stem: crowd, bat, mitt, PA, organ, umpire, as the fixed mic array hears them); the booth (Lyle Pemberton and Hollis "Biscuit" Dupree,
-HD voices) only where the edit uses its line. The band ducks under the booth. The master is normalised to -14 LUFS with a look-ahead
-true-peak limiter at -1 dBTP; stems: `music.wav` (band), `fx.wav`, `game.wav`, `voice.wav`, `master.wav`. To use another music track
-(e.g. a YuE render), replace `music.wav` and re-run `--stages mix,encode`.
+HD voices) only where the edit uses its line; a booth call laid over several cuts ends at a pause in that take's audio, never mid-word.
+The band ducks under the booth. The master is normalised to -14 LUFS with a look-ahead true-peak limiter at -2.2 dB (the AAC encode adds
+up to ~1 dB of overshoot; the encoder measures the final file and re-encodes until it is under -1 dBTP); `edit/<tag>/master.wav` and the
+stems `music.wav` (band), `fx.wav`, `game.wav`, `voice.wav` in `edit/<tag>/stems/`. To use another music track (e.g. a YuE render, 48 kHz,
+120 BPM), run `npm run promo:render -- --music track.wav --stages mix,encode`: it replaces the bed in every format without re-shooting
+(the generated `music.wav` is not touched).
 
 ## TODO (resume here)
 
@@ -147,7 +150,9 @@ true-peak limiter at -1 dBTP; stems: `music.wav` (band), `fx.wav`, `game.wav`, `
 - [x] 1080p60 master, README teaser (`docs/media/teaser.webm`), snippets, contact sheet, report 2
 - [x] 4K60 master and the 9:16 vertical cut (`--4k`, `--vertical`), report 3
 - [x] fireworks: a denser rising trail, re-shot in all three formats with `--adopt` / `--force --only`
-- [ ] (user) listen to the mix; optionally swap the music bed for a YuE track (`edit/<tag>/stems/music.wav`, then `--stages mix,encode`)
+- [x] one-command render of all three formats from the cached shots; booth calls end at a pause (all three re-mixed)
+- [ ] (user) listen to the mix; optionally swap the music bed for a YuE track (`--music track.wav --stages mix,encode`)
+- [ ] (after approval) delete `~/claudeball-promo/cache` and `edit/*/pic` (~40 GB of frames)
 
 Re-shooting after an engine change: every shot's cache key includes the build, so a change re-shoots everything. When the change can
 only affect some shots, record the old key (`npx tsx -e "import { buildKey } from './tools/promo/capture'; console.log(buildKey())"`),
