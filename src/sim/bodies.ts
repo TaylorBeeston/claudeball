@@ -96,6 +96,15 @@ function fieldingBall(w: World, p: PlayerRT | null): boolean {
   return (m === 'batted' || m === 'loose') && !w.ball.holder && w.play.primary === p;
 }
 
+/** About to take a throw, or set at a bag / in the relay for one: he is fielding the play and holds his ground. */
+function receiving(w: World, p: PlayerRT | null): boolean {
+  if (!p) return false;
+  const b = w.ball;
+  if (b.mode === 'thrown' && (b.throwTo === p || b.lob?.to === p)) return true;
+  const k = p.plan.kind;
+  return !!w.play && !w.play.dead && (k === 'cover' || k === 'receive' || k === 'cutoff');
+}
+
 /** How much of the avoiding `me` does when he would meet `o` (0: he holds his line, 1: he goes around). */
 export function giveWay(w: World, me: Body, o: Body): number {
   if (o.battery && me.battery) return 0;
@@ -109,7 +118,7 @@ export function giveWay(w: World, me: Body, o: Body): number {
     return 0.5;
   }
   if (me.cls === 'F') {
-    if (fieldingBall(w, me.p)) return 0;
+    if (fieldingBall(w, me.p) || receiving(w, me.p)) return 0;
     if (o.cls === 'R') return me.p?.hasBall ? 0 : 1;
     if (o.cls === 'F') return fieldingBall(w, o.p) ? 1 : 0.5;
     return 0.5;

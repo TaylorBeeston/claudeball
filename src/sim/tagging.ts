@@ -235,6 +235,28 @@ export function limbArrival(r: RunnerRT, b: number, speed: number, dist: number)
   return Infinity;
 }
 
+/**
+ * Seconds from starting a feet-first slide at `d0` metres from the middle of base b, at speed v, until the leading foot is on the bag
+ * (the friction and the clip's reach): what a runner reckons his slide costs.
+ */
+export function slideToBag(v: number, d0: number): number {
+  const path = LIMB_PATH.feet;
+  const dt = 1 / 120;
+  let d = d0, prog = 0;
+  for (let t = 0; t < 3; t += dt) {
+    const tip = path[Math.min(path.length - 1, Math.round(clamp(prog, 0, 1) * (path.length - 1)))][0];
+    if (d - tip <= BAG_REACH) return t;
+    v = Math.max(0.5, v - SLIDE_FRICTION * dt);
+    prog += dt / SLIDE_S;
+    d -= v * dt;
+  }
+  return 3;
+}
+/** How far short of the middle of the bag a foot / hand is on it, along the base path (m). */
+const BAG_REACH = 0.19 + 0.04;
+/** Where a feet-first slide into a bag starts (m from its middle). */
+export const FEET_SLIDE_AT = 3.4;
+
 /** A hook slide aims a little to the side of the bag; the leading foot swings out and in around the glove (see `runnerBody`). */
 function slideAim(r: RunnerRT, b: number): { x: number; z: number } | null {
   if (r.slideKind !== 'hookL' && r.slideKind !== 'hookR') return null;

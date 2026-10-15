@@ -332,7 +332,9 @@ export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTim
   const jump = 0.32 - 0.002 * (P.info.ratings.baserunning - 50);
   const bp = bpos(nb);
   const dist = Math.hypot(bp.x - P.x, bp.z - P.z);
-  const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, dist, 0) - 0.08;
+  // (his own read of it: the run to where he slides, then the slide until his foot is on the bag)
+  const d0 = tagging.FEET_SLIDE_AT;
+  const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, Math.max(0, dist - d0), 0) + tagging.slideToBag(P.vmax, Math.min(dist, d0));
   const armV = 27 + 0.21 * catcher.info.ratings.arm;
   const D = Math.hypot(bp.x - catcher.x, bp.z - catcher.z);
   const exch = catcherExchange(catcher.info.ratings);
