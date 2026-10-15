@@ -246,7 +246,17 @@ export function encode(L: Layout, pic: string, ovl: string, wav: string, file: s
     '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
     '-shortest', file,
   ];
-  execFileSync('ffmpeg', args, { stdio: ['ignore', 'ignore', 'inherit'] });
-  const f = r128(file);
+  // the overshoot of the final mux is not exactly the probe's: check the file, and re-encode with more trim until it is under -1 dBTP
+  let f = { lufs: NaN, tp: NaN };
+  let gain = trim;
+  for (let pass = 0; pass < 3; pass++) {
+    const a = [...args];
+    a[a.indexOf('-af') + 1] = `volume=${gain.toFixed(2)}dB`;
+    execFileSync('ffmpeg', a, { stdio: ['ignore', 'ignore', 'inherit'] });
+    f = r128(file);
+    if (!(f.tp > -1.0)) break;
+    gain -= f.tp + 1.15;
+    log(`[encode] true peak ${f.tp} dBTP over -1: again at ${gain.toFixed(2)} dB`);
+  }
   log(`[encode] ${file} (${(fs.statSync(file).size / 1e6).toFixed(1)} MB): ${f.lufs} LUFS, true peak ${f.tp} dBTP`);
 }
