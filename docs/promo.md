@@ -150,7 +150,8 @@ stems `music.wav` (band), `fx.wav`, `game.wav`, `voice.wav` in `edit/<tag>/stems
 - [x] 1080p60 master, README teaser (`docs/media/teaser.webm`), snippets, contact sheet, report 2
 - [x] 4K60 master and the 9:16 vertical cut (`--4k`, `--vertical`), report 3
 - [x] fireworks: a denser rising trail, re-shot in all three formats with `--adopt` / `--force --only`
-- [x] one-command render of all three formats from the cached shots; booth calls end at a pause (all three re-mixed)
+- [x] one-command render of all three formats from the cached shots; booth tracks end at a pause and captions show only the words played
+- [x] P11: booth calls lost every clause after the first (HD voice clause hand-off); `bomb-broadcast` / `wo-flight` re-shot in all three formats (the other shots adopted with `--adopt`), each format's voice stem checked against its captions by transcription
 - [ ] (user) listen to the mix; optionally swap the music bed for a YuE track (`--music track.wav --stages mix,encode`)
 - [ ] (after approval) delete `~/claudeball-promo/cache` and `edit/*/pic` (~40 GB of frames)
 
