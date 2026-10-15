@@ -29,7 +29,7 @@ const flag = (k: string) => argv.includes(`--${k}`);
 
 const vertical = flag('vertical');
 /** the shots of this cut: the vertical cut has its own re-shoots (and the phone footage) */
-const shotList = () => (vertical ? [...VSHOTS, SHOTS.find((s) => s.id === 'phone-portrait')!] : SHOTS);
+const shotList = () => (vertical ? VSHOTS : SHOTS);
 const cutList = (): Cut[] => (vertical ? VCUTS : CUTS);
 const voiceList = (): VoiceTrack[] => (vertical ? VOICE.map((v) => ({ ...v, shot: `v-${v.shot}` })) : VOICE);
 

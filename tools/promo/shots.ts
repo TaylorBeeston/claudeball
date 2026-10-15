@@ -151,7 +151,9 @@ export const SHOTS: PromoShot[] = [
  * frame, which shows less across), plus per-shot changes where the framing needs them.
  */
 const VFOV: Record<string, number> = { 'open-face': 1.0, 'pitch-mitt': 1.1, 'wo-pitcher': 1.2, 'contact-bomb': 1.25, 'wo-contact': 1.25 };
-export const VSHOTS: PromoShot[] = SHOTS.filter((s) => s.id !== 'phone-portrait').map((s) => {
+export const VSHOTS: PromoShot[] = SHOTS.map((s) => {
+  // the phone shot has its own viewport already; it gets its own id all the same (the vertical and the 1080p renders share a cache folder)
+  if (s.viewport) return { ...s, id: `v-${s.id}` };
   const k = VFOV[s.id] ?? 1.4;
   const camera = s.camera.mode === 'path' ? { ...s.camera, keys: s.camera.keys.map((key) => ({ ...key, fov: Math.min(80, (key.fov ?? 40) * k) })) } : s.camera;
   return { ...s, id: `v-${s.id}`, portrait: true, camera };

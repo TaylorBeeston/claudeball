@@ -115,7 +115,7 @@ export function voiceIn(v: VoiceTrack, m: { fps: number; speech: { t: number; ev
 }
 
 /** the vertical cut: the same edit on the portrait re-shoots (`v-<shot>`); the phone beat is the phone footage itself, full frame */
-export const VCUTS: Cut[] = CUTS.map((c) => (c.phone ? { ...c, phone: false } : { ...c, shot: `v-${c.shot}` }));
+export const VCUTS: Cut[] = CUTS.map((c) => (c.phone ? { ...c, phone: false, shot: `v-${c.shot}` } : { ...c, shot: `v-${c.shot}` }));
 
 /** the start time (s) of every cut, and the total */
 export function cutTimes(): { starts: number[]; total: number } {
