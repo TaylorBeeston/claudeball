@@ -246,7 +246,8 @@ export class RealSimAdapter implements GameLike {
         break;
       }
       case 'halfInningEnd': {
-        // announce the half that is about to start
+        // announce the half that is about to start (none after the half that ends the game)
+        if (e.final) break;
         const top = e.half === 'top';
         this.emit({ type: 'half_inning', inning: top ? Number(e.inning) : Number(e.inning) + 1, half: top ? 'bottom' : 'top' });
         break;

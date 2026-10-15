@@ -597,7 +597,7 @@ export interface PitchClockSnapshot {
 export type GameEvent =
   | (EBase & { type: 'gameStart' })
   | (EBase & { type: 'halfInningStart'; inning: number; half: 'top' | 'bottom' })
-  | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom' })
+  | (EBase & { type: 'halfInningEnd'; inning: number; half: 'top' | 'bottom'; /** this half ends the game: no other half follows */ final: boolean })
   | (EBase & { type: 'batterUp'; batterId: string; pitcherId: string })
   | (EBase & { type: 'windup'; pitcherId: string; pitchType?: PitchType })
   | (EBase & { type: 'pitchReleased'; pitcherId: string; pitchType: PitchType; mph: number; rpm: number; release: Vec3; targetX: number; targetY: number })
