@@ -165,19 +165,20 @@ function quotes(shots: Map<string, ShotManifest>): Overlay[] {
 }
 
 /**
- * The README teaser: 9 s of the walk-off (pitch, contact, flight, fireworks) from the 1080p master, 1280x720, VP9 two-pass, no sound
+ * The README teaser: 9 s of the walk-off (contact in slow motion, flight, fireworks) from the 1080p master, 1280x720, VP9 two-pass, no sound
  * (a README plays it muted), under 3 MB; and a poster frame. Written to ~/claudeball-promo/ (copy to docs/media/ to commit).
  */
 function teaser(log: (s: string) => void) {
   const src = path.join(PROMO_DIR, 'promo-16x9-1080p60.mp4');
   if (!fs.existsSync(src)) return log('[teaser] no 1080p master yet');
   const { starts } = cutTimes();
-  const from = starts[CUTS.findIndex((c) => c.shot === 'wo-pitcher')];
+  // from the walk-off contact (slow motion) through the flight to the first fireworks
+  const from = starts[CUTS.findIndex((c) => c.shot === 'wo-contact')];
   const out = path.join(PROMO_DIR, 'teaser.webm');
   const vf = 'scale=1280:720:flags=lanczos,fps=30';
   for (const pass of [1, 2])
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from), '-t', '9', '-i', src, '-vf', vf, '-an', '-pix_fmt', 'yuv420p', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-c:v', 'libvpx-vp9', '-b:v', '2300k', '-maxrate', '3000k', '-bufsize', '4600k', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '1', '-pass', String(pass), '-passlogfile', path.join(PROMO_DIR, 'teaser-pass'), ...(pass === 1 ? ['-f', 'null', '/dev/null'] : [out])]);
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from + 8.2), '-i', src, '-frames:v', '1', '-vf', 'scale=1280:720', '-q:v', '3', path.join(PROMO_DIR, 'teaser.jpg')]);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(from + 8.1), '-i', src, '-frames:v', '1', '-vf', 'scale=1280:720', '-q:v', '3', path.join(PROMO_DIR, 'teaser.jpg')]);
   log(`[teaser] ${out} (${(fs.statSync(out).size / 1e6).toFixed(2)} MB) + teaser.jpg`);
 }
 
