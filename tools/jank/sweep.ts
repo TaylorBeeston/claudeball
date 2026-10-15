@@ -17,6 +17,7 @@ export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
 import { constrainPose, constrainOptsFor } from '../../src/engine/pose/constrain';
+import { limitNeck } from '../../src/engine/pose/neck';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
@@ -60,7 +61,10 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     const t = i <= n ? i / FPS : (i - n) / FPS;
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
     // what the runtime constraint layer makes of the clip (the game applies it every frame)
-    if (constrain) constrainPose(L, info.R, constrainOptsFor(clipName));
+    if (constrain) {
+      limitNeck(L, info.R);
+      constrainPose(L, info.R, constrainOptsFor(clipName));
+    }
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
     validateFrame({ L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, info, tr, v);

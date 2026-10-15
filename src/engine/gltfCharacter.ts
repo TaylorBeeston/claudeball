@@ -43,6 +43,7 @@ import { armRest, solveArm as solveArmIK, type ArmRest } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose } from './pose/constrain';
+import { limitNeck } from './pose/neck';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -649,7 +650,7 @@ export class GltfPuppet implements PuppetLike {
     this.rig = new Rig(this.model);
     this.initArms();
     this.initConstraints();
-    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot']) {
+    for (const n of ['Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftHand', 'RightHand', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot', 'Hips', 'LeftUpLeg', 'RightUpLeg']) {
       const b = this.bones[n];
       if (b) this.clipPose.set(b, b.quaternion.clone());
     }
@@ -1525,6 +1526,8 @@ export class GltfPuppet implements PuppetLike {
     // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
     const tLook = perf.t();
     this.lookAt(snap, dt, env);
+    // a head turned past what a neck can (the clip's or the look's): the spine, then the pelvis take the excess, gaze and feet kept
+    this.applyPose(limitNeck);
     if (perf.on) perf.sub('pup.look', tLook);
     const tIk = perf.t();
     // arm IK: batter's hands follow the sim's bat
@@ -2116,6 +2119,16 @@ export class GltfPuppet implements PuppetLike {
       L.lp[i * 3 + 1] = b.position.y;
       L.lp[i * 3 + 2] = b.position.z;
     }
+  }
+  /** run a pure pose pass (pose/*.ts) on this puppet's bones and write back the ones it changed */
+  private applyPose(pass: (L: PoseLocals, R: RestInfo) => number) {
+    if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;
+    this.readPose();
+    const mask = pass(this.poseL, this.poseRest);
+    if (!mask) return;
+    for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
+    this.refreshMatrices();
+    this.rig.refresh();
   }
   private constrain(snap: PlayerSnap) {
     if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;

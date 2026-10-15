@@ -6,14 +6,14 @@
  * a spiking ball position can never whip the head around. Neutral (0, 0) is where the head goes when there is nothing to look at.
  */
 export const LOOK_LIMITS = {
-  /** neck + head yaw offset from the clip pose, either side (rad) */
-  yaw: (70 * Math.PI) / 180,
+  /** neck + head yaw offset from the clip pose, either side (rad); past ~70 deg from the chest the trunk takes the rest (pose/neck.ts) */
+  yaw: (95 * Math.PI) / 180,
   /** extra yaw the upper spine may add either side (rad) */
   spineYaw: (20 * Math.PI) / 180,
   /** neck + head pitch offset from the clip pose, up or down (rad) */
   pitch: (35 * Math.PI) / 180,
   /** absolute limits of where the head may point relative to the torso: yaw either side, up, down (rad) */
-  absYaw: (90 * Math.PI) / 180,
+  absYaw: (115 * Math.PI) / 180,
   absUp: (75 * Math.PI) / 180,
   absDown: (35 * Math.PI) / 180,
   /** targets closer than this (m, horizontal, from the head) are ignored */
