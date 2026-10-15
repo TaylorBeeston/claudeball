@@ -10,7 +10,7 @@ import { db, lufsIntegrated, loudnessRange, truePeak } from '../../src/audio/ven
 import { writeWav } from '../audio/render';
 import { shotDir, type RenderSettings, type ShotManifest } from './capture';
 import { BEAT, CUTS, VOICE, cutTimes, musicPlan, overlays, resolveIn, voiceIn, type Cut, type VoiceTrack } from './edit';
-import { SR, dbGain, limit, readWav, type Stereo } from './dsp';
+import { SR, dbGain, limit, readWav, speechEnd, type Stereo } from './dsp';
 import { renderMusic } from './music';
 import type { Overlay } from './overlay';
 
@@ -100,6 +100,18 @@ const loud = (s: Stereo) => lufsIntegrated(s as unknown as Float32Array[], SR);
  * laid from the start of the timeline (padded with silence or cut to its length); it gets the same level and the same duck under the
  * booth as the code bed, and the produced effects stay. The file itself is only read.
  */
+/** a booth track's window in its take: where it starts (shot seconds) and how long it runs, ended at a pause (never mid-word) */
+export function voiceWindow(rs: RenderSettings, v: VoiceTrack, m: ShotManifest | undefined): { src: Stereo; vin: number; dur: number } | null {
+  const file = path.join(shotDir(v.shot, rs), 'booth.wav');
+  if (!m?.audio || !fs.existsSync(file)) return null;
+  const vin = voiceIn(v, m);
+  if (vin === null) return null;
+  const src = readWav(file).ch as Stereo;
+  const from = Math.round((m.audio.t0 + vin) * SR);
+  const mono = src[0].map((l, i) => (l + src[1][i]) / 2);
+  return { src, vin, dur: speechEnd(mono, from, Math.round(v.dur * SR)) / SR };
+}
+
 export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: string, log: (s: string) => void, cuts: Cut[] = CUTS, voice: VoiceTrack[] = VOICE, musicFile?: string): { master: Stereo; report: Record<string, number> } {
   const { starts, total } = cutTimes();
   const n = Math.ceil(total * SR);
@@ -132,16 +144,15 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
   });
   // continuous booth tracks over several cuts (the climax's call)
   for (const v of voice) {
-    const m = shots.get(v.shot);
-    const file = path.join(shotDir(v.shot, rs), 'booth.wav');
-    if (!m?.audio || !fs.existsSync(file)) continue;
-    const vin = voiceIn(v, m);
-    if (vin === null) {
-      log(`[mix] WARNING: ${v.shot} has no booth line "${v.line}" in this take`);
+    const w = voiceWindow(rs, v, shots.get(v.shot));
+    if (!w) {
+      if (shots.get(v.shot)?.audio) log(`[mix] WARNING: ${v.shot} has no booth line "${v.line}" in this take`);
       continue;
     }
-    const src = readWav(file).ch as Stereo;
-    const from = Math.round((m.audio.t0 + vin) * SR), at0 = Math.round((v.at - v.pre) * SR), len = Math.round(v.dur * SR), fl = Math.round(0.06 * SR);
+    const { src, vin, dur } = w;
+    if (Math.abs(dur - v.dur) > 0.01) log(`[mix] ${v.shot}: the booth track ends at a pause, ${dur.toFixed(2)} s instead of ${v.dur} s`);
+    const m = shots.get(v.shot)!;
+    const from = Math.round((m.audio!.t0 + vin) * SR), at0 = Math.round((v.at - v.pre) * SR), len = Math.round(dur * SR), fl = Math.round(0.06 * SR);
     const g = dbGain(v.db);
     for (let k = 0; k < len; k++) {
       const sI = from + k, d = at0 + k;

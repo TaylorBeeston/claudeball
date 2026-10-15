@@ -248,3 +248,27 @@ export function readWav(file: string): { sr: number; ch: Float32Array[] } {
     }
   return { sr: fmt.sr, ch };
 }
+
+/**
+ * Where a speech track cut at `from + len` should end so that no word is cut: the window's end if the track is silent there; else the
+ * end of the word it lands in, if that comes within `slack` seconds; else the start of the last pause inside the window (each take
+ * times its words differently, so a fixed length can land mid-word). Silence: 20 ms blocks under `floorDb`; returns a length.
+ */
+export function speechEnd(x: Float32Array, from: number, len: number, { sr = SR, slack = 0.6, floorDb = -50, tail = 0.08 } = {}): number {
+  const blk = Math.round(0.02 * sr), floor = 10 ** (floorDb / 10);
+  const quiet = (i: number) => {
+    let s = 0;
+    for (let k = i; k < i + blk; k++) s += k >= 0 && k < x.length ? x[k] * x[k] : 0;
+    return s / blk < floor;
+  };
+  const end = from + len;
+  if (quiet(end - blk)) return len;
+  for (let i = end; i < end + slack * sr; i += blk) if (quiet(i)) return Math.min(i + Math.round(tail * sr), x.length) - from;
+  for (let i = end - blk; i > from; i -= blk) if (quiet(i)) {
+    // the pause's start: back to the last loud block before it
+    let j = i;
+    while (j - blk > from && quiet(j - blk)) j -= blk;
+    return j > from ? Math.min(j + Math.round(tail * sr), end) - from : len;
+  }
+  return len;
+}

@@ -17,8 +17,8 @@ import path from 'node:path';
 import { build, startPreview, systemLoad } from '../perf/lib';
 import { PROMO_DIR, buildKey, cached, captureShot, openChrome, shotDir, shotHash, type RenderSettings, type ShotManifest } from './capture';
 import { SHOTS, VSHOTS } from './shots';
-import { buildPicture, encode, fillOverlay, layout, mix, overlayList } from './assemble';
-import { BEAT, CUTS, VCUTS, VOICE, cutTimes, resolveIn, voiceIn, type Cut, type VoiceTrack } from './edit';
+import { buildPicture, encode, fillOverlay, layout, mix, overlayList, voiceWindow } from './assemble';
+import { BEAT, CUTS, VCUTS, VOICE, cutTimes, resolveIn, type Cut, type VoiceTrack } from './edit';
 import type { Overlay } from './overlay';
 import { renderOverlay } from './titles';
 
@@ -140,21 +140,23 @@ function sheets(rs: RenderSettings, shots: Map<string, ShotManifest>) {
 }
 
 /** what the booth said in the cuts that quote it (the captured lines, timed to the edit) */
-function quotes(shots: Map<string, ShotManifest>): Overlay[] {
+function quotes(rs: RenderSettings, shots: Map<string, ShotManifest>): Overlay[] {
   const { starts } = cutTimes();
   const out: Overlay[] = [];
   // (a caption never runs into a black card: the title, the end card)
   const blackAt = (t: number) => Math.min(...cutList().map((c, i) => (c.black && starts[i] > t ? starts[i] : Infinity)));
   const quote = (ev: { text?: string; name?: string; speaker?: string }, t0: number, t1: number): Overlay => ({ k: 'quote', t0, t1: Math.min(t1, blackAt(t0) - 0.15), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
   for (const v of voiceList()) {
-    const vin = voiceIn(v, shots.get(v.shot));
-    if (vin === null) continue;
+    // (the window the mix plays: it ends at a pause, so a line it cuts is not captioned)
+    const w = voiceWindow(rs, v, shots.get(v.shot));
+    if (!w) continue;
+    const { vin, dur } = w;
     for (const s of shots.get(v.shot)?.speech ?? []) {
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
-      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + v.dur - 0.5) continue;
+      if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + dur - 0.5) continue;
       const t0 = v.at - v.pre + s.t - vin;
       if (cutList().some((c, i) => c.black && t0 >= starts[i] - 0.3 && t0 < starts[i] + c.beats * BEAT)) continue; // no caption over a card
-      out.push(quote(ev, t0, Math.min(v.at - v.pre + v.dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
+      out.push(quote(ev, t0, Math.min(v.at - v.pre + dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
     }
   }
   cutList().forEach((c, i) => {
@@ -246,7 +248,7 @@ async function main() {
   if (stages.includes('titles')) {
     const chrome = await openChrome(rs);
     try {
-      const has = await renderOverlay(chrome, [...overlayList(L, vertical), ...quotes(shots)], L.W, L.H, L.fps, L.frames, ovl, log);
+      const has = await renderOverlay(chrome, [...overlayList(L, vertical), ...quotes(rs, shots)], L.W, L.H, L.fps, L.frames, ovl, log);
       fillOverlay(L, has, ovl);
     } finally {
       await chrome.close();
