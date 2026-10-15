@@ -25,6 +25,11 @@ clock took over CSS animations (now finished before the switch); a real mouse mo
 control bar over the broadcast (the controls are hidden while capturing); a headed window that the desktop hid stalled page screenshots for a
 minute (captures run headless on the GPU now); the portrait "Rotate your device" hint is dismissed in captures, as a player would.
 
+Edit problems (the promo tools): a booth track laid over several cuts had a fixed length, and each take times its words differently, so
+the 1080p bomb call ended 0.28 s into the analyst's "Wow!" (and the vertical take's call was cut mid-word too). Found in the voice stem's
+spectrogram; a booth track now ends at a pause: it finishes a word that ends within 0.6 s, else stops at the last pause (`speechEnd` in
+`dsp.ts`, `speechEnd.test.ts`), and the captions use the same window (2d86ae1).
+
 ## Known, not fixed here (for the coordinator)
 - **The swing plane is too steep**: 60 ms before contact the bat points almost straight down (seed 40: -88 deg, the barrel tip 0.24 m off the
   ground; seed 30: -80 deg) and it meets the ball at -43 to -54 deg (a real swing is roughly -25 to -35 deg). It reads as a chop in slow motion.
