@@ -113,8 +113,7 @@ export class CameraDirector {
   private kidTossing = false;
   private lastOnDeckCut = -99;
   /** the interesting play waiting for a lull to be shown again (with the REPLAY tag) */
-  /** `breakOnly`: the play was already replayed right away, so it comes back only in a half-inning break, and not within 30 s */
-  private deferred: { t0: number; t1: number; variant: 'infield' | 'outfield' | 'hr'; cam: Vector3 | null; at: number; breakOnly?: boolean } | null = null;
+  private deferred: { t0: number; t1: number; variant: 'infield' | 'outfield' | 'hr'; cam: Vector3 | null; at: number } | null = null;
   private playScore = 0;
   private fairJudged = false;
   private coachPending: { coachId: string; runnerId: string | null; until: number } | null = null;
@@ -547,6 +546,8 @@ export class CameraDirector {
         this.ballSm.copy(r.next.focus ?? this.ballSm);
         this.cut('replay');
       } else if (r.t >= r.end - 1) {
+        // the play's queued lull replay counts its wait from now, not from the play: otherwise it followed this replay at once
+        if (this.deferred) this.deferred.at = this.clock;
         this.replay = null;
         this.inPlay = false;
         this.hr = null;
@@ -627,9 +628,9 @@ export class CameraDirector {
     }
     if (!lull || !calm || this.shot !== 'pitch' || this.clock - this.shotStart < 0.7 || this.clock < this.brollRestUntil) return;
     const dr = this.deferred;
-    if (dr && this.clock - dr.at > (dr.breakOnly ? 30 : 12)) {
+    if (dr && this.clock - dr.at > 12) {
       if (this.clock - dr.at > 150 || !this.replaysEnabled) this.deferred = null;
-      else if (this.sim.speed <= 1.01 && (lull.kind === 'break' || (!dr.breakOnly && (lull.kind === 'walkup' || lull.kind === 'review' || lull.kind === 'pitchingChange'))) && lull.remaining >= (lull.kind === 'break' ? 3 : 8)) {
+      else if (this.sim.speed <= 1.01 && (lull.kind === 'break' || lull.kind === 'walkup' || lull.kind === 'review' || lull.kind === 'pitchingChange') && lull.remaining >= (lull.kind === 'break' ? 3 : 8)) {
         if (this.startDeferredReplay()) return;
       }
     }
@@ -717,16 +718,13 @@ export class CameraDirector {
     const okToReplay = this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping;
     if (okToReplay && this.close && this.startCloseReplay(live)) {
       this.close = null;
-      this.replayedNow();
       this.cut('replay');
       return;
     }
     this.close = null;
     const canReplay = okToReplay && this.pendingReplay && this.startReplay(live);
-    if (canReplay) {
-      this.replayedNow();
-      this.cut('replay');
-    } else {
+    if (canReplay) this.cut('replay');
+    else {
       this.inPlay = false;
       this.cut('pitch');
     }
@@ -796,7 +794,6 @@ export class CameraDirector {
     this.pendingReplay = true;
     this.noteDeferred(true);
     if (this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping && this.startReplay(live, true)) {
-      this.replayedNow();
       h.stage = 'replay';
       h.t = this.clock;
       this.cut('replay');
@@ -924,11 +921,6 @@ export class CameraDirector {
     if (this.playScore < 2 || this.hr) return;
     this.deferred = { t0: this.playStart - 0.8, t1: Math.min(Math.max(this.playEnd, this.playStart + 2) + 0.6, this.playStart + 6.5), variant: this.ballFar > 55 ? 'outfield' : 'infield', cam: null, at: this.clock };
     this.playScore = 0;
-  }
-
-  /** The play just ended is being replayed right away: its queued replay waits for the half-inning break instead of following at once. */
-  private replayedNow() {
-    if (this.deferred) this.deferred.breakOnly = true;
   }
 
   /** The queued play, from the sim's history, in slow motion with the REPLAY tag (the live game waits). */

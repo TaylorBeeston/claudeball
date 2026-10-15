@@ -113,8 +113,8 @@ Tests: `npm test` (headLook maths + mirror-safe rig).
 ## B-roll, broadcast events and cards
 During the sim's lulls (`lull` / `lullKind` / `lullRemaining`) the director (`broll.ts`) plans B-roll: walk-up, face close-up (rack focus), on-deck, dugout, pitcher's face, catcher's signs, shake-off,
 lead-off, base coaches, bullpen, crowd, scoreboard, aerial, sky, mound wide / huddle, manager walking, bullpen door, reliever jogging, umpire huddle. Holds are 2.5-6 s, a kind never repeats within 4 shots,
-nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag); a play
-that was already replayed right after it ended (a close play, a home run, a replayed hit) comes back only in a half-inning break, at least 30 s later.
+nothing runs during a windup or pitch, and the shot ends with 0.8 s of the lull left. Scenery dissolves, people cut. Interesting plays are replayed again in a later lull (REPLAY tag), at the
+earliest 12 s after the play, or after its immediate replay when it had one (a close play, a home run, a replayed hit).
 
 **`Engine.broadcast.on(cb)`** (also mirrored into the sim event path as `{type: 'broadcast', event}`, for hosts that only read `sim.on`; a game with a raw sim bus must subscribe to `engine.broadcast`) delivers:
 | event | fields |

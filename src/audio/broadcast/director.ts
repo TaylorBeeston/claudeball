@@ -380,9 +380,10 @@ export class Director {
       const v = this.voices[voice];
       const other = this.voices[voice === 'pxp' ? 'color' : 'pxp'];
       if (other.item && other.item.importance !== 'must' && !other.item.interject) {
-        // the other voice is mid-line: it yields at its next clause (or finishes if nearly done)
+        // the other voice is mid-line: it yields at its next clause (or finishes if nearly done); a line held open past its estimate
+        // has no known end, so it yields at once (the sink still lets it finish the clause it is in)
         const rem = other.end - t;
-        if (rem > this.cfg.finishUnder) {
+        if (rem > this.cfg.finishUnder || t >= other.start + other.est) {
           let cutAt = t;
           for (const e of other.clauseEnds) {
             const abs = other.start + e;
@@ -410,7 +411,7 @@ export class Director {
       }
       if (v.item.importance === 'must') continue; // never cut a MUST: wait
       const remaining = v.end - t;
-      if (remaining <= this.cfg.finishUnder) continue; // let it finish
+      if (remaining <= this.cfg.finishUnder && t < v.start + v.est) continue; // let it finish (unless it is past its estimate: no known end)
       // cut at the next clause end (or now when none is near)
       let cutAt = t;
       for (const e of v.clauseEnds) {
