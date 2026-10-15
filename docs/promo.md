@@ -104,9 +104,9 @@ true-peak limiter at -1 dBTP; stems: `music.wav` (band), `fx.wav`, `game.wav`, `
 - [x] shot list, edit, typography, music, mix, assembly; previews v1-v4, report 1
 - [x] constraint suite (vitest, typecheck, Pages build, sanity --prod, perf:check); 30 / 60 fps take check
 - [x] 1080p60 master, README teaser (`docs/media/teaser.webm`), snippets, contact sheet, report 2
-- [ ] 4K60 master and the 9:16 vertical cut (`--4k`, `--vertical`), report 3
-- [ ] fireworks: denser rising trail (`fireworks.ts`, done in source), then re-shoot `wo-fireworks`, `wo-broadcast`, `wo-flight`,
-      `bomb-broadcast` in all three formats with `--adopt <previous build key> --force --only ...`
+- [x] 4K60 master and the 9:16 vertical cut (`--4k`, `--vertical`), report 3
+- [x] fireworks: a denser rising trail, re-shot in all three formats with `--adopt` / `--force --only`
+- [ ] (user) listen to the mix; optionally swap the music bed for a YuE track (`edit/<tag>/stems/music.wav`, then `--stages mix,encode`)
 
 Re-shooting after an engine change: every shot's cache key includes the build, so a change re-shoots everything. When the change can
 only affect some shots, record the old key (`npx tsx -e "import { buildKey } from './tools/promo/capture'; console.log(buildKey())"`),
