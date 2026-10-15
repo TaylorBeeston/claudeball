@@ -250,25 +250,36 @@ export function readWav(file: string): { sr: number; ch: Float32Array[] } {
 }
 
 /**
- * Where a speech track cut at `from + len` should end so that no word is cut: the window's end if the track is silent there; else the
- * end of the word it lands in, if that comes within `slack` seconds; else the start of the last pause inside the window (each take
- * times its words differently, so a fixed length can land mid-word). Silence: 20 ms blocks under `floorDb`; returns a length.
+ * Where a speech track cut at `from + len` should end so that no word is cut: the window's end if it falls in a pause; else the start
+ * of the first pause after it, if that comes within `slack` seconds; else the start of the last pause inside the window (each take
+ * times its words differently, so a fixed length can land mid-word). A pause: at least `minPause` seconds of 20 ms blocks under
+ * `floorDb` (shorter gaps fall between the words of a phrase); returns a length.
  */
-export function speechEnd(x: Float32Array, from: number, len: number, { sr = SR, slack = 0.6, floorDb = -50, tail = 0.08 } = {}): number {
-  const blk = Math.round(0.02 * sr), floor = 10 ** (floorDb / 10);
-  const quiet = (i: number) => {
+export function speechEnd(x: Float32Array, from: number, len: number, { sr = SR, slack = 0.6, floorDb = -50, tail = 0.08, minPause = 0.15 } = {}): number {
+  const blk = Math.round(0.02 * sr), floor = 10 ** (floorDb / 10), need = Math.ceil((minPause * sr) / blk);
+  const end = from + len, n = Math.ceil((len + slack * sr) / blk) + need;
+  // quiet[b]: block b (from `from`) is under the floor; past the end of the track counts as quiet
+  const quiet = Array.from({ length: n }, (_, b) => {
+    const i = from + b * blk;
+    if (i >= x.length) return true;
     let s = 0;
     for (let k = i; k < i + blk; k++) s += k >= 0 && k < x.length ? x[k] * x[k] : 0;
     return s / blk < floor;
-  };
-  const end = from + len;
-  if (quiet(end - blk)) return len;
-  for (let i = end; i < end + slack * sr; i += blk) if (quiet(i)) return Math.min(i + Math.round(tail * sr), x.length) - from;
-  for (let i = end - blk; i > from; i -= blk) if (quiet(i)) {
-    // the pause's start: back to the last loud block before it
-    let j = i;
-    while (j - blk > from && quiet(j - blk)) j -= blk;
-    return j > from ? Math.min(j + Math.round(tail * sr), end) - from : len;
+  });
+  // the pauses: runs of quiet blocks at least `need` long, as [first block, last block]
+  const pauses: [number, number][] = [];
+  for (let b = 0; b < n; ) {
+    if (!quiet[b]) { b++; continue; }
+    let e = b;
+    while (e + 1 < n && quiet[e + 1]) e++;
+    if (e - b + 1 >= need || e === n - 1) pauses.push([b, e]);
+    b = e + 1;
   }
-  return len;
+  const at = (b: number) => Math.min(from + b * blk + Math.round(tail * sr), x.length) - from;
+  const eb = Math.floor(len / blk);
+  if (pauses.some(([b, e]) => b <= eb - 1 && e >= eb - 1)) return len;
+  const after = pauses.find(([b]) => b >= eb && (b - eb) * blk <= slack * sr);
+  if (after) return at(after[0]);
+  const before = pauses.filter(([b, e]) => b > 0 && e < eb).pop();
+  return before ? Math.min(at(before[0]), len) : len;
 }

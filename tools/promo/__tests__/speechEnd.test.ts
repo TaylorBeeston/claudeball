@@ -29,6 +29,12 @@ describe('speechEnd: a booth window never ends mid-word', () => {
     expect(n / SR).toBeGreaterThanOrEqual(2.1);
     expect(n / SR).toBeLessThan(2.25);
   });
+  it('does not take a gap between words for a pause (the vertical bomb: an analyst line cut after its first words)', () => {
+    // a pause at 2.1-2.5, then a phrase with 40 ms and 80 ms gaps between its words running past the window's end
+    const n = speechEnd(track([[0.6, 2.1], [2.5, 3.0], [3.04, 3.5], [3.58, 4.6]]), 0, 3.6 * SR, opts);
+    expect(n / SR).toBeGreaterThanOrEqual(2.1);
+    expect(n / SR).toBeLessThan(2.25);
+  });
   it('leaves a window that is all speech alone', () => {
     expect(speechEnd(track([[0, 10]]), 0, 3 * SR, opts)).toBe(3 * SR);
   });
