@@ -228,7 +228,7 @@ export function snapRunnersToBases(w: World): void {
     if (r.state !== 'live') continue;
     if (r.base >= 1) {
       const b = bpos(r.base);
-      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.4 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.03 || Math.hypot(r.p.vx, r.p.vz) > 0.05)) {
         // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
         setGoal(r.p, b.x, b.z, true, 0.6);
       } else {
@@ -479,7 +479,7 @@ function tickRunner(w: World, r: RunnerRT): void {
     // (his decisions wait for his reaction; his feet do not: a runner already on his way still times his steps onto the bag)
     if (r.target > r.base && !r.slideKind) {
       const T = touchPoint(r.target, r.want > r.target && r.target <= 3);
-      aimStep(p, T.x, T.z);
+      aimStep(w, p, T.x, T.z);
       checkTouch(w, r);
     }
     return;
@@ -508,6 +508,11 @@ function tickRunner(w: World, r: RunnerRT): void {
       // run through first base
       gx = tp.x + dIn.x * RUN_THROUGH;
       gz = tp.z + dIn.z * RUN_THROUGH;
+    } else if (r.target === 4 && !(r.dead && r.trot > 0)) {
+      // he runs across the plate (a foot on it), not to a stop on it; a home-run trot ends at the plate with the celebration
+      gx = tp.x + dIn.x * 4;
+      gz = tp.z + dIn.z * 4;
+      stop = false;
     } else if (continuing) {
       // round the bag: swing wide, cut in to touch it, and leave toward the next base
       stop = false;
@@ -546,7 +551,7 @@ function tickRunner(w: World, r: RunnerRT): void {
     // he times his last steps so a foot comes down on the bag, and steers his body to pass where that foot lands beside it
     if (!r.slideKind) {
       const T = touchPoint(r.target, continuing && r.goBack !== r.target);
-      const plan = aimStep(p, T.x, T.z);
+      const plan = aimStep(w, p, T.x, T.z);
       if (plan && !stop) setGoal(p, plan.bx, plan.bz, false, m);
     }
     checkTouch(w, r);
@@ -631,7 +636,7 @@ function missBase(w: World, r: RunnerRT, b: number): void {
     const pSee = clamp(1 - d / 35, 0, 1) * clamp(0.25 + look, 0, 1) * (0.45 + 0.55 * (F.info.ratings.iq / 100));
     if (w.aiRng.next() < pSee) seen = true;
   }
-  w.misses.push({ r, base: b, seen, tick: w.tick, done: false });
+  w.misses.push({ r, base: b, seen, tick: w.tick, done: false, forced: forced(w, r) });
   emit(w, { type: 'baseMissed', playerId: p.info.id, base: b, knows: false, by: r.nearMiss, seen, pos: { x: p.x, y: 0, z: p.z } });
   touchBase(w, r, b, true);
 }

@@ -11,6 +11,7 @@ import * as fielding from './fielding';
 import * as manager from './manager';
 import * as running from './running';
 import * as staff from './staff';
+import * as appeals from './appeals';
 import type { PlayerRT, RunnerRT, TeamRT, World } from './world';
 import type { SwingObservation } from './batting';
 
@@ -75,6 +76,9 @@ export function createAI(w: World): FullDecisionProvider {
     },
     intentionalWalk() {
       return { walk: manager.aiIntentionalWalk(w) };
+    },
+    appeal(req) {
+      return appeals.aiAppeal(req);
     },
     wallPlay(req) {
       return fielding.aiWallPlay(ctxOf<{ F: PlayerRT }>(req).F, req);

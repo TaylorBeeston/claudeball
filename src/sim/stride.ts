@@ -71,13 +71,29 @@ export const naturalStep = (speed: number, turning = false) => gaitFor(speed, tu
 /** Below this ground speed he is standing (both feet down): no steps are taken. */
 const STAND = 0.25;
 
+/**
+ * Is he drawn mirrored? The engine mirrors a left-hander's model (a batter by the side he bats from, everyone else by his throwing
+ * arm): its left foot is then the clip's right foot, mirrored.
+ */
+export function mirroredOf(w: World, p: PlayerRT): boolean {
+  if (p.role === 'batter') return p.info.bats === 'S' ? w.pitcher.info.throws === 'R' : p.info.bats === 'L';
+  return p.info.throws === 'L';
+}
+
+/** The clip offsets of foot `foot` (forward, to his left) in this gait, for a plain or a mirrored model. */
+function offsets(g: Gait, foot: Foot, mirrored: boolean): { fwd: number; side: number } {
+  if (!mirrored) return { fwd: g.fwd[foot], side: g.side[foot] };
+  const k = (1 - foot) as Foot;
+  return { fwd: g.fwd[k], side: -g.side[k] };
+}
+
 /** Where a foot lands for a body at (x, z) facing `facing` moving at `speed`. */
-export function footPoint(x: number, z: number, facing: number, speed: number, foot: Foot, turning: boolean): { x: number; z: number } {
-  const g = gaitFor(speed, turning);
+export function footPoint(x: number, z: number, facing: number, speed: number, foot: Foot, turning: boolean, mirrored = false): { x: number; z: number } {
+  const o = offsets(gaitFor(speed, turning), foot, mirrored);
   const fx = Math.sin(facing), fz = Math.cos(facing);
   // the player's left (+X when he faces +Z)
   const lx = fz, lz = -fx;
-  return { x: x + fx * g.fwd[foot] + lx * g.side[foot], z: z + fz * g.fwd[foot] + lz * g.side[foot] };
+  return { x: x + fx * o.fwd + lx * o.side, z: z + fz * o.fwd + lz * o.side };
 }
 
 /** Advance a player's stride by one tick (after he has moved). Returns the footstrike made this tick, if any. */
@@ -101,7 +117,7 @@ export function stepStride(w: World, p: PlayerRT): Strike | null {
   // the foot comes down: where it is now, less the bit of this tick past the strike
   const back = (s.dist - s.len) / speed;
   const x = p.x - p.vx * back, z = p.z - p.vz * back;
-  const f = footPoint(x, z, p.facing, speed, s.next, turning);
+  const f = footPoint(x, z, p.facing, speed, s.next, turning, mirroredOf(w, p));
   const strike: Strike = { x: f.x, z: f.z, tick: w.tick, foot: s.next, dir: p.facing };
   s.prev = s.last;
   s.last = strike;
@@ -118,22 +134,27 @@ export function stepStride(w: World, p: PlayerRT): Strike | null {
  * point his body must pass when that foot comes down (the foot lands beside and ahead of the body, so a runner who wants it on the bag
  * steers his body there); null when the point is not ahead or no footstrike can reach it within the limits.
  */
-export function aimStep(p: PlayerRT, tx: number, tz: number, opts: { maxSteps?: number; lo?: number; hi?: number } = {}): { k: number; bx: number; bz: number } | null {
+/** How a runner times his steps onto a bag: from this many natural steps out, stretching / shortening them within lo..hi of natural. */
+export const STEP_AIM = { maxSteps: 4.5, lo: 0.8, hi: 1.2 };
+
+export function aimStep(w: World, p: PlayerRT, tx: number, tz: number, opts: { maxSteps?: number; lo?: number; hi?: number } = {}): { k: number; bx: number; bz: number } | null {
   const s = p.stride;
   const speed = Math.hypot(p.vx, p.vz);
   if (speed < 1.0 || s.len === 0) return null;
   const turning = p.gait === 'turn';
   const L = naturalStep(speed, turning);
-  const maxSteps = opts.maxSteps ?? 4.5;
-  const lo = opts.lo ?? 0.8, hi = opts.hi ?? 1.2;
+  const maxSteps = opts.maxSteps ?? STEP_AIM.maxSteps;
+  const lo = opts.lo ?? STEP_AIM.lo, hi = opts.hi ?? STEP_AIM.hi;
   const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
   const lx = fz, lz = -fx;
   const g = gaitFor(speed, turning);
+  const mir = mirroredOf(w, p);
   let best = 0, bestErr = Infinity, bestLen = 0, bestX = 0, bestZ = 0;
   for (let k = 1; k <= Math.ceil(maxSteps); k++) {
     const foot: Foot = (k % 2 === 1 ? s.next : 1 - s.next) as Foot;
     // where his body must be when that foot comes down
-    const bx = tx - fx * g.fwd[foot] - lx * g.side[foot], bz = tz - fz * g.fwd[foot] - lz * g.side[foot];
+    const o = offsets(g, foot, mir);
+    const bx = tx - fx * o.fwd - lx * o.side, bz = tz - fz * o.fwd - lz * o.side;
     const along = (bx - p.x) * fx + (bz - p.z) * fz;
     if (along <= 0) continue;
     if (along > maxSteps * L) break;

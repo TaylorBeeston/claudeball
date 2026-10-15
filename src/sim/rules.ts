@@ -1,3 +1,4 @@
+import * as appeals from './appeals';
 import { emit } from './events';
 import { toBench } from './dugout';
 import * as visits from './visits';
@@ -53,7 +54,7 @@ export function afterPitch(w: World, ballLive: boolean): void {
   else flow.readyNextPitch(w);
 }
 
-function creditOut(w: World, p: PlayerRT | null): void {
+export function creditOut(w: World, p: PlayerRT | null): void {
   // pitcher of record gets the out
   w.pitcher.pit.outs++;
   void p;
@@ -317,6 +318,7 @@ export function toPlayOver(w: World, seconds = 2.6): void {
 export function afterPlayOver(w: World): void {
   if (w.gameOver) return;
   if (!visits.reviewStage(w)) return; // a managerial challenge of a close call (tempo)
+  if (!appeals.appealStage(w)) return; // a missed base the defense appeals
   if (w.outs >= 3) {
     endHalfInning(w);
     return;
@@ -337,6 +339,8 @@ export function endHalfInning(w: World): void {
   for (const r of w.exiting) toBench(w, r.p);
   w.runners = [];
   w.exiting = [];
+  w.misses = [];
+  w.appeal = null;
   w.paDone = false;
   const bat = w.batter;
   if (bat) toBench(w, bat);

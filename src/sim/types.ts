@@ -426,6 +426,9 @@ export interface PlayerSnapshot {
   tic?: 'tap_plate' | 'adjust_helmet' | 'rock_bat' | 'stretch';
   /** The hand the glove is on ('L' for a right-handed thrower). */
   gloveHand?: 'L' | 'R';
+  /** (additive) his footsteps while he is moving: the foot that lands next (0 left, 1 right) and how far through the step he is (0..1); the engine
+   * lays its run / walk cycle on it so the foot it draws coming down is the footstrike the sim counts (on a bag, a touch). */
+  stride?: { next: 0 | 1; phase: number };
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -538,7 +541,8 @@ export type OutType =
   | 'pickoff'
   | 'caughtStealing'
   | 'tagUp'
-  | 'batterInterference';
+  | 'batterInterference'
+  | 'appeal';
 
 interface EBase {
   time: number;
@@ -667,6 +671,8 @@ export type GameEvent =
   /** `pos` is the runner's body; `touch` (additive) the point of the foot / hand that was on the bag, and which limb it was. */
   | (EBase & { type: 'baseTouch'; playerId: string; base: number; trot: boolean; pos: Vec3; touch?: Vec3; limb?: 'foot' | 'hand' })
   /** A runner went past a bag with no foot on it: he `knows` (and goes back to touch it), or carries on believing he touched it (`seen` = a fielder noticed). `by`: how far his nearest footstrike was off the bag (m). */
+  /** The defense appeals a missed base: the ball goes to the fielder at the bag (`start`), he steps on it and the umpire calls the runner out (`out`). */
+  | (EBase & { type: 'appeal'; stage: 'start' | 'out'; fielderId: string; runnerId: string; base: number })
   | (EBase & { type: 'baseMissed'; playerId: string; base: number; knows: boolean; by: number; seen?: boolean; pos: Vec3 })
   | (EBase & { type: 'substitution'; team: TeamSide; inId: string; outId: string; reason: string })
   | (EBase & { type: 'pitchingChange'; team: TeamSide; inId: string; outId: string })

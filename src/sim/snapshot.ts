@@ -64,6 +64,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     facing: p.facing,
     anim: a.anim,
     animT: a.t,
+    ...(p.stride.len > 0 ? { stride: { next: p.stride.next, phase: Math.min(1, p.stride.dist / p.stride.len) } } : {}),
     hasBall: p.hasBall,
     bats: p.info.bats,
     throws: p.info.throws,

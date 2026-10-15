@@ -285,6 +285,8 @@ export interface MissedBase {
   tick: number;
   /** settled: appealed, or no longer appealable */
   done: boolean;
+  /** he was forced to that base (an appeal there is a force out) */
+  forced: boolean;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -561,6 +563,8 @@ export interface World {
   exiting: RunnerRT[];
   /** Bases run past without a touch since the last pitch (appealable). */
   misses: MissedBase[];
+  /** A missed-base appeal being made after the play. */
+  appeal: import('./appeals').AppealRT | null;
   /** Tag sweeps in progress (open-field) and gloves set at a bag. */
   tags: TagSweep[];
   bagTags: BagTag[];

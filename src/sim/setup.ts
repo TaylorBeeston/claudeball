@@ -198,6 +198,7 @@ export function createWorld(cfg: GameConfig): World {
     runners: [],
     exiting: [],
     misses: [],
+    appeal: null,
     leavers: [],
     tags: [],
     bagTags: [],
