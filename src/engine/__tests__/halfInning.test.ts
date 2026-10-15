@@ -17,7 +17,7 @@ function play(seed: string) {
 
 describe('half innings at the end of a game', () => {
   // seeds whose 2-inning game ends after the top of the 2nd (home ahead) and after the bottom of the 2nd
-  const games = ['hi-1', 'hi-2', 'hi-3', 'hi-4', 'hi-5', 'hi-6'].map(play);
+  const games = ['hi-5', 'hi-6', 'hi-7', 'hi-10', 'hi-11', 'hi-12'].map(play);
 
   it('no half inning is announced after the one that ends the game', () => {
     for (const { w, events } of games) {

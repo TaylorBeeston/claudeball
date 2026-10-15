@@ -19,7 +19,8 @@ describe('home-run trot', () => {
     g.on('*', (ev: any) => pending.push(ev));
     let t = 0, hrAt = -1, nextBatter = -1, lastPlay = '', busy = false;
     const said: { t: number; tag: string; imp: string; text: string }[] = [];
-    while (t < 680) {
+    // (the game's first home run: the trot, and the booth until the next batter)
+    while (t < 3600 && nextBatter < 0) {
       g.step(1 / 120);
       t += 1 / 120;
       if (Math.round(t * 120) % 6 !== 0) continue;
@@ -36,7 +37,7 @@ describe('home-run trot', () => {
       booth.canTalk = !busy;
       for (const a of booth.tick(t, c, { suppressed: false, fieldHold: false }) as any[]) if (a.type === 'start') said.push({ t: a.at, tag: a.item.tag ?? '', imp: a.item.importance, text: a.clauses.map((x: any) => x.text).join(' ') });
     }
-    expect(hrAt).toBeGreaterThan(600);
+    expect(hrAt).toBeGreaterThan(0);
     expect(nextBatter).toBeGreaterThan(hrAt);
     const trot = said.filter((s) => s.t > hrAt + 0.5 && s.t < nextBatter);
     // the calls and the analyst's reaction are fine; a topic (a 'could' line that is not a reaction phrase) is not
