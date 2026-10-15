@@ -1,11 +1,13 @@
 /**
  * The promo, end to end: `npm run promo:render [-- options]`
  *
- *   1. capture   every shot in shots.ts, frame by frame in headed Chrome on the real GPU, with its game audio (cached per shot by content hash)
+ *   1. capture   every shot in shots.ts, frame by frame in headless Chrome on the real GPU (Vulkan), with its game audio (cached per shot by content hash)
  *   2. sheets    a contact sheet per shot (QA)
- *   3. titles    the typography / caption / end-card layer (transparent PNGs), music bed, mix, edit, encodes (see edit.ts, titles.ts, music.ts, mix.ts)
+ *   3. titles, mix, picture, encode, teaser, snippets: the typography layer, the music bed and the mix, the edit, the encodes (edit.ts, titles.ts, music.ts, assemble.ts)
  *
- * Options: --preview (960x540, 30 fps), --4k (3840x2160: the 1920x1080 viewport at device scale 2), --vertical (the 9:16 cut),
+ * With no format, all of them: 1080p (+ the README teaser and the audio snippets), then 4K, then the vertical cut.
+ * Options: --1080p, --preview (960x540, 30 fps), --4k (3840x2160: the 1920x1080 viewport at device scale 2), --vertical (the 9:16 cut),
+ *          --music FILE (a track instead of the code bed: the mix reads it, never writes it),
  *          --only id,id (capture just these), --stages capture,sheets,... , --force (ignore the cache), --no-build
  * Everything goes to ~/claudeball-promo/ (CB_PROMO_DIR); nothing is written into the repo.
  */
@@ -59,7 +61,7 @@ const log = (s: string) => {
   fs.appendFileSync(path.join(PROMO_DIR, 'render.log'), line + '\n');
 };
 
-async function capture(rs: RenderSettings): Promise<Map<string, ShotManifest>> {
+async function capture(rs: RenderSettings, shoot = true): Promise<Map<string, ShotManifest>> {
   const only = opt('only', '').split(',').filter(Boolean);
   const all = withKeep(shotList());
   // --adopt KEY: shots captured under an earlier build key (a change known not to touch the picture or sound, e.g. tooling only) are
@@ -80,6 +82,15 @@ async function capture(rs: RenderSettings): Promise<Map<string, ShotManifest>> {
   for (const s of all) {
     const m = cached(s, rs);
     if (m) out.set(s.id, m);
+  }
+  // without the capture stage the edit works from what is cached (a missing or stale shot is reported, not re-shot)
+  if (!shoot && todo.length) {
+    log(`[render] not captured (no capture stage): ${todo.map((s) => s.id).join(', ')}`);
+    for (const s of todo) {
+      const f = path.join(shotDir(s.id, rs), 'manifest.json');
+      if (fs.existsSync(f)) out.set(s.id, JSON.parse(fs.readFileSync(f, 'utf8')) as ShotManifest);
+    }
+    return out;
   }
   if (!todo.length) {
     log(`[render] capture: all ${all.length} shots cached`);
@@ -212,10 +223,20 @@ function contact(file: string, sheet: string, log: (s: string) => void) {
 
 async function main() {
   fs.mkdirSync(PROMO_DIR, { recursive: true });
+  // no format given: everything, one format after the other (1080p and the README teaser, 4K, the vertical cut), each in its own process
+  if (!['preview', '1080p', '4k', 'vertical'].some(flag)) {
+    build(flag('no-build'));
+    const rest = argv.filter((a) => a !== '--no-build');
+    for (const f of ['--1080p', '--4k', '--vertical']) {
+      log(`[render] === ${f.slice(2)} ===`);
+      execFileSync(process.execPath, [...process.execArgv, new URL(import.meta.url).pathname, f, '--no-build', ...rest], { stdio: 'inherit' });
+    }
+    return;
+  }
   build(flag('no-build'));
   const rs = { ...settings(), buildKey: buildKey() };
-  const stages = opt('stages', 'capture,sheets,titles,mix,picture,encode').split(',');
-  const shots = await capture(rs);
+  const stages = opt('stages', `capture,sheets,titles,mix,picture,encode${flag('1080p') ? ',teaser,snippets' : ''}`).split(',');
+  const shots = await capture(rs, stages.includes('capture'));
   if (stages.includes('sheets')) sheets(rs, shots);
   const tag = `${vertical ? 'vertical-' : ''}${flag('preview') ? 'preview' : flag('4k') ? '4k' : '1080p'}`;
   const out = path.join(PROMO_DIR, 'edit', tag);
@@ -231,7 +252,9 @@ async function main() {
       await chrome.close();
     }
   }
-  if (stages.includes('mix')) mix(rs, shots, out, log, cutList(), voiceList());
+  const musicFile = opt('music', '');
+  if (musicFile && path.resolve(musicFile).startsWith(path.resolve(out))) throw new Error('--music: keep your track outside edit/ (the mix writes its stems there)');
+  if (stages.includes('mix')) mix(rs, shots, out, log, cutList(), voiceList(), musicFile ? path.resolve(musicFile) : undefined);
   const pic = stages.includes('picture') ? buildPicture(rs, shots, L, out, log, cutList()) : path.join(out, 'pic');
   if (stages.includes('snippets')) snippets(out, log);
   if (stages.includes('encode')) {

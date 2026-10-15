@@ -95,7 +95,12 @@ const addInto = (dst: Stereo, src: Stereo, gain = 1) => {
 const loud = (s: Stereo) => lufsIntegrated(s as unknown as Float32Array[], SR);
 
 /** the mix: returns the master and writes the stems */
-export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: string, log: (s: string) => void, cuts: Cut[] = CUTS, voice: VoiceTrack[] = VOICE): { master: Stereo; report: Record<string, number> } {
+/**
+ * `musicFile`: a music track to use instead of the bed written in code (e.g. a YuE render at 120 BPM): a WAV at 48 kHz, mono or stereo,
+ * laid from the start of the timeline (padded with silence or cut to its length); it gets the same level and the same duck under the
+ * booth as the code bed, and the produced effects stay. The file itself is only read.
+ */
+export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: string, log: (s: string) => void, cuts: Cut[] = CUTS, voice: VoiceTrack[] = VOICE, musicFile?: string): { master: Stereo; report: Record<string, number> } {
   const { starts, total } = cutTimes();
   const n = Math.ceil(total * SR);
   const park = zeros(n), booth = zeros(n);
@@ -149,8 +154,19 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
   const plan = musicPlan();
   const mus = renderMusic(plan);
   const band = zeros(n);
-  addInto(band, mus.music);
-  addInto(band, mus.drums);
+  if (musicFile) {
+    const w = readWav(musicFile);
+    if (w.sr !== SR) throw new Error(`${musicFile}: ${w.sr} Hz, the mix runs at ${SR} (resample it first, e.g. sox in.wav -r 48000 out.wav)`);
+    const l = w.ch[0], r = w.ch[1] ?? w.ch[0];
+    for (let i = 0; i < Math.min(n, l.length); i++) {
+      band[0][i] = l[i];
+      band[1][i] = r[i];
+    }
+    log(`[mix] music: ${musicFile} (${(l.length / SR).toFixed(1)} s) instead of the code bed`);
+  } else {
+    addInto(band, mus.music);
+    addInto(band, mus.drums);
+  }
   const fx = zeros(n);
   addInto(fx, mus.fx);
   // stem levels (integrated loudness over the whole timeline)
