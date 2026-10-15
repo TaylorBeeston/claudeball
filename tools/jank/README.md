@@ -12,7 +12,8 @@ npx tsx tools/jank/run.ts sheets --top 16            # contact sheets of the wor
 npx tsx tools/jank/run.ts trace --seeds 1 --id <player id | role> --from 905 --to 915   # one puppet, frame by frame
 npx tsx tools/jank/run.ts static --constrain          # also the clips through the game's passes after the mixer (look distribution, constraints)
 npx tsx tools/jank/run.ts fades --constrain [--crossfade | --inertia]   # blends as the game does them / forced crossfade / forced inertialization
-npx tsx tools/jank/run.ts game --seeds 1,2 --pre "globalThis.__noElbowFix = true"   # a switch flipped before the game (measure what a pass costs)
+npx tsx tools/jank/run.ts game --seeds 1,2 --pre "globalThis.__noElbowFix = true"   # a switch flipped before the game (measure what a pass costs; trace takes it too;
+                                                     # an object literal needs ./node_modules/.bin/tsx: npx brace-expands it)
 npx tsx tools/jank/compare.ts tools/jank/out/before tools/jank/out/after   # before / after tables of two game sweeps (incl. the bat per clip)
 ```
 

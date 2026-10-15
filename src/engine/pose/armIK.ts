@@ -100,9 +100,10 @@ export const ARM_LIMITS = {
   restPron: 20,
   /** how far the fist may roll about a round handle from the clip's grip, deg */
   roll: 90,
-  /** while a grip is held: the most the elbow swivel / the fist's roll may change in one frame, deg */
-  poleStep: 10,
-  rollStep: 15,
+  /** while a grip is held: the most the elbow swivel / the fist's roll may change in one frame, deg (tools/jank trace of a swing: 10 / 15 lags
+   *  a fast swing, 60 / 90 lets the hands hop again; 30 / 40 keeps the fist on the bat about as well as an unlimited search with a quarter of the flips) */
+  poleStep: 30,
+  rollStep: 40,
 };
 
 export function armRest(restU: number[], restUf: number[], qUpper: number[], qFore: number[], qHand: number[], side: 1 | -1, flexZ: 1 | -1 = 1): ArmRest {
@@ -169,7 +170,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3;
   if (tr) {
     // held: the swivel within a step of last frame's, the minimum of a parabola through three samples
-    const s = LIM.poleStep ?? 10;
+    const s = LIM.poleStep ?? 30;
     const p0 = Math.max(-120, Math.min(120, tr.pole));
     const r0 = solveArmPole(rest, pose, goal, iters, p0);
     const c0 = cost(r0, p0);
@@ -310,7 +311,7 @@ function pickRoll(rel0: Q, g: number[], uf: number[], side: number, LIM: typeof 
   const at = (r: number) => overOf(r ? qmul(qaxisAngle(g[0], g[1], g[2], r * DEG), rel0) : rel0, uf, side, LIM, tr?.pron);
   const cost = (r: number, o: number) => o * 4 + Math.abs(r) * 0.1;
   if (tr) {
-    const s = LIM.rollStep ?? 15, r0 = Math.max(-lim, Math.min(lim, tr.roll));
+    const s = LIM.rollStep ?? 40, r0 = Math.max(-lim, Math.min(lim, tr.roll));
     const lo = Math.max(-lim, r0 - s), hi = Math.min(lim, r0 + s);
     // five samples across the window, then a parabola through the best and its neighbours
     const xs = [lo, (lo + r0) / 2, r0, (r0 + hi) / 2, hi], cs = xs.map((x) => cost(x, at(x)));

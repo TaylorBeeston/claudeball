@@ -429,6 +429,8 @@ async function main() {
         e.director.replaysEnabled = false;
         (window as any).__jank.install();
       });
+      const pre = opt('pre', '');
+      if (pre) await page.evaluate((src) => new Function(src)(), pre);
       for (;;) {
         const r = (await page.evaluate(() => (window as any).__jank.run(600))) as { t: number };
         if (r.t > from - 10) break;
