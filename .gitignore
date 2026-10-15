@@ -66,3 +66,4 @@ tools/visual/out/
 # verify-claudeball (.claude/skills/verify-claudeball): its prod build and the proof artifacts of verification runs
 dist-verify/
 verify-evidence/
+tools/jank/out/
