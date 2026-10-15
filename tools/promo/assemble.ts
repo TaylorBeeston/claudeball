@@ -190,7 +190,7 @@ export function mix(rs: RenderSettings, shots: Map<string, ShotManifest>, out: s
     const l = loud(master);
     const g = dbGain(-14 - l);
     const scaled: Stereo = [master[0].map((v) => v * g), master[1].map((v) => v * g)];
-    master = limit(scaled, -1.6, 0.005, 0.15); // AAC adds ~0.4 dB of inter-sample overshoot: the encoded file stays under -1 dBTP
+    master = limit(scaled, -2.2, 0.005, 0.15); // AAC adds up to ~1 dB of inter-sample overshoot: the encoded file stays under -1 dBTP
   }
   const report = {
     lufs: +loud(master).toFixed(2),
