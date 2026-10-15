@@ -180,10 +180,10 @@ function quotes(rs: RenderSettings, shots: Map<string, ShotManifest>): Overlay[]
       out.push({ k: 'quote', t0, t1: Math.min(starts[i] + dur + 2.5, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4)), who: ev.name ?? 'Booth', role: ev.speaker === 'color' ? 'analyst' : 'play-by-play', text: `\u201c${ev.text}\u201d` });
     }
   });
-  // one caption at a time: a line ends where the next begins
-  const q = out.filter((o): o is Extract<Overlay, { k: 'quote' }> => o.k === 'quote').sort((a, b) => a.t0 - b.t0);
+  // one caption at a time: a line ends where the next begins (a caption a card would cut to under a second is left out: it cannot be read)
+  const q = out.filter((o): o is Extract<Overlay, { k: 'quote' }> => o.k === 'quote' && o.t1 - o.t0 >= 1).sort((a, b) => a.t0 - b.t0);
   for (let i = 0; i + 1 < q.length; i++) q[i].t1 = Math.min(q[i].t1, q[i + 1].t0 - 0.05);
-  return out;
+  return q;
 }
 
 /**
