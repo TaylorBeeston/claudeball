@@ -30,6 +30,8 @@
     "perf:phone": "tsx tools/perf/run.ts --target phone",
     "perf:report": "tsx tools/perf/report.ts",
     "perf:check": "tsx tools/perf/check.ts",
+    "jank": "tsx tools/jank/run.ts",
+    "jank:check": "tsx tools/jank/check.ts",
     "assets:derive": "node scripts/derive-assets.mjs",
     "assets:fetch": "node tools/repo-diet/assets-fetch.mjs",
     "assets:pack": "node tools/repo-diet/assets-fetch.mjs --pack",
