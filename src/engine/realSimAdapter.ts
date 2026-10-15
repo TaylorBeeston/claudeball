@@ -187,11 +187,14 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'throw', playerId: String(e.fromId), target, targetId: e.toId ? String(e.toId) : undefined });
         break;
       }
+      case 'obstruction':
+        if (!e.awarded) this.emit({ type: 'play', text: `Obstruction: ${this.who(e.runnerId)} is given ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` });
+        break;
       case 'appeal':
         if (e.stage === 'start') this.emit({ type: 'play', text: `Appeal at ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` });
         break;
       case 'out':
-        this.emit({ type: 'out', playerId: String(e.playerId), text: e.outType === 'appeal' ? `${this.who(e.playerId)} is out on appeal: he missed ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` : `${this.who(e.playerId)} is out (${String(e.outType)}).`, closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined, base: (e.base as number | null | undefined) ?? null });
+        this.emit({ type: 'out', playerId: String(e.playerId), text: e.outType === 'appeal' ? `${this.who(e.playerId)} is out on appeal: he missed ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` : e.outType === 'interference' ? `${this.who(e.playerId)} is out for interference.` : e.outType === 'baseline' ? `${this.who(e.playerId)} is out: he left the baseline.` : `${this.who(e.playerId)} is out (${String(e.outType)}).`, closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined, base: (e.base as number | null | undefined) ?? null });
         break;
       case 'safe':
         this.emit({ type: 'safe', playerId: String(e.playerId), base: Number(e.base), closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined });
