@@ -10,8 +10,8 @@ export type Overlay =
   | { k: 'flash'; t: number; dur?: number; color?: string }
   | { k: 'title'; t0: number; t1: number }
   | { k: 'tagline'; t0: number; t1: number; lines: string[]; step?: number }
-  | { k: 'caption'; t0: number; t1: number; text: string; sub?: string; side?: 'left' | 'right' }
-  | { k: 'stat'; t0: number; t1: number; value: string; label: string; side?: 'left' | 'right' }
+  | { k: 'caption'; t0: number; t1: number; text: string; sub?: string; side?: 'left' | 'right'; top?: boolean }
+  | { k: 'stat'; t0: number; t1: number; value: string; label: string; side?: 'left' | 'right'; top?: boolean }
   | { k: 'quote'; t0: number; t1: number; who: string; role: string; text: string }
   | { k: 'phone'; t0: number; t1: number; rect: [number, number, number, number] }
   | { k: 'endcard'; t0: number; t1: number };
@@ -179,7 +179,8 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, els: Overlay[], t: nu
         const small = e.k === 'stat' ? e.label : (e.sub ?? '');
         const size = (portrait ? 96 : e.k === 'stat' ? 150 : 118) * U;
         const m = (portrait ? 56 : 96) * U;
-        const yBase = portrait ? H * 0.72 : H - m - (small ? 70 * U : 20 * U);
+        // `top`: over a shot with the broadcast HUD (scorebug bottom left, pitch tracker bottom right) the type sits in the upper third
+        const yBase = e.top ? H * (portrait ? 0.3 : 0.36) : portrait ? H * 0.72 : H - m - (small ? 70 * U : 20 * U);
         const outU = easeIn(1 - left / 0.25);
         ctx.font = `${size}px ${DISPLAY}`;
         const tw = ctx.measureText(big.toUpperCase()).width + size * 0.05 * big.length;

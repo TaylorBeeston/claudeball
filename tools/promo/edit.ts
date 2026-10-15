@@ -149,7 +149,7 @@ export function overlays(): Overlay[] {
     { k: 'title', t0: title.t0, t1: title.t1 - 0.05 },
     { k: 'tagline', t0: title.t0 + 1.0, t1: title.t1 - 0.05, lines: ['Two AIs. One ballgame.', 'Nothing scripted.'], step: 1.0 },
     { k: 'caption', t0: pitch.t0 + 0.15, t1: at('pitch-mitt').t1 - 0.1, text: 'Every pitch is physics', sub: 'drag · Magnus · spin, simulated in flight' },
-    { k: 'stat', t0: ko.t0 + 0.8, t1: ko.t1 - 0.1, value: '100.6 mph', label: 'strike three, from the sim', side: 'right' },
+    { k: 'stat', t0: ko.t0 + 0.8, t1: ko.t1 - 0.1, value: '100.6 mph', label: 'strike three, from the sim', side: 'right', top: true },
     { k: 'caption', t0: bat.t0 + 0.3, t1: bat.t1 - 0.1, text: 'Real bat–ball contact', sub: 'a swung bat meets a spinning ball' },
     { k: 'stat', t0: fly.t0 + 0.05, t1: fly.t1 - 0.05, value: '123.8 mph', label: 'off the bat', side: 'right' },
     { k: 'caption', t0: rob.t0 + 0.3, t1: rob.t1 - 0.1, text: 'Fielders read the ball', sub: 'and climb the wall to take one back' },
