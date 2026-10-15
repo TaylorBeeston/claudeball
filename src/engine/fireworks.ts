@@ -8,7 +8,7 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, type PerspectiveCamera } from 'three';
 import { ASCENT, FIREWORK_VOLLEY, type Shell } from './fireworksPlan';
 
-const TRAIL = 36;
+const TRAIL = 140; // dense enough to read as one rising streak, not a dotted line
 const SPARKS = 320;
 const GLITTER = 90;
 const PER_SHELL = TRAIL + SPARKS + GLITTER;
@@ -104,7 +104,7 @@ export class Fireworks {
     for (let j = 0; j < TRAIL; j++) {
       const f = j / TRAIL;
       const t0 = burstT - ASCENT + f * ASCENT;
-      this.put([L.x + (B.x - L.x) * f, L.y + (B.y - L.y) * f, L.z + (B.z - L.z) * f], [0, 0, 0], [1, 0.75, 0.45], t0, 0.35, 0.9, 0);
+      this.put([L.x + (B.x - L.x) * f, L.y + (B.y - L.y) * f, L.z + (B.z - L.z) * f], [0, 0, 0], [1, 0.75, 0.45], t0, 0.45, 1.1, 0);
     }
     // the burst: a peony, sparks spread over a sphere with a little speed scatter
     for (let j = 0; j < SPARKS; j++) {
