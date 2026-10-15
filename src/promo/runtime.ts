@@ -177,7 +177,8 @@ export class PromoRuntime {
     // the player's controls (the ☰ button and its drawer, which a real mouse moving over the capture window would open) are not
     // part of the broadcast picture
     const st = document.createElement('style');
-    st.textContent = '.cb-ctl{display:none!important}';
+    // and the portrait "Rotate your device" hint, which a player dismisses with its ✕ (it is remembered for the session)
+    st.textContent = '.cb-ctl,.cb-rotate{display:none!important}';
     document.head.append(st);
     e.sim.on((te) => {
       const t = te.event.type;
