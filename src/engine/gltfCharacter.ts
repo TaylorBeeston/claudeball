@@ -1996,12 +1996,15 @@ export class GltfPuppet implements PuppetLike {
     this.elbowClear = worst;
     this.headClear = hc;
     this.headClearWorst = Math.min(this.headClearWorst, hc);
-    if (import.meta.env?.DEV && hc < -0.03 && !this.warnedHead) {
+    // the dev assertions skip transients: a puppet in its first second (the boot warm-up plays a few frames of a dummy game) and a mixer whose
+    // weights do not add up to a full pose yet (a clip fading in from nothing)
+    const settled = this.animClock > 1 && this.mixerWeight() > 0.99;
+    if (import.meta.env?.DEV && settled && hc < -0.03 && !this.warnedHead) {
       this.warnedHead = true;
       console.error(`[head] ${snap.id} arm ${(-hc * 100).toFixed(1)} cm inside the head (${snap.anim})`);
     }
     this.minElbowClear = Math.min(this.minElbowClear, worst);
-    if (import.meta.env?.DEV && worst < -0.04 && !this.warnedElbow) {
+    if (import.meta.env?.DEV && settled && worst < -0.04 && !this.warnedElbow) {
       this.warnedElbow = true;
       console.error(`[elbow] ${snap.id} elbow ${(-worst * 100).toFixed(1)} cm inside the torso (${snap.anim})`);
     }
@@ -2119,6 +2122,12 @@ export class GltfPuppet implements PuppetLike {
       L.lp[i * 3 + 1] = b.position.y;
       L.lp[i * 3 + 2] = b.position.z;
     }
+  }
+  /** the mixer's total effective weight (1 = a full pose; less while a clip fades in from nothing) */
+  private mixerWeight(): number {
+    let w = 0;
+    for (const a of this.actions.values()) if (a.isRunning()) w += a.getEffectiveWeight();
+    return w;
   }
   /** run a pure pose pass (pose/*.ts) on this puppet's bones and write back the ones it changed */
   private applyPose(pass: (L: PoseLocals, R: RestInfo) => number) {
