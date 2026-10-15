@@ -28,6 +28,14 @@ npx tsc --noEmit              # typecheck src/sim, src/engine and scripts
 npm run sim -- 60 7           # headless season: 60 games, seed 7, league stats (R/G, AVG, K%, BB%, ...)
 ```
 
+### Verifying a change in the real game (agents)
+
+Before claiming a UI, HUD, engine, camera, audio or sim change works, drive it with the project skill
+[`.claude/skills/verify-claudeball`](.claude/skills/verify-claudeball/SKILL.md): `.claude/skills/verify-claudeball/scripts/cbv launch`,
+`doctor`, then a recipe from its [feature map](.claude/skills/verify-claudeball/features/README.md), `stop`. It runs the prod build in its own
+headless Chrome on the GPU, jumps to game situations by seed (`seek` / `ff`), and keeps screenshots, state dumps, event logs and audio clips in
+the git-ignored `verify-evidence/`.
+
 ### Sky HDRIs are optional
 
 `npm run hdri` fetches a partly-cloudy day sky and a dusk sky from [Poly Haven](https://polyhaven.com/hdris) (CC0) into
