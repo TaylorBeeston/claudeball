@@ -8,7 +8,7 @@
  * - twist: rotation of the child about the child segment's rest direction (swing-twist decomposition of the joint rotation).
  * - head / spine: yaw, pitch (> 0 = flexion, looking / bending down), roll of the child frame relative to the parent frame.
  */
-import { DEG, qrotInv, twistAngle, qangle } from './qmath';
+import { DEG, qrotInv, twistAngle, qangle, type Q, type V } from './qmath';
 import { B, NB, type PoseWorld, jointRot, segDir } from './skeleton';
 
 export interface RestInfo {
@@ -102,7 +102,7 @@ const tq = [0, 0, 0, 1], tv = [0, 0, 0], ypr = [0, 0, 0], d = [0, 0, 0], sw = [0
  * Axial rotation (yaw: twist about +Y) and the swing split into pitch (about +X, > 0 = flexion, tipping forward / looking down) and roll (about
  * +Z): swing-twist, so unlike Euler angles it stays well defined when the trunk leans far forward under a level head.
  */
-export function axialSwing(r: number[], out: number[]): number[] {
+export function axialSwing(r: Q, out: V): V {
   out[0] = twistAngle(r, 0, 1, 0, sw);
   const s = Math.hypot(sw[0], sw[2]);
   const ang = 2 * Math.atan2(s, Math.abs(sw[3])) * Math.sign(sw[3] || 1);

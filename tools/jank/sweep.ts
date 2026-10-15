@@ -12,7 +12,8 @@ import path from 'node:path';
 import { loadRig, sampleClip, blendLocals, type RigFile } from './glb';
 import { B, type PoseLocals, newLocals, localPoint, fk, newWorld } from '../../src/engine/pose/skeleton';
 import { qrot } from '../../src/engine/pose/qmath';
-import { newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Violation, toWorld } from './validate';
+import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
+export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
@@ -23,17 +24,6 @@ export const FPS = 60;
 const IDENT = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const MIRROR = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const flat = () => 0;
-
-/** a bat on Bat_Grip (the right hand) in world space */
-export function gripBat(L: PoseLocals, rig: RigInfo, model: number[], hands: { L: boolean; R: boolean }): BatIn {
-  const w = fk(L, newWorld());
-  const base = L.base[7];
-  const k = localPoint(w, B.RightHand, rig.att.batKnob[0], rig.att.batKnob[1], rig.att.batKnob[2], base, [0, 0, 0]);
-  const a = qrot(w.wq, rig.att.batAxis[0], rig.att.batAxis[1], rig.att.batAxis[2], [0, 0, 0], B.RightHand * 4) as number[];
-  const ms = Math.hypot(model[0], model[1], model[2]);
-  const tipR = [k[0] + (a[0] * 0.86) / ms, k[1] + (a[1] * 0.86) / ms, k[2] + (a[2] * 0.86) / ms];
-  return { state: 'static', knob: toWorld(model, k[0], k[1], k[2], [0, 0, 0]), tip: toWorld(model, tipR[0], tipR[1], tipR[2], [0, 0, 0]), hands };
-}
 
 export async function loadFiles(files: string[]): Promise<{ name: string; rig: RigFile; info: RigInfo }[]> {
   const out = [];

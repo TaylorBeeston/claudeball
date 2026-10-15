@@ -217,7 +217,7 @@ function mdFamilies(title: string, entries: Entry[], src: (s: string) => boolean
   return lines.join('\n');
 }
 
-function mdClips(title: string, entries: Entry[], src: (s: string) => boolean, top = 30) {
+function mdClips(title: string, entries: Entry[], src: (s: string) => boolean, top = 30, denom?: Map<string, number>) {
   const by = new Map<string, Entry>();
   for (const e of entries) {
     if (!src(e.src)) continue;
@@ -240,7 +240,7 @@ function mdClips(title: string, entries: Entry[], src: (s: string) => boolean, t
   const lines = [`### ${title}`, '', '| # | file / role | clip | bad frames | score | top violations (worst) |', '|---:|---|---|---:|---:|---|'];
   rows.forEach((e, i) => {
     const ks = Object.entries(e.kinds).sort((a, b) => b[1].score - a[1].score).slice(0, 4).map(([k, s]) => `${k} ${s.max.toFixed(k.startsWith('len') ? 3 : 1)}`);
-    lines.push(`| ${i + 1} | ${e.file} | ${e.clip} | ${e.bad}/${e.frames} | ${e.score.toFixed(2)} | ${ks.join('; ')} |`);
+    lines.push(`| ${i + 1} | ${e.file} | ${e.clip} | ${e.bad}/${denom?.get(`${e.file}|${e.clip}`) ?? e.frames} | ${e.score.toFixed(2)} | ${ks.join('; ')} |`);
   });
   return lines.join('\n');
 }
@@ -258,8 +258,10 @@ export function writeReport() {
     parts.push('## Game sweep: final pose after all runtime overrides', '', `Seeds ${(gm.meta.seeds as number[]).join(', ')}, ${gm.meta.innings} innings, tempo ${gm.meta.tempo}. ${s.puppetFrames} fully animated puppet frames (${s.visibleFrames} in the camera's view).`, '');
     const tot = (s['attrSev.clip'] ?? 0) + (s['attrSev.blend'] ?? 0) + (s['attrSev.override'] ?? 0);
     parts.push('Attribution of every violation (severity-weighted share): ' + ['clip', 'blend', 'override'].map((k) => `**${k}** ${(((s[`attrSev.${k}`] ?? 0) / Math.max(1e-9, tot)) * 100).toFixed(0)} % (${s[`attr.${k}`] ?? 0} hits)`).join(', '), '');
+    // every validated frame per role and clip (on and off screen): the denominators of the per-clip tables
+    const denom = new Map(gm.entries.filter((e) => e.src === 'frames').map((e) => [`${e.file}|${e.clip}`, e.frames]));
     for (const a of ['override', 'blend', 'clip']) {
-      parts.push(mdFamilies(`On screen, attributed to ${a}`, gm.entries, (x) => x === `game:${a}`, s.visibleFrames), '', mdClips(`Worst clips on screen (${a})`, gm.entries, (x) => x === `game:${a}`, 25), '');
+      parts.push(mdFamilies(`On screen, attributed to ${a}`, gm.entries, (x) => x === `game:${a}`, s.visibleFrames), '', mdClips(`Worst clips on screen (${a}): frames with a violation / all frames of the clip (on and off screen)`, gm.entries, (x) => x === `game:${a}`, 25, denom), '');
     }
     parts.push(mdFamilies('Off screen (all attributions)', gm.entries, (x) => x.startsWith('game-off'), s.puppetFrames - s.visibleFrames), '');
   }

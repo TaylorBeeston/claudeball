@@ -15,7 +15,7 @@ import { B, BONES, NB, type PoseLocals, newLocals } from '../../src/engine/pose/
 import { groundHeight } from '../../src/sim/field';
 import { Agg, type Snapshot } from './agg';
 import { BAT_CLIPS, clipFlags } from './clips';
-import { newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Track, type Violation } from './validate';
+import { gripBat, newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Track, type Violation } from './validate';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const w = window as any;
@@ -194,8 +194,11 @@ export function install(opts: { ring?: number } = {}) {
       const frameIn = { model, ground: gnd, dt: animDt, cut, vel, ...fl, airborne: fl.airborne || p.anim === 'catch_jump' || /slide|dive/.test(p.anim) };
       validateFrame({ ...frameIn, L: s.L, bat }, s.info, s.trF, vF);
       vF.push(...pops);
-      if (w.__jank.traceId === p.id) w.__jank.trace.push({ t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
-      validateFrame({ ...frameIn, L: s.C, bat: null }, s.info, s.trC, vC);
+      if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ id: p.id, t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
+      // the mixer's pose with the bat where it would be: in the hand (on Bat_Grip) when the hand holds it, else where the sim has it
+      const batC = bat && (bat.state === 'held' || bat.state === 'ondeck') ? { ...gripBat(s.C, s.info, Array.from(model), bat.hands), state: bat.state } : bat;
+      validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
+      agg.add('frames', p.role, clip, [], animDt || dt);
       // visible: inside the camera's frustum
       const f = e.players.frustum;
       const vis = !f || f.intersectsSphere({ center: tmpV.set(p.pos.x, p.pos.y + 1, p.pos.z), radius: 1.3 });
