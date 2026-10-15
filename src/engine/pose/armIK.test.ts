@@ -84,6 +84,26 @@ describe('analytic arm IK', () => {
       expect(Math.abs(m[`forearm${side[0]}.pron`])).toBeLessThanOrEqual(95.5);
     });
   }
+  it('reaches a bat at an angle the forearm alone cannot by moving the elbow, and keeps that choice from frame to frame', () => {
+    const L0 = sampleClip(rig.clips.get('batting_stance')!, 0.5, rig.rest);
+    const w = fk(L0, undefined, R.rest);
+    const g = rig.attach.get('Bat_Grip')!;
+    const a = qrot(g.q, 0, 1, 0, [0, 0, 0]) as number[];
+    const hp = sl(w.wp, B.RightHand, 3);
+    // the bat flat, pointing back and across: far from the clip's grip line
+    const dir = [0.6, 0.1, -0.79];
+    const n = Math.hypot(...dir);
+    const rest = restOf('Right');
+    const pose = { S: sl(w.wp, B.RightArm, 3), E: sl(w.wp, B.RightForeArm, 3), H: hp, qUpper: sl(w.wq, B.RightArm, 4), qFore: sl(w.wq, B.RightForeArm, 4), qHand: sl(w.wq, B.RightHand, 4) };
+    const goal = { target: [hp[0] + 0.05, hp[1], hp[2]], fist: [0.024, 0.074, -0.028], gripLocal: a, gripDir: dir.map((x) => x / n) };
+    const fixed = solveArm(rest, pose, goal);
+    const g1 = qrot(fixed.qHand, a[0], a[1], a[2]) as number[];
+    const err = (Math.acos(Math.min(1, (g1[0] * dir[0] + g1[1] * dir[1] + g1[2] * dir[2]) / n)) * 180) / Math.PI;
+    expect(err).toBeLessThan(25);
+    // the next frame, the same goal: the same swivel
+    const again = solveArm(rest, pose, { ...goal, polePrev: fixed.pole });
+    expect(again.pole).toBe(fixed.pole);
+  });
   it('an unreachable target: no NaN, no hyperextension, the fist as close as the soft reach allows', () => {
     const L = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
     const w = fk(L, undefined, R.rest);

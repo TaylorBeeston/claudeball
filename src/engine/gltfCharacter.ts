@@ -1989,8 +1989,9 @@ export class GltfPuppet implements PuppetLike {
         };
         want = swivelTarget([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, prev > 0.01 ? 1 : prev < -0.01 ? -1 : 0, 0.02);
       }
-      // ease toward it at up to ~10 rad/s (a third of a turn in 0.1 s), and back to the clip's own swivel when clear
-      const maxStep = 10 * Math.min(dt, 0.1);
+      // ease toward it quickly (up to ~30 rad/s: a sprinting arm's elbow passes the trunk in a few frames) and back to the clip's own swivel
+      // slowly (~10 rad/s) once clear
+      const maxStep = (Math.abs(want) > Math.abs(prev) ? 30 : 10) * Math.min(dt, 0.1);
       const applied = prev + Math.max(-maxStep, Math.min(maxStep, want - prev));
       this.swivel[side] = Math.abs(applied) < 1e-4 ? 0 : applied;
       if (this.swivel[side] !== 0) {
@@ -2187,6 +2188,8 @@ export class GltfPuppet implements PuppetLike {
   /** distance (m) of the top hand's fist from the knob along the handle (the model's Bat_Grip), and the bottom hand's */
   private gripTop = 0.135;
   private gripBottom = 0.05;
+  /** the elbow swivel each arm's grip solve chose last frame (deg from the clip's) */
+  private armPole = { Left: 0, Right: 0 };
   private initArms() {
     const rig = this.rig;
     rig.refresh();
@@ -2237,7 +2240,8 @@ export class GltfPuppet implements PuppetLike {
       const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
       gripDir = a.toArray();
     }
-    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir });
+    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, polePrev: gripDir ? this.armPole[side] : undefined });
+    this.armPole[side] = gripDir ? out.pole : 0;
     // rig rotations -> locals, blended from the clip's locals by w
     const qSh = rig.quat(sh, new Quaternion());
     const nU = new Quaternion().fromArray(out.qUpper), nF = new Quaternion().fromArray(out.qFore), nH = new Quaternion().fromArray(out.qHand);

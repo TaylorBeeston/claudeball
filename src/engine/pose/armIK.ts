@@ -58,6 +58,8 @@ export interface ArmGoal {
   keepEnd?: boolean;
   /** limit the middle bone's own twist (deg; a shin's twist about itself) */
   twistLimit?: number;
+  /** the elbow swivel (deg from the clip's) chosen last frame: kept unless another is clearly better (no elbow hopping) */
+  polePrev?: number;
 }
 
 export interface ArmOut {
@@ -68,6 +70,8 @@ export interface ArmOut {
   wrist: number[];
   /** how far the fist ended from the target (rig units): > 0 when out of reach */
   miss: number;
+  /** the elbow swivel used (deg from the clip's) */
+  pole: number;
 }
 
 export const ARM_LIMITS = {
@@ -127,8 +131,37 @@ export function softReach(d: number, max: number, soft = ARM_LIMITS.soft): numbe
 
 /** total twist of the hand vs the upper arm about the forearm axis (deg) -> pronation from neutral (> 0 pronated), as limits.ts measures it */
 const pronOf = (total: number, side: number) => side * total - ARM_LIMITS.restPron;
+/** the limits in force (a harness may override them through globalThis.__armLimits to measure what they cost) */
+const limits = () => ((globalThis as { __armLimits?: typeof ARM_LIMITS }).__armLimits ?? ARM_LIMITS);
 
+/**
+ * With a grip line to follow, the elbow's swivel (the upper arm's rotation about the shoulder -> wrist line) is searched too: a bat at an angle
+ * the forearm alone cannot reach (it would need more than the pronation / wrist range) is reached the way a hitter does it, by moving the
+ * elbow. The swivel nearest the clip's that keeps the hand in range wins.
+ */
 export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3): ArmOut {
+  if (!goal.gripDir || !goal.gripLocal) return solveArmPole(rest, pose, goal, iters, 0).out;
+  const prev = goal.polePrev ?? 0;
+  // degrees past the hand's range cost most; moving the elbow away from the clip's swivel costs a little, away from last frame's more
+  const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3 + Math.abs(ang - prev) * 0.5;
+  const base = solveArmPole(rest, pose, goal, iters, 0);
+  if (base.over < 1 && Math.abs(prev) < 1) return base.out;
+  let best = base, bestCost = cost(base, 0);
+  const tried = new Set([0]);
+  for (const ang of [Math.round(prev / 5) * 5, ...Array.from({ length: 24 }, (_, i) => (i % 2 ? -1 : 1) * (Math.floor(i / 2) + 1) * 10)]) {
+    if (tried.has(ang) || Math.abs(ang) > 120) continue;
+    tried.add(ang);
+    const r = solveArmPole(rest, pose, goal, iters, ang);
+    const c = cost(r, ang);
+    if (c < bestCost) {
+      best = r;
+      bestCost = c;
+    }
+  }
+  return best.out;
+}
+
+function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number, poleDeg: number): { out: ArmOut; over: number } {
   const S = pose.S;
   const L1 = len(sub(pose.E, S)), L2 = len(sub(pose.H, pose.E));
   const { u, uf, n, side } = rest;
@@ -149,6 +182,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   const nCur = qrot(aUc, n[0], n[1], n[2]) as number[];
   let qHand = qq(pose.qHand), qUpper = qq(pose.qUpper), qFore = qq(pose.qFore);
   let E = pose.E.slice(), W = pose.H.slice();
+  let over = 0;
   for (let it = 0; it < iters; it++) {
     // the wrist that puts the fist on the target with the current hand estimate
     const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
@@ -165,6 +199,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
     if (len(p) < 0.02 * L1) p = perp([-nCur[0], -nCur[1], -nCur[2]], dir);
     if (len(p) < 1e-6) p = perp([0, -1, 0], dir);
     norm(p);
+    if (poleDeg) p = qrot(qaxisAngle(dir[0], dir[1], dir[2], poleDeg * DEG), p[0], p[1], p[2]) as number[];
     E = [S[0] + dir[0] * a + p[0] * h, S[1] + dir[1] * a + p[1] * h, S[2] + dir[2] * a + p[2] * h];
     W = [S[0] + dir[0] * dEff, S[1] + dir[1] * dEff, S[2] + dir[2] * dEff];
     // upper arm: its direction, twisted so the forearm bends toward the elbow's flexion side (in the hinge plane)
@@ -186,12 +221,15 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
       const sw = [0, 0, 0, 1];
       let total = twistAngle(relGoal, uf[0], uf[1], uf[2], sw) / DEG;
       const pr = pronOf(total, side);
-      const prC = Math.max(-ARM_LIMITS.sup, Math.min(ARM_LIMITS.pron, pr));
+      over = Math.max(0, pr - limits().pron, -limits().sup - pr);
+      const LIM = limits();
+      const prC = Math.max(-LIM.sup, Math.min(LIM.pron, pr));
       total = side * (prC + ARM_LIMITS.restPron);
       // wrist bend limited
       const sAng = 2 * Math.acos(Math.min(1, Math.abs(sw[3])));
-      if (sAng > ARM_LIMITS.wrist * DEG) {
-        const k = (ARM_LIMITS.wrist * DEG) / sAng;
+      over += Math.max(0, sAng / DEG - LIM.wrist);
+      if (sAng > LIM.wrist * DEG) {
+        const k = (LIM.wrist * DEG) / sAng;
         const ax = norm([sw[0], sw[1], sw[2]]);
         const sg = Math.sign(sw[3]) || 1;
         const lim = qaxisAngle(ax[0], ax[1], ax[2], sAng * k * sg);
@@ -207,5 +245,5 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   }
   const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
   const miss = len(sub([W[0] + fo[0], W[1] + fo[1], W[2] + fo[2]], goal.target));
-  return { qUpper, qFore, qHand, elbow: E, wrist: W, miss };
+  return { out: { qUpper, qFore, qHand, elbow: E, wrist: W, miss, pole: poleDeg }, over };
 }

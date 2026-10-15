@@ -300,7 +300,9 @@ export class RealSimAdapter implements GameLike {
       // throwing hand the moment he became a runner, mid-swing: the whole body mirrored for a few frames whenever bats != throws)
       const batting: 'L' | 'R' = p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats;
       if (isBat) this.batSide.set(p.id, batting);
-      const hand = isBat ? batting : p.role === 'runner' ? this.batSide.get(p.id) ?? batting : p.throws;
+      // (and back on the bench: a runner who scores or is out jogs off as the same, mirrored or not, body; he fields from his throwing side
+      // next half, a change made while the half innings turn over)
+      const hand = isBat ? batting : p.role === 'runner' || p.role === 'bench' ? this.batSide.get(p.id) ?? (p.role === 'runner' ? batting : p.throws) : p.throws;
       const nominal = NOMINAL[p.anim];
       // a pitcher's windup lasts as long as the sim's delivery (tempo, holding, stretch); everything else uses a nominal clip length
       const dur = p.anim === 'windup' && p.delivery ? windupSeconds(p.delivery.tempo, p.delivery.fromStretch, p.ratings?.holding ?? 50) : p.anim === 'pitch' ? 0.5 : nominal;
