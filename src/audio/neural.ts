@@ -297,9 +297,17 @@ export class NeuralSpeechEngine implements SpeechEngine {
     }
     let curT0 = 0;
     let curDur = 0;
+    // a finished clause's nodes, released once the next clause is connected (or the line is over): the voice's EQ must not lose its
+    // last input in the same task as it gets the next one (Chrome's offline renderer then silenced the booth until the next line)
+    let held: (() => void) | null = null;
+    const release = () => {
+      held?.();
+      held = null;
+    };
     const finish = (ok: boolean) => {
       if (finished) return;
       finished = true;
+      release();
       this.lines.delete(handle);
       if (alive) (ok ? o.onend : o.onerror)();
       alive = false;
@@ -308,6 +316,7 @@ export class NeuralSpeechEngine implements SpeechEngine {
       stop: () => {
         alive = false;
         finished = true;
+        release();
         this.lines.delete(handle);
         if (cur) this.stopSource(cur);
         cur = null;
@@ -368,13 +377,15 @@ export class NeuralSpeechEngine implements SpeechEngine {
           clearTimeout(timer);
           if (settled || !alive) return;
           settled = true;
-          cur = this.play(buf, o, shift, () => {
+          cur = this.play(buf, o, shift, (free) => {
             cur = null;
+            held = free;
             index++;
             this.stats.clauses++;
             if (stopAfter) return finish(true);
             playNext();
           });
+          release();
           if (!cur) finish(false);
           else {
             curT0 = ctx?.currentTime ?? 0;
@@ -418,7 +429,8 @@ export class NeuralSpeechEngine implements SpeechEngine {
     this.playing.delete(c);
   }
 
-  private play(buf: AudioBuffer, o: SpeakOptions, shift: number, onDone: () => void): { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null {
+  /** `onDone(free)`: the clause has ended; `free` disconnects its nodes (the line calls it once the next clause is connected) */
+  private play(buf: AudioBuffer, o: SpeakOptions, shift: number, onDone: (free: () => void) => void): { src: AudioBufferSourceNode; nodes: AudioNode[]; shift: number } | null {
     const ctx = this.mixer?.ctx;
     const mixer = this.mixer;
     if (!ctx || !mixer || ctx.state !== 'running') {
@@ -441,15 +453,16 @@ export class NeuralSpeechEngine implements SpeechEngine {
     const c = { src, nodes, shift };
     this.playing.add(c);
     src.onended = () => {
-      for (const n of nodes) {
-        try {
-          n.disconnect();
-        } catch {
-          /* ignore */
-        }
-      }
       this.playing.delete(c);
-      onDone();
+      onDone(() => {
+        for (const n of nodes) {
+          try {
+            n.disconnect();
+          } catch {
+            /* ignore */
+          }
+        }
+      });
     };
     src.start();
     return c;

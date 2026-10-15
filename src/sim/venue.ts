@@ -30,6 +30,9 @@ export const dugStep = (side: TeamSide) => alongLine(12.9, 9.7, side);
 /** Seat `k` on the bench (0 = nearest the steps), the aisle point in front of it, and the way he faces (toward the field). */
 export const benchSeat = (side: TeamSide, k: number) => alongLine(14.2 + (k % BENCH_SEATS) * 0.95, 12.1, side);
 export const benchAisle = (side: TeamSide, k: number) => alongLine(14.2 + (k % BENCH_SEATS) * 0.95, 10.4, side);
+/** a full bench: the players past its seats stand in the aisle in front of it (spread out between the seated ones), as players do */
+export const seatStands = (k: number) => k >= BENCH_SEATS;
+export const seatSpot = (side: TeamSide, k: number) => (seatStands(k) ? benchAisle(side, ((k - BENCH_SEATS) * 2 + 1) % BENCH_SEATS) : benchSeat(side, k));
 export const benchFacing = (side: TeamSide) => Math.atan2(-sg(side) * R, R);
 
 /** The on-deck circle (radius 0.76 m, 5 ft across) on the dugout side of the plate. */

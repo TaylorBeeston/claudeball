@@ -7,7 +7,7 @@ import { emit } from './events';
 import { clamp } from './math';
 import { setGoal, stepPlayer } from './movement';
 import { setAnim } from './util';
-import { behindPlate, benchAisle, benchFacing, benchSeat, bullpenSpot, dugDoor, dugStep, onDeckSpot } from './venue';
+import { behindPlate, benchAisle, benchFacing, bullpenSpot, dugDoor, dugStep, onDeckSpot, seatSpot, seatStands } from './venue';
 import { pitchLimit } from './attributes';
 import type { AnimHint, GameEvent } from './types';
 import type { PlayerRT, TeamRT, World } from './world';
@@ -22,10 +22,26 @@ const walkMul = (p: PlayerRT, speed = WALK_SPEED) => clamp(speed / Math.max(1, p
 /** Players who sit on the bench: everybody but the pitchers who are not in the game. */
 const sitsOnBench = (p: PlayerRT) => !p.info.isPitcher || p.inGame;
 
+/**
+ * His seat, given out the first time he needs one: the players seated at the start have theirs; a reliever who comes in and is
+ * later taken out (or anyone else without one) gets the first seat nobody on his team has (he used to take seat 0, on top of
+ * whoever sat there).
+ */
+function ensureSeat(p: PlayerRT): number {
+  if (p.seat >= 0) return p.seat;
+  const used = new Set<number>();
+  for (const q of [...p.team.players.values(), ...p.team.bullpen]) if (q !== p && q.seat >= 0 && (q.dug === 'bench' || q.dug === 'toBench' || q.dug === 'toDeck' || q.onField)) used.add(q.seat);
+  let k = 0;
+  while (used.has(k)) k++;
+  p.seat = k;
+  return k;
+}
+
 /** Place a player on his bench seat (no walking). */
 export function placeOnBench(p: PlayerRT): void {
+  ensureSeat(p);
   const side = p.team.side;
-  const s = benchSeat(side, p.seat);
+  const s = seatSpot(side, p.seat);
   p.x = s.x;
   p.z = s.z;
   p.vx = p.vz = 0;
@@ -37,7 +53,7 @@ export function placeOnBench(p: PlayerRT): void {
   p.dug = 'bench';
   p.onField = false;
   p.gait = null;
-  p.anim = 'bench_sit';
+  p.anim = seatStands(p.seat) ? 'idle' : 'bench_sit';
   p.animUntil = 0;
 }
 
@@ -57,12 +73,9 @@ function placeInBullpen(p: PlayerRT, k: number): void {
 export function initDugouts(w: World): void {
   for (const t of [w.teams.home, w.teams.away]) {
     let k = 0;
-    for (const p of t.players.values()) {
-      if (sitsOnBench(p)) {
-        p.seat = k++;
-        placeOnBench(p);
-      }
-    }
+    for (const p of t.bullpen) p.seat = -1;
+    for (const p of t.players.values()) p.seat = sitsOnBench(p) ? k++ : -1;
+    for (const p of t.players.values()) if (sitsOnBench(p)) placeOnBench(p);
     t.bullpen.slice(0, 3).forEach((p, i) => placeInBullpen(p, i));
   }
 }
@@ -84,8 +97,9 @@ export function toBench(w: World, p: PlayerRT): void {
   if (p.dug === 'bench') return;
   const side = p.team.side;
   p.dug = 'toBench';
+  ensureSeat(p);
   // door -> steps -> aisle -> seat (from wherever he is on the field)
-  p.route = [dugDoor(side), dugStep(side), benchAisle(side, p.seat), benchSeat(side, p.seat)];
+  p.route = [dugDoor(side), dugStep(side), benchAisle(side, p.seat), seatSpot(side, p.seat)];
   p.routeMul = walkMul(p, 2.6);
   p.after = null;
 }
@@ -160,7 +174,8 @@ export function benchReact(w: World, e: GameEvent): void {
   }
   if (!team) return;
   for (const p of team.players.values()) {
-    if (p.dug !== 'bench' || p.route.length || w.propRng.next() > share) continue;
+    // (the draw comes before the standing check: the prop stream stays the same however full the bench is)
+    if (p.dug !== 'bench' || p.route.length || w.propRng.next() > share || seatStands(p.seat)) continue;
     setAnim(w, p, hint, hint === 'bench_stand_up' ? 3.0 : 2.2);
   }
 }
@@ -202,7 +217,7 @@ function arrive(w: World, p: PlayerRT): void {
     p.goal = null;
     p.vx = p.vz = 0;
     p.facing = benchFacing(side);
-    p.anim = 'bench_sit';
+    p.anim = seatStands(p.seat) ? 'idle' : 'bench_sit';
     p.animUntil = 0;
   } else if (p.dug === 'toDeck') {
     p.dug = 'deck';

@@ -85,6 +85,10 @@ export interface ChromeOpts {
   width?: number;
   height?: number;
   extraFlags?: string[];
+  /** a persistent profile directory (kept on close: the promo's downloaded HD voices live in its cache); default a throwaway one */
+  profile?: string;
+  /** headless (new) with the GPU (Vulkan ANGLE): no window, so nothing on the desktop can occlude it and stall its compositor */
+  headless?: boolean;
 }
 
 export interface Chrome {
@@ -99,8 +103,9 @@ export interface Chrome {
 
 export async function launchChrome(o: ChromeOpts = {}): Promise<Chrome> {
   const port = await freePort();
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cbperf-chrome-'));
-  const angle = o.angle ?? 'gl';
+  const profile = o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), 'cbperf-chrome-'));
+  if (o.profile) fs.mkdirSync(o.profile, { recursive: true });
+  const angle = o.angle ?? (o.headless ? 'vulkan' : 'gl');
   const flags = [
     `--user-data-dir=${profile}`,
     `--remote-debugging-port=${port}`,
@@ -121,6 +126,7 @@ export async function launchChrome(o: ChromeOpts = {}): Promise<Chrome> {
     `--window-size=${o.width ?? 1920},${o.height ?? 1080}`,
     '--window-position=0,0',
     ...(o.uncapped ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []),
+    ...(o.headless ? ['--headless=new', '--enable-features=Vulkan,UseSkiaRenderer', '--disable-vulkan-surface'] : []),
     ...(o.extraFlags ?? []),
     'about:blank',
   ];
@@ -150,7 +156,7 @@ export async function launchChrome(o: ChromeOpts = {}): Promise<Chrome> {
       await browser!.close().catch(() => {});
       proc.kill();
       await sleep(300);
-      fs.rmSync(profile, { recursive: true, force: true });
+      if (!o.profile) fs.rmSync(profile, { recursive: true, force: true });
     },
   };
 }

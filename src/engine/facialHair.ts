@@ -6,8 +6,8 @@
  */
 import { BufferAttribute, ShaderChunk, type BufferGeometry } from 'three';
 
-/** facial-hair nodes that are shells with a cut edge */
-export const FEATHERED = /^(Gear_Mustache|Gear_Goatee|Gear_Beard_Full)$/;
+/** facial-hair nodes that are shells with a cut edge (the stubble film too: its hard edge read as a dirty mask in close-ups) */
+export const FEATHERED = /^(Gear_Mustache|Gear_Goatee|Gear_Beard_Full|Gear_Beard_Stubble)$/;
 
 /**
  * Distance (along the mesh) from every vertex to the nearest boundary edge. Vertices at the same position (uv seams) are welded first, so a seam
@@ -114,7 +114,11 @@ export function installFeather() {
     #else
       vec2 cbS = gl_FragCoord.xy * vec2( 0.9, 0.12 );
     #endif
-    float cbN = fract( sin( dot( floor( cbS ), vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+    #ifdef CB_FEATHER_SMOOTH
+      float cbN = 0.5; // a film (the stubble): a plain fade, no strands (without a texture they would be screen-space noise that crawls)
+    #else
+      float cbN = fract( sin( dot( floor( cbS ), vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+    #endif
     float cbK = smoothstep( 0.0, CB_FEATHER, vCbEdge + ( cbN - 0.5 ) * CB_FEATHER * 0.9 );
     diffuseColor.a *= cbK;
   }

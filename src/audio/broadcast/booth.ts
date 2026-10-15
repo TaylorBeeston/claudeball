@@ -69,6 +69,12 @@ export class Booth {
   private segSaid = new Set<string>();
   private now = 0;
   private closed = false;
+  /**
+   * a home run is being trotted out: the runs count only as each runner touches home, so the game situation still shows the runners
+   * on base and the old score; no conversation topic starts until the next batter is up (it used to say "two out, runner in scoring
+   * position" and "a chance to be the hero" over the trot, "it is tight in the ninth, 7-7" after a walk-off)
+   */
+  private trotting = false;
 
   constructor(o: BoothOpts) {
     this.rng = o.rng;
@@ -110,7 +116,7 @@ export class Booth {
 
   private nextTopic(): Topic | null {
     const c = this.ctx;
-    if (!c || !this.canTalk || this.closed || this.pendingBreak || this.pregame === 'waiting' || this.pregame === 'opening') return null;
+    if (!c || !this.canTalk || this.closed || this.trotting || this.pendingBreak || this.pregame === 'waiting' || this.pregame === 'opening') return null;
     const tense = c.inning >= 7 && Math.abs(c.score.home - c.score.away) <= 2 || (c.runners[1] || c.runners[2]) && c.outs === 2;
     if (this.lm) {
       const line = this.rng() < 0.5 ? this.lm.take() : null;
@@ -287,6 +293,8 @@ export class Booth {
     this.ctx = c;
     this.live = { balls: c.balls, strikes: c.strikes, outs: this.log.outs, batterId: c.batter?.id };
     if (ev.type === 'pitchReleased' || ev.type === 'batterUp') this.epoch++;
+    if (ev.type === 'homeRun') this.trotting = true;
+    if (ev.type === 'batterUp' || ev.type === 'halfInningStart' || ev.type === 'gameEnd') this.trotting = false;
     this.director.setEpoch(this.epoch);
     this.log.observe(ev, c);
     // the pregame: the opening segment while the teams take the field, then the handoff at the umpire's "play ball"

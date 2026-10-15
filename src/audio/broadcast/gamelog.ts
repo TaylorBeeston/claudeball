@@ -194,7 +194,7 @@ export class GameLog {
           if (/^home run/.test(r)) this.moment({ kind: 'hr', ...base }, before);
           else if (isHit(r) && runs > 0) this.moment({ kind: 'rbiHit', ...base }, before);
           else if (isK(r) && this.rispAtPa && this.outs >= 3) this.moment({ kind: 'strikeoutRisp', ...base }, before);
-          else if (r === 'double play') this.moment({ kind: 'doublePlay', ...base }, before);
+          else if (r === 'double play' || r === 'triple play') this.moment({ kind: 'doublePlay', ...base }, before);
         }
         if (isHit(r)) this.half.hits++;
         if (isWalk(r)) this.half.walks++;

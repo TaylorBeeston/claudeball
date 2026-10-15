@@ -172,6 +172,8 @@ class App {
     void e.env.preloadSky(['day', 'dusk']);
     // benchmark runner (tools/perf): `?bench=1&autostart` plays scripted scenes at fixed settings and reports to window.__bench
     if (this.res.autostart && new URLSearchParams(location.search).has('bench')) void import('../engine/bench').then((m) => m.runBench(e));
+    // promo capture (tools/promo): `?promo&autostart&noaudio` hands the engine to a frame-by-frame driver (virtual clock, offline audio)
+    if (this.res.autostart && new URLSearchParams(location.search).has('promo')) void import('../promo/runtime').then((m) => m.installPromo(e));
   }
 
   /**

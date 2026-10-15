@@ -16,6 +16,7 @@ import { BASES, toScene } from './dims';
 import { isFielderRole } from './roles';
 import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
+import { baseCamera, clearestCamera, hrWallCamera, type Box } from './sightLines';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
 import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
@@ -74,8 +75,11 @@ export interface DirectorOutput {
 
 export class CameraDirector {
   auto = true;
-  /** the benchmark runner's scripted camera (null = the director decides) */
-  bench: { pos: Vector3; tgt: Vector3; fov: number; aperture: number } | null = null;
+  /**
+   * the benchmark runner's / promo's scripted camera (null = the director decides): `focus` metres (default: the distance to `tgt`),
+   * `roll` radians, `cut` = a hard cut this frame (no pan motion blur from the previous camera)
+   */
+  bench: { pos: Vector3; tgt: Vector3; fov: number; aperture: number; focus?: number; roll?: number; cut?: boolean } | null = null;
   /** [3B side (+X), 1B side (−X)] camera/target pairs aimed at the real dugouts */
   dugoutShots: { pos: Vector3; target: Vector3 }[] = [];
   replaysEnabled = true;
@@ -116,6 +120,8 @@ export class CameraDirector {
   private playOuts = 0;
   /** B-roll planner state */
   readonly landmarks: Landmarks;
+  /** the park's solid blocks (batter's eye, dugouts): rigs that could film them from behind move until they see their subject */
+  occluders: Box[] = [];
   /** where a player's face is (the engine plugs in the puppets' head bones) */
   faceLookup: ((id: string, out: Vector3) => Vector3 | null) | null = null;
   brollEnabled = true;
@@ -465,13 +471,18 @@ export class CameraDirector {
       this.tgt.copy(b.tgt);
       this.camera.position.copy(b.pos);
       this.camera.lookAt(b.tgt);
-      if (this.camera.fov !== b.fov || this.camera.near !== 0.3) {
+      if (b.roll) this.camera.rotateZ(b.roll);
+      // close-ups (a ball at the bat, a glove) need a nearer near plane than the broadcast cameras
+      const near = Math.min(0.3, Math.max(0.02, (b.focus ?? b.pos.distanceTo(b.tgt)) * 0.1));
+      if (this.camera.fov !== b.fov || this.camera.near !== near) {
         this.camera.fov = b.fov;
-        this.camera.near = 0.3;
+        this.camera.near = near;
         this.camera.far = 700;
         this.camera.updateProjectionMatrix();
       }
-      return { renderState: live, focus: b.pos.distanceTo(b.tgt), aperture: b.aperture, label: null, shot: this.shot, cut: false, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
+      const cut = !!b.cut;
+      b.cut = false;
+      return { renderState: live, focus: b.focus ?? b.pos.distanceTo(b.tgt), aperture: b.aperture, label: null, shot: this.shot, cut, replaying: false, replaySpeed: 1, dissolve: 0, capture: false };
     }
     if (!this.auto) {
       this.orbit.update();
@@ -634,7 +645,9 @@ export class CameraDirector {
       const shot: BrollShot = { kind: beat, subject: subjects[beat], variant: this.brollSeq * 97 + 11, hold: Math.min(3.2, lull.remaining - 0.8), transition: 'cut' };
       return shot;
     }
-    const seed = ++this.brollSeq * 1013 + Math.floor(live.time * 10);
+    // the count moves on only when a shot is planned (planning is retried every frame while nothing fits): the same game picks the
+    // same B-roll at any frame rate
+    const seed = (this.brollSeq + 1) * 1013 + Math.floor(live.time * 10);
     const shot = planNext({
       lull: { kind: lull.kind as never, remaining: lull.remaining },
       available,
@@ -644,6 +657,7 @@ export class CameraDirector {
       reactionTeam: reaction ? reaction.team : null,
       shownThisLull: this.shownThisLull,
     });
+    if (shot) this.brollSeq++;
     if (shot && shot.kind === 'dugoutReaction') this.reaction = null;
     return shot;
   }
@@ -820,10 +834,20 @@ export class CameraDirector {
     const out = c.pos.clone().sub(centre).setY(0);
     if (out.lengthSq() < 1) out.set(0, 0, -1);
     out.normalize();
-    const side = new Vector3(-out.z, 0, out.x);
-    const cam1 = c.pos.clone().addScaledVector(out, 6.5).addScaledVector(side, 5.5).setY(1.25);
-    const cam2 = c.pos.clone().addScaledVector(out, 9).addScaledVector(side, -9).setY(3.2);
+    const across = new Vector3(-out.z, 0, out.x);
     const focus = c.pos.clone().setY(0.9);
+    // the people who are not the play (umpires, base coaches) must not stand between the low camera and the bag: of a few
+    // placements round the base, the one that stays clearest of them through the whole replay (promo jank log P7)
+    const side = (r: string) => r === 'umpire' || r === 'coach' || r === 'coach1b' || r === 'coach3b';
+    const onField = (r: string) => side(r) || r === 'runner' || r === 'batter' || isFielderRole(r as never) || r === 'pitcher' || r === 'catcher';
+    const blockers = frames.filter((_, i) => i % 6 === 0).map((f) => f.players.filter((p) => onField(p.role)).map((p) => ({ x: p.pos.x, z: p.pos.z, side: side(p.role) })));
+    const ring = (o: number, s: number, y: number) => c.pos.clone().addScaledVector(out, o).addScaledVector(across, s).setY(y);
+    const pick = (list: Vector3[]) => {
+      const r = clearestCamera(list, focus, blockers);
+      return new Vector3(r.cam.x, r.cam.y, r.cam.z);
+    };
+    const cam1 = pick([ring(6.5, 5.5, 1.25), ring(6.5, -5.5, 1.25), ring(4, 7.5, 1.25), ring(4, -7.5, 1.25), ring(8.5, 2, 1.4), ring(-5, 6.5, 1.25), ring(-5, -6.5, 1.25)]);
+    const cam2 = pick([ring(9, -9, 3.2), ring(9, 9, 3.2), ring(12, 0, 3.6), ring(-8, -8, 3.2)]);
     const second: Replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam2, speed: 0.5, caption: null, focus };
     this.replay = { frames, t: 0, end: frames.length, variant: 'close', until: 0, cam: cam1, speed: 0.3, caption: 'CLOSE PLAY', focus, next: second };
     this.ballSm.copy(focus);
@@ -1008,11 +1032,8 @@ export class CameraDirector {
       }
       case 'base': {
         const t = this.baseTarget;
-        const c = new Vector3(0, 0, 19.4);
-        const out = t.clone().sub(c).setY(0);
-        if (out.lengthSq() < 1) out.set(0, 0, 1);
-        out.normalize();
-        d.pos.set(t.x + out.x * 11 + out.z * 6, 2.4, t.z + out.z * 11 - out.x * 6);
+        const bc = baseCamera(t, this.occluders);
+        d.pos.set(bc.x, bc.y, bc.z);
         const follow = ball.clone().lerp(t, 0.55);
         d.tgt.copy(follow).setY(1.2);
         const dist = d.pos.distanceTo(d.tgt);
@@ -1163,8 +1184,8 @@ export class CameraDirector {
         // ball leaving the park, seen in profile from just inside the fence; keep it framed as it flies into the seats
         const h = this.hr;
         if (h) {
-          const perp = new Vector3(h.dir.z, 0, -h.dir.x).multiplyScalar(h.side);
-          d.pos.copy(h.pos).addScaledVector(perp, 26).addScaledVector(h.dir, -12).setY(5.5);
+          const wc = hrWallCamera(h.pos, h.dir, h.side, this.occluders);
+          d.pos.set(wc.x, wc.y, wc.z);
           this.ballSm.lerp(ball, 1 - Math.exp(-dt * 10));
           d.tgt.copy(this.ballSm);
           const dist = d.pos.distanceTo(d.tgt);

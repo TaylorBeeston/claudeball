@@ -278,6 +278,26 @@ describe('concurrent channels (PA over booth), clauses, priorities', () => {
     expect(o.onend).not.toHaveBeenCalled();
   });
 
+  it('a finished clause stays connected until the next one is (the voice EQ never loses its last input in between)', async () => {
+    // the promo capture: disconnecting the clause and connecting the next in one task silenced the booth in Chrome's offline renderer,
+    // so every call lost the words after its first clause ("Deep drive to right-center." and no "Gone! Home run!")
+    const { eng, f } = await setup();
+    eng.speak('Deep drive to right-center. Gone! Home run!', opts('pbp'));
+    await flush();
+    await flush();
+    const levelOf = (src: any) => src.connect.mock.calls[0][0];
+    const first = levelOf(sourcesOf(f)[0]);
+    sourcesOf(f)[0].onended();
+    expect(first.disconnect).not.toHaveBeenCalled();
+    await flush();
+    const second = levelOf(sourcesOf(f)[1]);
+    expect(first.disconnect).toHaveBeenCalled();
+    expect(second.connect.mock.invocationCallOrder[0]).toBeLessThan(first.disconnect.mock.invocationCallOrder[0]);
+    sourcesOf(f)[1].onended();
+    await flush();
+    expect(second.disconnect).toHaveBeenCalled(); // the last clause is released when the line ends
+  });
+
   it('cutAtClause lets the current clause finish and then ends the line', async () => {
     const { eng, f } = await setup();
     const o = opts('color');

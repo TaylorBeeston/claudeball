@@ -842,7 +842,8 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
 }
 
-const PITCH_NAMES: Record<string, string> = { FF: 'FOUR-SEAM FASTBALL', SI: 'SINKER', SL: 'SLIDER', CU: 'CURVEBALL', CH: 'CHANGEUP', FC: 'CUTTER', KC: 'KNUCKLE CURVE', FS: 'SPLITTER' };
+/** every pitch the sim throws (`PitchType`) has a name here: the ticker said "delivers a sw" for a sweeper (promo jank log P8) */
+export const PITCH_NAMES: Record<string, string> = { FF: 'FOUR-SEAM FASTBALL', FT: 'TWO-SEAM FASTBALL', SI: 'SINKER', SL: 'SLIDER', SW: 'SWEEPER', CU: 'CURVEBALL', CH: 'CHANGEUP', FC: 'CUTTER', KC: 'KNUCKLE CURVE', FS: 'SPLITTER' };
 const pitchName = (t: string) => PITCH_NAMES[t.toUpperCase()] ?? t.toUpperCase();
 
 function describe(e: GameEvent, s: GameState): string {

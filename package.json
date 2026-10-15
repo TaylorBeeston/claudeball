@@ -33,7 +33,9 @@
     "assets:derive": "node scripts/derive-assets.mjs",
     "assets:fetch": "node tools/repo-diet/assets-fetch.mjs",
     "assets:pack": "node tools/repo-diet/assets-fetch.mjs --pack",
-    "size:check": "node tools/repo-diet/check-size.mjs"
+    "size:check": "node tools/repo-diet/check-size.mjs",
+    "promo:scout": "tsx tools/promo/scout.ts",
+    "promo:render": "tsx tools/promo/render.ts"
   },
   "dependencies": {
     "three": "^0.186.1"
