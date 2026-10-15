@@ -52,6 +52,8 @@ interface Session {
   cdpPort: number;
   chromePid: number;
   keeperPid: number;
+  /** Chrome's crash handler: it leaves Chrome's process group (re-parented, its own group) and its command line has no profile dir */
+  crashpadPid?: number;
   profile: string;
   base: string;
   query: string;
@@ -117,6 +119,15 @@ function listeners(port: number): number[] {
   }
 }
 /** the process group a pid belongs to (we start every child as a group leader) */
+/** the crash handler our Chrome's processes name in `--crashpad-handler-pid=` (found through Chrome's own process group) */
+function crashpadOf(chromePid: number): number | undefined {
+  for (const d of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(d) || pgid(+d) !== chromePid) continue;
+    const m = /--crashpad-handler-pid=(\d+)/.exec(cmdline(+d));
+    if (m) return +m[1];
+  }
+  return undefined;
+}
 const pgid = (pid: number) => {
   try {
     return +fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1].split(' ')[2];
@@ -358,6 +369,8 @@ async function launch() {
   const { page } = await connect(s);
   await page.goto(url(s, s.query), { waitUntil: 'load' });
   const boot = await waitReady(page);
+  s.crashpadPid = crashpadOf(s.chromePid);
+  fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify(s, null, 1));
   console.log(JSON.stringify({ session: id, url: url(s, s.query), mode, headed, evidence, boot }, null, 1));
   console.log(`[cbv] ready. Next: cbv doctor`);
   process.exit(0);
@@ -486,6 +499,18 @@ async function stop(s: Session) {
   await kill(s.keeperPid, s.id, 'keeper');
   await kill(s.chromePid, s.profile, 'chrome');
   await kill(s.serverPid, `--port ${s.serverPort}`, 'server');
+  // the crash handler usually exits with Chrome; if it outlived it, it is ours to remove (same pid we recorded, still a crashpad handler)
+  if (s.crashpadPid) {
+    for (let i = 0; i < 10 && ours(s.crashpadPid, 'chrome_crashpad_handler'); i++) await sleep(200);
+    if (ours(s.crashpadPid, 'chrome_crashpad_handler')) {
+      try {
+        process.kill(s.crashpadPid, 'SIGTERM');
+        killed.push(`crashpad ${s.crashpadPid}`);
+      } catch {
+        /* gone */
+      }
+    }
+  }
   await sleep(300);
   const open = [s.serverPort, s.cdpPort].filter((p) => listeners(p).length);
   for (const f of ['server.log', 'chrome.log', 'keeper.log']) if (fs.existsSync(path.join(s.dir, f)) && fs.existsSync(s.evidence)) fs.copyFileSync(path.join(s.dir, f), path.join(s.evidence, f));
@@ -608,22 +633,30 @@ async function ff(cond: string) {
           };
           let idx = w.__cbv?.events.length ?? 0;
           const t0 = performance.now();
+          // a condition that throws every time (a typo: `s.runner`, `ev.typ.x`) must not read as "never happened"
+          let evaluated = false;
+          let firstError: string | null = null;
+          const test = (s: unknown, ev: unknown) => {
+            try {
+              const r = !!f(s, ev, e);
+              evaluated = true;
+              return r;
+            } catch (err) {
+              firstError ??= String(err);
+              return false; // e.g. `ev.type` while ev is null: not yet
+            }
+          };
           const tick = () => {
             const s = e.sim.state;
-            let hit = false;
             let hitEv = null;
-            try {
-              hit = !!f(s, null, e);
-              const evs = w.__cbv ? w.__cbv.events.slice(idx) : [];
-              idx = w.__cbv?.events.length ?? 0;
-              for (const ev of evs) if (!hit && f(s, ev, e)) ((hit = true), (hitEv = ev));
-            } catch {
-              /* the condition read something absent this frame (ev null): not yet */
-            }
+            let hit = test(s, null);
+            const evs = w.__cbv ? w.__cbv.events.slice(idx) : [];
+            idx = w.__cbv?.events.length ?? 0;
+            for (const ev of evs) if (!hit && test(s, ev)) ((hit = true), (hitEv = ev));
             if (hit || s.over || performance.now() - t0 > timeoutMs) {
               if (pause && hit) e.sim.paused = true;
               restore();
-              res({ ok: hit, over: s.over, wallMs: Math.round(performance.now() - t0), simTime: +s.time.toFixed(2), event: hitEv, inning: s.inning, half: s.half, outs: s.outs, count: s.count, runners: s.runners, score: s.score });
+              res({ ok: hit, over: s.over, wallMs: Math.round(performance.now() - t0), simTime: +s.time.toFixed(2), event: hitEv, inning: s.inning, half: s.half, outs: s.outs, count: s.count, runners: s.runners, score: s.score, ...(evaluated ? {} : { conditionError: firstError ?? 'never evaluated' }) });
             } else requestAnimationFrame(tick);
           };
           tick();
@@ -631,7 +664,9 @@ async function ff(cond: string) {
       [cond, +opt('speed', '4'), +opt('timeout', '300') * 1000, flag('pause'), flag('keep-replays'), flag('turbo')] as const,
     );
     console.log(JSON.stringify(r));
-    if (!(r as { ok: boolean }).ok) process.exitCode = 3;
+    const ce = (r as { conditionError?: string }).conditionError;
+    if (ce) console.error(`[cbv] the condition never evaluated without an error: ${ce} (a typo? s = state, ev = event, e = engine)`);
+    if (!(r as { ok: boolean }).ok) process.exitCode = ce ? 4 : 3;
   });
 }
 
@@ -658,12 +693,13 @@ async function next(kind: string) {
               const s = e.sim.state;
               if ((!e.sim.skipping && performance.now() - t0 > 100) || performance.now() - t0 > 60000) {
                 let hit = false;
+                let err: string | null = null;
                 try {
                   hit = !!f(s, e);
-                } catch {
-                  /* not yet */
+                } catch (x) {
+                  err = String(x);
                 }
-                res({ hit, over: s.over, keysEnabled: e.keysEnabled, simTime: +s.time.toFixed(2), inning: s.inning, half: s.half, outs: s.outs, runners: s.runners, score: s.score, batter: s.batter?.name ?? null });
+                res({ hit, err, over: s.over, keysEnabled: e.keysEnabled, simTime: +s.time.toFixed(2), inning: s.inning, half: s.half, outs: s.outs, runners: s.runners, score: s.score, batter: s.batter?.name ?? null });
               } else requestAnimationFrame(tick);
             };
             tick();
@@ -671,6 +707,7 @@ async function next(kind: string) {
         cond,
       )) as Record<string, unknown>;
       console.log(JSON.stringify({ press: i, key, ...r }));
+      if (r.err && i === 1) console.error(`[cbv] the condition threw: ${r.err} (a typo? s = state, e = engine)`);
       if (r.hit || r.over) break;
       if (!r.keysEnabled) throw new Error('hot keys are off (menu, pause or game-over screen up): the skip keys only work while playing');
     }
@@ -819,6 +856,18 @@ async function seek(cond: string) {
     g.on((ev) => void evs.push(ev));
     let hits = 0;
     let last = -10;
+    let evaluated = false;
+    let firstError: string | null = null;
+    const test = (s: unknown, ev: unknown) => {
+      try {
+        const r = !!f(s, ev);
+        evaluated = true;
+        return r;
+      } catch (err) {
+        firstError ??= String(err);
+        return false;
+      }
+    };
     for (let i = 0; i / 120 < limit && hits < max; i++) {
       g.step(1 / 120);
       // a snapshot costs ~10x a step: look every 0.25 s of game time, and whenever events arrived
@@ -826,13 +875,8 @@ async function seek(cond: string) {
       const s = g.getState();
       const batch = evs.splice(0);
       let hitEv: unknown = null;
-      let hit = false;
-      try {
-        hit = !!f(s, null);
-        for (const ev of batch) if (!hit && f(s, ev)) ((hit = true), (hitEv = ev));
-      } catch {
-        /* not yet */
-      }
+      let hit = test(s, null);
+      for (const ev of batch) if (!hit && test(s, ev)) ((hit = true), (hitEv = ev));
       if (hit && s.time - last > 5) {
         last = s.time;
         hits++;
@@ -841,6 +885,10 @@ async function seek(cond: string) {
         console.log(JSON.stringify(row));
       }
       if (s.over) break;
+    }
+    if (!evaluated) {
+      console.error(`[cbv] seed ${seed}: the condition never evaluated without an error: ${firstError} (a typo? s = state, ev = event)`);
+      process.exit(4);
     }
   }
   console.log(`[cbv] ${all.length} hit(s). Jump there: cbv goto "autostart&seed=<seed>&tempo=${tempo}&innings=${innings}&quality=low" then cbv ff "s.time >= <simTime - 3>" --turbo`);

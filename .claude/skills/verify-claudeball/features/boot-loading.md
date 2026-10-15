@@ -22,7 +22,7 @@ Preconditions:
 
 - A session from `$C launch` and `$C doctor` exit 0.
 
-- **Loading screen.** Reload and look at the screen before it is ready. Run `$C goto "menu=1&seed=24&quality=low" &` then, within a second or two, `$C shot boot-1-loading`. The picture shows the loading screen; `boot-1-loading.state.json` has `loadingScreen` text and `boot.tti` 0. (Racy: the screen is up for 6-10 s.)
+- **Loading screen.** Reload and look at the screen before it is ready. Run `$C goto "menu=1&seed=24&quality=low" &` then, within a second or two, `$C shot boot-1-loading`. The picture shows the loading screen; `boot-1-loading.state.json` has `loadingScreen` text and `boot.tti` 0. (Racy: the screen is up for 6-10 s. Not yet driven by cbv; scripts/ui-shots.py captured it before.)
 - **Ready.** Wait for the reload to finish. `$C goto` prints `boot` with `tti` (ms to interactive), `mode` `menu`, `missing` `[]` and per-step ms (`assets`, `players`, `textures`, `shaders`, `warm`). Run `$C shot boot-2-title`. The title menu shows "CLAUDEBALL" over the park.
 - **Progress log.** Run `$C eval "__boot.stages.map(s => s.stage + ' ' + s.frac.toFixed(2))"`. The stages rise from `Starting…` to `Ready`.
 - **Autostart.** Run `$C goto "autostart&seed=24&quality=low"`. `boot.mode` is `playing` and `$C state` shows `appMode` `playing` with the HUD scorebug.

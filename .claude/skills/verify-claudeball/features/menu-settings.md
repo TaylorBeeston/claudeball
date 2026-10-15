@@ -36,9 +36,9 @@ Preconditions:
 - **Persistence.** Reload without the quality parameter. Run `$C goto "menu=1&seed=24"`, `$C click --text Settings`, `$C aria menu-3-reloaded`. `Graphics quality` shows `Medium [checked]`.
 - **Game Setup.** Run `$C press Escape`, `$C click --text "Game Setup"`, `$C aria menu-4-setup`. Textbox `Game seed` holds `24`; radiogroups `Game length`, `Time of day`, `Pace of play`; comboboxes `Away team` / `Home team`; buttons `Random seed`, `Copy link`, `🎲 Randomize teams`.
 - **Pick a short game.** Run `$C click --role radio --name "1 · Demo"` then `$C press Escape` and `$C aria`. The title chips read `1 inning`.
-- **Pace of play.** Run `$C click --text "Game Setup"`, `$C click --role radio --name Quick`. Start the game (next bullet) and confirm the shorter pauses: `$C state` shows `lull` lengths of a few seconds instead of 15-30 s.
+- **Pace of play.** Run `$C click --text "Game Setup"`, `$C click --role radio --name Quick`, `$C press Escape`. Start the game (next bullet) and confirm the pace: at Quick the first pitch is near (`$C ff "s.time > 20" --speed 1` then `$C state`: `phase prePitch`, `hud.clock` `15 PITCH`), where Broadcast is still in its pregame until ~70 s.
 - **Start.** Run `$C press Escape` then `$C click --testid start --settle 3000` and `$C state --save menu-5-started`. `appMode` `playing`, `audio.ctx` `running`, the scorebug text present.
-- **Reset.** Open Settings, run `$C click --text "Reset to defaults"` twice (first tap shows `Tap again to reset everything`). `localStorage['claudeball.settings.v1']` returns to defaults (quality `auto`).
+- **Reset.** Open Settings, run `$C click --role button --name "Reset to defaults"`; the button now reads `Tap again to reset everything` (for 3 s), so run `$C click --role button --name "Tap again to reset everything"`. A `Settings reset` toast shows, the saved key is gone (`$C eval "localStorage['claudeball.settings.v1'] ?? 'removed'"` prints `removed`), and `$C aria` shows `Auto [checked]` under `Graphics quality`.
 - **Proof.** `$C sheet --name menu --match menu-`, plus the `.aria.txt` files: before / after values and the reload readback.
 
 ## Gotchas
