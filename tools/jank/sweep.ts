@@ -15,6 +15,7 @@ import { qrot } from '../../src/engine/pose/qmath';
 import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
 export { gripBat };
 import { Agg, type Snapshot } from './agg';
+import { torsoVolume } from '../../src/engine/armClear';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
@@ -31,7 +32,10 @@ export async function loadFiles(files: string[]): Promise<{ name: string; rig: R
     const rig = await loadRig(path.join(ROOT, 'assets/optimized/players', `${f}.glb`));
     const g = rig.attach.get('Bat_Grip');
     if (!g) throw new Error(`${f}: no Bat_Grip`);
-    out.push({ name: f, rig, info: rigInfo(rig.rest, g) });
+    const info = rigInfo(rig.rest, g);
+    // trunk volumes of the build extremes (the morphs change the mesh, not the bones: only the volume checks differ)
+    info.builds = ['lean', 'stocky', 'muscular', 'heavy'].map((b) => ({ name: b, torso: torsoVolume({ [`build_${b}`]: 1 }) }));
+    out.push({ name: f, rig, info });
   }
   return out;
 }

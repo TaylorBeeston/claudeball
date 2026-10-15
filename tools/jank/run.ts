@@ -131,7 +131,7 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
     const res = await withGame(
       q,
       async (page) => {
-        await page.evaluate(([snap, sd]) => {
+        await page.evaluate(([snap, sd, pre]) => {
           const e = (window as any).engine;
           e.stop();
           e.fixedDt = 1 / 60;
@@ -139,8 +139,9 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
           e.director.replaysEnabled = false;
           e.adaptive.enabled = false;
           (window as any).__jank.install({ seed: sd });
+          if (pre) new Function(pre)();
           if (!snap) (window as any).__jank.state.agg.snapshots = false;
-        }, [snapshots, seed] as const);
+        }, [snapshots, seed, opt('pre', '')] as const);
         let last = 0;
         for (;;) {
           const r = (await page.evaluate(() => (window as any).__jank.run(1200))) as { t: number; over: boolean; inning: number };
@@ -170,14 +171,20 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
       stats[`attrSev.${k}`] = (stats[`attrSev.${k}`] ?? 0) + (res.attrSev?.[k] ?? 0);
     }
   }
-  // the transitions the game made, for the crossfade sweep (committed: the sweep must not depend on the sim)
+  // the clip switches the game made: written next to the results; the committed list (the crossfade sweep's input, so jank:check's) changes only
+  // with --update-transitions (then re-baseline jank:check once)
   const known = fs.existsSync(TRANSITIONS) ? (JSON.parse(fs.readFileSync(TRANSITIONS, 'utf8')) as { transitions: (Transition & { n: number })[] }).transitions : [];
   for (const tx of known) {
     const k = `${tx.file}|${tx.from}|${tx.to}`;
     if (!trans.has(k)) trans.set(k, tx);
   }
   const list = [...trans.values()].map((t) => ({ ...t, file: t.file || 'player_base' })).sort((a, b) => b.n - a.n);
-  fs.writeFileSync(TRANSITIONS, JSON.stringify({ _: 'clip switches seen in seeded games (tools/jank/run.ts game): from, to, from-clip time, to-clip time, fade (s), times seen', transitions: list }, null, 0).replace(/\},\{/g, '},\n{') + '\n');
+  const body = JSON.stringify({ _: 'clip switches seen in seeded games (tools/jank/run.ts game): from, to, from-clip time, to-clip time, fade (s), times seen', transitions: list }, null, 0).replace(/\},\{/g, '},\n{') + '\n';
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, 'transitions.json'), body);
+  if (flag('update-transitions')) fs.writeFileSync(TRANSITIONS, body);
+  const added = list.length - known.length;
+  if (added > 0) console.log(`[jank] ${added} clip switches not in tools/jank/transitions.json${flag('update-transitions') ? ' (added)' : ' (see out/transitions.json; --update-transitions adds them)'}`);
   return { meta: { kind: 'game', seeds, innings, tempo, git: git() }, entries: agg.list(), stats: { ...stats, per } };
 }
 

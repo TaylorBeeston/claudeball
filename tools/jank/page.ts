@@ -220,7 +220,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       }
       const fading = mixerFading(pu.mixer);
       const clipEx = new Map<string, number>();
-      for (const x of vC) clipEx.set(x.kind, x.excess);
+      for (const x of vC) clipEx.set(x.kind, Math.max(clipEx.get(x.kind) ?? 0, x.excess));
       const byAttr: Record<string, Violation[]> = { clip: [], blend: [], override: [] };
       for (const x of vF) {
         const c = clipEx.get(x.kind) ?? 0;

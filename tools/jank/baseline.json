@@ -37,9 +37,25 @@
    "frames": 1030,
    "score": 21.142
   },
+  "body:hand-torso@heavy": {
+   "frames": 2155,
+   "score": 28.425
+  },
   "body:hand-torso": {
    "frames": 210,
    "score": 1.648
+  },
+  "body:hand-torso@lean": {
+   "frames": 80,
+   "score": 0.552
+  },
+  "body:hand-torso@stocky": {
+   "frames": 1180,
+   "score": 16.174
+  },
+  "body:hand-torso@muscular": {
+   "frames": 450,
+   "score": 6.63
   },
   "joint:neck.yaw": {
    "frames": 1690,
@@ -76,6 +92,22 @@
   "body:elbow-torso": {
    "frames": 195,
    "score": 6.468
+  },
+  "body:elbow-torso@lean": {
+   "frames": 170,
+   "score": 5.465
+  },
+  "body:elbow-torso@stocky": {
+   "frames": 490,
+   "score": 10.437
+  },
+  "body:elbow-torso@muscular": {
+   "frames": 205,
+   "score": 7.75
+  },
+  "body:elbow-torso@heavy": {
+   "frames": 830,
+   "score": 13.772
   },
   "bat:order": {
    "frames": 15,
@@ -175,9 +207,33 @@
    "frames": 79,
    "score": 2.26
   },
+  "body:elbow-torso@lean": {
+   "frames": 58,
+   "score": 1.687
+  },
+  "body:elbow-torso@stocky": {
+   "frames": 200,
+   "score": 5.971
+  },
+  "body:elbow-torso@muscular": {
+   "frames": 121,
+   "score": 3.462
+  },
+  "body:elbow-torso@heavy": {
+   "frames": 227,
+   "score": 6.869
+  },
   "flip:Arm": {
    "frames": 46,
    "score": 2.214
+  },
+  "body:hand-torso@heavy": {
+   "frames": 69,
+   "score": 1.806
+  },
+  "body:hand-torso@stocky": {
+   "frames": 53,
+   "score": 1.422
   },
   "foot:below": {
    "frames": 1221,
@@ -199,6 +255,10 @@
    "frames": 1,
    "score": 0.021
   },
+  "body:hand-torso@muscular": {
+   "frames": 26,
+   "score": 0.742
+  },
   "bat:order": {
    "frames": 14,
    "score": 0.639
@@ -206,6 +266,10 @@
   "body:hand-torso": {
    "frames": 16,
    "score": 0.477
+  },
+  "body:hand-torso@lean": {
+   "frames": 15,
+   "score": 0.37
   },
   "spike:Neck": {
    "frames": 13,

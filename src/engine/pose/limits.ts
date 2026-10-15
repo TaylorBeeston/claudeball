@@ -147,9 +147,9 @@ export function measureJoints(w: PoseWorld, R: RestInfo, out: Record<string, num
     hinge(w, R, arm, fore, hand, 1, out, `elbow${s}`);
     // the rig has no twist bones: the clips share pronation between the forearm and the hand bone (each carries about half)
     const tf = twistOf(w, R, arm, fore, fore), th = twistOf(w, R, fore, hand, fore);
-    // pronation from neutral, > 0 = pronated (thumb turning down / in) on either side: the rest pose is ~20 deg pronated from the idle's
-    // thumbs-forward neutral (measured on `idle`), and the twist's sign is mirrored between the sides
-    let pr = -side * (tf + th) + PRON_REST;
+    // pronation from neutral, > 0 = pronated (the thumb turning toward the midline) on either side: the rest pose is ~20 deg from the idle's
+    // thumbs-forward neutral (measured on `idle`), and the twist's sign is mirrored between the sides (validate.test.ts proves both)
+    let pr = side * (tf + th) - PRON_REST;
     pr -= 360 * Math.round(pr / 360);
     out[`forearm${s}.pron`] = pr;
     out[`wrist${s}.split`] = Math.abs(th - tf);
