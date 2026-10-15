@@ -522,8 +522,9 @@ function tickRunner(w: World, r: RunnerRT): void {
   // a runner can never pass, or share a base with, the runner ahead of him
   if (r.want > r.base && !r.dead) {
     for (const q of w.runners) {
-      // (the batter-runner always runs for first: the runner there is forced on by him, even before he has been told so)
-      if (q !== r && q.state === 'live' && q.base > r.base && q.target === q.base && q.want <= q.base && r.want >= q.base) r.want = Math.max(r.isBatter && r.base === 0 ? 1 : r.base, q.base - 1);
+      // (a forced runner, the batter-runner first of all, always runs for the next base: the man there is forced on by him in turn,
+      // even before he has been told so)
+      if (q !== r && q.state === 'live' && q.base > r.base && q.target === q.base && q.want <= q.base && r.want >= q.base) r.want = Math.max(forced(w, r) ? r.base + 1 : r.base, q.base - 1);
     }
   }
   r.target = r.want > r.base ? r.base + 1 : r.base;

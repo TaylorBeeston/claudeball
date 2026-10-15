@@ -130,7 +130,7 @@ describe('ball kids and the bat boy', () => {
     let tossed = 0;
     let sitting = 0;
     let samples = 0;
-    for (const seed of ['kid-g1', 'kid-g2']) {
+    for (const seed of ['kid-g3', 'kid-g5']) {
       const g = createGame({ seed, pace: 1 });
       const w = g._world;
       g.on('ballKidRetrieve', () => retrieved++);
