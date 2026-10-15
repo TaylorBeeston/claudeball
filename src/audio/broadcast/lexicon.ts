@@ -197,7 +197,7 @@ export const LEX: Record<string, string[]> = {
   'hit.fc': ["Fielder's choice. The out is made at $base.", "$b reaches on a fielder's choice.", 'They get the runner at $base, and $b is on at first.', "Fielder's choice, the lead runner is out."],
   // -- runners --
   'safe': ['Safe at $base!', '$r is {in|safe} at $base.', 'Safe! $r {slides in|beats the tag}.', 'Safe at $base, {nice|good} slide.', 'The runner is safe!', 'The call is safe.'],
-  'safe.close': ['Safe! Close play, that was close!', 'Safe by a hair at $base!', 'Whoa, that was close. Safe at $base.', 'Bang-bang play... and the call is safe!', 'Just in time, safe at $base!'],
+  'safe.close': ['Safe! That was close!', 'Safe by a hair at $base!', 'Whoa, that was close. Safe at $base.', 'Bang-bang play... and the call is safe!', 'Just in time, safe at $base!'],
   'steal.go': ['Runner goes!', 'There goes $r!', '$r is on the move!', 'They are running!', 'Here comes the steal at $base!', 'Steal attempt!', 'The runner takes off!'],
   'steal.safe': ['Safe at $base, steal number $n for $r.', '$r steals $base! That is number $n.', 'Stolen base. $r is safe at $base.', 'Beats the throw! Safe at $base.', 'Gets in safely, a stolen base for $r.'],
   'throw.steal': ["Throw's down...", 'Here is the throw...', "Throwing to $base...", 'Catcher fires to $base...'],

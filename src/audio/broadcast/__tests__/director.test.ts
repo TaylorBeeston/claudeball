@@ -290,3 +290,48 @@ describe('determinism', () => {
     expect(go()).toEqual(go());
   });
 });
+
+describe('a line that runs longer than its estimate (HD voices)', () => {
+  // the analyst line from the bug: estimated 1.0 s, the HD voice spoke it for 2.7 s, and a "Wow!" started over it at 2.2 s
+  const LINE = 'He has been sharp tonight.';
+  const realEnd = 2.7;
+  const play = (sounding: boolean) => {
+    const fake = (t: string, e?: boolean) => (t === LINE ? 1.0 : estimateDuration(t, e ? 1.1 : 1));
+    const d = new Director({ rng: mulberry32(3), level: 'normal', dur: fake });
+    let t = 0;
+    const log: (Action & { t: number })[] = [];
+    let colorAudio = false; // what the sink knows
+    if (sounding) d.sounding = (v) => v === 'color' && colorAudio;
+    const step = (until: number) => {
+      while (t < until - 1e-9) {
+        t = Math.round((t + 0.05) * 1000) / 1000;
+        if (colorAudio && t >= realEnd) {
+          colorAudio = false;
+          d.voiceEnded('color', t);
+        }
+        for (const a of d.tick(t)) {
+          log.push({ ...a, t });
+          if (a.type === 'start' && a.voice === 'color') colorAudio = true;
+        }
+      }
+    };
+    d.submit({ importance: 'could', speaker: 'color', text: LINE, ttl: 5 }, t);
+    step(1.5);
+    d.submit({ importance: 'could', speaker: 'color', text: 'Wow!', interject: true, ttl: 5 }, t);
+    d.submit({ importance: 'could', speaker: 'pxp', text: 'Ooh!', interject: true, ttl: 5 }, t);
+    step(5);
+    return log.filter((a): a is StartAction & { t: number } => a.type === 'start');
+  };
+
+  it('keeps its voice busy until the sink reports the real end: nothing starts over it', () => {
+    const starts = play(true);
+    const later = starts.filter((s) => s.item.text !== LINE);
+    expect(later.length).toBeGreaterThan(0);
+    for (const s of later) expect(s.t).toBeGreaterThanOrEqual(realEnd);
+  });
+
+  it('without a sink that knows (the estimate only), the old timing applies', () => {
+    const starts = play(false);
+    expect(starts.some((s) => s.item.text !== LINE && s.t < realEnd)).toBe(true);
+  });
+});

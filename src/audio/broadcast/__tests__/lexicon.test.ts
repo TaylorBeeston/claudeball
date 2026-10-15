@@ -261,3 +261,10 @@ describe('calls', () => {
     for (let s = 0; s < 30; s++) for (const e of evs) for (const x of callsFor(e, c, log, env(mulberry32(s)))) expect(x.text, JSON.stringify(e)).not.toMatch(/undefined|NaN|null|\$/);
   });
 });
+
+describe('no redundant wording', () => {
+  it('a play-by-play line does not say "close" twice ("Safe! Close play, that was close!")', () => {
+    const twice = Object.entries(LEX).flatMap(([k, lines]) => lines.filter((v) => (v.toLowerCase().match(/\bclose\b/g) ?? []).length > 1).map((v) => `${k}: ${v}`));
+    expect(twice).toEqual([]);
+  });
+});
