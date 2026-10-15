@@ -131,16 +131,16 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
     const res = await withGame(
       q,
       async (page) => {
-        await page.evaluate((snap) => {
+        await page.evaluate(([snap, sd]) => {
           const e = (window as any).engine;
           e.stop();
           e.fixedDt = 1 / 60;
           e.sim.stepBudgetMs = 1e9;
           e.director.replaysEnabled = false;
           e.adaptive.enabled = false;
-          (window as any).__jank.install();
+          (window as any).__jank.install({ seed: sd });
           if (!snap) (window as any).__jank.state.agg.snapshots = false;
-        }, snapshots);
+        }, [snapshots, seed] as const);
         let last = 0;
         for (;;) {
           const r = (await page.evaluate(() => (window as any).__jank.run(1200))) as { t: number; over: boolean; inning: number };
@@ -164,7 +164,7 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
     first = false;
     console.log('');
     per.push({ seed, wall: Date.now() - t0, ...res });
-    for (const k of ['frames', 'puppetFrames', 'visibleFrames']) stats[k] = (stats[k] ?? 0) + (res[k] ?? 0);
+    for (const k of ['frames', 'puppetFrames', 'visibleFrames', 'fkMismatch']) stats[k] = (stats[k] ?? 0) + (res[k] ?? 0);
     for (const k of ['clip', 'blend', 'override']) {
       stats[`attr.${k}`] = (stats[`attr.${k}`] ?? 0) + (res.attr?.[k] ?? 0);
       stats[`attrSev.${k}`] = (stats[`attrSev.${k}`] ?? 0) + (res.attrSev?.[k] ?? 0);
@@ -255,7 +255,7 @@ export function writeReport() {
   if (fd) parts.push('## Crossfade sweep: what the blend adds (in neither clip)', '', mdFamilies('Violations by kind', fd.entries, () => true), '', mdClips('Worst transitions', fd.entries, () => true, 30), '');
   if (gm) {
     const s = gm.stats as Record<string, number>;
-    parts.push('## Game sweep: final pose after all runtime overrides', '', `Seeds ${(gm.meta.seeds as number[]).join(', ')}, ${gm.meta.innings} innings, tempo ${gm.meta.tempo}. ${s.puppetFrames} fully animated puppet frames (${s.visibleFrames} in the camera's view).`, '');
+    parts.push('## Game sweep: final pose after all runtime overrides', '', `Seeds ${(gm.meta.seeds as number[]).join(', ')}, ${gm.meta.innings} innings, tempo ${gm.meta.tempo}. ${s.puppetFrames} fully animated puppet frames (${s.visibleFrames} in the camera's view). Integrity: ${s.fkMismatch ?? '?'} frames where the validator's pose differed from the rendered bones by > 1 cm.`, '');
     const tot = (s['attrSev.clip'] ?? 0) + (s['attrSev.blend'] ?? 0) + (s['attrSev.override'] ?? 0);
     parts.push('Attribution of every violation (severity-weighted share): ' + ['clip', 'blend', 'override'].map((k) => `**${k}** ${(((s[`attrSev.${k}`] ?? 0) / Math.max(1e-9, tot)) * 100).toFixed(0)} % (${s[`attr.${k}`] ?? 0} hits)`).join(', '), '');
     // every validated frame per role and clip (on and off screen): the denominators of the per-clip tables

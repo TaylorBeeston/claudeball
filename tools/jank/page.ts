@@ -11,7 +11,7 @@
  * - `__jank.run(frames)`: steps the game `frames` x 1/60 s without rendering (engine.tick(dt, false)).
  * - `__jank.studio(snapshot, view)`: poses a stand-in puppet from a snapshot in front of a near-orthographic camera for the contact sheets.
  */
-import { B, BONES, NB, type PoseLocals, newLocals } from '../../src/engine/pose/skeleton';
+import { B, BONES, NB, type PoseLocals, newLocals, fk } from '../../src/engine/pose/skeleton';
 import { groundHeight } from '../../src/sim/field';
 import { Agg, type Snapshot } from './agg';
 import { BAT_CLIPS, clipFlags } from './clips';
@@ -21,6 +21,7 @@ import { gripBat, newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, ty
 const w = window as any;
 
 interface PState {
+  pu: any;
   info: RigInfo;
   L: PoseLocals;
   C: PoseLocals;
@@ -77,14 +78,14 @@ function snapOf(L: PoseLocals, model: ArrayLike<number>, bat: BatIn | null, ctx:
   return { lq: Array.from(L.lq, r5), lp: Array.from(L.lp, (x) => +x.toFixed(4)), base: Array.from(L.base), model: Array.from(model, r5), bat: bat ? { knob: bat.knob.map(r5), tip: bat.tip.map(r5) } : null, ctx };
 }
 
-export function install(opts: { ring?: number } = {}) {
+export function install(opts: { ring?: number; seed?: number } = {}) {
   const e = w.engine;
   const V = e.camera.position.constructor, Q = e.camera.quaternion.constructor, M = e.camera.matrixWorld.constructor;
   const agg = new Agg();
   const per = new Map<string, PState>();
   const restCache = new Map<any, { L: PoseLocals; batGrip: { q: number[]; t: number[] } }>();
   const transitions = new Map<string, { file: string; from: string; to: string; fromT: number; toT: number; fade: number; n: number }>();
-  const stats = { frames: 0, puppetFrames: 0, visibleFrames: 0, ms: 0, attr: { clip: 0, blend: 0, override: 0 } as Record<string, number>, attrSev: { clip: 0, blend: 0, override: 0 } as Record<string, number> };
+  const stats = { fkMismatch: 0, frames: 0, puppetFrames: 0, visibleFrames: 0, ms: 0, attr: { clip: 0, blend: 0, override: 0 } as Record<string, number>, attrSev: { clip: 0, blend: 0, override: 0 } as Record<string, number> };
   const vF: Violation[] = [], vC: Violation[] = [];
   const tmpV = new V();
   const ringN = opts.ring ?? 0;
@@ -95,7 +96,7 @@ export function install(opts: { ring?: number } = {}) {
     let rest = restCache.get(tplScene);
     if (!rest) restCache.set(tplScene, (rest = restOf(tplScene, M, Q, V)));
     const info = rigInfo(rest.L, rest.batGrip);
-    const st: PState = { info, L: newLocals(), C: newLocals(), trF: newTrack(), trC: newTrack(), hips: pu.bones.Hips, bones: BONES.map((n) => pu.bones[n]), last: -1, pos: [0, 0, 0], ring: [], det: 0, yaw: 0 };
+    const st: PState = { pu, info, L: newLocals(), C: newLocals(), trF: newTrack(), trC: newTrack(), hips: pu.bones.Hips, bones: BONES.map((n) => pu.bones[n]), last: -1, pos: [0, 0, 0], ring: [], det: 0, yaw: 0 };
     st.L.base.set(rest.L.base);
     st.C.base.set(rest.L.base);
     // the mixer's own pose this frame (before look-at / IK)
@@ -152,6 +153,11 @@ export function install(opts: { ring?: number } = {}) {
       const pu = e.players.puppets.get(p.id);
       if (!pu || !pu.root?.visible) continue;
       let s = per.get(p.id);
+      // the manager rebuilds a player's puppet now and then (a new template for a new role, a reset): hook the new one
+      if (s && s.pu !== pu) {
+        per.delete(p.id);
+        s = undefined;
+      }
       if (!s) {
         const h = hookPuppet(p.id, pu);
         if (!h) continue;
@@ -192,9 +198,14 @@ export function install(opts: { ring?: number } = {}) {
       const gnd = Math.abs(p.pos.y - g0) > 0.05 ? (x: number, z: number) => p.pos.y + groundHeight(x, z) - g0 : ground;
       s.info.torso = pu.torso ?? s.info.torso;
       const frameIn = { model, ground: gnd, dt: animDt, cut, vel, ...fl, airborne: fl.airborne || p.anim === 'catch_jump' || /slide|dive/.test(p.anim) };
-      validateFrame({ ...frameIn, L: s.L, bat }, s.info, s.trF, vF);
+      const fw = validateFrame({ ...frameIn, L: s.L, bat }, s.info, s.trF, vF);
       vF.push(...pops);
-      if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ id: p.id, t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
+      // integrity: the validator's pose must be the rendered one (the right hand from FK vs the bone's world matrix)
+      {
+        const h = B.RightHand * 3, me = model, x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2], hw = pu.bones.RightHand.matrixWorld.elements;
+        if (Math.hypot(me[0] * x + me[4] * y + me[8] * z + me[12] - hw[12], me[1] * x + me[5] * y + me[9] * z + me[13] - hw[13], me[2] * x + me[6] * y + me[10] * z + me[14] - hw[14]) > 0.01) stats.fkMismatch++;
+      }
+      if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ fkErr: (() => { const fw = fk(s!.L); const h = B.RightHand * 3; const me = model; const x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2]; const wx = me[0] * x + me[4] * y + me[8] * z + me[12], wy = me[1] * x + me[5] * y + me[9] * z + me[13], wz = me[2] * x + me[6] * y + me[10] * z + me[14]; const hw = pu.bones.RightHand.matrixWorld.elements; return +Math.hypot(wx - hw[12], wy - hw[13], wz - hw[14]).toFixed(3); })(), hipsLp: [pu.bones.Hips.position.x, pu.bones.Hips.position.y, pu.bones.Hips.position.z].map((x: number) => +x.toFixed(3)), hipsParent: pu.bones.Hips.parent?.name, id: p.id, kh: bat ? +Math.hypot(bat.knob[0] - pu.bones.RightHand.matrixWorld.elements[12], bat.knob[1] - pu.bones.RightHand.matrixWorld.elements[13], bat.knob[2] - pu.bones.RightHand.matrixWorld.elements[14]).toFixed(3) : null, held: e.bat.held, batParent: e.bat.obj.parent?.name, gripW: pu.batGrip ? Array.from(pu.batGrip.matrixWorld.elements.slice(12, 15) as number[]).map((x: number) => +x.toFixed(3)) : null, knobW: bat?.knob.map((x: number) => +x.toFixed(3)), t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
       // the mixer's pose with the bat where it would be: in the hand (on Bat_Grip) when the hand holds it, else where the sim has it
       const batC = bat && (bat.state === 'held' || bat.state === 'ondeck') ? { ...gripBat(s.C, s.info, Array.from(model), bat.hands), state: bat.state } : bat;
       validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
@@ -218,7 +229,7 @@ export function install(opts: { ring?: number } = {}) {
         stats.attr[a]++;
         stats.attrSev[a] += x.sev * (animDt || dt);
       }
-      const ctx = { t: +st.time.toFixed(3), id: p.id, role: p.role, hint: p.anim, clip, hand: p.hand, vis, fading, ikW: +(pu.ikW ?? 0).toFixed(2), gloveW: +(pu.gloveW ?? 0).toFixed(2), look: [+(pu.headLook?.yaw ?? 0).toFixed(3), +(pu.headLook?.pitch ?? 0).toFixed(3)], speed: +Math.hypot(p.vel.x, p.vel.z).toFixed(2), bat: bat?.state ?? null };
+      const ctx = { seed: opts.seed, t: +st.time.toFixed(3), id: p.id, role: p.role, hint: p.anim, clip, hand: p.hand, vis, fading, ikW: +(pu.ikW ?? 0).toFixed(2), gloveW: +(pu.gloveW ?? 0).toFixed(2), look: [+(pu.headLook?.yaw ?? 0).toFixed(3), +(pu.headLook?.pitch ?? 0).toFixed(3)], speed: +Math.hypot(p.vel.x, p.vel.z).toFixed(2), bat: bat?.state ?? null };
       for (const a of ['clip', 'blend', 'override']) {
         if (!byAttr[a].length) continue;
         agg.add(`${vis ? 'game' : 'game-off'}:${a}`, p.role, clip, byAttr[a], animDt || dt, () => snapOf(s!.L, model, bat, { ...ctx, attr: a, clipPose: snapOf(s!.C, model, null, {}) }));
