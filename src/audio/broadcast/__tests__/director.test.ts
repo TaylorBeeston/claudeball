@@ -295,9 +295,10 @@ describe('a line that runs longer than its estimate (HD voices)', () => {
   // the analyst line from the bug: estimated 1.0 s, the HD voice spoke it for 2.7 s, and a "Wow!" started over it at 2.2 s
   const LINE = 'He has been sharp tonight.';
   const realEnd = 2.7;
-  const play = (sounding: boolean) => {
+  const play = (sounding: boolean, must?: { speaker: 'pxp' | 'color' }) => {
     const fake = (t: string, e?: boolean) => (t === LINE ? 1.0 : estimateDuration(t, e ? 1.1 : 1));
-    const d = new Director({ rng: mulberry32(3), level: 'normal', dur: fake });
+    const ends = (t: string, e?: boolean) => (t === LINE ? [1.0] : clauseEnds(t, e ? 1.1 : 1));
+    const d = new Director({ rng: mulberry32(3), level: 'normal', dur: fake, ends });
     let t = 0;
     const log: (Action & { t: number })[] = [];
     let colorAudio = false; // what the sink knows
@@ -317,21 +318,37 @@ describe('a line that runs longer than its estimate (HD voices)', () => {
     };
     d.submit({ importance: 'could', speaker: 'color', text: LINE, ttl: 5 }, t);
     step(1.5);
-    d.submit({ importance: 'could', speaker: 'color', text: 'Wow!', interject: true, ttl: 5 }, t);
-    d.submit({ importance: 'could', speaker: 'pxp', text: 'Ooh!', interject: true, ttl: 5 }, t);
+    if (must) d.submit({ importance: 'must', speaker: must.speaker, text: 'Swung on, and a long drive!', ttl: 5 }, t);
+    else {
+      d.submit({ importance: 'could', speaker: 'color', text: 'Wow!', interject: true, ttl: 5 }, t);
+      d.submit({ importance: 'could', speaker: 'pxp', text: 'Ooh!', interject: true, ttl: 5 }, t);
+    }
     step(5);
-    return log.filter((a): a is StartAction & { t: number } => a.type === 'start');
+    if (must) return log;
+    return log;
   };
+  const startsOf = (log: (Action & { t: number })[]) => log.filter((a): a is StartAction & { t: number } => a.type === 'start');
 
   it('keeps its voice busy until the sink reports the real end: nothing starts over it', () => {
-    const starts = play(true);
+    const starts = startsOf(play(true));
     const later = starts.filter((s) => s.item.text !== LINE);
     expect(later.length).toBeGreaterThan(0);
     for (const s of later) expect(s.t).toBeGreaterThanOrEqual(realEnd);
   });
 
   it('without a sink that knows (the estimate only), the old timing applies', () => {
-    const starts = play(false);
+    const starts = startsOf(play(false));
     expect(starts.some((s) => s.item.text !== LINE && s.t < realEnd)).toBe(true);
+  });
+
+  it('a MUST call still gets in at once: the overrunning line is cut (the sink lets it finish its clause), on either voice', () => {
+    for (const speaker of ['pxp', 'color'] as const) {
+      const log = play(true, { speaker });
+      const cut = log.find((a) => a.type === 'cut' && a.voice === 'color');
+      expect(cut, speaker).toBeTruthy();
+      expect(cut!.t).toBeLessThan(1.6);
+      const call = startsOf(log).find((s) => s.item.importance === 'must')!;
+      expect(call.t, speaker).toBeLessThan(1.6 + 0.3);
+    }
   });
 });
