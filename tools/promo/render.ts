@@ -20,6 +20,8 @@ import { SHOTS, VSHOTS } from './shots';
 import { buildPicture, encode, fillOverlay, layout, mix, overlayList, voiceWindow } from './assemble';
 import { BEAT, CUTS, VCUTS, VOICE, cutTimes, resolveIn, type Cut, type VoiceTrack } from './edit';
 import type { Overlay } from './overlay';
+import { SR } from './dsp';
+import { heardText } from './voiceText';
 import { renderOverlay } from './titles';
 
 const argv = process.argv.slice(2);
@@ -150,13 +152,18 @@ function quotes(rs: RenderSettings, shots: Map<string, ShotManifest>): Overlay[]
     // (the window the mix plays: it ends at a pause, so a line it cuts is not captioned)
     const w = voiceWindow(rs, v, shots.get(v.shot));
     if (!w) continue;
-    const { vin, dur } = w;
+    const { src, vin, dur } = w;
+    const t0a = shots.get(v.shot)!.audio!.t0;
+    const mono = src[0].map((l, i) => (l + src[1][i]) / 2);
     for (const s of shots.get(v.shot)?.speech ?? []) {
       const ev = s.ev as { type: string; text?: string; name?: string; speaker?: string; channel?: string; expectedDurationMs?: number };
       if (ev.type !== 'speechStart' || ev.channel !== 'booth' || s.t < vin || s.t > vin + dur - 0.5) continue;
+      // only the words the track plays (it stops at a pause, often before the end of a long call)
+      const heard = heardText(ev.text ?? '', mono, Math.round((t0a + s.t) * SR), Math.round((t0a + vin + dur) * SR));
+      if (!heard) continue;
       const t0 = v.at - v.pre + s.t - vin;
       if (cutList().some((c, i) => c.black && t0 >= starts[i] - 0.3 && t0 < starts[i] + c.beats * BEAT)) continue; // no caption over a card
-      out.push(quote(ev, t0, Math.min(v.at - v.pre + dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
+      out.push(quote({ ...ev, text: heard }, t0, Math.min(v.at - v.pre + dur, t0 + Math.max(1.6, (ev.expectedDurationMs ?? 2000) / 1000 + 0.4))));
     }
   }
   cutList().forEach((c, i) => {
