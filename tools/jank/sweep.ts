@@ -17,7 +17,7 @@ import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation
 export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
-import { constrainPose, constrainOptsFor } from '../../src/engine/pose/constrain';
+import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
 import { limitNeck } from '../../src/engine/pose/neck';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
@@ -54,6 +54,7 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const tr = newTrack();
   const v: Violation[] = [];
   const L = newLocals();
+  const cst = newConstrainState();
   const model = mirrored ? MIRROR : IDENT;
   const n = Math.max(1, Math.round(clip.duration * FPS));
   const tail = loop ? 3 : 0;
@@ -64,7 +65,7 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     // what the runtime constraint layer makes of the clip (the game applies it every frame)
     if (constrain) {
       limitNeck(L, info.R);
-      constrainPose(L, info.R, constrainOptsFor(clipName));
+      constrainPose(L, info.R, { ...constrainOptsFor(clipName), state: cst, dt: 1 / FPS });
     }
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
@@ -108,6 +109,7 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   // the game's transition (pose/inertia.ts): the new clip at once, the old pose as an offset decaying over 1.5 x the fade; `crossfade` models
   // three's crossFadeTo (the game before B1)
   const inert = new Inertia();
+  const cs = [newConstrainState(), newConstrainState(), newConstrainState()];
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
     sampleClip(A, at(A, tx.fromT + i / FPS), rig.rest, LA);
@@ -128,9 +130,9 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     }
     // the game's passes after the mixer (pose/neck.ts, pose/constrain.ts), on the blend and on both clips alike
     if (constrain) {
-      for (const [P, c] of [[L, tx.to], [LA, tx.from], [LB, tx.to]] as const) {
+      for (const [P, c, st] of [[L, tx.to, cs[0]], [LA, tx.from, cs[1]], [LB, tx.to, cs[2]]] as const) {
         limitNeck(P, info.R);
-        constrainPose(P, info.R, constrainOptsFor(c));
+        constrainPose(P, info.R, { ...constrainOptsFor(c), state: st, dt: 1 / FPS });
       }
     }
     const dt = i === -2 ? 0 : 1 / FPS;

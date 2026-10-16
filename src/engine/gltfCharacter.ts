@@ -42,7 +42,7 @@ import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { armRest, solveArm as solveArmIK, type ArmRest, type GripTrack } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
-import { constrainOptsFor, constrainPose } from './pose/constrain';
+import { constrainOptsFor, constrainPose, newConstrainState } from './pose/constrain';
 import { limitNeck } from './pose/neck';
 import { Inertia, useInertia } from './pose/inertia';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
@@ -1570,7 +1570,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.reachIK(snap, env, dt);
     // joints back inside a human range (pose/constrain.ts): elbow / knee hinges, forearm pronation shared with the hand, wrist
-    this.constrain(snap);
+    this.constrain(snap, dt);
     this.clearElbows(snap, dt);
     if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
@@ -2206,12 +2206,14 @@ export class GltfPuppet implements PuppetLike {
     this.refreshMatrices();
     this.rig.refresh();
   }
-  private constrain(snap: PlayerSnap) {
+  /** what the constraint layer did last frame (time-continuous forearm twist) */
+  private constrainState = newConstrainState();
+  private constrain(snap: PlayerSnap, dt: number) {
     if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;
     this.readPose();
     // a bat in the hands (the batter's, the on-deck hitter's): the hands' twist stays as the clip / the bat IK made it
     const holdsBat = snap.role === 'batter' || snap.role === 'ondeck';
-    const mask = constrainPose(this.poseL, this.poseRest, constrainOptsFor(this.currentName, holdsBat));
+    const mask = constrainPose(this.poseL, this.poseRest, { ...constrainOptsFor(this.currentName, holdsBat), state: this.constrainState, dt });
     if (!mask) return;
     for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
     this.refreshMatrices();

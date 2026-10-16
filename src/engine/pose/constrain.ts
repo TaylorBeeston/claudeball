@@ -39,6 +39,8 @@ export const CONSTRAINT = {
   /** easing band (deg) */
   margin: 6,
   restPron: 20,
+  /** the fastest a forearm turns (deg/s; pitchers reach about this in the release) */
+  pronSpeed: 1800,
 };
 
 const tq = [0, 0, 0, 1], sw = [0, 0, 0, 1];
@@ -102,8 +104,13 @@ function hinge(L: PoseLocals, w: PoseWorld, R: RestInfo, up: number, mid: number
   return true;
 }
 
-/** forearm pronation clamped and shared between forearm and hand; the wrist's bend limited */
-function forearm(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right', m: number): boolean {
+/**
+ * Forearm pronation clamped and shared between forearm and hand; the wrist's bend limited. With `st` (the pose's last frame), the twist is
+ * continuous in time: of the angles 360 deg apart that a rotation's twist could be, the one the clamp changes least (what the clip shows,
+ * ties to last frame's), and the result moves toward it no faster than a forearm can turn. Without that, a twist the clip carries past 180 deg
+ * (the jog / run clips' ~210 deg pop) switched the clamp from one end of the range to the other: a one-frame hand flip.
+ */
+function forearm(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right', m: number, st?: ConstrainState, dt = 1 / 60): boolean {
   const sg = side === 'Left' ? 1 : -1;
   const up = B[`${side}Arm`], fo = B[`${side}ForeArm`], ha = B[`${side}Hand`];
   const uf = Array.from(R.dir.subarray(fo * 3, fo * 3 + 3));
@@ -112,10 +119,28 @@ function forearm(L: PoseLocals, w: PoseWorld, R: RestInfo, side: 'Left' | 'Right
   const swF = [0, 0, 0, 1], swH = [0, 0, 0, 1];
   const tf = twistAngle(relF, uf[0], uf[1], uf[2], swF) / DEG, th = twistAngle(relH, uf[0], uf[1], uf[2], swH) / DEG;
   let total = tf + th;
-  const pr = sg * total - CONSTRAINT.restPron;
-  // no wrapping at +-180: the sum of the two twists is continuous where a wrapped angle would make the clamp jump from one limit to the other
-  const pr2 = softClamp(pr, -CONSTRAINT.sup, CONSTRAINT.pron, m);
+  let pr = sg * total - CONSTRAINT.restPron;
+  const clampOf = (x: number) => softClamp(x, -CONSTRAINT.sup, CONSTRAINT.pron, m);
+  const prev = st?.pron[side];
+  // the twist a turn of 360 deg either way would also be: the one the clamp changes least (ties: nearest last frame's)
+  let best = pr, bestC = Infinity;
+  for (const c of [pr - 360, pr, pr + 360]) {
+    const cost = Math.abs(c - clampOf(c)) + (prev === undefined ? 0 : Math.abs(clampOf(c) - prev) * 1e-3);
+    if (cost < bestC - 1e-9) {
+      best = c;
+      bestC = cost;
+    }
+  }
+  pr = best;
+  let pr2 = clampOf(pr);
+  // no faster than a forearm turns (a wrap or a clip's pop becomes a quick turn over a few frames instead of a one-frame flip)
+  if (prev !== undefined) {
+    const step = CONSTRAINT.pronSpeed * Math.max(1e-3, dt);
+    pr2 = prev + Math.max(-step, Math.min(step, pr2 - prev));
+  }
+  if (st) st.pron[side] = pr2;
   const total2 = sg * (pr2 + CONSTRAINT.restPron);
+  total = sg * (pr + CONSTRAINT.restPron);
   // the wrist's bend
   const s = Math.hypot(swH[0], swH[1], swH[2]);
   const ang = 2 * Math.atan2(s, Math.abs(swH[3]));
@@ -213,7 +238,17 @@ export interface ConstrainOpts {
   /** the ankle's bend and twist (off by default: on a planted foot either moves the toes into / off the ground; correcting it needs the leg IK
    *  of phase B2, which can move the twist up to the hip) */
   ankles?: boolean;
+  /** what the last frame's constraint did (pass the same object every frame of one character for time-continuous twists); `dt` its step (s) */
+  state?: ConstrainState;
+  dt?: number;
 }
+
+/** per character, carried from frame to frame */
+export interface ConstrainState {
+  /** the forearm pronation (deg from neutral) last frame's pose ended with, per side */
+  pron: { Left?: number; Right?: number };
+}
+export const newConstrainState = (): ConstrainState => ({ pron: {} });
 
 /**
  * Put the pose's elbows, knees, forearms, wrists and ankles back inside their ranges (in place). Returns a bit mask of the bones it changed
@@ -226,7 +261,9 @@ export function constrainPose(L: PoseLocals, R: RestInfo, o: ConstrainOpts = {})
   for (const side of ['Left', 'Right'] as const) {
     if (o.arms !== false) {
       if (hinge(L, w, R, B[`${side}Arm`], B[`${side}ForeArm`], 1, CONSTRAINT.elbow, m)) mask |= 1 << B[`${side}ForeArm`];
-      if ((o.pron?.[side] ?? true) && forearm(L, w, R, side, m)) mask |= (1 << B[`${side}ForeArm`]) | (1 << B[`${side}Hand`]);
+      if (o.pron?.[side] ?? true) {
+        if (forearm(L, w, R, side, m, o.state, o.dt)) mask |= (1 << B[`${side}ForeArm`]) | (1 << B[`${side}Hand`]);
+      } else if (o.state) delete o.state.pron[side];
     }
     if (o.legs !== false) {
       if (leg(L, w, R, side)) mask |= (1 << B[`${side}UpLeg`]) | (1 << B[`${side}Leg`]) | (1 << B[`${side}Foot`]);

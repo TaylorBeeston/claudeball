@@ -350,8 +350,8 @@
    "score": 8.357
   },
   "spike:ForeArm": {
-   "frames": 645,
-   "score": 11.614
+   "frames": 210,
+   "score": 2.829
   },
   "joint:forearm.pron": {
    "frames": 4015,
@@ -362,12 +362,12 @@
    "score": 118.904
   },
   "spike:Hand": {
-   "frames": 690,
-   "score": 12.903
+   "frames": 195,
+   "score": 3.605
   },
   "body:hand-torso@heavy": {
    "frames": 2160,
-   "score": 28.449
+   "score": 28.445
   },
   "body:hand-torso": {
    "frames": 215,
@@ -379,11 +379,11 @@
   },
   "body:hand-torso@stocky": {
    "frames": 1175,
-   "score": 16.115
+   "score": 16.116
   },
   "body:hand-torso@muscular": {
    "frames": 455,
-   "score": 6.437
+   "score": 6.439
   },
   "bat:grip": {
    "frames": 264,
@@ -460,14 +460,6 @@
   "foot:float": {
    "frames": 30,
    "score": 0.451
-  },
-  "flip:ForeArm": {
-   "frames": 75,
-   "score": 2.391
-  },
-  "flip:Hand": {
-   "frames": 120,
-   "score": 3.816
   },
   "joint:hip.abd": {
    "frames": 905,
@@ -547,14 +539,6 @@
    "frames": 46,
    "score": 2.214
   },
-  "spike:ForeArm": {
-   "frames": 48,
-   "score": 0.322
-  },
-  "spike:Hand": {
-   "frames": 32,
-   "score": 0.277
-  },
   "body:hand-torso@heavy": {
    "frames": 68,
    "score": 1.777
@@ -615,9 +599,9 @@
    "frames": 28,
    "score": 1.235
   },
-  "flip:Hand": {
-   "frames": 3,
-   "score": 0.06
+  "spike:ForeArm": {
+   "frames": 12,
+   "score": 0.03
   },
   "spike:UpLeg": {
    "frames": 34,
@@ -659,9 +643,9 @@
    "frames": 8,
    "score": 0.317
   },
-  "flip:ForeArm": {
-   "frames": 1,
-   "score": 0.05
+  "spike:Hand": {
+   "frames": 2,
+   "score": 0.056
   }
  }
 }
