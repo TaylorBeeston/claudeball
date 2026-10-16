@@ -139,7 +139,8 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
     };
     if (snap.role === 'batter') {
       if (bat.held && bat.obj.parent === pu.batGrip) return mk(bat.obj, 'held', handsNow(pu) ?? { L: false, R: true });
-      if (bat.visible) return mk(bat.obj, 'sim', { L: true, R: true });
+      // the one-handed finish: the top hand has let go
+      if (bat.visible) return mk(bat.obj, 'sim', { L: true, R: !(pu.topRelease > 0.5) });
       return null;
     }
     if (snap.role === 'ondeck' && pu.prop?.visible) return mk(pu.prop, 'ondeck', handsNow(pu) ?? { L: false, R: true });

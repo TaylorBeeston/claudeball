@@ -534,6 +534,9 @@ export class GltfPuppet implements PuppetLike {
   lookStep = 0;
   maxLookStep = 0;
   private ikW = 0;
+  /** the one-handed finish: how far the top hand has let go of the bat (0 on it, 1 off) */
+  topRelease = 0;
+  private topReleaseWant = false;
   private skin: string;
   private numberSet = -1;
   /** empty at the batter's hands (origin = bat knob, +Y = barrel) */
@@ -1442,9 +1445,12 @@ export class GltfPuppet implements PuppetLike {
     const baseName = gaitOver && loco ? loco : this.variant && hint === snap.anim ? this.variant : loco ?? this.resolveClip(hint, snap.role);
     this.trackTag(snap, env);
     const pit = pit0 ?? (cin ? { name: cin.name, time: cin.time, place: (snap.hasBall ? 'glove' : 'none') as BallPlace | 'none' } : this.eventPlan(snap, baseName));
-    const name = pit ? pit.name : baseName;
+    // the follow-through: the sim keeps its bat out in the finish for a moment after the swing (its hint is back to idle); the body stays in the
+    // swing's finish with it instead of going back to the stance under a bat still held high (one hand ~70 deg off the handle in every frame)
+    const finish = !pit && snap.role === 'batter' && snap.anim === 'idle' && !!env.batGrip && this.currentName === 'swing' && !!this.current;
+    const name = finish ? 'swing' : pit ? pit.name : baseName;
     this.pitchClipTime = pit ? pit.time : null;
-    if (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint)) {
+    if (!finish && (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint))) {
       this.play(name, snap);
     }
     this.lastHint = snap.anim;
@@ -1458,6 +1464,12 @@ export class GltfPuppet implements PuppetLike {
       this.current.paused = false;
       this.current.timeScale = 0;
       this.current.time = Math.min(dur - 0.001, Math.max(0, pit.time));
+    } else if (finish && this.current) {
+      // play the swing out, then hold its last frame
+      const dur = this.current.getClip().duration;
+      this.current.paused = false;
+      this.current.timeScale = this.current.time < dur - 0.002 ? 1 : 0;
+      if (this.current.time >= dur - 0.002) this.current.time = dur - 0.001;
     } else if (stanceHeld && snap.anim === 'idle' && this.currentName === 'swing' && this.current) {
       this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
@@ -1559,6 +1571,7 @@ export class GltfPuppet implements PuppetLike {
     // the sim's bat is where the bat is: the fists stay on it for the whole swing (the hinge-aware solver keeps the elbows plausible; the old
     // fades for elbows in the trunk / low pitches let the hands leave the bat, which is what made the bat look wrongly held)
     this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
+    this.ikDt = dt;
     if (!(this.ikW > 0.02 && env.batGrip)) this.armTrack.Left = this.armTrack.Right = null;
     else {
       // the fists close on the handle (the bottom hand is the model's Left for both batting sides: lefties are mirrored), each fist's grip
@@ -1566,8 +1579,14 @@ export class GltfPuppet implements PuppetLike {
       const g = env.batGrip;
       const axis = this.tmpAxis.copy(g.tip).sub(g.knob).normalize();
       this.armIK('Left', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripBottom), this.ikW, { gripDir: axis });
-      this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW, { gripDir: axis });
+      // the one-handed finish: after the swing, a top hand the bat's finish angle puts past its range lets go (as many hitters do) and
+      // stays off until the bat is put away; it opens over ~0.3 s into the swing clip's finish
+      if (finish && this.armTrack.Right && (this.armTrack.Right.over ?? 0) > 12) this.topReleaseWant = true;
+      if (!finish) this.topReleaseWant = false;
+      this.topRelease += ((this.topReleaseWant ? 1 : 0) - this.topRelease) * (1 - Math.exp(-dt * 10));
+      if (this.topRelease < 0.98) this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW * (1 - this.topRelease), { gripDir: axis });
     }
+    if (!env.batGrip) this.topRelease = 0;
     this.reachIK(snap, env, dt);
     // joints back inside a human range (pose/constrain.ts): elbow / knee hinges, forearm pronation shared with the hand, wrist
     this.constrain(snap, dt);
@@ -2225,7 +2244,10 @@ export class GltfPuppet implements PuppetLike {
   /** distance (m) of the top hand's fist from the knob along the handle (the model's Bat_Grip), and the bottom hand's */
   private gripTop = 0.135;
   private gripBottom = 0.05;
-  /** each arm's grip as last frame's solve left it (swivel, fist roll, pronation), null when the hands were not on the bat last frame */
+  /** the frame's step for the grip's springs */
+  private ikDt = 1 / 60;
+  /** each arm's grip as last frame's solve left it (swivel, fist roll, pronation, their speeds), null when the hands were not on the bat last
+   *  frame: a grip being taken starts from the clip's swivel and roll and moves from there (no jump to a far solution) */
   private armTrack: Record<'Left' | 'Right', GripTrack | null> = { Left: null, Right: null };
   private initArms() {
     const rig = this.rig;
@@ -2277,8 +2299,8 @@ export class GltfPuppet implements PuppetLike {
       const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
       gripDir = a.toArray();
     }
-    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, track: gripDir ? (this.armTrack[side] ?? undefined) : undefined });
-    if (gripDir) this.armTrack[side] = { pole: out.pole, roll: out.roll, pron: out.pron };
+    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, dt: this.ikDt, track: gripDir ? (this.armTrack[side] ?? { pole: 0, roll: 0 }) : undefined });
+    if (gripDir) this.armTrack[side] = { pole: out.pole, roll: out.roll, pron: out.pron, vPole: out.vPole, vRoll: out.vRoll, over: out.over };
     // rig rotations -> locals, blended from the clip's locals by w
     const qSh = rig.quat(sh, new Quaternion());
     const nU = new Quaternion().fromArray(out.qUpper), nF = new Quaternion().fromArray(out.qFore), nH = new Quaternion().fromArray(out.qHand);

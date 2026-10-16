@@ -127,9 +127,9 @@ describe('analytic arm IK', () => {
         if (track) {
           maxPole = Math.max(maxPole, Math.abs(out.pole - track.pole));
           maxRoll = Math.max(maxRoll, Math.abs(out.roll - track.roll));
-          maxPron = Math.max(maxPron, Math.abs(out.pron - track.pron));
+          maxPron = Math.max(maxPron, Math.abs(out.pron - (track.pron ?? out.pron)));
         }
-        track = { pole: out.pole, roll: out.roll, pron: out.pron };
+        track = { pole: out.pole, roll: out.roll, pron: out.pron, vPole: out.vPole, vRoll: out.vRoll };
       }
       delete lim.__armLimits;
       return { mean: sum / 41, maxPole, maxRoll, maxPron };

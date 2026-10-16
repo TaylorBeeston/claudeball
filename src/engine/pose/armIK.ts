@@ -58,18 +58,25 @@ export interface ArmGoal {
   keepEnd?: boolean;
   /** limit the middle bone's own twist (deg; a shin's twist about itself) */
   twistLimit?: number;
+  /** the frame's step (s), for a tracked grip's springs */
+  dt?: number;
   /**
-   * a grip held since last frame: last frame's elbow swivel, fist roll and pronation. The grip then follows them within a few degrees per
-   * frame (no elbow hops, no hand flipping to the other end of its twist range); without it (the grip is taken) every swivel is searched.
+   * the grip's state from last frame (elbow swivel, fist roll, pronation and their speeds): the swivel and the roll then follow the best ones
+   * near them on damped springs (no elbow hops, no hand flipping to the other end of its twist range); without it every swivel is searched.
    */
   track?: GripTrack;
 }
 
-/** the grip state carried from frame to frame (deg) */
+/** the grip state carried from frame to frame (deg, deg/s); a grip being taken starts from the clip's: { pole: 0, roll: 0 } */
 export interface GripTrack {
   pole: number;
   roll: number;
-  pron: number;
+  /** last frame's pronation (unset on the first frame of a grip) */
+  pron?: number;
+  vPole?: number;
+  vRoll?: number;
+  /** degrees past the hand's range last frame (read by the caller; the solver ignores it) */
+  over?: number;
 }
 
 export interface ArmOut {
@@ -85,6 +92,9 @@ export interface ArmOut {
   /** the fist's roll about the grip line (deg from the clip's) and the forearm's pronation (deg from neutral) used */
   roll: number;
   pron: number;
+  /** the swivel's and the roll's speeds (deg/s; tracked grips) */
+  vPole: number;
+  vRoll: number;
   /** degrees the hand still needed past the pronation / wrist range (0: the grip is held inside a human range) */
   over: number;
 }
@@ -100,10 +110,14 @@ export const ARM_LIMITS = {
   restPron: 20,
   /** how far the fist may roll about a round handle from the clip's grip, deg */
   roll: 90,
-  /** while a grip is held: the most the elbow swivel / the fist's roll may change in one frame, deg (tools/jank trace of a swing: 10 / 15 lags
-   *  a fast swing, 60 / 90 lets the hands hop again; 30 / 40 keeps the fist on the bat about as well as an unlimited search with a quarter of the flips) */
+  /** while a grip is held: how far from last frame's the best swivel / roll is looked for, deg */
   poleStep: 30,
   rollStep: 40,
+  /** a held grip's swivel and roll follow those best values as critically damped springs (rad/s natural frequency), no faster than this
+   *  (deg/s). A traced swing (tools/jank trace, 4 s): capped 30 / 40 deg steps 12 flips (956 deg), springs at 45 rad/s 6 (756), at 90 5 (371),
+   *  fist-axis excess about as with the unlimited search; the capped steps saturating and releasing were the hops */
+  follow: 90,
+  followMax: 1500,
 };
 
 export function armRest(restU: number[], restUf: number[], qUpper: number[], qFore: number[], qHand: number[], side: 1 | -1, flexZ: 1 | -1 = 1): ArmRest {
@@ -169,19 +183,34 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   // degrees past the hand's range cost most; a swivel away from the clip's costs a little
   const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3;
   if (tr) {
-    // held: the swivel within a step of last frame's, the minimum of a parabola through three samples
+    // held: the best swivel near last frame's (a parabola through three samples a step apart), the best roll there; both then followed by a
+    // critically damped spring: no step in the elbow or the fist (a capped step that saturates and releases is the one-frame hop the flip
+    // detector sees), at the cost of trailing a very fast bat by a few degrees
+    const dt = Math.max(1e-3, Math.min(0.1, goal.dt ?? 1 / 60));
     const s = LIM.poleStep ?? 30;
     const p0 = Math.max(-120, Math.min(120, tr.pole));
-    const r0 = solveArmPole(rest, pose, goal, iters, p0);
-    const c0 = cost(r0, p0);
-    if (r0.over < 1e-3 && Math.abs(p0) < 1e-3) return r0.out;
+    const c0 = cost(solveArmPole(rest, pose, goal, iters, p0), p0);
     const cm = cost(solveArmPole(rest, pose, goal, iters, p0 - s), p0 - s), cp = cost(solveArmPole(rest, pose, goal, iters, p0 + s), p0 + s);
     const curv = cm - 2 * c0 + cp;
     let x = curv > 1e-9 ? (s * (cm - cp)) / (2 * curv) : cm < cp ? -s : s;
     if (curv <= 1e-9 && Math.min(cm, cp) >= c0) x = 0;
     x = Math.max(-s, Math.min(s, x));
-    if (Math.abs(x) < 1e-3) return r0.out;
-    return solveArmPole(rest, pose, goal, iters, Math.max(-120, Math.min(120, p0 + x))).out;
+    const follow = (pos: number, vel: number, target: number) => {
+      // exact step of a critically damped spring (stable at any frequency), then the speed capped
+      const w = LIM.follow ?? 30, vmax = LIM.followMax ?? 1500;
+      const y = pos - target, j = vel + w * y, e = Math.exp(-w * dt);
+      const v = Math.max(-vmax, Math.min(vmax, (vel - w * j * dt) * e));
+      return { pos: Math.abs(v) < vmax ? target + (y + j * dt) * e : pos + v * dt, v };
+    };
+    const P = follow(p0, tr.vPole ?? 0, p0 + x);
+    const pole = Math.max(-120, Math.min(120, P.pos));
+    // the roll that is best at that swivel, then followed the same way
+    const rT = solveArmPole(rest, pose, goal, iters, pole).out.roll;
+    const Rl = follow(tr.roll, tr.vRoll ?? 0, rT);
+    const out = solveArmPole(rest, pose, goal, iters, pole, Rl.pos).out;
+    out.vPole = P.v;
+    out.vRoll = Rl.v;
+    return out;
   }
   const base = solveArmPole(rest, pose, goal, iters, 0);
   if (base.over < 1) return base.out;
@@ -198,7 +227,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
   return best.out;
 }
 
-function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number, poleDeg: number): { out: ArmOut; over: number } {
+function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number, poleDeg: number, rollFix?: number): { out: ArmOut; over: number } {
   const S = pose.S;
   const L1 = len(sub(pose.E, S)), L2 = len(sub(pose.H, pose.E));
   const { u, uf, n, side } = rest;
@@ -258,13 +287,13 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
       const LIM = limits();
       // a handle is round: the fist may roll about the grip line (here in the forearm's frame) to keep the forearm and wrist in range
       const gF = norm(qrot(qinv(aF0), goal.gripDir![0], goal.gripDir![1], goal.gripDir![2]) as number[]);
-      roll = pickRoll(relGoal0, gF, uf, side, LIM, goal.track);
+      roll = rollFix ?? pickRoll(relGoal0, gF, uf, side, LIM, goal.track);
       const relGoal = roll ? qmul(qaxisAngle(gF[0], gF[1], gF[2], roll * DEG), relGoal0) : relGoal0;
       const sw = [0, 0, 0, 1];
       let total = twistAngle(relGoal, uf[0], uf[1], uf[2], sw) / DEG;
       let pr = pronOf(total, side);
       // held: the same turn as last frame's, not 360 deg away (past the range, the hand stays at the limit it was at instead of flipping)
-      if (goal.track) pr += Math.round((goal.track.pron - pr) / 360) * 360;
+      if (goal.track?.pron !== undefined) pr += Math.round((goal.track.pron - pr) / 360) * 360;
       over = Math.max(0, pr - LIM.pron, -LIM.sup - pr);
       pron = Math.max(-LIM.sup, Math.min(LIM.pron, pr));
       total = side * (pron + ARM_LIMITS.restPron);
@@ -288,7 +317,7 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
   }
   const fo = qrot(qHand, goal.fist[0], goal.fist[1], goal.fist[2]) as number[];
   const miss = len(sub([W[0] + fo[0], W[1] + fo[1], W[2] + fo[2]], goal.target));
-  return { out: { qUpper, qFore, qHand, elbow: E, wrist: W, miss, pole: poleDeg, roll, pron, over }, over };
+  return { out: { qUpper, qFore, qHand, elbow: E, wrist: W, miss, pole: poleDeg, roll, pron, over, vPole: 0, vRoll: 0 }, over };
 }
 
 /** degrees past the pronation / supination and wrist-bend range of a forearm -> hand rotation (`pronRef`: unwrap toward it) */
