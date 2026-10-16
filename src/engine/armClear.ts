@@ -134,3 +134,51 @@ export function swivelElbow(S: V3, H: V3, E: V3, clearance: (p: V3) => number, m
   }
   return best;
 }
+
+/**
+ * The swivel (rad, about the shoulder -> hand axis) that clears the elbow, preferring the side used last frame: the nearest clear angle on each
+ * side is searched, and the other side is taken only when it is shorter by more than `hysteresis` (so the elbow never hops across the body
+ * from one frame to the next). 0 when the elbow is already clear; the best angle found when nothing clears.
+ */
+export function swivelTarget(S: V3, H: V3, E: V3, clearance: (p: V3) => number, prefer: 1 | -1 | 0, margin = 0.015, hysteresis = 1.2, step = (6 * Math.PI) / 180): number {
+  if (clearance(E) >= margin) return 0;
+  const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const len = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+  const sh = sub(H, S);
+  const L = len(sh);
+  if (L < 1e-6) return 0;
+  const n: V3 = [sh[0] / L, sh[1] / L, sh[2] / L];
+  const se = sub(E, S);
+  const a = dot(se, n);
+  const v: V3 = [se[0] - n[0] * a, se[1] - n[1] * a, se[2] - n[2] * a];
+  const r = len(v);
+  if (r < 1e-6) return 0;
+  const u: V3 = [v[0] / r, v[1] / r, v[2] / r];
+  const w = cross(n, u);
+  const at = (th: number): V3 => {
+    const c = Math.cos(th) * r, s = Math.sin(th) * r;
+    return [S[0] + n[0] * a + u[0] * c + w[0] * s, S[1] + n[1] * a + u[1] * c + w[1] * s, S[2] + n[2] * a + u[2] * c + w[2] * s];
+  };
+  const first = (sgn: 1 | -1) => {
+    let best = { th: 0, c: -Infinity };
+    for (let k = 1; k * step <= Math.PI; k++) {
+      const th = sgn * k * step;
+      const c = clearance(at(th));
+      if (c >= margin) return { th, c, ok: true };
+      if (c > best.c) best = { th, c };
+    }
+    return { ...best, ok: false };
+  };
+  const p = first(1), m = first(-1);
+  if (!p.ok && !m.ok) return p.c >= m.c ? p.th : m.th;
+  if (!p.ok) return m.th;
+  if (!m.ok) return p.th;
+  // no side yet: the one where the clearance grows (local, so it does not jump as the arm swings past the trunk), unless it is much longer
+  const cp = clearance(at(step)), cm = clearance(at(-step));
+  let pref = prefer === 1 ? p : prefer === -1 ? m : Math.abs(cp - cm) > 1e-4 ? (cp > cm ? p : m) : Math.abs(p.th) <= Math.abs(m.th) ? p : m;
+  if (prefer === 0 && Math.abs(pref.th) > Math.abs((pref === p ? m : p).th) + hysteresis) pref = pref === p ? m : p;
+  const other = pref === p ? m : p;
+  return Math.abs(other.th) + hysteresis < Math.abs(pref.th) ? other.th : pref.th;
+}

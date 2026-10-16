@@ -122,6 +122,8 @@ export class RealSimAdapter implements GameLike {
   private lastCallTime = -1;
   private last: GameState | null = null;
   private names = new Map<string, string>();
+  /** the side each player last batted from: a batter who becomes a runner keeps it (his body is the mirrored model for a left-handed hitter) */
+  private batSide = new Map<string, 'L' | 'R'>();
   /** the sim stops the ball where it crosses the fence; the renderer lets it fly on into the seats (visual only, the outcome is decided) */
   private carry: { t0: number; p: V; v: V; landedAt: number } | null = null;
 
@@ -301,7 +303,13 @@ export class RealSimAdapter implements GameLike {
       this.names.set(p.id, p.name);
       const role: PlayerRole = p.role === 'fielder' ? (POS_ROLE[p.position] ?? 'center') : (p.role as PlayerRole);
       const isBat = p.role === 'batter';
-      const hand = isBat ? (p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats) : p.throws;
+      // handedness picks the mirrored model for left-handers: the batter's side while he bats AND while he runs (it used to switch to his
+      // throwing hand the moment he became a runner, mid-swing: the whole body mirrored for a few frames whenever bats != throws)
+      const batting: 'L' | 'R' = p.bats === 'S' ? (pitcherThrows === 'R' ? 'L' : 'R') : p.bats;
+      if (isBat) this.batSide.set(p.id, batting);
+      // (and back on the bench: a runner who scores or is out jogs off as the same, mirrored or not, body; he fields from his throwing side
+      // next half, a change made while the half innings turn over)
+      const hand = isBat ? batting : p.role === 'runner' || p.role === 'bench' ? this.batSide.get(p.id) ?? (p.role === 'runner' ? batting : p.throws) : p.throws;
       const nominal = NOMINAL[p.anim];
       // a pitcher's windup lasts as long as the sim's delivery (tempo, holding, stretch); everything else uses a nominal clip length
       const dur = p.anim === 'windup' && p.delivery ? windupSeconds(p.delivery.tempo, p.delivery.fromStretch, p.ratings?.holding ?? 50) : p.anim === 'pitch' ? 0.5 : nominal;

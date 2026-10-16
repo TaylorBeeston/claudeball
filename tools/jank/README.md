@@ -9,8 +9,16 @@ npx tsx tools/jank/run.ts static                     # every clip x every shippe
 npx tsx tools/jank/run.ts fades                      # every clip switch in transitions.json, blended like three's mixer
 npx tsx tools/jank/run.ts game --seeds 1,2,3         # seeded games in the real build, after all runtime overrides (~15 min per 9-inning game)
 npx tsx tools/jank/run.ts sheets --top 16            # contact sheets of the worst frames (front, side, close-up of the joint)
-npx tsx tools/jank/run.ts trace --seeds 1 --id <player id> --from 905 --to 915   # one puppet, frame by frame
+npx tsx tools/jank/run.ts trace --seeds 1 --id <player id | role> --from 905 --to 915   # one puppet, frame by frame
+npx tsx tools/jank/run.ts static --constrain          # also the clips through the game's passes after the mixer (look distribution, constraints)
+npx tsx tools/jank/run.ts fades --constrain [--crossfade | --inertia]   # blends as the game does them / forced crossfade / forced inertialization
+npx tsx tools/jank/run.ts game --seeds 1,2 --pre "globalThis.__noElbowFix = true"   # a switch flipped before the game (measure what a pass costs; trace takes it too;
+                                                     # an object literal needs ./node_modules/.bin/tsx: npx brace-expands it)
+npx tsx tools/jank/compare.ts tools/jank/out/before tools/jank/out/after   # before / after tables of two game sweeps (incl. the bat per clip)
 ```
+
+`jank:check` gates four sections: the raw clips (`static`), raw blends (`fades`), and both through the runtime passes (`staticRuntime`,
+`fadesRuntime`: pose/neck.ts and pose/constrain.ts as the game applies them).
 
 Output goes to `tools/jank/out/` (git-ignored): `static.json`, `fades.json`, `game.json`, `report.md` (the ranked tables), `sheets/`.
 

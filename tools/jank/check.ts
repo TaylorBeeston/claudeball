@@ -17,10 +17,10 @@ import { ROOT } from './sweep';
 const FILE = path.join(ROOT, 'tools/jank/baseline.json');
 type Fam = Record<string, { frames: number; score: number }>;
 
-export function summarize(entries: Entry[]): Fam {
+export function summarize(entries: Entry[], src?: string): Fam {
   const out: Fam = {};
   for (const e of entries) {
-    if (e.src === 'static-mirror') continue;
+    if (e.src === 'static-mirror' || (src && e.src !== src)) continue;
     for (const [k, s] of Object.entries(e.kinds)) {
       const f = (out[family(k)] ??= { frames: 0, score: 0 });
       f.frames += s.frames;
@@ -32,8 +32,10 @@ export function summarize(entries: Entry[]): Fam {
 }
 
 async function main() {
-  const st = await doStatic(false);
-  const fd = await doFades(false);
+  // raw clips and raw blends (the assets), and the same through the game's passes after the mixer (look distribution, constraint layer)
+  const st = await doStatic(false, true);
+  const fd = await doFades(false, false);
+  const fdR = await doFades(false, true);
   // self-test: the mirrored bat clips must measure exactly like the right-handed ones
   let mirrorBad = 0;
   const by = new Map(st.entries.map((e) => [`${e.src}|${e.file}|${e.clip}`, e]));
@@ -45,7 +47,7 @@ async function main() {
       console.log(`[jank:check] FAIL mirror: ${e.file} ${e.clip} ${o?.bad} vs mirrored ${e.bad} bad frames`);
     }
   }
-  const now = { static: summarize(st.entries), fades: summarize(fd.entries) };
+  const now = { static: summarize(st.entries, 'static'), fades: summarize(fd.entries), staticRuntime: summarize(st.entries, 'static-constrained'), fadesRuntime: summarize(fdR.entries) };
   if (process.argv.includes('--update')) {
     fs.writeFileSync(FILE, JSON.stringify({ _: 'npm run jank:check baseline (tools/jank/check.ts): violation frames and severity score per kind; lower is better', ...now }, null, 1) + '\n');
     console.log(`[jank:check] baseline written: ${FILE}`);
@@ -55,9 +57,9 @@ async function main() {
     console.log('[jank:check] no baseline yet: run with --update');
     process.exit(1);
   }
-  const base = JSON.parse(fs.readFileSync(FILE, 'utf8')) as { static: Fam; fades: Fam };
+  const base = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<'static' | 'fades' | 'staticRuntime' | 'fadesRuntime', Fam>;
   let bad = mirrorBad, better = 0;
-  for (const src of ['static', 'fades'] as const) {
+  for (const src of ['static', 'fades', 'staticRuntime', 'fadesRuntime'] as const) {
     const kinds = new Set([...Object.keys(base[src] ?? {}), ...Object.keys(now[src])]);
     for (const k of [...kinds].sort()) {
       const b = base[src]?.[k] ?? { frames: 0, score: 0 }, n = now[src][k] ?? { frames: 0, score: 0 };
@@ -65,7 +67,7 @@ async function main() {
       const impr = n.frames < b.frames * 0.998 - 1 || n.score < b.score * 0.998 - 0.01;
       if (worse) bad++;
       if (impr) better++;
-      if (worse || impr || process.argv.includes('--verbose')) console.log(`[jank:check] ${worse ? 'FAIL' : impr ? 'better' : 'ok  '} ${src.padEnd(6)} ${k.padEnd(26)} frames ${String(n.frames).padStart(6)} / ${b.frames}   score ${n.score.toFixed(2).padStart(8)} / ${b.score.toFixed(2)}`);
+      if (worse || impr || process.argv.includes('--verbose')) console.log(`[jank:check] ${worse ? 'FAIL' : impr ? 'better' : 'ok  '} ${src.padEnd(13)} ${k.padEnd(26)} frames ${String(n.frames).padStart(6)} / ${b.frames}   score ${n.score.toFixed(2).padStart(8)} / ${b.score.toFixed(2)}`);
     }
   }
   if (better && !bad) console.log(`[jank:check] ${better} kinds improved: ratchet the baseline with \`npm run jank:check -- --update\``);

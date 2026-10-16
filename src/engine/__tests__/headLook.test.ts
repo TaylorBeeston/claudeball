@@ -58,12 +58,12 @@ describe('HeadLook spring', () => {
     expect(Math.abs(hl.yaw)).toBeLessThan(1e-2);
     expect(Math.abs(hl.pitch)).toBeLessThan(1e-2);
   });
-  it('splits the yaw so neck + head never exceed 70 deg and the spine 20 deg', () => {
+  it('splits the yaw so the look offset stays in its range and the spine takes at most 20 deg (pose/neck.ts then caps the neck itself at ~70-78 deg from the chest)', () => {
     const hl = new HeadLook();
     hl.yaw = LOOK_LIMITS.yaw + LOOK_LIMITS.spineYaw;
     const { spine, neckHeadYaw } = hl.split();
     expect(deg(spine)).toBeLessThanOrEqual(20 + 1e-6);
-    expect(deg(neckHeadYaw)).toBeLessThanOrEqual(70 + 1e-6);
+    expect(neckHeadYaw).toBeLessThanOrEqual(LOOK_LIMITS.yaw + 1e-6);
     expect(spine + neckHeadYaw).toBeGreaterThan(hl.yaw * 0.95);
   });
 });

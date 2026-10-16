@@ -84,6 +84,8 @@ export interface RigInfo {
   att: Attachments;
   torso: TorsoVolume;
   head: HeadVolume;
+  /** extra body builds (morph extremes) whose trunk volume is also checked: `body:*@<build>` (static sweep) */
+  builds?: { name: string; torso: TorsoVolume }[];
   /** rest heights (rig units) of the ankle and toe joints over the sole */
   ankleH: number;
   toeH: number;
@@ -112,10 +114,10 @@ export interface Track {
   hasD1: boolean;
   hasD2: boolean;
   /** last frame's contact points (world) and whether each foot was planted */
-  foot: { x: number; z: number; planted: boolean }[];
+  foot: { x: number; z: number; rx: number; rz: number; planted: boolean }[];
   floatT: number;
 }
-export const newTrack = (): Track => ({ prevJ: null, prevJ2: null, d1: new Float64Array(NB), d2: new Float64Array(NB), hasD1: false, hasD2: false, foot: [0, 1, 2, 3].map(() => ({ x: 0, z: 0, planted: false })), floatT: 0 });
+export const newTrack = (): Track => ({ prevJ: null, prevJ2: null, d1: new Float64Array(NB), d2: new Float64Array(NB), hasD1: false, hasD2: false, foot: [0, 1, 2, 3].map(() => ({ x: 0, z: 0, rx: 0, rz: 0, planted: false })), floatT: 0 });
 
 const W = newWorld();
 const angles: Record<string, number> = {};
@@ -184,11 +186,15 @@ export function validateFrame(f: FrameIn, rig: RigInfo, tr: Track, out: Violatio
   const hcS: V3 = [hc[0] / base, hc[1] / base, hc[2] / base];
   for (const s of ['Left', 'Right'] as const) {
     const S = B[`${s}Arm`] * 3, E = B[`${s}ForeArm`] * 3, H = B[`${s}Hand`] * 3;
-    const e = inSpine([w.wp[E], w.wp[E + 1], w.wp[E + 2]]);
+    const e = inSpine([w.wp[E], w.wp[E + 1], w.wp[E + 2]]).slice();
     push('body:elbow-torso', -torsoClearance(e[0], e[1], e[2], rig.torso) - 0.01);
     const fist = localPoint(w, B[`${s}Hand`], 0, 0.085, 0, base, [0, 0, 0]);
-    const h = inSpine(fist);
+    const h = inSpine(fist).slice();
     push('body:hand-torso', -torsoClearance(h[0], h[1], h[2], rig.torso) - 0.02);
+    for (const b of rig.builds ?? []) {
+      push(`body:elbow-torso@${b.name}`, -torsoClearance(e[0], e[1], e[2], b.torso) - 0.01);
+      push(`body:hand-torso@${b.name}`, -torsoClearance(h[0], h[1], h[2], b.torso) - 0.02);
+    }
     const v3 = (i: number): V3 => [w.wp[i] / base, w.wp[i + 1] / base, w.wp[i + 2] / base];
     push('body:arm-head', -armHeadClearance(v3(S), v3(E), v3(H), hcS, hv) - 0.01);
   }
@@ -205,14 +211,21 @@ export function validateFrame(f: FrameIn, rig: RigInfo, tr: Track, out: Violatio
     const ht = t[1] - rig.toeH * base * ms - f.ground(t[0], t[2]);
     lowest = Math.min(lowest, ha, ht);
     push('foot:below', -Math.min(ha, ht) - 0.03);
-    for (const [P, h] of [[a, ha], [t, ht]] as const) {
+    for (const [P, h, bi] of [[a, ha, foot], [t, ht, toe]] as const) {
       const c = tr.foot[pi++];
       const planted = h < 0.03;
-      // a planted heel or ball moving over the ground (in the static sweep the root is fixed: only non-locomotion clips; in the game every clip,
-      // locomotion with a looser cap since the stride rate only approximates the ground speed)
-      if (planted && c.planted && f.dt > 0 && !f.cut && (f.vel ? true : !f.locomotion && !f.airborne)) push('foot:slide', Math.hypot(P[0] - c.x, P[2] - c.z) / f.dt - (f.locomotion ? 0.6 : 0.35));
+      const rx = w.wp[bi * 3] * ms, rz = w.wp[bi * 3 + 2] * ms;
+      // a planted heel or ball moving over the ground: `foot:slide` when it moves in the body's own frame (the clip or the IK moves it), `foot:skate`
+      // when it is still in the body's frame and the root carries it (turning in place, a lunge, travelling without stepping). In the static sweep
+      // the root is fixed: only non-locomotion clips; in the game every clip, locomotion with a looser cap (the stride rate approximates the speed)
+      if (planted && c.planted && f.dt > 0 && !f.cut && (f.vel ? true : !f.locomotion && !f.airborne)) {
+        const ws = Math.hypot(P[0] - c.x, P[2] - c.z) / f.dt, rs = Math.hypot(rx - c.rx, rz - c.rz) / f.dt;
+        push(rs > 0.5 * ws ? 'foot:slide' : 'foot:skate', ws - (f.locomotion ? 0.6 : 0.35));
+      }
       c.x = P[0];
       c.z = P[2];
+      c.rx = rx;
+      c.rz = rz;
       c.planted = planted;
     }
   }

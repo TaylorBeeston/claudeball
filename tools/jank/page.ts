@@ -14,7 +14,7 @@
 import { B, BONES, NB, type PoseLocals, newLocals, fk } from '../../src/engine/pose/skeleton';
 import { groundHeight } from '../../src/sim/field';
 import { Agg, type Snapshot } from './agg';
-import { BAT_CLIPS, clipFlags } from './clips';
+import { BAT_CLIPS, batHandsBlend, clipFlags } from './clips';
 import { gripBat, newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Track, type Violation } from './validate';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -113,6 +113,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       const from = pu.currentName, fromT = pu.current?.time ?? 0;
       play(name, snap);
       if (!from || pu.currentName === from) return;
+      pu.__jankFrom = from;
       const ip = pu.current?._weightInterpolant?.parameterPositions;
       const fade = ip ? +(ip[1] - ip[0]).toFixed(3) : 0;
       const key = `${tplScene.name || 'tpl'}|${from}|${pu.currentName}`;
@@ -123,6 +124,8 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
     return st;
   };
 
+  // the hands on the bat: the clip's, and while it fades in from another clip only those both hold it with
+  const handsNow = (pu: any) => (mixerFading(pu.mixer) ? batHandsBlend(pu.__jankFrom, pu.currentName) : BAT_CLIPS[pu.currentName]);
   const batFor = (snap: any, pu: any): BatIn | null => {
     const bat = e.bat;
     const pt = (o: any, y: number) => {
@@ -135,11 +138,12 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       return { state, knob: [k.x, k.y, k.z], tip: [t.x, t.y, t.z], hands };
     };
     if (snap.role === 'batter') {
-      if (bat.held && bat.obj.parent === pu.batGrip) return mk(bat.obj, 'held', BAT_CLIPS[pu.currentName] ?? { L: false, R: true });
-      if (bat.visible) return mk(bat.obj, 'sim', { L: true, R: true });
+      if (bat.held && bat.obj.parent === pu.batGrip) return mk(bat.obj, 'held', handsNow(pu) ?? { L: false, R: true });
+      // the one-handed finish: the top hand has let go
+      if (bat.visible) return mk(bat.obj, 'sim', { L: true, R: !(pu.topRelease > 0.5) });
       return null;
     }
-    if (snap.role === 'ondeck' && pu.prop?.visible) return mk(pu.prop, 'ondeck', BAT_CLIPS[pu.currentName] ?? { L: false, R: true });
+    if (snap.role === 'ondeck' && pu.prop?.visible) return mk(pu.prop, 'ondeck', handsNow(pu) ?? { L: false, R: true });
     return null;
   };
 
@@ -190,6 +194,9 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       s.last = frame;
       s.pos = [p.pos.x, p.pos.y, p.pos.z];
       const clip = pu.currentName as string;
+      // the batter's swing clip held in its finish after the sim's swing ended (the swing clip, but not the swing): its own key, so the swing
+      // counts stay comparable with sweeps from before the finish hold
+      const tag = p.role === 'batter' && clip === 'swing' && p.anim !== 'swing' ? 'swing:finish' : clip;
       const fl = clipFlags(clip);
       const vel = { x: p.vel.x, z: p.vel.z };
       const bat = batFor(p, pu);
@@ -205,22 +212,22 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
         const h = B.RightHand * 3, me = model, x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2], hw = pu.bones.RightHand.matrixWorld.elements;
         if (Math.hypot(me[0] * x + me[4] * y + me[8] * z + me[12] - hw[12], me[1] * x + me[5] * y + me[9] * z + me[13] - hw[13], me[2] * x + me[6] * y + me[10] * z + me[14] - hw[14]) > 0.01) stats.fkMismatch++;
       }
-      if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ fkErr: (() => { const fw = fk(s!.L); const h = B.RightHand * 3; const me = model; const x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2]; const wx = me[0] * x + me[4] * y + me[8] * z + me[12], wy = me[1] * x + me[5] * y + me[9] * z + me[13], wz = me[2] * x + me[6] * y + me[10] * z + me[14]; const hw = pu.bones.RightHand.matrixWorld.elements; return +Math.hypot(wx - hw[12], wy - hw[13], wz - hw[14]).toFixed(3); })(), hipsLp: [pu.bones.Hips.position.x, pu.bones.Hips.position.y, pu.bones.Hips.position.z].map((x: number) => +x.toFixed(3)), hipsParent: pu.bones.Hips.parent?.name, id: p.id, kh: bat ? +Math.hypot(bat.knob[0] - pu.bones.RightHand.matrixWorld.elements[12], bat.knob[1] - pu.bones.RightHand.matrixWorld.elements[13], bat.knob[2] - pu.bones.RightHand.matrixWorld.elements[14]).toFixed(3) : null, held: e.bat.held, batParent: e.bat.obj.parent?.name, gripW: pu.batGrip ? Array.from(pu.batGrip.matrixWorld.elements.slice(12, 15) as number[]).map((x: number) => +x.toFixed(3)) : null, knobW: bat?.knob.map((x: number) => +x.toFixed(3)), t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
+      if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ pe: (() => { pu.rig.refresh(); const V = e.camera.position.constructor; return [pu.rig.pos(pu.bones.LeftForeArm, new V()).toArray().map((x: number) => +x.toFixed(3)), pu.rig.pos(pu.bones.Spine2, new V()).toArray().map((x: number) => +x.toFixed(3))]; })(), fe: [Array.from(fw.wp.subarray(B.LeftForeArm * 3, B.LeftForeArm * 3 + 3)).map((x) => +x.toFixed(3)), Array.from(fw.wp.subarray(B.Spine2 * 3, B.Spine2 * 3 + 3)).map((x) => +x.toFixed(3))], sw: JSON.parse(JSON.stringify(pu.swivelDbg)), ec: pu.elbowClear, fkErr: (() => { const fw = fk(s!.L); const h = B.RightHand * 3; const me = model; const x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2]; const wx = me[0] * x + me[4] * y + me[8] * z + me[12], wy = me[1] * x + me[5] * y + me[9] * z + me[13], wz = me[2] * x + me[6] * y + me[10] * z + me[14]; const hw = pu.bones.RightHand.matrixWorld.elements; return +Math.hypot(wx - hw[12], wy - hw[13], wz - hw[14]).toFixed(3); })(), hipsLp: [pu.bones.Hips.position.x, pu.bones.Hips.position.y, pu.bones.Hips.position.z].map((x: number) => +x.toFixed(3)), hipsParent: pu.bones.Hips.parent?.name, id: p.id, kh: bat ? +Math.hypot(bat.knob[0] - pu.bones.RightHand.matrixWorld.elements[12], bat.knob[1] - pu.bones.RightHand.matrixWorld.elements[13], bat.knob[2] - pu.bones.RightHand.matrixWorld.elements[14]).toFixed(3) : null, held: e.bat.held, batParent: e.bat.obj.parent?.name, gripW: pu.batGrip ? Array.from(pu.batGrip.matrixWorld.elements.slice(12, 15) as number[]).map((x: number) => +x.toFixed(3)) : null, knobW: bat?.knob.map((x: number) => +x.toFixed(3)), t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
       // the mixer's pose with the bat where it would be: in the hand (on Bat_Grip) when the hand holds it, else where the sim has it
       const batC = bat && (bat.state === 'held' || bat.state === 'ondeck') ? { ...gripBat(s.C, s.info, Array.from(model), bat.hands), state: bat.state } : bat;
       validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
-      agg.add('frames', p.role, clip, [], animDt || dt);
+      agg.add('frames', p.role, tag, [], animDt || dt);
       // visible: inside the camera's frustum
       const f = e.players.frustum;
       const vis = !f || f.intersectsSphere({ center: tmpV.set(p.pos.x, p.pos.y + 1, p.pos.z), radius: 1.3 });
       if (vis) stats.visibleFrames++;
       if (!vF.length) {
-        agg.add(vis ? 'game' : 'game-off', p.role, clip, vF, animDt || dt);
+        agg.add(vis ? 'game' : 'game-off', p.role, tag, vF, animDt || dt);
         continue;
       }
-      const fading = mixerFading(pu.mixer);
+      const fading = mixerFading(pu.mixer) || !!pu.inertia?.active;
       const clipEx = new Map<string, number>();
-      for (const x of vC) clipEx.set(x.kind, x.excess);
+      for (const x of vC) clipEx.set(x.kind, Math.max(clipEx.get(x.kind) ?? 0, x.excess));
       const byAttr: Record<string, Violation[]> = { clip: [], blend: [], override: [] };
       for (const x of vF) {
         const c = clipEx.get(x.kind) ?? 0;
@@ -232,7 +239,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       const ctx = { seed: opts.seed, t: +st.time.toFixed(3), id: p.id, role: p.role, hint: p.anim, clip, hand: p.hand, vis, fading, ikW: +(pu.ikW ?? 0).toFixed(2), gloveW: +(pu.gloveW ?? 0).toFixed(2), look: [+(pu.headLook?.yaw ?? 0).toFixed(3), +(pu.headLook?.pitch ?? 0).toFixed(3)], speed: +Math.hypot(p.vel.x, p.vel.z).toFixed(2), bat: bat?.state ?? null };
       for (const a of ['clip', 'blend', 'override']) {
         if (!byAttr[a].length) continue;
-        agg.add(`${vis ? 'game' : 'game-off'}:${a}`, p.role, clip, byAttr[a], animDt || dt, () => snapOf(s!.L, model, bat, { ...ctx, attr: a, clipPose: snapOf(s!.C, model, null, {}) }));
+        agg.add(`${vis ? 'game' : 'game-off'}:${a}`, p.role, tag, byAttr[a], animDt || dt, () => snapOf(s!.L, model, bat, { ...ctx, attr: a, clipPose: snapOf(s!.C, model, null, {}) }));
       }
     }
     const db = e.droppedBat;
@@ -295,7 +302,12 @@ let studio: { pu: any; bones: any[]; batObj: any } | null = null;
  * Pose a stand-in puppet from a snapshot at the studio spot (behind the backstop, out of everyone's way) and aim the bench camera at it
  * from the front or the side (near-orthographic: 30 m away, a narrow lens). Returns the screen positions of the joints for the overlay.
  */
-export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role = 'fielder', joint = '') {
+/**
+ * Pose the studio puppet from a snapshot and aim the camera. `joints`: the joints the violation is about; the close-up looks at the one nearest
+ * the spine (a hand or elbow inside the trunk is that one, whichever side). `xray`: the body drawn see-through in the close-up, so a joint
+ * inside the trunk shows (it was hidden behind the jersey).
+ */
+export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role = 'fielder', joints: string[] | string = '', xray = false) {
   const e = w.engine;
   const V = e.camera.position.constructor;
   if (!studio || studio.pu.__role !== role) {
@@ -347,6 +359,14 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   let tgt = SPOT.clone().add(new V(0, 0.95, 0));
   let dir = view === 'front' ? new V(0, 0, 1) : new V(det < 0 ? -1 : 1, 0, 0);
   let span = 2.6;
+  const cand = (Array.isArray(joints) ? joints : [joints]).filter((j) => j && pu.bones[j]);
+  let joint = cand[0] ?? '';
+  if (cand.length > 1 && pu.bones.Spine1) {
+    const sp = pu.bones.Spine1.getWorldPosition(new V());
+    const dh = (j: string) => { const p = pu.bones[j].getWorldPosition(new V()); return Math.hypot(p.x - sp.x, p.z - sp.z); };
+    joint = cand.reduce((a, b) => (dh(b) < dh(a) ? b : a));
+  }
+  setXray(pu, view === 'detail' && xray);
   if (view === 'detail') {
     // close-up of the joint the violation is about, from the front and a little to its side and above
     const b = joint && pu.bones[joint];
@@ -357,6 +377,21 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   const dist = 30;
   e.director.bench = { pos: tgt.clone().addScaledVector(dir, dist), tgt, fov: (2 * Math.atan(span / 2 / dist) * 180) / Math.PI, aperture: 0 };
   return true;
+}
+
+/** the puppet's meshes see-through (their own material copies, restored when switched off) */
+function setXray(pu: any, on: boolean) {
+  pu.model.traverse((o: any) => {
+    if (!o.isMesh) return;
+    if (on && !o.__xrayOrig) {
+      o.__xrayOrig = o.material;
+      const cl = (m: any) => Object.assign(m.clone(), { transparent: true, opacity: 0.3, depthWrite: false });
+      o.material = Array.isArray(o.material) ? o.material.map(cl) : cl(o.material);
+    } else if (!on && o.__xrayOrig) {
+      o.material = o.__xrayOrig;
+      o.__xrayOrig = undefined;
+    }
+  });
 }
 
 /** screen positions (CSS px) of every joint, the head top and the bat ends, after the camera has moved (call after a rendered frame) */

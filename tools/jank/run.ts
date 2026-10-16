@@ -46,17 +46,17 @@ export interface RunFile {
 
 // ---- static / fades ----------------------------------------------------------------------------------------------------------------
 
-export async function doStatic(snapshots = true): Promise<RunFile> {
+export async function doStatic(snapshots = true, constrained = flag('constrain')): Promise<RunFile> {
   const agg = new Agg();
   agg.snapshots = snapshots;
   const t0 = Date.now();
-  await runStatic(shippedPlayers(), manifestLoops(), agg);
+  await runStatic(shippedPlayers(), manifestLoops(), agg, constrained);
   const r = { meta: { kind: 'static', files: shippedPlayers(), ms: Date.now() - t0, git: git() }, entries: agg.list() };
   console.log(`[jank] static: ${r.entries.reduce((a, e) => a + (e.src === 'static' ? e.frames : 0), 0)} clip frames in ${r.meta.ms} ms`);
   return r;
 }
 
-export async function doFades(snapshots = true): Promise<RunFile> {
+export async function doFades(snapshots = true, constrain = flag('constrain')): Promise<RunFile> {
   const list = fs.existsSync(TRANSITIONS) ? (JSON.parse(fs.readFileSync(TRANSITIONS, 'utf8')) as { transitions: Transition[] }).transitions : [];
   if (!list.length) console.log('[jank] fades: no tools/jank/transitions.json yet (run the game sweep first)');
   const agg = new Agg();
@@ -65,7 +65,7 @@ export async function doFades(snapshots = true): Promise<RunFile> {
   const files = await loadFiles(shippedPlayers());
   for (const tx of list) {
     const f = files.find((x) => x.name === (tx.file || 'player_base')) ?? files[0];
-    sweepFade(agg, f.name, f.rig, f.info, tx, loops);
+    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : 'game', constrain);
   }
   console.log(`[jank] fades: ${list.length} transitions`);
   return { meta: { kind: 'fades', n: list.length, git: git() }, entries: agg.list() };
@@ -131,7 +131,7 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
     const res = await withGame(
       q,
       async (page) => {
-        await page.evaluate(([snap, sd]) => {
+        await page.evaluate(([snap, sd, pre]) => {
           const e = (window as any).engine;
           e.stop();
           e.fixedDt = 1 / 60;
@@ -139,8 +139,9 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
           e.director.replaysEnabled = false;
           e.adaptive.enabled = false;
           (window as any).__jank.install({ seed: sd });
+          if (pre) new Function(pre)();
           if (!snap) (window as any).__jank.state.agg.snapshots = false;
-        }, [snapshots, seed] as const);
+        }, [snapshots, seed, opt('pre', '')] as const);
         let last = 0;
         for (;;) {
           const r = (await page.evaluate(() => (window as any).__jank.run(1200))) as { t: number; over: boolean; inning: number };
@@ -170,14 +171,20 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
       stats[`attrSev.${k}`] = (stats[`attrSev.${k}`] ?? 0) + (res.attrSev?.[k] ?? 0);
     }
   }
-  // the transitions the game made, for the crossfade sweep (committed: the sweep must not depend on the sim)
+  // the clip switches the game made: written next to the results; the committed list (the crossfade sweep's input, so jank:check's) changes only
+  // with --update-transitions (then re-baseline jank:check once)
   const known = fs.existsSync(TRANSITIONS) ? (JSON.parse(fs.readFileSync(TRANSITIONS, 'utf8')) as { transitions: (Transition & { n: number })[] }).transitions : [];
   for (const tx of known) {
     const k = `${tx.file}|${tx.from}|${tx.to}`;
     if (!trans.has(k)) trans.set(k, tx);
   }
   const list = [...trans.values()].map((t) => ({ ...t, file: t.file || 'player_base' })).sort((a, b) => b.n - a.n);
-  fs.writeFileSync(TRANSITIONS, JSON.stringify({ _: 'clip switches seen in seeded games (tools/jank/run.ts game): from, to, from-clip time, to-clip time, fade (s), times seen', transitions: list }, null, 0).replace(/\},\{/g, '},\n{') + '\n');
+  const body = JSON.stringify({ _: 'clip switches seen in seeded games (tools/jank/run.ts game): from, to, from-clip time, to-clip time, fade (s), times seen', transitions: list }, null, 0).replace(/\},\{/g, '},\n{') + '\n';
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, 'transitions.json'), body);
+  if (flag('update-transitions')) fs.writeFileSync(TRANSITIONS, body);
+  const added = list.length - known.length;
+  if (added > 0) console.log(`[jank] ${added} clip switches not in tools/jank/transitions.json${flag('update-transitions') ? ' (added)' : ' (see out/transitions.json; --update-transitions adds them)'}`);
   return { meta: { kind: 'game', seeds, innings, tempo, git: git() }, entries: agg.list(), stats: { ...stats, per } };
 }
 
@@ -251,6 +258,7 @@ export function writeReport() {
   if (st) {
     parts.push('## Static sweep: every clip, raw (no runtime override)', '', `Files: ${(st.meta.files as string[]).join(', ')}`, '');
     parts.push(mdFamilies('Violations by kind', st.entries, (s) => s === 'static'), '', mdClips('Worst clips', st.entries, (s) => s === 'static', 40), '');
+    if (st.entries.some((e) => e.src === 'static-constrained')) parts.push(mdFamilies('The same clips through the runtime constraint layer (pose/constrain.ts)', st.entries, (s) => s === 'static-constrained'), '');
   }
   if (fd) parts.push('## Crossfade sweep: what the blend adds (in neither clip)', '', mdFamilies('Violations by kind', fd.entries, () => true), '', mdClips('Worst transitions', fd.entries, () => true, 30), '');
   if (gm) {
@@ -316,6 +324,10 @@ function pickWorst(files: [string, (s: string) => boolean][], top: number): Pick
 function hot(kind: string): string[] {
   const k = kind.split(':')[1] ?? '';
   const side = /[A-Za-z]L\./.test(k) || /-L$/.test(k) ? 'Left' : /[A-Za-z]R\./.test(k) || /-R$/.test(k) ? 'Right' : '';
+  // body volumes first (their kind names start like the joints': body:elbow-torso is not the elbow's hinge)
+  if (kind.startsWith('body:elbow')) return ['LeftForeArm', 'RightForeArm'];
+  if (kind.startsWith('body:hand')) return ['LeftHand', 'RightHand'];
+  if (kind.startsWith('body')) return ['LeftHand', 'RightHand', 'LeftForeArm', 'RightForeArm'];
   if (k.startsWith('elbow') || k.startsWith('forearm')) return [`${side}ForeArm`];
   if (k.startsWith('wrist')) return [`${side}Hand`];
   if (k.startsWith('shoulder') || k.startsWith('clavicle')) return [`${side}Arm`];
@@ -327,7 +339,6 @@ function hot(kind: string): string[] {
   if (/^(Left|Right)/.test(k)) return [k];
   if (kind.startsWith('foot')) return ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'];
   if (kind.startsWith('bat')) return ['LeftHand', 'RightHand'];
-  if (kind.startsWith('body')) return ['LeftHand', 'RightHand', 'LeftForeArm', 'RightForeArm'];
   return [];
 }
 
@@ -364,7 +375,8 @@ export async function doSheets(top: number) {
       const tiles: string[] = [];
       const hj = hot(p.kind);
       for (const view of ['front', 'side', 'detail'] as const) {
-        await page.evaluate(([sn, v, role, j]) => (window as any).__jank.studioPose(sn, v, role, j), [p.snap, view, p.role, hj[0] ?? 'Head'] as const);
+        // body volumes: whichever hand / elbow is in the trunk, seen through the body
+        await page.evaluate(([sn, v, role, j, x]) => (window as any).__jank.studioPose(sn, v, role, j, x), [p.snap, view, p.role, hj.length ? hj : ['Head'], p.kind.startsWith('body:')] as const);
         await frames(6);
         const joints = (await page.evaluate(() => (window as any).__jank.studioJoints())) as Record<string, number[]>;
         const raw = path.join(dir, `_${i}-${view}.png`);
@@ -421,6 +433,8 @@ async function main() {
         e.director.replaysEnabled = false;
         (window as any).__jank.install();
       });
+      const pre = opt('pre', '');
+      if (pre) await page.evaluate((src) => new Function(src)(), pre);
       for (;;) {
         const r = (await page.evaluate(() => (window as any).__jank.run(600))) as { t: number };
         if (r.t > from - 10) break;

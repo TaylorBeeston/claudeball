@@ -346,7 +346,7 @@ export interface PuppetEnv {
   /** ball world position (scene) or null */
   ball: Vector3 | null;
   /** bat grip targets (scene), null when no bat */
-  batGrip: { top: Vector3; bottom: Vector3 } | null;
+  batGrip: { top: Vector3; bottom: Vector3; knob: Vector3; tip: Vector3 } | null;
   /** simulation time in seconds, for idle variety */
   time: number;
   /** ball speed (m/s), 0 when there is no ball */

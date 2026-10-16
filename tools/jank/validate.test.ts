@@ -3,7 +3,7 @@ import path from 'node:path';
 import { loadRig, sampleClip, blendLocals, type RigFile } from './glb';
 import { B, copyLocals, fk, newLocals } from '../../src/engine/pose/skeleton';
 import { measureJoints, axialSwing, JOINT_LIMITS, excess } from '../../src/engine/pose/limits';
-import { qaxisAngle, qmul, twistAngle, DEG } from '../../src/engine/pose/qmath';
+import { qaxisAngle, qmul, qrot, twistAngle, DEG } from '../../src/engine/pose/qmath';
 import { newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
 import { gripBat } from './sweep';
 
@@ -60,6 +60,35 @@ describe('calibration on reference clips (if these fail the validator is wrong, 
     const m = at('batting_stance', 0.5);
     expect(m['elbowL.flex']).toBeGreaterThan(60);
     expect(m['elbowR.flex']).toBeGreaterThan(60);
+  });
+});
+
+describe('forearm pronation sign (proves the side sign and the neutral offset)', () => {
+  it('twisting a forearm by a known angle changes pronation by that angle, positive when the thumb turns toward the midline, on both sides', () => {
+    const c = rig.clips.get('idle')!;
+    for (const side of ['Left', 'Right'] as const) {
+      const s = side[0];
+      const base = sampleClip(c, 0.5 * c.duration, rig.rest);
+      const m0 = measureJoints(fk(base, undefined, info.R.rest), info.R)[`forearm${s}.pron`];
+      for (const phi of [60, -60]) {
+        const L = copyLocals(base);
+        // twist the forearm bone about its own axis (Mixamo bones point along local +Y); the hand follows
+        const o = B[`${side}ForeArm`] * 4;
+        L.lq.set(qmul(L.lq.slice(o, o + 4), qaxisAngle(0, 1, 0, phi * DEG)), o);
+        const w = fk(L, undefined, info.R.rest);
+        const m = measureJoints(w, info.R)[`forearm${s}.pron`];
+        // the thumb side of the fist (the bat grip's barrel direction, mirrored for the left hand)
+        const thumb = (wq: Float64Array) => {
+          const a = info.att.batAxis;
+          return qrot(wq, side === 'Right' ? a[0] : -a[0], a[1], a[2], [0, 0, 0], B[`${side}Hand`] * 4) as number[];
+        };
+        const t0 = thumb(fk(base, undefined, info.R.rest).wq), t1 = thumb(w.wq);
+        // medial = toward the other side: -X for the left limb (+X is the model's left), +X for the right
+        const medial = (side === 'Left' ? -1 : 1) * (t1[0] - t0[0]);
+        expect(Math.abs(Math.abs(m - m0) - 60)).toBeLessThan(3);
+        expect(Math.sign(m - m0)).toBe(Math.sign(medial));
+      }
+    }
   });
 });
 
