@@ -77,8 +77,6 @@ const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_
 const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
-/** clips that hold the bat in both hands (tools/jank/clips.ts BAT_CLIPS) */
-const BOTH_HANDS = /^(batting_stance|swing|batter_practice_swing|ondeck_swing)$/;
 /** standing about (the body turns at pivot speed there, the feet stepping with it) */
 const STANDING_TURN = /^(idle|.*_ready|ready_|field_ready|catch_ready|ump_ready|coach_ready|ballkid_idle|manager_idle|bench_stand)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
@@ -544,8 +542,6 @@ export class GltfPuppet implements PuppetLike {
   lookStep = 0;
   maxLookStep = 0;
   private ikW = 0;
-  /** the bottom hand on a bat held in the right hand (0..1) */
-  private holdW = 0;
   private ikWV = 0;
   /** the one-handed finish: how far the top hand has let go of the bat (0 on it, 1 off) */
   topRelease = 0;
@@ -1666,12 +1662,9 @@ export class GltfPuppet implements PuppetLike {
         bs.forEach((b, i) => b?.quaternion.slerp(last[i], this.ikW));
         bs[0]?.updateMatrixWorld(true);
       }
-      if (this.holdW <= 0.02) this.armTrack.Left = null;
-      this.armTrack.Right = null;
+      this.armTrack.Left = this.armTrack.Right = null;
     } else if (!(this.ikW > 0.02 && env.batGrip)) {
-      // (the bottom hand's track stays while it holds the bat in the right hand, below)
-      if (this.holdW <= 0.02) this.armTrack.Left = null;
-      this.armTrack.Right = null;
+      this.armTrack.Left = this.armTrack.Right = null;
       this.armLast.Left = this.armLast.Right = null;
     } else {
       // the fists close on the handle (the bottom hand is the model's Left for both batting sides: lefties are mirrored), each fist's grip
@@ -1687,16 +1680,6 @@ export class GltfPuppet implements PuppetLike {
       if (this.topRelease < 0.98) this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW * (1 - this.topRelease), { gripDir: axis });
     }
     if (!env.batGrip) this.topRelease = 0;
-    // the bat in the right hand (held between swings, the on-deck hitter's): the bottom hand on its handle too where the clip should have both on
-    // it (a stride fading back to the stance on a take let it drift off: stance grip 0.3 -> 2 % of frames, B2 sweep; some clip frames too)
-    const both = BOTH_HANDS.test(this.currentName) && !env.batGrip && !!this.batGrip && this.batGrip.children.some((c) => c.visible);
-    this.holdW += ((both ? 1 : 0) - this.holdW) * (1 - Math.exp(-dt * 8));
-    if (this.holdW > 0.02 && this.batGrip && !env.batGrip) {
-      this.batGrip.updateWorldMatrix(true, false);
-      const knob = this.batGrip.getWorldPosition(this.tmpT);
-      const axis = this.tmpAxis.set(0, 1, 0).transformDirection(this.batGrip.matrixWorld);
-      this.armIK('Left', knob.addScaledVector(axis, this.gripBottom), this.holdW, { gripDir: axis });
-    } else if (!env.batGrip) this.armTrack.Left = null;
     this.reachIK(snap, env, dt);
     // joints back inside a human range (pose/constrain.ts): elbow / knee hinges, forearm pronation shared with the hand, wrist
     this.constrain(snap, dt);
