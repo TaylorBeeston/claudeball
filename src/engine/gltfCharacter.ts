@@ -77,7 +77,7 @@ const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undersh
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
 /** clips whose feet are off the ground or not standing on it (slides, dives, jumps, sitting): no foot locking */
-const FREE_FEET = /^(slide|dive|catch_jump|pop_up|coach_slide|bench_sit|ballkid_sit|bench_cheer|celebrate|run_sprint|run_turn_sprint|idle$)/;
+const FREE_FEET = /^(slide|dive|catch_jump|pop_up|coach_slide|bench_sit|ballkid_sit|bench_cheer|celebrate|run_sprint|run_turn_sprint)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
 const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
 /** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */
@@ -1598,8 +1598,10 @@ export class GltfPuppet implements PuppetLike {
     } else {
       let d = wantYaw - this.bodyYaw;
       d -= Math.PI * 2 * Math.round(d / (Math.PI * 2));
-      // turning is limited to ~540 deg/s (a runner does not spin on the spot); the stance transition is a little slower still
-      const maxTurn = (stanceHeld || this.wasStance ? 9 : 9.4) * dt;
+      // turning is limited to ~540 deg/s (a runner does not spin on the spot); the stance transition is a little slower still; standing, a
+      // body turns about as fast as a pivot turn (180 deg in ~0.6 s), so the feet can step with it (pose/footLock.ts)
+      const standing = !gaitOver && speed0 < 0.3 && !stanceHeld && !this.wasStance;
+      const maxTurn = (standing ? 5 : stanceHeld || this.wasStance ? 9 : 9.4) * dt;
       this.bodyYaw += Math.abs(d) > maxTurn ? Math.sign(d) * maxTurn : d;
     }
     this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);

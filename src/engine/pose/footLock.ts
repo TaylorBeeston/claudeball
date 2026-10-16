@@ -9,9 +9,9 @@
  *
  * Pure maths on the locals (skeleton.ts) and a rig -> world matrix (column-major 4x4: the puppet's model matrix; identity in the sweeps).
  */
-import { solveArm, armRest, type ArmRest } from './armIK';
+import { armRest, type ArmRest } from './armIK';
 import type { RestInfo } from './limits';
-import { qinv, qmul } from './qmath';
+import { qaxisAngle, qfromTo, qinv, qmul, qrot } from './qmath';
 import { B, PARENT, fk, newWorld, type PoseLocals, type PoseWorld } from './skeleton';
 
 export const FOOT_LOCK = {
@@ -111,7 +111,11 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
     if (free) {
       if (F.locked) letGo();
     } else if (F.locked) {
-      if (h > FOOT_LOCK.liftH || Math.hypot(aw[0] - F.lw[0], aw[2] - F.lw[2]) > FOOT_LOCK.maxDrift || Math.abs(turnedNow) > FOOT_LOCK.maxTurn) letGo();
+      // a turn steps one foot at a time: while the other one is off the ground this one waits (up to twice the turn), so the feet alternate
+      const other = st.feet[side === 'Left' ? 'Right' : 'Left'];
+      const otherDown = other.locked || other.offT >= FOOT_LOCK.unlock;
+      const turnOut = Math.abs(turnedNow) > (otherDown ? FOOT_LOCK.maxTurn : 2 * FOOT_LOCK.maxTurn);
+      if (h > FOOT_LOCK.liftH || Math.hypot(aw[0] - F.lw[0], aw[2] - F.lw[2]) > FOOT_LOCK.maxDrift || turnOut) letGo();
     } else if (h < FOOT_LOCK.downH && speed < FOOT_LOCK.lockSpeed && F.offT >= FOOT_LOCK.unlock) {
       F.locked = true;
       F.lw = [aw[0], aw[1], aw[2]];
@@ -132,15 +136,41 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
     const [u, l] = [B[`${side}UpLeg`], B[`${side}Leg`]];
     const sl = (a: Float64Array, i: number, n: number) => Array.from(a.subarray(i * n, i * n + n));
     // (the foot keeps the animation's orientation: it pivots with the body, and steps once the body has turned past FOOT_LOCK.maxTurn over it)
-    // the knee's side: the clip's knee, nudged toward the toes (a knee bends over its toes): a standing leg is nearly straight, its knee nearly on
-    // the hip -> ankle line, where the clip's own offset alone can flip side between frames (180 deg thigh / foot flips)
-    const E0 = sl(w.wp, l, 3), T = sl(w.wp, toe, 3), A0 = sl(w.wp, ft, 3);
-    const tl = Math.hypot(T[0] - A0[0], T[2] - A0[2]) || 1;
-    const E = [E0[0] + ((T[0] - A0[0]) / tl) * 0.05, E0[1], E0[2] + ((T[2] - A0[2]) / tl) * 0.05];
-    const out = solveArm(legRest(R, side), { S: sl(w.wp, u, 3), E, H: sl(w.wp, ft, 3), qUpper: sl(w.wq, u, 4), qFore: sl(w.wq, l, 4), qHand: sl(w.wq, ft, 4) }, { target: t, fist: [0, 0, 0], keepEnd: true, twistLimit: 30, soft: 0.999 }, 2);
-    L.lq.set(qmul(qinv(sl(w.wq, PARENT[u], 4)), out.qUpper), u * 4);
-    L.lq.set(qmul(qinv(out.qUpper), out.qFore), l * 4);
-    L.lq.set(qmul(qinv(out.qFore), out.qHand), ft * 4);
+    // the least change of the clip's leg that puts the ankle on the target: the knee bent (about its own hinge) to the hip -> target distance, then
+    // the thigh swung onto it by the shortest turn; the thigh's twist and the foot's orientation stay the clip's. A full re-solve rebuilt the
+    // thigh's twist from its own knee side, which on a near-straight standing leg differed from the clip's: a jump when a lock began or ended
+    const S = sl(w.wp, u, 3), E = sl(w.wp, l, 3), A = sl(w.wp, ft, 3);
+    const qU = sl(w.wq, u, 4), qL = sl(w.wq, l, 4), qF = sl(w.wq, ft, 4);
+    const L1 = Math.hypot(E[0] - S[0], E[1] - S[1], E[2] - S[2]), L2 = Math.hypot(A[0] - E[0], A[1] - E[1], A[2] - E[2]);
+    const dT = Math.hypot(t[0] - S[0], t[1] - S[1], t[2] - S[2]);
+    const d = Math.max(Math.abs(L1 - L2) + 1e-4, Math.min(L1 + L2 - 1e-4, dT));
+    const d0 = Math.hypot(A[0] - S[0], A[1] - S[1], A[2] - S[2]);
+    const knee = (x: number) => Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - x * x) / (2 * L1 * L2))));
+    // the knee's hinge axis: the thigh's own (its rest hinge carried by its rotation), so it is defined for a straight leg too
+    const lr = legRest(R, side);
+    const hRest = [lr.u[1] * lr.n[2] - lr.u[2] * lr.n[1], lr.u[2] * lr.n[0] - lr.u[0] * lr.n[2], lr.u[0] * lr.n[1] - lr.u[1] * lr.n[0]];
+    const hAx = qrot(qmul(qU, qinv(lr.qUpper)), hRest[0], hRest[1], hRest[2]) as number[];
+    // bend: a smaller interior angle shortens the leg; turn the shin about the hinge by the change
+    const dk = knee(d0) - knee(d);
+    let qL2 = qL, A2 = A;
+    if (Math.abs(dk) > 1e-6) {
+      const tryBend = (sg: number) => {
+        const q = qaxisAngle(hAx[0], hAx[1], hAx[2], sg * dk);
+        const v = qrot(q, A[0] - E[0], A[1] - E[1], A[2] - E[2]) as number[];
+        return { q, a: [E[0] + v[0], E[1] + v[1], E[2] + v[2]] };
+      };
+      // (flexion is the positive turn about the hinge, from the rest frames: a straight leg shortens the same either way, only one is a knee)
+      const pick = tryBend(1);
+      qL2 = qmul(pick.q, qL) as number[];
+      A2 = pick.a;
+    }
+    // swing the whole leg about the hip onto the target
+    const sw = qfromTo(norm3([A2[0] - S[0], A2[1] - S[1], A2[2] - S[2]]), norm3([t[0] - S[0], t[1] - S[1], t[2] - S[2]])) as number[];
+    const qU3 = qmul(sw, qU) as number[], qL3 = qmul(sw, qL2) as number[];
+    L.lq.set(qmul(qinv(sl(w.wq, PARENT[u], 4)), qU3), u * 4);
+    L.lq.set(qmul(qinv(qU3), qL3), l * 4);
+    L.lq.set(qmul(qinv(qL3), qF), ft * 4);
+    const out = { miss: Math.max(0, dT - (L1 + L2 - 1e-4)) };
     fk(L, w, R.rest);
     mask |= (1 << u) | (1 << l) | (1 << ft);
     // a lock the leg cannot reach any more (the body has moved on): let go from where the foot is drawn now
@@ -153,6 +183,11 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
   }
   return mask;
 }
+
+const norm3 = (v: number[]) => {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+};
 
 /** the let-go offset's weight: 1 -> 0 over FOOT_LOCK.unlock with no velocity jump at either end */
 function decay(t: number) {
