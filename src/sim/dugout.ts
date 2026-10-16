@@ -30,7 +30,8 @@ const sitsOnBench = (p: PlayerRT) => !p.info.isPitcher || p.inGame;
 function ensureSeat(p: PlayerRT): number {
   if (p.seat >= 0) return p.seat;
   const used = new Set<number>();
-  for (const q of [...p.team.players.values(), ...p.team.bullpen]) if (q !== p && q.seat >= 0 && (q.dug === 'bench' || q.dug === 'toBench' || q.dug === 'toDeck' || q.onField)) used.add(q.seat);
+  // (a seat is taken by whoever owns it and is still around: on the bench, on deck, out on the field or walking anywhere in between)
+  for (const q of [...p.team.players.values(), ...p.team.bullpen]) if (q !== p && q.seat >= 0 && (q.inGame || q.dug || q.onField)) used.add(q.seat);
   let k = 0;
   while (used.has(k)) k++;
   p.seat = k;
@@ -106,7 +107,14 @@ export function toBench(w: World, p: PlayerRT): void {
 
 /** The next hitter gets up, walks out of the dugout to the on-deck circle and starts warming up. */
 export function sendToDeck(w: World, p: PlayerRT): void {
-  if (w.cfg.pace === 0 || p.onField || p.dug !== 'bench') return;
+  if (w.cfg.pace === 0 || p.onField) return;
+  // still walking in from the field (a crowd at the dugout door): he goes once he is back on the bench for his bat
+  if (p.dug === 'toBench') {
+    w.deckNext = p;
+    return;
+  }
+  if (p.dug !== 'bench') return;
+  if (w.deckNext === p) w.deckNext = null;
   const side = p.team.side;
   p.dug = 'toDeck';
   p.route = [benchAisle(side, p.seat), dugStep(side), dugDoor(side), onDeckSpot(side)];
@@ -131,6 +139,9 @@ export function routeToBox(b: PlayerRT, boxSide: 1 | -1): { x: number; z: number
  */
 export function tickDugout(w: World): void {
   if (w.cfg.pace === 0) return;
+  const nx = w.deckNext;
+  if (nx && nx.dug === 'bench' && !nx.route.length) sendToDeck(w, nx);
+  else if (nx && nx.dug !== 'toBench' && nx.dug !== 'bench') w.deckNext = null;
   for (const t of [w.teams.home, w.teams.away]) {
     for (const p of t.players.values()) tickOne(w, p);
     tickBullpen(w, t);
@@ -184,11 +195,14 @@ function tickOne(w: World, p: PlayerRT): void {
   if (p.route.length) {
     const next = p.route[0];
     const last = p.route.length === 1;
-    setGoal(p, next.x, next.z, last, p.routeMul);
+    // (the door on his way out is a way point too: his goal on the field comes after it)
+    const final = last && !p.after;
+    setGoal(p, next.x, next.z, final, p.routeMul);
     if (p.gait !== 'trot') p.gait = 'walk';
     if (!p.onField) stepPlayer(p, w);
     const d = Math.hypot(p.x - next.x, p.z - next.z);
-    if (d < (last ? 0.12 : 0.5)) {
+    // (a way point with people on it: close and held up counts as there)
+    if (d < (final ? 0.12 : 1.0) || (!final && d < 2 && Math.hypot(p.vx, p.vz) < 0.8)) {
       p.route.shift();
       if (!p.route.length) arrive(w, p);
     }

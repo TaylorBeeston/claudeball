@@ -368,6 +368,7 @@ export function tickWindup(w: World): void {
 
 export function releasePitch(w: World): void {
   const P = w.pitcher;
+  w.misses = []; // (a missed base can be appealed only until the next pitch)
   const spec = (w as unknown as { _spec: import('./types').PitchSpec })._spec;
   const aim = w.pitchAim!;
   const slot = { x: P.info.traits.armSide, y: P.info.traits.armHeight, ext: P.info.traits.extension };
@@ -831,8 +832,8 @@ export function resetBatterToBox(w: World): void {
   b.lookAt = { x: 0, z: MOUND_DIST };
   b.anim = 'idle';
   b.animUntil = 0;
-  if (w.cfg.pace > 0 && Math.hypot(b.x - side * BATTER_X, b.z - 0.15) > 0.3) {
-    // a foul ball sent him out of the box: he walks back to it
+  if (w.cfg.pace > 0 && Math.hypot(b.x - side * BATTER_X, b.z - 0.15) > 0.03) {
+    // a foul ball sent him out of the box (or the swing moved him a step): he walks back to it, nobody is set down there
     b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(3.0 / Math.max(1, b.vmax), 0.1, 1) };
     return;
   }

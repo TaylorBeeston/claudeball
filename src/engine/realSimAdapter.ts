@@ -22,6 +22,7 @@ interface RSPlayer {
   releaseIn?: number;
   gloveHand?: 'L' | 'R';
   pitchType?: string | null;
+  stride?: { next: 0 | 1; phase: number };
 }
 interface RSInfo {
   id: string; name: string; jersey: number; bats: 'L' | 'R' | 'S'; throws: 'L' | 'R'; height?: number; primaryPosition?: string;
@@ -188,8 +189,14 @@ export class RealSimAdapter implements GameLike {
         this.emit({ type: 'throw', playerId: String(e.fromId), target, targetId: e.toId ? String(e.toId) : undefined });
         break;
       }
+      case 'obstruction':
+        if (!e.awarded) this.emit({ type: 'play', text: `Obstruction: ${this.who(e.runnerId)} is given ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` });
+        break;
+      case 'appeal':
+        if (e.stage === 'start') this.emit({ type: 'play', text: `Appeal at ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` });
+        break;
       case 'out':
-        this.emit({ type: 'out', playerId: String(e.playerId), text: `${this.who(e.playerId)} is out (${String(e.outType)}).`, closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined, base: (e.base as number | null | undefined) ?? null });
+        this.emit({ type: 'out', playerId: String(e.playerId), text: e.outType === 'appeal' ? `${this.who(e.playerId)} is out on appeal: he missed ${['home', 'first', 'second', 'third', 'home'][Number(e.base)] ?? 'the bag'}.` : e.outType === 'interference' ? `${this.who(e.playerId)} is out for interference.` : e.outType === 'baseline' ? `${this.who(e.playerId)} is out: he left the baseline.` : `${this.who(e.playerId)} is out (${String(e.outType)}).`, closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined, base: (e.base as number | null | undefined) ?? null });
         break;
       case 'safe':
         this.emit({ type: 'safe', playerId: String(e.playerId), base: Number(e.base), closePlay: e.closePlay as boolean | undefined, margin: e.margin as number | undefined });
@@ -310,7 +317,7 @@ export class RealSimAdapter implements GameLike {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
         animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
-        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings, stride: p.stride,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;

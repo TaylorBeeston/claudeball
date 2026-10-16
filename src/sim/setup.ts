@@ -1,3 +1,4 @@
+import { newStride } from './stride';
 import { newClock } from './clock';
 import { DEFAULT_ENV } from './ball';
 import { DEFAULT_FENCE, MOUND_DIST } from './field';
@@ -76,6 +77,8 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     after: null,
     nextSwing: 0,
     gait: null,
+    stride: newStride(),
+    slideDecel: 0,
     wallTick: -9999,
     plan: { kind: 'idle', base: 0, tx: 0, tz: 0, reactTick: 0, biasX: 0, biasZ: 0, biasY: 0, biasT: 0, wall: null, askSeq: 0, lastSig: '', recheckTick: 0, asking: false, tagTarget: null, catchZ: null, holdUntil: 0, releaseAt: 0, throwBase: 0, throwTo: null, lastAttempt: -999, wasPrimary: false, delays: 0 },
   };
@@ -194,6 +197,12 @@ export function createWorld(cfg: GameConfig): World {
     catcher: home.defense.get('C')!,
     runners: [],
     exiting: [],
+    misses: [],
+    deckNext: null,
+    bodies: [],
+    bodyById: new Map(),
+    collisionTick: new Map(),
+    appeal: null,
     leavers: [],
     tags: [],
     bagTags: [],

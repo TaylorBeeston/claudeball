@@ -20,7 +20,7 @@ Interesting plays are replayed from a second angle, in slow motion, while the li
 Preconditions:
 
 - A session; `$C doctor` exit 0.
-- Seeds measured at commit 7f85bec (tempo broadcast, 9 innings): seed 3 close play (safe at 2B) at 1225.54 s; seed 1 home run at 1416.6 s.
+- Seeds measured at commit 7f85bec (tempo broadcast, 9 innings): seed 3 close play (safe at 2B) at 1225.54 s; seed 1 home run at 1416.6 s. The rules-and-contact work (t-0021) moved these: see SKILL.md's measured situations (seed 3 close play at 6310.7 s; seed 3's steal of second at 1246.5 s).
 
 - **Jump near the close play.** Run `$C goto "autostart&seed=3&tempo=broadcast&innings=9&quality=low"` then `$C ff "s.time >= 1215" --turbo` (harness knob; ~50 s wall). The state matches the Node seek: bottom 2, 1 out, runner on first, batter Ben Fernandez.
 - **The play at 1x.** Run `$C ff "ev?.type==='safe' && ev.closePlay" --speed 1 --keep-replays`. It returns `simTime 1225.54`, `safe` at base 2, margin -0.077 s.

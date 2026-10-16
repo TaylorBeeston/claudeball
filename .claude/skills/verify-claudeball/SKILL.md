@@ -99,22 +99,25 @@ Hot keys only work while a game is playing (not in a menu, the pause screen or g
 ### Reaching a situation (no state setters exist, by design: the sim is real)
 
 1. **Find it** without a browser: `$C seek "<condition>" --seeds 1-8 --tempo broadcast --innings 9 [--max 2]` plays the sim alone in Node (about 15 s per 9-inning game) and prints seed, sim time, inning, outs, count, runners, score, batter and the event for each hit. Conditions are JS over `s` (engine-shaped state: `s.outs`, `s.runners` [1B,2B,3B], `s.count`, `s.inning`, `s.half`, `s.score`, `s.pitchClock`, `s.phase`, `s.over`) and `ev` (one event: `ev.type` = `pitch`, `contact`, `umpire_call` (`ev.kind`: ball, strike_called, strike_swinging, foul, safe, out, ...), `out`/`safe` (`ev.closePlay`, `ev.margin`), `homerun`, `robbed_hr`, `steal`... see `cbv events`). Director events (`broadcast.*`) exist only in the page.
-2. **Jump there** in the page: `$C goto "autostart&seed=S&tempo=T&innings=I&quality=low"`, then `$C ff "s.time >= <simTime - 10>" --turbo` (about 24 game seconds per wall second), then `$C ff "<condition>" --speed 1 --keep-replays` to arrive at normal speed with the broadcast running. The page reproduces the Node timeline exactly (proven: seed 3's close play at 1225.54 s in both).
+2. **Jump there** in the page: `$C goto "autostart&seed=S&tempo=T&innings=I&quality=low"`, then `$C ff "s.time >= <simTime - 10>" --turbo` (about 24 game seconds per wall second), then `$C ff "<condition>" --speed 1 --keep-replays` to arrive at normal speed with the broadcast running. The page reproduces the Node timeline exactly (proven: seed 3's close play at 1225.54 s in both, at commit 7f85bec).
 3. Or **play forward** with the player's own skips: `$C next batter --until "s.outs===2 && s.runners[0]"`, `$C next half --until "s.inning===3"` (presses `.` / `n` until the condition holds; quick, no rendering).
 
 `ff` options: `--speed 1|2|4` (the same knob as the 1/2/3 keys; default 4), `--turbo` (harness knob: a fixed 0.1 s step per frame; label it in evidence), `--pause` (pause the sim when it hits, for a still), `--timeout <s>` (default 300; exit 3 on timeout; exit 4, with the error, when the condition never evaluated without throwing: a typo such as `s.runner`, so a silent "not found" cannot happen; `seek` does the same), `--keep-replays` (otherwise replays are switched off during the jump, because a replay holds the live game, and restored afterwards). It prints the hit event and the situation.
 
-Measured situations (commit 7f85bec, tempo broadcast, 9 innings; re-measure with `seek` after sim changes):
+Measured situations (commit a79beed, tempo broadcast, 9 innings; re-measure with `seek` after sim changes: the rules-and-contact work of t-0021 moved every seed's timeline):
 
 | situation | seed | sim time | notes |
 |---|---|---|---|
 | first pitch / `play_ball` | 24 | 69.9 s | pregame: booth welcome at ~31 s, B-roll |
-| home run | 1 | 1416.6 s | bottom 2, runner on 1st |
-| home run, 2 outs | 2 | 900.6 s | bottom 1 |
-| grand slam | 6 | 3536.7 s | bottom 5, bases loaded, 2 outs |
-| close play (safe at 2B, steal) | 3 | 1225.5 s | `CLOSE PLAY` slow-mo replay starts 1227.2 s |
-| pitch-clock violation (batter, automatic strike) | 16 | 2929.2 s | top 5, 0-1 count; rare (~0.19 per game) |
-| game over | 24 | 5182.6 s | home wins 4-0 in the top of the 9th; faster: `innings=1` + `cbv next half --until s.over` |
+| home run, 2 outs | 1 | 5028.8 s | top 8, runners on 1st and 3rd (seed 1's first homer) |
+| grand slam | 8 | 993.2 s | top 2, bases loaded, 1 out |
+| close play (safe at 2B) | 3 | 6310.7 s | top 8, 1 out, runner on 2nd |
+| pitch-clock violation (pitcher, automatic ball) | 5 | 5198.6 s | top 7; rare |
+| obstruction (the umpire gives the runner second) | 8 | 3777.9 s | top 6, 2 outs; about 0.2 a game |
+| game over | 24 | 6705.6 s | away wins 6-4; faster: `innings=1` + `cbv next half --until s.over` |
+
+A missed-base appeal is rarer than these (about 0.2 missed bags a game, only those a fielder saw are appealed): none in seeds 1-24.
+The seed 3 steal of second that this table used to list (the `CLOSE PLAY` with fielders inside each other) is now at 1246.5 s in seed 3, a hook slide that beats the tag.
 
 ### Reading the game
 

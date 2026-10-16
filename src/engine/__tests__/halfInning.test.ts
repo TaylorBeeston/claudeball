@@ -16,8 +16,14 @@ function play(seed: string) {
 }
 
 describe('half innings at the end of a game', () => {
-  // seeds whose 2-inning game ends after the top of the 2nd (home ahead) and after the bottom of the 2nd
-  const games = ['hi-1', 'hi-2', 'hi-3', 'hi-4', 'hi-5', 'hi-6'].map(play);
+  // 2-inning games that end after the top of the 2nd (home ahead) and after the bottom of the 2nd (three outs: not a walk-off), picked
+  // from a pool of seeds so the test does not hang on one seed's timeline
+  const games = Array.from({ length: 16 }, (_, i) => play(`hi-${i + 1}`)).filter((g) => g.w.inning === 2 && g.w.outs === 3).slice(0, 6);
+  it('the pool has games ending after the top and after the bottom of the 2nd', () => {
+    expect(games.length).toBeGreaterThanOrEqual(4);
+    expect(games.some((g) => g.w.half === 'top')).toBe(true);
+    expect(games.some((g) => g.w.half === 'bottom')).toBe(true);
+  });
 
   it('no half inning is announced after the one that ends the game', () => {
     for (const { w, events } of games) {

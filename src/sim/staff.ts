@@ -3,6 +3,7 @@
  * sometimes toss one to a fan) and the bat boy (who brings back the bat a hitter drops running to first). They are physical: they walk, they stay out of
  * the live play, and what they signal comes from the real state of the play.
  */
+import { steer } from './bodies';
 import { PENDING } from './decisions';
 import type { CoachDecision, CoachRequest } from './decisions';
 import { ask, situationOf } from './dispatch';
@@ -54,7 +55,7 @@ function setAnimS(w: World, s: StaffRT, anim: AnimHint, sec: number): void {
   s.animUntil = w.tick + secToTicks(sec);
 }
 
-function moveStaff(s: StaffRT): void {
+function moveStaff(w: World, s: StaffRT): void {
   const g = s.goal;
   let tx = 0;
   let tz = 0;
@@ -64,8 +65,7 @@ function moveStaff(s: StaffRT): void {
     const d = Math.hypot(dx, dz);
     const sp = Math.min(s.speed, Math.sqrt(2 * 5 * Math.max(0, d - 0.03)));
     if (d > 0.03) {
-      tx = (dx / d) * sp;
-      tz = (dz / d) * sp;
+      [tx, tz] = steer(w, s.id, s.x, s.z, (dx / d) * sp, (dz / d) * sp);
     }
   }
   let dvx = tx - s.vx;
@@ -215,7 +215,7 @@ export function tickStaff(w: World): void {
         if (!s.path.length) s.goal = null;
       }
     }
-    if (s.active || s.vx || s.vz) moveStaff(s);
+    if (s.active || s.vx || s.vz) moveStaff(w, s);
   }
   tickDeadBall(w);
 }

@@ -175,6 +175,11 @@ export const LEX: Record<string, string[]> = {
   'out.cs': ['Caught stealing! $r is out at $base.', 'Throw in time... out! Caught stealing.', 'Nailed at $base! $outs', 'Caught stealing at $base. $outs', 'The throw is there! $r is out at $base.'],
   'out.tagup': ['Tagging up... and the throw beats $r! $outs', 'Out at $base trying to tag up! $outs', 'Doubled off! $r was tagging up.', 'Thrown out tagging up. $outs'],
   'out.interference': ["Batter's interference is called. $outs", "That's interference on the batter. $outs", 'Interference called, $b is out. $outs'],
+  'out.appeal': ['On the appeal, $r is out! He never touched $base. $outs', 'He missed the bag! $r is out on the appeal at $base. $outs', '$r missed $base, and the appeal gets him. $outs'],
+  'out.runnerint': ['He ran right into the fielder! Interference, and $r is out. $outs', 'Interference on the runner: he got in the way of the play. $outs', '$r collides with the fielder making the play, and he is called out. $outs'],
+  'out.baseline': ['He left the baseline to get away from the tag, and he is out. $outs', 'Out of the baseline! $r went too far around the tag. $outs'],
+  'obstruction': ['Obstruction! The fielder was in his way without the ball.', 'They are calling obstruction: he was blocked on his way to $base.', 'Obstruction on the fielder, and $r will be given $base.'],
+  'appeal.start': ['They are going to appeal at $base.', 'An appeal at $base. Did $r touch the bag?', 'Hold on, the ball goes to $base: they think $r missed it.'],
   'out.other': ['Out! $outs', 'That is an out. $outs', 'And $b is retired. $outs', 'Retired. $outs'],
   'out.dp': ['Double play!', 'Around the horn... double play!', 'Turns two! Double play!', 'Two outs on one play, a double play!', "That's a double play!", 'Double play, and the inning is over!'],
   'out.tp': ['Triple play! Three outs on one play!', 'Unbelievable, a triple play!', 'A triple play! You hardly ever see that.', 'Three outs! A triple play!'],
@@ -289,6 +294,11 @@ const HE: Record<string, string[]> = {
   'out.cs': ['He is caught stealing at $base! $outs', 'Nailed at $base, and he is out! $outs', 'The throw gets him! Out at $base.'],
   'out.tagup': ['He tagged up, but he is out at $base! $outs', 'He is thrown out tagging up. $outs'],
   'out.interference': ['Interference, and he is out. $outs'],
+  'out.appeal': ['He missed $base, and on the appeal he is out. $outs', 'They appeal, and he is called out for missing $base. $outs'],
+  'appeal.start': ['They think he missed $base. Here comes the appeal.'],
+  'out.runnerint': ['He ran into the fielder making the play, and he is out. $outs'],
+  'out.baseline': ['He went out of the baseline, and he is out. $outs'],
+  'obstruction': ['Obstruction: he was blocked, and he gets $base.'],
   'out.other': ['He is retired. $outs', 'And he is out. $outs'],
   'hit.single': ['He singles to $dir.', 'Base hit, and he will hold at first.', 'He lines one into $dir, base hit.', 'He finds a hole! Base hit to $dir.', 'Base hit, and he is on at first[, his $hn hit tonight].', 'He drops one into $dir, a single.'],
   'hit.double': ['He drives one into the gap, and he will take second.', 'He pulls into second with a double.', 'He rips one to $dir, and he is in with a double.', 'He slides into second, a double[, his $hn hit tonight].', 'He drives it to $dir, and he has a double.'],
@@ -334,11 +344,13 @@ export const EVENT_KEYS: Record<string, string[]> = {
   catch: ['catch.fly', 'catch.dive'],
   error: ['error.drop', 'error.bobble', 'error.throw'],
   throw: ['throw.steal'],
-  out: ['out.ground.first', 'out.force', 'out.tag', 'out.line', 'out.fly', 'out.fly.deep', 'out.pop', 'out.foulfly', 'out.infieldfly', 'out.pickoff', 'out.cs', 'out.tagup', 'out.interference', 'out.other', 'out.dp', 'out.tp', 'strikeout.looking', 'strikeout.swinging', 'strikeout.dropped'],
+  out: ['out.ground.first', 'out.force', 'out.tag', 'out.line', 'out.fly', 'out.fly.deep', 'out.pop', 'out.foulfly', 'out.infieldfly', 'out.pickoff', 'out.cs', 'out.tagup', 'out.interference', 'out.appeal', 'out.runnerint', 'out.baseline', 'out.other', 'out.dp', 'out.tp', 'strikeout.looking', 'strikeout.swinging', 'strikeout.dropped'],
   safe: ['safe', 'safe.close', 'steal.safe'],
   runnerAdvance: ['advance'],
   runScored: ['run', 'run.walkoff'],
   runsNullified: ['run.nullified'],
+  appeal: ['appeal.start'],
+  obstruction: ['obstruction'],
   steal: ['steal.go'],
   pickoffAttempt: ['pickoff'],
   walk: ['walk', 'walk.forced', 'walk.intentional'],
@@ -361,7 +373,7 @@ export const EVENT_KEYS: Record<string, string[]> = {
 };
 
 /** sim events the booth deliberately says nothing about (they are sounds, gestures or bookkeeping) */
-export const SILENT_EVENTS = ['windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart', 'pitchClockStart', 'pitchClockReset', 'disengagement'];
+export const SILENT_EVENTS = ['baseMissed', 'collision', 'interference', 'outOfBaseline', 'windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart', 'pitchClockStart', 'pitchClockReset', 'disengagement'];
 
 export const lexiconStats = () => Object.fromEntries(Object.entries(LEX).map(([k, v]) => [k, v.reduce((a, t) => a + variants(t), 0)]));
 
@@ -604,6 +616,9 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
       else if (ot === 'caughtStealing') push('out.cs', 'must', { slots, excited: true });
       else if (ot === 'tagUp') push('out.tagup', 'must', { slots });
       else if (ot === 'batterInterference') push('out.interference', 'must', { slots });
+      else if (ot === 'appeal') push('out.appeal', 'must', { slots, excited: true });
+      else if (ot === 'interference') push('out.runnerint', 'must', { slots, excited: true });
+      else if (ot === 'baseline') push('out.baseline', 'must', { slots });
       else push('out.other', 'must', { slots });
       break;
     }
@@ -651,6 +666,18 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
     case 'runsNullified':
       push('run.nullified', 'must');
       break;
+    case 'obstruction': {
+      if (ev.awarded) break;
+      const rn = person(c, ev.runnerId);
+      push('obstruction', 'must', { excited: true, slots: { r: rn ? lastNameOf(rn.name) : 'the runner', base: baseWord(Number(ev.base)) } });
+      break;
+    }
+    case 'appeal': {
+      if (ev.stage !== 'start') break;
+      const rn = person(c, ev.runnerId);
+      push('appeal.start', 'must', { slots: { r: rn ? lastNameOf(rn.name) : 'the runner', base: baseWord(Number(ev.base)) } });
+      break;
+    }
     case 'runnerAdvance': {
       const to = Number(ev.toBase);
       const from = Number(ev.fromBase);
