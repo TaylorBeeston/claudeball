@@ -30,7 +30,8 @@ const sitsOnBench = (p: PlayerRT) => !p.info.isPitcher || p.inGame;
 function ensureSeat(p: PlayerRT): number {
   if (p.seat >= 0) return p.seat;
   const used = new Set<number>();
-  for (const q of [...p.team.players.values(), ...p.team.bullpen]) if (q !== p && q.seat >= 0 && (q.dug === 'bench' || q.dug === 'toBench' || q.dug === 'toDeck' || q.onField)) used.add(q.seat);
+  // (a seat is taken by whoever owns it and is still around: on the bench, on deck, out on the field or walking anywhere in between)
+  for (const q of [...p.team.players.values(), ...p.team.bullpen]) if (q !== p && q.seat >= 0 && (q.inGame || q.dug || q.onField)) used.add(q.seat);
   let k = 0;
   while (used.has(k)) k++;
   p.seat = k;

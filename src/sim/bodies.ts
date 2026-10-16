@@ -102,7 +102,8 @@ function receiving(w: World, p: PlayerRT | null): boolean {
   const b = w.ball;
   if (b.mode === 'thrown' && (b.throwTo === p || b.lob?.to === p)) return true;
   const k = p.plan.kind;
-  return !!w.play && !w.play.dead && (k === 'cover' || k === 'receive' || k === 'cutoff');
+  // (set at his spot for it: while he is still running there he goes around a runner like anyone)
+  return !!w.play && !w.play.dead && (k === 'cover' || k === 'receive' || k === 'cutoff') && Math.hypot(p.x - p.plan.tx, p.z - p.plan.tz) < 1.5;
 }
 
 /** How much of the avoiding `me` does when he would meet `o` (0: he holds his line, 1: he goes around). */
@@ -114,7 +115,14 @@ export function giveWay(w: World, me: Body, o: Body): number {
   if (me.cls === 'X' || me.cls === 'D') return o.cls === 'X' || o.cls === 'D' ? 0.5 : 1;
   if (o.cls === 'X' || o.cls === 'D') return 0.2;
   if (me.cls === 'R') {
-    if (o.cls === 'F') return fieldingBall(w, o.p) ? 1 : o.p?.hasBall ? 0 : 0.15;
+    if (o.cls === 'F') {
+      if (fieldingBall(w, o.p)) return 1;
+      // (the man set beside the bag he is going for stands clear of his line: he runs his line to the bag)
+      const r = me.run;
+      const tb = r && r.target > r.base ? BASE_POS[r.target % 4] : null;
+      if (tb && Math.hypot(o.x - tb.x, o.z - tb.z) < 1.2) return 0;
+      return o.p?.hasBall ? 0 : 0.15;
+    }
     return 0.5;
   }
   if (me.cls === 'F') {

@@ -132,7 +132,7 @@ describe('runners time their steps onto the bag', () => {
 describe('a missed base', () => {
   /**
    * A batter-runner running through first who does not time his steps (`STEP_AIM` off): his left foot comes down `short` metres
-   * before the bag's near edge (toe to edge), and the next one, a full stride on, past it. 4 cm short: a near miss he may not feel;
+   * before the bag's near edge (toe to edge), and the next one, a full stride on, past it. 7 cm short (the sole is 10 cm wide): a near miss he may not feel;
    * 30 cm: one he does.
    */
   function untimed(seed: string, short: number) {
@@ -155,7 +155,7 @@ describe('a missed base', () => {
     const keep = { ...STEP_AIM };
     STEP_AIM.maxSteps = 0;
     for (let k = 0; k < 24; k++) {
-      const { l, r } = untimed(`miss-${k}`, k % 2 ? 0.04 : 0.3);
+      const { l, r } = untimed(`miss-${k}`, k % 2 ? 0.07 : 0.3);
       const id = r.p.info.id;
       for (let i = 0; i < 240 * 6 && !(r.base >= 1 && Math.hypot(r.p.vx, r.p.vz) < 1); i++) l.g.step(1 / 240);
       const missed = ofType(l.events, 'baseMissed').filter((e) => e.playerId === id && e.base === 1);

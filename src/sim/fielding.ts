@@ -209,7 +209,8 @@ export function coverSpot(b: number, sx: number, sz: number, outside = false): {
     px = -px;
     pz = -pz;
   }
-  return { x: bp.x + px * 0.46 - ix * 0.05, z: bp.z + pz * 0.46 - iz * 0.05 };
+  // (0.55 m out: clear of a runner crossing the middle of the bag, two body half-widths, with his foot still on its edge)
+  return { x: bp.x + px * 0.55 - ix * 0.05, z: bp.z + pz * 0.55 - iz * 0.05 };
 }
 
 export function defenseAI(w: World): void {

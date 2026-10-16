@@ -74,9 +74,13 @@ function impedes(w: World, r: RunnerRT, f: PlayerRT): boolean {
   const p = r.p;
   const sp = Math.hypot(p.vx, p.vz);
   if (sp < 3) return false;
-  const to = r.target > r.base ? r.target : r.base;
-  if (to < 1) return false;
-  const from = r.target > r.base ? r.base : Math.max(0, r.base - 1);
+  // on his way to a base (a run-through past first, or a man going back, is not being kept from one)
+  if (r.target <= r.base || r.overrun) return false;
+  const to = r.target;
+  const from = r.base;
+  // just out of the box / off the bag: the catcher and the batter-runner crossing at the plate, a man taking off, is incidental
+  const fromBag = from === 0 ? { x: 0, z: 0 } : BASE_POS[from];
+  if (Math.hypot(p.x - fromBag.x, p.z - fromBag.z) < 3) return false;
   const A = BASE_POS[from % 4], B = BASE_POS[to % 4];
   // running toward the base
   const dx = B.x - p.x, dz = B.z - p.z, dl = Math.hypot(dx, dz) || 1;
@@ -87,6 +91,9 @@ function impedes(w: World, r: RunnerRT, f: PlayerRT): boolean {
   if (Math.hypot(f.x - (A.x + lx * t), f.z - (A.z + lz * t)) > 0.6) return false;
   // covering the bag he is running to (or back to), at it: in the act of fielding the play there
   if ((f.plan.kind === 'cover' || f.plan.kind === 'receive' || f.plan.kind === 'hold') && Math.hypot(f.x - B.x, f.z - B.z) < 1.2) return false;
+  // taking a throw that is on its way (or lining up as the relay man for one): in the act of fielding it
+  const m = w.ball.mode;
+  if ((f.plan.kind === 'receive' && m === 'thrown') || (f.plan.kind === 'cutoff' && (m === 'thrown' || m === 'batted' || m === 'loose'))) return false;
   return true;
 }
 

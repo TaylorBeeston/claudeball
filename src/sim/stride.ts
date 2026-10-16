@@ -187,7 +187,10 @@ export function aimStep(w: World, p: PlayerRT, tx: number, tz: number, opts: { m
     // k steps of length l from here: (l - dist) + (k - 1) l = along
     const l = (along + s.dist) / k;
     if (l <= s.dist + 1e-3) continue;
-    const err = Math.abs(Math.log(l / L));
+    // (and how far off his present line that body point is: the foot that lands on the bag from where he is running is the easy one)
+    const vl = Math.hypot(p.vx, p.vz) || 1;
+    const off = Math.abs((bx - p.x) * (p.vz / vl) - (bz - p.z) * (p.vx / vl));
+    const err = Math.abs(Math.log(l / L)) + (off / Math.max(0.5, k * L)) * 1.5;
     if (l >= lo * L && l <= hi * L && err < bestErr) {
       best = k;
       bestErr = err;
@@ -212,6 +215,8 @@ export const BAG_HALF = (15 * 0.0254) / 2;
 /** The shoe from the ankle: heel behind, toe ahead (m). */
 const HEEL = 0.07;
 const TOE = 0.2;
+/** Half the width of the sole (m): the shoe is on the bag if its sole overlaps it. */
+const SOLE_HALF = 0.05;
 
 const PLATE: [number, number][] = [
   [0, 0],
@@ -248,7 +253,7 @@ export function shoeOn(b: number, st: { x: number; z: number; dir: number }): bo
   const fx = Math.sin(st.dir), fz = Math.cos(st.dir);
   for (let k = 0; k <= 4; k++) {
     const a = -HEEL + ((TOE + HEEL) * k) / 4;
-    if (distToBase(b, st.x + fx * a, st.z + fz * a) <= 0.03) return true;
+    if (distToBase(b, st.x + fx * a, st.z + fz * a) <= SOLE_HALF) return true;
   }
   return false;
 }

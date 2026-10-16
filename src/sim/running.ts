@@ -587,7 +587,10 @@ function tickRunner(w: World, r: RunnerRT): void {
     p.lookAt = null;
     // he times his last steps so a foot comes down on the bag, and steers his body to pass where that foot lands beside it
     if (!r.slideKind) {
-      const T = touchPoint(r.target, continuing && r.goBack !== r.target, dIn);
+      const rounding = continuing && r.goBack !== r.target;
+      const T0 = touchPoint(r.target, rounding, dIn);
+      // (rounding, he cuts the inside corner on purpose; otherwise he hits the part of the bag on his line)
+      const T = rounding ? T0 : onHisLine(p, T0);
       const plan = aimStep(w, p, T.x, T.z);
       // (running through first he brakes only well past the bag: he steers onto it all the same)
       const through = !stop || (r.target === 1 && r.want === 1 && !r.dead && r.goBack !== 1);
@@ -613,6 +616,21 @@ function tickRunner(w: World, r: RunnerRT): void {
     // diving back to the bag with the ball coming
     tagging.updateSlide(w, r);
   }
+}
+
+/** He hits the part of the bag that is on his line: the touch point slides (up to 12 cm, staying on the bag) toward the line he is running. */
+function onHisLine(p: PlayerRT, T: { x: number; z: number }): { x: number; z: number } {
+  const v = Math.hypot(p.vx, p.vz);
+  if (v < 2) return T;
+  const ux = p.vx / v, uz = p.vz / v;
+  // his line's closest point to T, and how far T is off it
+  const t = (T.x - p.x) * ux + (T.z - p.z) * uz;
+  if (t <= 0) return T;
+  const cx = p.x + ux * t, cz = p.z + uz * t;
+  const off = Math.hypot(cx - T.x, cz - T.z);
+  if (off < 1e-3) return T;
+  const k = Math.min(off, 0.12) / off;
+  return { x: T.x + (cx - T.x) * k, z: T.z + (cz - T.z) * k };
 }
 
 /** Standing beside the bag he puts a foot on it: the point on its edge toward him (a few cm in). */
