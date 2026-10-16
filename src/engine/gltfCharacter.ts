@@ -47,6 +47,7 @@ import { constrainOptsFor, constrainPose, newConstrainState } from './pose/const
 import { limitNeck } from './pose/neck';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
+import { footLock, newFootLock } from './pose/footLock';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -75,6 +76,8 @@ const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_
 const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
+/** clips whose feet are off the ground or not standing on it (slides, dives, jumps, sitting): no foot locking */
+const FREE_FEET = /^(slide|dive|catch_jump|pop_up|coach_slide|bench_sit|ballkid_sit|bench_cheer|celebrate|run_sprint|run_turn_sprint|idle$)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
 const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
 /** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */
@@ -1674,6 +1677,8 @@ export class GltfPuppet implements PuppetLike {
     // joints back inside a human range (pose/constrain.ts): elbow / knee hinges, forearm pronation shared with the hand, wrist
     this.constrain(snap, dt);
     this.clearElbows(snap, dt);
+    // feet that are down stay where they landed (pose/footLock.ts)
+    this.lockFeet(dt);
     if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
@@ -2319,6 +2324,17 @@ export class GltfPuppet implements PuppetLike {
     if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;
     this.readPose();
     const mask = pass(this.poseL, this.poseRest);
+    if (!mask) return;
+    for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
+    this.refreshMatrices();
+    this.rig.refresh();
+  }
+  private footState = newFootLock();
+  private lockFeet(dt: number) {
+    if (!this.poseRest || (globalThis as { __noFootLock?: boolean }).__noFootLock) return;
+    this.refreshMatrices();
+    this.readPose();
+    const mask = footLock(this.poseL, this.poseRest, this.model.matrixWorld.elements, this.footState, dt, FREE_FEET.test(this.currentName));
     if (!mask) return;
     for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
     this.refreshMatrices();

@@ -60,6 +60,8 @@ export interface ArmGoal {
   twistLimit?: number;
   /** the frame's step (s), for a tracked grip's springs */
   dt?: number;
+  /** where the soft reach starts (share of full length; default ARM_LIMITS.soft): a leg standing straight needs ~1 or its foot rises */
+  soft?: number;
   /**
    * the grip's state from last frame (elbow swivel, fist roll, pronation and their speeds): the swivel and the roll then follow the best ones
    * near them on damped springs (no elbow hops, no hand flipping to the other end of its twist range); without it every swivel is searched.
@@ -266,7 +268,7 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
     const d = len(D);
     if (d < 1e-6) break;
     const dir = [D[0] / d, D[1] / d, D[2] / d];
-    const dEff = Math.max(Math.abs(L1 - L2) + 1e-4, softReach(d, L1 + L2));
+    const dEff = Math.max(Math.abs(L1 - L2) + 1e-4, goal.soft === undefined ? softReach(d, L1 + L2) : softReach(d, L1 + L2, goal.soft));
     const a = (L1 * L1 - L2 * L2 + dEff * dEff) / (2 * dEff);
     const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
     // pole: the clip's elbow around the shoulder -> wrist line (keeps the clip's swivel), else away from the flexion side
