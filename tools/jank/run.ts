@@ -12,6 +12,7 @@
  *
  * Output: tools/jank/out/ (git-ignored): static.json, fades.json, game.json, report.md, sheets/*.jpg.
  */
+import { FAR_APART } from '../../src/engine/pose/inertia';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -65,7 +66,8 @@ export async function doFades(snapshots = true, constrain = flag('constrain')): 
   const files = await loadFiles(shippedPlayers());
   for (const tx of list) {
     const f = files.find((x) => x.name === (tx.file || 'player_base')) ?? files[0];
-    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : 'game', constrain);
+    if (flag('continuous')) (globalThis as { __continuousBlend?: boolean }).__continuousBlend = true;
+    sweepFade(agg, f.name, f.rig, f.info, tx, loops, flag('crossfade') ? 'crossfade' : flag('inertia') ? 'inertia' : flag('adaptive') ? 'adaptive' : 'game', constrain, +opt('far', String(FAR_APART)));
   }
   console.log(`[jank] fades: ${list.length} transitions`);
   return { meta: { kind: 'fades', n: list.length, git: git() }, entries: agg.list() };

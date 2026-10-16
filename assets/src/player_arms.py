@@ -52,6 +52,20 @@ def head_metric(M, rest, side):
     return hc
 
 def _ang(a, b): return math.acos(max(-1.0, min(1.0, a.normalized().dot(b.normalized()))))
+def shoulder_twist(M, rest, side):
+    """The upper arm's twist against the chest about its own rest direction (deg): how tools/jank (src/engine/pose/limits.ts) measures shoulder twist."""
+    d = lambda n: (M[n].to_3x3() @ rest[n].to_3x3().inverted()).to_quaternion()
+    r = d('Spine2').inverted() @ d(side+'Arm'); ax = REST_DIR[side+'Arm']
+    return math.degrees(2*math.atan2(Vector((r.x, r.y, r.z)).dot(ax), r.w) + 0.0) % 360 - (360 if math.degrees(2*math.atan2(Vector((r.x, r.y, r.z)).dot(ax), r.w)) % 360 > 180 else 0)
+def shoulder_behind(M, rest, side):
+    """How far (deg) the upper arm swings behind and across the back, as tools/jank measures it (in the chest's frame; glTF axes: x left, y up, z forward)."""
+    q = (M['Spine2'].to_3x3() @ rest['Spine2'].to_3x3().inverted()).to_quaternion()
+    b = q.inverted() @ (M[side+'ForeArm'].translation - M[side+'Arm'].translation).normalized(); tv = (b.x, b.z, -b.y)
+    medial = -(1 if side == 'Left' else -1)*tv[0]
+    return math.degrees(math.asin(min(1.0, min(medial, -tv[2])))) if tv[1] > -.75 and medial > 0 and tv[2] < 0 else 0.0
+def _swivel(M, side, pole):
+    """The side of the shoulder -> wrist line the pole puts the elbow on (the pole's part across that line): what decides the elbow, not the pole itself."""
+    sh = M[side+'Arm'].translation; wr = M[side+'Hand'].translation; dn = (wr - sh).normalized(); return pole - dn*pole.dot(dn)
 def optimise(keys, cfg, cyclic=False, init=None):
     """keys: [(frame, spec)] with `lpole` / `rpole` (base poles). Returns keys with per-frame optimised poles. cfg: cc_min, cc_cap, dz_max, abd_max, w_base, w_prev."""
     BONUS_SCALE[0] = cfg.get('bonus', 1.0); laps = 2 if cyclic else 1; out = {}; prev = {'l': Vector(init['l']) if init else None, 'r': Vector(init['r']) if init else None}
@@ -69,6 +83,16 @@ def optimise(keys, cfg, cyclic=False, init=None):
                     if cfg.get('dz_max') is not None: J += 300*max(0.0, dz - cfg['dz_max'])
                     if cfg.get('abd_max') is not None: J += 200*max(0.0, abd - cfg['abd_max'])
                     J += cfg.get('w_base', .2)*_ang(c, base) + (cfg.get('w_prev', 1.0)*_ang(c, prev[k]) if prev[k] is not None else 0.0)
+                    # the elbow's side kept from key to key: a pole whose part across the shoulder -> wrist line turned more than ~40 deg flips the elbow (and
+                    # with it the upper arm's roll: the jog / trot clips' arms spun ~140 deg about themselves in 1/12 of a stride)
+                    a_ = _swivel(M, side, c)
+                    if prev[k] is not None:
+                        b_ = _swivel(M, side, prev[k])
+                        if a_.length > 1e-4 and b_.length > 1e-4:
+                            ds = _ang(a_, b_); J += cfg.get('w_swivel', 6.0)*ds + 1e3*max(0.0, ds - math.radians(40))
+                    # and the upper arm's twist inside its range (|twist| <= 90 deg against the chest: a swivel that keeps an over-twisted arm is not kept)
+                    tw_ = shoulder_twist(M, rest, side); J += 50*max(0.0, math.radians(abs(tw_) - 90))
+                    J += 50*max(0.0, math.radians(shoulder_behind(M, rest, side) - 12))         # nor swung behind and across the back (limit 15 deg)
                     if best is None or J < best[0]: best = (J, c, cc, dz, abd, hc)
                 prev[k] = best[1].copy(); new[k+'pole'] = tuple(best[1]); new['_m_'+k] = (round(best[2], 3), round(best[3], 3), round(best[4], 3), round(best[0], 3), round(best[5], 3))
             if lap == laps-1: out[f] = new

@@ -197,19 +197,21 @@ _reg("catch_pitch_high", 18, _catch_pitch(-.76, 1.02, catch=7, lean=20, hips_z=-
 
 # ---------------------------------------------------------------- slides (root motion baked: the hips travel toward -Y)
 def _slide_pose(hy, hz, lean, lf, rf, hand_l, hand_r, **kw):
+    # the lead (left) knee points up over a nearly straight leg; the tucked (right) knee up and out over a shin folded ~120 deg under the lead knee
+    # (the tucked foot used to sit right under the hips at hip height: the knee folded past 180 deg, the lead knee bent backwards, B2 / tools/jank)
     sp = dict(hips=(0, hy, hz), lean=lean, lfoot=(.12, hy + lf[0], lf[1]), rfoot=(-.12, hy + rf[0], rf[1]), lhand_rel=hand_l, rhand_rel=hand_r, head_yaw=0, lpole=POLE_L, rpole=POLE_R,
-              lknee=(.2, -1, .4), rknee=(-.6, -.4, 1))
+              lknee=(.1, 0, 1), rknee=(-.6, -.2, 1))
     sp.update(kw); return sp
 RUNP = dict(CLIPS["run"][1][2][1])      # a mid-stride run pose to start from
 def _slides():
     keys = [
         (0, dict(RUNP)),
         (4, dict(RUNP, hips=(0, -.22, -.24), lean=10, lfoot=(.10, -.75, .30), rfoot=(-.10, .10, .085), lhand_rel=(.20, .10, -.20), rhand_rel=(-.20, .10, -.20))),
-        (8, _slide_pose(-.42, -.52, -32, (-.62, .30), (-.02, .12), (.26, .14, -.06), (-.26, .14, -.06))),
-        (12, _slide_pose(-.80, -.72, -56, (-.75, .24), (-.05, .20), (.30, .12, .04), (-.30, .12, .04))),
-        (18, _slide_pose(-1.24, -.78, -68, (-.72, .24), (-.06, .20), (.28, .14, -.04), (-.28, .14, -.04))),
-        (24, _slide_pose(-1.52, -.80, -74, (-.68, .22), (-.10, .18), (.20, .26, -.14), (-.20, .26, -.14))),
-        (29, _slide_pose(-1.62, -.82, -78, (-.66, .22), (-.12, .18), (.18, .30, -.16), (-.18, .30, -.16)))]
+        (8, _slide_pose(-.42, -.52, -32, (-.80, .30), (-.46, .12), (.26, .14, -.06), (-.26, .14, -.06))),
+        (12, _slide_pose(-.80, -.72, -56, (-.88, .22), (-.56, .10), (.30, .12, .04), (-.30, .12, .04))),
+        (18, _slide_pose(-1.24, -.78, -68, (-.86, .20), (-.58, .09), (.28, .14, -.04), (-.28, .14, -.04))),
+        (24, _slide_pose(-1.52, -.80, -74, (-.84, .18), (-.58, .09), (.20, .26, -.14), (-.20, .26, -.14))),
+        (29, _slide_pose(-1.62, -.82, -78, (-.82, .18), (-.58, .09), (.18, .30, -.16), (-.18, .30, -.16)))]
     _reg("slide_feet", 29, keys, events=dict(slide_start=6, rest=24))
     # hook slides: legs swing to one side, the trunk twists and leans away, the trailing leg bends under
     def hook(sp):

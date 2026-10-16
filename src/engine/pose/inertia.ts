@@ -89,6 +89,19 @@ export class Inertia {
   }
 }
 
+/** the largest angle (deg) between two poses' local rotations, over every bone: how far apart a clip switch's two poses are */
+export function maxLocalAngle(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  let m = 0;
+  for (let i = 0; i < NB; i++) {
+    const o = i * 4;
+    const d = Math.abs(a[o] * b[o] + a[o + 1] * b[o + 1] + a[o + 2] * b[o + 2] + a[o + 3] * b[o + 3]);
+    m = Math.max(m, (2 * Math.acos(Math.min(1, d)) * 180) / Math.PI);
+  }
+  return m;
+}
+/** a crossfade between two poses this far apart (deg, some bone) can take the short way round mid-fade: inertialize instead */
+export const FAR_APART = (globalThis as { __farApart?: number }).__farApart ?? 120;
+
 /** the locomotion loops: a switch into or out of one is where a crossfade's shortest path flips sides (measured) */
 const GAITS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
 /**

@@ -281,5 +281,9 @@ const LEGS_FREE = /^(slide|dive|pop_up|coach_slide)/;
 
 /** what the constraint layer does to a clip by its name (the game and the static sweep agree) */
 export function constrainOptsFor(clip: string, holdsBat = BAT_HELD.test(clip)): ConstrainOpts {
-  return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat } };
+  // the gait clips' ankles bent past their range (B2 game A/B: ankle swing -62 %, total -7 %, no cost: the foot lock re-plants the feet after)
+  const ankles = GAIT_ANKLES.test(clip) && !(globalThis as { __noGaitAnkles?: boolean }).__noGaitAnkles;
+  return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat }, ankles };
 }
+/** the gait clips (their ankles clamped) */
+const GAIT_ANKLES = /^(walk|trot|jog|run|run_sprint|run_turn|run_turn_sprint)$/;
