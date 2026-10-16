@@ -47,7 +47,7 @@ import { constrainOptsFor, constrainPose, newConstrainState } from './pose/const
 import { limitNeck } from './pose/neck';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
-import { footLock, newFootLock } from './pose/footLock';
+import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
@@ -79,8 +79,6 @@ const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undersh
 const HIDDEN_LAYERS = 1 << 1;
 /** standing about (the body turns at pivot speed there, the feet stepping with it) */
 const STANDING_TURN = /^(idle|.*_ready|ready_|field_ready|catch_ready|ump_ready|coach_ready|ballkid_idle|manager_idle|bench_stand)/;
-/** clips whose feet are off the ground or not standing on it (slides, dives, jumps, sitting): no foot locking */
-const FREE_FEET = /^(slide|dive|catch_jump|pop_up|coach_slide|bench_sit|ballkid_sit|bench_cheer|celebrate|run_sprint|run_turn_sprint)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
 const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
 /** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */

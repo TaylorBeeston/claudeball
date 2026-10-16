@@ -14,6 +14,10 @@ import type { RestInfo } from './limits';
 import { qaxisAngle, qfromTo, qinv, qmul, qrot } from './qmath';
 import { B, PARENT, fk, newWorld, type PoseLocals, type PoseWorld } from './skeleton';
 
+/** clips whose feet are off the ground or not standing on it (slides, dives, jumps, sitting) and the sprints (laid on the sim's footsteps): no
+ *  foot locking */
+export const FREE_FEET = /^(slide|dive|catch_jump|pop_up|coach_slide|bench_sit|ballkid_sit|bench_cheer|celebrate|run_sprint|run_turn_sprint)/;
+
 export const FOOT_LOCK = {
   /** a sole this close to the ground (m, rig units) may lock; one lifted past `liftH` lets go */
   downH: 0.035,

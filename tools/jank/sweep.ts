@@ -14,6 +14,7 @@ import { B, type PoseLocals, newLocals, localPoint, fk, newWorld, copyLocals } f
 import { FAR_APART, Inertia, maxLocalAngle, useInertia } from '../../src/engine/pose/inertia';
 import { ContinuousBlend } from '../../src/engine/pose/blend';
 import { NB } from '../../src/engine/pose/skeleton';
+import { FREE_FEET, footLock, newFootLock } from '../../src/engine/pose/footLock';
 import { qrot } from '../../src/engine/pose/qmath';
 import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
 export { gripBat };
@@ -57,6 +58,7 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const v: Violation[] = [];
   const L = newLocals();
   const cst = newConstrainState();
+  const fls = newFootLock();
   const model = mirrored ? MIRROR : IDENT;
   const n = Math.max(1, Math.round(clip.duration * FPS));
   const tail = loop ? 3 : 0;
@@ -68,6 +70,7 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     if (constrain) {
       limitNeck(L, info.R);
       constrainPose(L, info.R, { ...constrainOptsFor(clipName), state: cst, dt: 1 / FPS });
+      footLock(L, info.R, IDENT, fls, 1 / FPS, FREE_FEET.test(clipName));
     }
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
@@ -117,6 +120,7 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   const cb = new ContinuousBlend();
   const continuous = (globalThis as { __continuousBlend?: boolean }).__continuousBlend ?? false;
   const cs = [newConstrainState(), newConstrainState(), newConstrainState()];
+  const fls3 = [newFootLock(), newFootLock(), newFootLock()];
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
     sampleClip(A, at(A, tx.fromT + i / FPS), rig.rest, LA);
@@ -141,9 +145,10 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     }
     // the game's passes after the mixer (pose/neck.ts, pose/constrain.ts), on the blend and on both clips alike
     if (constrain) {
-      for (const [P, c, st] of [[L, tx.to, cs[0]], [LA, tx.from, cs[1]], [LB, tx.to, cs[2]]] as const) {
+      for (const [P, c, st, fs] of [[L, tx.to, cs[0], fls3[0]], [LA, tx.from, cs[1], fls3[1]], [LB, tx.to, cs[2], fls3[2]]] as const) {
         limitNeck(P, info.R);
         constrainPose(P, info.R, { ...constrainOptsFor(c), state: st, dt: 1 / FPS });
+        footLock(P, info.R, IDENT, fs, 1 / FPS, FREE_FEET.test(c));
       }
     }
     const dt = i === -2 ? 0 : 1 / FPS;
