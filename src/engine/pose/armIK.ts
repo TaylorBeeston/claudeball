@@ -279,7 +279,10 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
     W = [S[0] + dir[0] * dEff, S[1] + dir[1] * dEff, S[2] + dir[2] * dEff];
     // upper arm: its direction, twisted so the forearm bends toward the elbow's flexion side (in the hinge plane)
     const dU = norm(sub(E, S)), dF = norm(sub(W, E));
-    let nD = perp(dF, dU);
+    // the bend's direction from the pole (the elbow sits toward p, so the forearm turns back toward -p): the same plane as the forearm's
+    // offset from the upper arm, but defined for a straight arm too (from that offset, an arm near full reach flipped its twist by 180 deg)
+    let nD = goal.keepEnd ? perp(dF, dU) : perp([-p[0], -p[1], -p[2]], dU);
+    if (len(nD) < 1e-4) nD = perp(dF, dU);
     if (len(nD) < 1e-4) nD = perp(nCur, dU);
     norm(nD);
     const aU = alignPair(u, n, dU, nD);
