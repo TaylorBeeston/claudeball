@@ -15,6 +15,15 @@ export const BAT_CLIPS: Record<string, { L: boolean; R: boolean }> = {
   ondeck_swing: { L: true, R: true },
 };
 
+/** the hands that hold the bat while one clip fades into another: only a hand both clips hold it with (a batter_adjust fading into the stance
+ *  still has the free hand at the helmet; checking it against the handle was a false positive) */
+export function batHandsBlend(from: string | undefined, to: string): { L: boolean; R: boolean } | undefined {
+  const b = BAT_CLIPS[to];
+  if (!b || !from || from === to) return b;
+  const a = BAT_CLIPS[from] ?? { L: false, R: true };
+  return { L: a.L && b.L, R: a.R && b.R };
+}
+
 export function clipFlags(name: string) {
   return { locomotion: LOCOMOTION.has(name), airborne: AIRBORNE.test(name), ballistic: BALLISTIC.test(name) };
 }

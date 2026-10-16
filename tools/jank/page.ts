@@ -14,7 +14,7 @@
 import { B, BONES, NB, type PoseLocals, newLocals, fk } from '../../src/engine/pose/skeleton';
 import { groundHeight } from '../../src/sim/field';
 import { Agg, type Snapshot } from './agg';
-import { BAT_CLIPS, clipFlags } from './clips';
+import { BAT_CLIPS, batHandsBlend, clipFlags } from './clips';
 import { gripBat, newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Track, type Violation } from './validate';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -113,6 +113,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       const from = pu.currentName, fromT = pu.current?.time ?? 0;
       play(name, snap);
       if (!from || pu.currentName === from) return;
+      pu.__jankFrom = from;
       const ip = pu.current?._weightInterpolant?.parameterPositions;
       const fade = ip ? +(ip[1] - ip[0]).toFixed(3) : 0;
       const key = `${tplScene.name || 'tpl'}|${from}|${pu.currentName}`;
@@ -123,6 +124,8 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
     return st;
   };
 
+  // the hands on the bat: the clip's, and while it fades in from another clip only those both hold it with
+  const handsNow = (pu: any) => (mixerFading(pu.mixer) ? batHandsBlend(pu.__jankFrom, pu.currentName) : BAT_CLIPS[pu.currentName]);
   const batFor = (snap: any, pu: any): BatIn | null => {
     const bat = e.bat;
     const pt = (o: any, y: number) => {
@@ -135,11 +138,11 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       return { state, knob: [k.x, k.y, k.z], tip: [t.x, t.y, t.z], hands };
     };
     if (snap.role === 'batter') {
-      if (bat.held && bat.obj.parent === pu.batGrip) return mk(bat.obj, 'held', BAT_CLIPS[pu.currentName] ?? { L: false, R: true });
+      if (bat.held && bat.obj.parent === pu.batGrip) return mk(bat.obj, 'held', handsNow(pu) ?? { L: false, R: true });
       if (bat.visible) return mk(bat.obj, 'sim', { L: true, R: true });
       return null;
     }
-    if (snap.role === 'ondeck' && pu.prop?.visible) return mk(pu.prop, 'ondeck', BAT_CLIPS[pu.currentName] ?? { L: false, R: true });
+    if (snap.role === 'ondeck' && pu.prop?.visible) return mk(pu.prop, 'ondeck', handsNow(pu) ?? { L: false, R: true });
     return null;
   };
 
@@ -295,7 +298,12 @@ let studio: { pu: any; bones: any[]; batObj: any } | null = null;
  * Pose a stand-in puppet from a snapshot at the studio spot (behind the backstop, out of everyone's way) and aim the bench camera at it
  * from the front or the side (near-orthographic: 30 m away, a narrow lens). Returns the screen positions of the joints for the overlay.
  */
-export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role = 'fielder', joint = '') {
+/**
+ * Pose the studio puppet from a snapshot and aim the camera. `joints`: the joints the violation is about; the close-up looks at the one nearest
+ * the spine (a hand or elbow inside the trunk is that one, whichever side). `xray`: the body drawn see-through in the close-up, so a joint
+ * inside the trunk shows (it was hidden behind the jersey).
+ */
+export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role = 'fielder', joints: string[] | string = '', xray = false) {
   const e = w.engine;
   const V = e.camera.position.constructor;
   if (!studio || studio.pu.__role !== role) {
@@ -347,6 +355,14 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   let tgt = SPOT.clone().add(new V(0, 0.95, 0));
   let dir = view === 'front' ? new V(0, 0, 1) : new V(det < 0 ? -1 : 1, 0, 0);
   let span = 2.6;
+  const cand = (Array.isArray(joints) ? joints : [joints]).filter((j) => j && pu.bones[j]);
+  let joint = cand[0] ?? '';
+  if (cand.length > 1 && pu.bones.Spine1) {
+    const sp = pu.bones.Spine1.getWorldPosition(new V());
+    const dh = (j: string) => { const p = pu.bones[j].getWorldPosition(new V()); return Math.hypot(p.x - sp.x, p.z - sp.z); };
+    joint = cand.reduce((a, b) => (dh(b) < dh(a) ? b : a));
+  }
+  setXray(pu, view === 'detail' && xray);
   if (view === 'detail') {
     // close-up of the joint the violation is about, from the front and a little to its side and above
     const b = joint && pu.bones[joint];
@@ -357,6 +373,21 @@ export function studioPose(sn: Snapshot, view: 'front' | 'side' | 'detail', role
   const dist = 30;
   e.director.bench = { pos: tgt.clone().addScaledVector(dir, dist), tgt, fov: (2 * Math.atan(span / 2 / dist) * 180) / Math.PI, aperture: 0 };
   return true;
+}
+
+/** the puppet's meshes see-through (their own material copies, restored when switched off) */
+function setXray(pu: any, on: boolean) {
+  pu.model.traverse((o: any) => {
+    if (!o.isMesh) return;
+    if (on && !o.__xrayOrig) {
+      o.__xrayOrig = o.material;
+      const cl = (m: any) => Object.assign(m.clone(), { transparent: true, opacity: 0.3, depthWrite: false });
+      o.material = Array.isArray(o.material) ? o.material.map(cl) : cl(o.material);
+    } else if (!on && o.__xrayOrig) {
+      o.material = o.__xrayOrig;
+      o.__xrayOrig = undefined;
+    }
+  });
 }
 
 /** screen positions (CSS px) of every joint, the head top and the bat ends, after the camera has moved (call after a rendered frame) */

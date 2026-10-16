@@ -19,7 +19,7 @@ import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
 import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
 import { limitNeck } from '../../src/engine/pose/neck';
-import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags } from './clips';
+import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, batHandsBlend, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
 export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
@@ -136,7 +136,7 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
       }
     }
     const dt = i === -2 ? 0 : 1 / FPS;
-    const bat = BAT_CLIPS[tx.to] && BAT_CLIPS[tx.from] ? gripBat(L, info, IDENT, BAT_CLIPS[tx.to]) : null;
+    const bat = BAT_CLIPS[tx.to] && BAT_CLIPS[tx.from] ? gripBat(L, info, IDENT, i < 0 ? BAT_CLIPS[tx.from] : t < tx.fade ? batHandsBlend(tx.from, tx.to)! : BAT_CLIPS[tx.to]) : null;
     validateFrame({ L, model: IDENT, ground: flat, dt, ...fl, locomotion: fl.locomotion || LOCOMOTION.has(tx.from), airborne: fl.airborne || AIRBORNE.test(tx.from), ballistic: fl.ballistic || BALLISTIC.test(tx.from), bat }, info, trBlend, vb);
     validateFrame({ L: LA, model: IDENT, ground: flat, dt, ...clipFlags(tx.from) }, info, trA, va);
     validateFrame({ L: LB, model: IDENT, ground: flat, dt, ...fl }, info, trB, vB);

@@ -335,6 +335,8 @@ function hot(kind: string): string[] {
   if (/^(Left|Right)/.test(k)) return [k];
   if (kind.startsWith('foot')) return ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'];
   if (kind.startsWith('bat')) return ['LeftHand', 'RightHand'];
+  if (kind.startsWith('body:elbow')) return ['LeftForeArm', 'RightForeArm'];
+  if (kind.startsWith('body:hand')) return ['LeftHand', 'RightHand'];
   if (kind.startsWith('body')) return ['LeftHand', 'RightHand', 'LeftForeArm', 'RightForeArm'];
   return [];
 }
@@ -372,7 +374,8 @@ export async function doSheets(top: number) {
       const tiles: string[] = [];
       const hj = hot(p.kind);
       for (const view of ['front', 'side', 'detail'] as const) {
-        await page.evaluate(([sn, v, role, j]) => (window as any).__jank.studioPose(sn, v, role, j), [p.snap, view, p.role, hj[0] ?? 'Head'] as const);
+        // body volumes: whichever hand / elbow is in the trunk, seen through the body
+        await page.evaluate(([sn, v, role, j, x]) => (window as any).__jank.studioPose(sn, v, role, j, x), [p.snap, view, p.role, hj.length ? hj : ['Head'], p.kind.startsWith('body:')] as const);
         await frames(6);
         const joints = (await page.evaluate(() => (window as any).__jank.studioJoints())) as Record<string, number[]>;
         const raw = path.join(dir, `_${i}-${view}.png`);

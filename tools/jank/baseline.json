@@ -239,17 +239,17 @@
    "frames": 1221,
    "score": 15.473
   },
-  "bat:grip": {
-   "frames": 75,
-   "score": 2.2
-  },
   "foot:slide": {
    "frames": 6403,
    "score": 197.718
   },
+  "bat:grip": {
+   "frames": 36,
+   "score": 0.664
+  },
   "bat:hand-axis": {
-   "frames": 46,
-   "score": 1.467
+   "frames": 14,
+   "score": 0.192
   },
   "bat:body": {
    "frames": 1,
@@ -258,10 +258,6 @@
   "body:hand-torso@muscular": {
    "frames": 26,
    "score": 0.742
-  },
-  "bat:order": {
-   "frames": 14,
-   "score": 0.639
   },
   "body:hand-torso": {
    "frames": 16,
@@ -551,25 +547,21 @@
    "frames": 1220,
    "score": 15.453
   },
-  "bat:grip": {
-   "frames": 75,
-   "score": 2.239
-  },
   "foot:slide": {
    "frames": 6403,
    "score": 197.718
   },
+  "bat:grip": {
+   "frames": 36,
+   "score": 0.671
+  },
   "bat:hand-axis": {
-   "frames": 46,
-   "score": 1.426
+   "frames": 14,
+   "score": 0.189
   },
   "bat:body": {
    "frames": 1,
    "score": 0.023
-  },
-  "bat:order": {
-   "frames": 13,
-   "score": 0.625
   },
   "body:hand-torso@muscular": {
    "frames": 25,
