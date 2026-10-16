@@ -26,7 +26,7 @@ import {
   Sphere,
   Vector3,
 } from 'three';
-import { AnimationClip, SkinnedMesh } from 'three';
+import { AnimationClip, Euler, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { FLAGS } from './flags';
 import { SIM_DRIVEN_TRAVEL, strideClipTime, stripGroundTravel, touchdowns } from './stridePhase';
@@ -48,6 +48,7 @@ import { limitNeck } from './pose/neck';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
 import { footLock, newFootLock } from './pose/footLock';
+import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -1623,6 +1624,9 @@ export class GltfPuppet implements PuppetLike {
 
     // the head / spine look rotates the shoulders, so it goes first; the arms then reach for the bat, ball or runner from where the shoulders ended up
     const tLook = perf.t();
+    // a runner leans into his acceleration and banks into a turn (before the look and the IK: they work on the leaned body; the feet are
+    // planted again after, by the foot lock)
+    this.leanBody(snap, dt, gaitOver);
     this.lookAt(snap, dt, env);
     // a head turned past what a neck can (the clip's or the look's): the spine, then the pelvis take the excess, gaze and feet kept
     this.applyPose(limitNeck);
@@ -2331,12 +2335,57 @@ export class GltfPuppet implements PuppetLike {
     this.refreshMatrices();
     this.rig.refresh();
   }
+  private accel = new Vector3();
+  private accelV = new Vector3();
+  private velPrev: Vector3 | null = null;
+  /**
+   * Pelvis lean and banking: the body tilts toward its horizontal acceleration (forward when speeding up, back when braking, into the turn when
+   * curving) by a share of the angle that acceleration makes with gravity. The acceleration is the sim's velocity change, smoothed (a critically
+   * damped follow, so a step in speed leans in over ~0.2 s); only in a gait.
+   */
+  private leanBody(snap: PlayerSnap, dt: number, gaitOver: boolean) {
+    const hips = this.bones.Hips;
+    if (!hips || dt <= 0) return;
+    const v = new Vector3(snap.vel.x, 0, snap.vel.z);
+    const raw = this.velPrev ? v.clone().sub(this.velPrev).divideScalar(Math.max(dt, 1e-3)) : new Vector3();
+    this.velPrev = v;
+    const moving = gaitOver || Math.hypot(snap.vel.x, snap.vel.z) > 1.2;
+    if (!moving) raw.set(0, 0, 0);
+    // (the sim's velocity changes in steps between ticks: follow it, w = 12 rad/s)
+    for (const k of ['x', 'z'] as const) {
+      const sp = springStep(this.accel[k], this.accelV[k], Math.max(-25, Math.min(25, raw[k])), 12, Math.min(dt, 0.1));
+      this.accel[k] = sp.pos;
+      this.accelV[k] = sp.v;
+    }
+    const a = Math.hypot(this.accel.x, this.accel.z);
+    if (a < 0.05) return;
+    // the acceleration in the rig (the body's own frame, the mirror divided out)
+    const p0 = this.rig.toRig(this.root.position.clone(), new Vector3());
+    const p1 = this.rig.toRig(this.root.position.clone().add(new Vector3(this.accel.x, 0, this.accel.z).normalize()), new Vector3());
+    const d = p1.sub(p0);
+    d.y = 0;
+    if (d.lengthSq() < 1e-8) return;
+    d.normalize();
+    // forward (rig +z) and sideways shares: a bank up to 15 deg, a forward lean up to 12 (back up to 8)
+    const fwd = d.z * a, side = d.x * a;
+    const pitch = Math.max(-8, Math.min(12, (Math.atan2(fwd, 9.81) * 180) / Math.PI * 0.5));
+    const roll = Math.max(-15, Math.min(15, (Math.atan2(side, 9.81) * 180) / Math.PI * 0.6));
+    // tilt the body's up toward (sin pitch fwd, sin roll side): about the rig's x for the pitch, z for the bank
+    const q = new Quaternion().setFromEuler(new Euler((pitch * Math.PI) / 180, 0, (-roll * Math.PI) / 180, 'XZY'));
+    this.rig.refresh();
+    this.rig.rotate(hips, q);
+    this.refreshMatrices();
+    this.rig.refresh();
+  }
   private footState = newFootLock();
   private lockFeet(dt: number) {
     if (!this.poseRest || (globalThis as { __noFootLock?: boolean }).__noFootLock) return;
     this.refreshMatrices();
     this.readPose();
-    const mask = footLock(this.poseL, this.poseRest, this.model.matrixWorld.elements, this.footState, dt, FREE_FEET.test(this.currentName));
+    // the ground under the feet: the field's (the mound's slope), at the height the sim stands the player (a dugout floor, a seat)
+    const g0 = groundHeight(this.root.position.x, this.root.position.z), dy = this.root.position.y - g0;
+    const ground = Math.abs(dy) > 0.05 ? (x: number, z: number) => groundHeight(x, z) + dy : groundHeight;
+    const mask = footLock(this.poseL, this.poseRest, this.model.matrixWorld.elements, this.footState, dt, FREE_FEET.test(this.currentName), ground);
     if (!mask) return;
     for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
     this.refreshMatrices();

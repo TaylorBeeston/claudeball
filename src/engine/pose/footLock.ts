@@ -89,7 +89,7 @@ function toRig(m: ArrayLike<number>, p: number[]): number[] {
  * Lock the feet of pose L (in place). `model`: rig -> world; `dt`: the frame's step (s); `free`: the clip is airborne / a slide / seated (no
  * locking, any lock is let go). Returns the bit mask of the bones it changed.
  */
-export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, st: FootLockState, dt: number, free = false): number {
+export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, st: FootLockState, dt: number, free = false, ground?: (x: number, z: number) => number): number {
   const w: PoseWorld = fk(L, W, R.rest);
   let mask = 0;
   // the body's heading in the world (the rig's +z)
@@ -97,9 +97,17 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
   for (const side of ['Left', 'Right'] as const) {
     const ft = B[`${side}Foot`], toe = B[`${side}ToeBase`];
     const F = st.feet[side];
-    // the sole's height: the lower of heel and ball above where they are in the rest pose (feet flat on the ground at y = 0)
-    const h = Math.min(w.wp[ft * 3 + 1] - R.rest.wp[ft * 3 + 1], w.wp[toe * 3 + 1] - R.rest.wp[toe * 3 + 1]);
+    // the sole's height (rig units): the lower of heel and ball above where they are in the rest pose (feet flat on the ground), over the ground
+    // under each (`ground`, world: the mound's slope) or the rig's y = 0
     const aw = tw(model, w.wp, ft * 3);
+    const sc = Math.hypot(model[4], model[5], model[6]) || 1;
+    const solH = (i: number) => {
+      const r = w.wp[i * 3 + 1] - R.rest.wp[i * 3 + 1];
+      if (!ground) return r;
+      const p = tw(model, w.wp, i * 3);
+      return (p[1] - R.rest.wp[i * 3 + 1] * sc - ground(p[0], p[2])) / sc;
+    };
+    const h = Math.min(solH(ft), solH(toe));
     const speed = F.prev && dt > 0 ? Math.hypot(aw[0] - F.prev[0], aw[2] - F.prev[2]) / dt : 0;
     F.prev = aw;
     const turnedNow = (((yaw - F.yaw + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
@@ -130,6 +138,11 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
       const lift = Math.min(FOOT_LOCK.stepH, Math.hypot(F.off[0], F.off[2]) * FOOT_LOCK.stepK) * Math.sin(Math.PI * Math.min(1, F.offT / FOOT_LOCK.unlock));
       F.offT += dt;
       target = [aw[0] + F.off[0] * k, aw[1] + lift, aw[2] + F.off[2] * k];
+    }
+    // a sole below the ground (a lean, a blend, a clip) is lifted onto it, locked or not
+    if (h < -0.002 && !free) {
+      const up = -h * sc;
+      target = target ? [target[0], target[1] + up, target[2]] : [aw[0], aw[1] + up, aw[2]];
     }
     if (!target || Math.hypot(target[0] - aw[0], target[1] - aw[1], target[2] - aw[2]) < 1e-4) continue;
     const t = toRig(model, target);
