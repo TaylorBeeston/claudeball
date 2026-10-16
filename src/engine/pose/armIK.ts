@@ -244,6 +244,9 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
   let twClip = twistAngle(relF, uf[0], uf[1], uf[2]) / DEG;
   if (goal.twistLimit !== undefined) twClip = Math.max(-goal.twistLimit, Math.min(goal.twistLimit, twClip));
   const relH = qmul(qinv(aFc), aHc);
+  // the twist the result is unwrapped toward: last frame's; a grip being taken, the clip's own (the IK pose is blended in from the clip's, and a
+  // twist 360 deg away from it would swing the hand the short way round mid-blend)
+  const pronRef = goal.track ? goal.track.pron ?? pronOf(twistAngle(relF, uf[0], uf[1], uf[2]) / DEG + twistAngle(relH, uf[0], uf[1], uf[2]) / DEG, side) : undefined;
   // the hand's target rig rotation: the smallest turn from the clip's hand that puts its grip line along the target axis
   let qHandGoal: number[] | null = null;
   if (goal.gripLocal && goal.gripDir) {
@@ -293,13 +296,13 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
       const LIM = limits();
       // a handle is round: the fist may roll about the grip line (here in the forearm's frame) to keep the forearm and wrist in range
       const gF = norm(qrot(qinv(aF0), goal.gripDir![0], goal.gripDir![1], goal.gripDir![2]) as number[]);
-      roll = rollFix ?? pickRoll(relGoal0, gF, uf, side, LIM, goal.track);
+      roll = rollFix ?? pickRoll(relGoal0, gF, uf, side, LIM, goal.track, pronRef);
       const relGoal = roll ? qmul(qaxisAngle(gF[0], gF[1], gF[2], roll * DEG), relGoal0) : relGoal0;
       const sw = [0, 0, 0, 1];
       let total = twistAngle(relGoal, uf[0], uf[1], uf[2], sw) / DEG;
       let pr = pronOf(total, side);
       // held: the same turn as last frame's, not 360 deg away (past the range, the hand stays at the limit it was at instead of flipping)
-      if (goal.track?.pron !== undefined) pr += Math.round((goal.track.pron - pr) / 360) * 360;
+      if (pronRef !== undefined) pr += Math.round((pronRef - pr) / 360) * 360;
       over = Math.max(0, pr - LIM.pron, -LIM.sup - pr);
       pron = Math.max(-LIM.sup, Math.min(LIM.pron, pr));
       total = side * (pron + ARM_LIMITS.restPron);
@@ -340,10 +343,10 @@ function overOf(rel: Q, uf: number[], side: number, LIM: typeof ARM_LIMITS, pron
  * range, else the in-range roll nearest it (its edge found by bisection), else the roll leaving the least past range. Holding it: within a
  * step of last frame's, the best of a few samples refined by a parabola, with a slight pull back toward the clip's.
  */
-function pickRoll(rel0: Q, g: number[], uf: number[], side: number, LIM: typeof ARM_LIMITS, tr?: GripTrack): number {
+function pickRoll(rel0: Q, g: number[], uf: number[], side: number, LIM: typeof ARM_LIMITS, tr?: GripTrack, pronRef?: number): number {
   const lim = LIM.roll ?? 0;
   if (lim <= 0) return 0;
-  const at = (r: number) => overOf(r ? qmul(qaxisAngle(g[0], g[1], g[2], r * DEG), rel0) : rel0, uf, side, LIM, tr?.pron);
+  const at = (r: number) => overOf(r ? qmul(qaxisAngle(g[0], g[1], g[2], r * DEG), rel0) : rel0, uf, side, LIM, pronRef);
   const cost = (r: number, o: number) => o * 4 + Math.abs(r) * 0.1;
   if (tr) {
     const s = LIM.rollStep ?? 40, r0 = Math.max(-lim, Math.min(lim, tr.roll));

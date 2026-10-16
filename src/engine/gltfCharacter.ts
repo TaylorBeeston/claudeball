@@ -73,6 +73,8 @@ const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_
 const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
+/** the locomotion loops (their arms swing past the trunk every stride) */
+const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
 /** roles and moments that must always be animated in full (they hold or interact with the ball / bat): everyone else may be simplified when unseen or tiny */
 function puppetIsKey(snap: PlayerSnap, env: PuppetEnv): boolean {
   if (snap.role === 'batter' || snap.role === 'runner' || snap.role === 'pitcher' || snap.role === 'catcher' || snap.role === 'ondeck') return true;
@@ -1582,8 +1584,21 @@ export class GltfPuppet implements PuppetLike {
       this.ikWV = 0;
     }
     this.ikDt = dt;
-    if (!(this.ikW > 0.02 && env.batGrip)) this.armTrack.Left = this.armTrack.Right = null;
-    else {
+    if (!env.batGrip && this.ikW > 0.02) {
+      // the bat left the IK mid-swing (out of reach: the hands keep it now): the arms ease back from their last solve to the clip as the weight
+      // decays, instead of snapping back in one frame (a five-bone flip, B1 trace)
+      for (const side of ['Left', 'Right'] as const) {
+        const last = this.armLast[side];
+        if (!last) continue;
+        const bs = [this.bones[`${side}Arm`], this.bones[`${side}ForeArm`], this.bones[`${side}Hand`]];
+        bs.forEach((b, i) => b?.quaternion.slerp(last[i], this.ikW));
+        bs[0]?.updateMatrixWorld(true);
+      }
+      this.armTrack.Left = this.armTrack.Right = null;
+    } else if (!(this.ikW > 0.02 && env.batGrip)) {
+      this.armTrack.Left = this.armTrack.Right = null;
+      this.armLast.Left = this.armLast.Right = null;
+    } else {
       // the fists close on the handle (the bottom hand is the model's Left for both batting sides: lefties are mirrored), each fist's grip
       // line along the bat with the barrel toward the thumb
       const g = env.batGrip;
@@ -2015,7 +2030,10 @@ export class GltfPuppet implements PuppetLike {
       const off = (globalThis as { __noElbowFix?: boolean }).__noElbowFix;
       const prev = this.swivel[side];
       let want = 0;
-      if (clear < 0.008 && !off) {
+      // a gait's arm swings past the trunk in a few frames: a swivel fast enough to keep up hops (flips), a damped one lags (the elbow shows
+      // in the trunk); there the small abduction below clears it, following the clearance frame by frame
+      const gait = GAIT_CLIPS.has(this.currentName);
+      if (clear < 0.008 && !off && !gait) {
         const S = rig.pos(arm, new Vector3());
         const H = rig.pos(hand, new Vector3());
         const tmp = new Vector3();
@@ -2063,7 +2081,7 @@ export class GltfPuppet implements PuppetLike {
           axis.normalize();
           abdWant = clear < -0.005 ? Math.asin(Math.min(1, (0.012 - clear) / Math.max(0.05, ua.length()))) : 0;
           // eased in and out like the swivel (the clearance it answers comes and goes with the arm's swing)
-          const sa = springStep(this.abd[side], this.abdV[side], abdWant, 70, Math.min(dt, 0.1), 40);
+          const sa = gait ? { pos: abdWant, v: 0 } : springStep(this.abd[side], this.abdV[side], abdWant, 70, Math.min(dt, 0.1), 40);
           this.abd[side] = sa.pos;
           this.abdV[side] = sa.v;
           const q = new Quaternion().setFromAxisAngle(axis, Math.max(0, sa.pos));
@@ -2268,6 +2286,8 @@ export class GltfPuppet implements PuppetLike {
   /** each arm's grip as last frame's solve left it (swivel, fist roll, pronation, their speeds), null when the hands were not on the bat last
    *  frame: a grip being taken starts from the clip's swivel and roll and moves from there (no jump to a far solution) */
   private armTrack: Record<'Left' | 'Right', GripTrack | null> = { Left: null, Right: null };
+  /** each arm's last bat-grip pose (locals of upper arm, forearm, hand), to ease out of when the bat leaves the IK */
+  private armLast: Record<'Left' | 'Right', Quaternion[] | null> = { Left: null, Right: null };
   private initArms() {
     const rig = this.rig;
     rig.refresh();
@@ -2327,6 +2347,12 @@ export class GltfPuppet implements PuppetLike {
     fore.quaternion.slerp(nU.clone().invert().multiply(nF), w);
     hand.quaternion.slerp(nF.clone().invert().multiply(nH), w);
     arm.updateMatrixWorld(true);
+    if (gripDir) {
+      const l = (this.armLast[side] ??= [new Quaternion(), new Quaternion(), new Quaternion()]);
+      l[0].copy(arm.quaternion);
+      l[1].copy(fore.quaternion);
+      l[2].copy(hand.quaternion);
+    }
   }
 
   /**
