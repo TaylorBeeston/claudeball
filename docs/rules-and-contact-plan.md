@@ -93,3 +93,15 @@ and after are in the report, with the league stats (baseline about 4.55 R/G, .23
 
 Regression: seed 3 (broadcast, 9 innings), the steal of second at 1225.5 s: the runner's slide reaches the bag and no
 two bodies overlap there.
+
+## Results (t-0021, merged tree a79beed)
+
+- Base touches (100 games, `tools/contact/bases.ts`): touches without a foot or slide limb on the bag 0.1% (before: 13% where no foot
+  could reach the bag; home plate credited 46-97 cm away). Missed bags 0.22 a game (near misses of 7-16 cm), a fifth of them seen and appealable.
+- In the game (cbv, seed 2 and seed 3 steals): at the frame the sim counts the touch the drawn toe is 0-1 cm from the bag (upright) and on it
+  (hook slide); the drawn ankle lands a median 2-3 cm from the sim's footstrike.
+- Bodies (100 games, `tools/contact/overlaps.ts`): pairs under 35 cm, 1,162 episodes per 100 games (before 32,593), under 20 cm 549 (before 20,710).
+- Rules (60 games): obstruction ~0.17 a game, runner interference ~0, out of the baseline ~0.02.
+- Stats (200 games): 4.30 R/G (baseline 4.58), .242 AVG, K 23.8%, BB 9.0%, SB 0.34 / CS 0.07 per team-game. The batting line holds; runs
+  are lower from baserunning: a foot has to reach the bag, covering fielders set beside it get the lead runner more often (forces at third
+  and home doubled). The runner AI's reads were recalibrated to keep the bias it was tuned with.
