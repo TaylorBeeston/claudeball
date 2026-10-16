@@ -2561,7 +2561,7 @@
     "gpu_texture_mb_used_by_visible": 23.3
    },
    "lod0/player_base": {
-    "size_mb": 12.66,
+    "size_mb": 12.67,
     "lod1": false,
     "visible_meshes": 29,
     "draw_calls_default": 29,
