@@ -12,7 +12,7 @@
  */
 import { createGame } from '../../src/sim/game';
 import { BASE_POS } from '../../src/sim/field';
-import { shoeOn } from '../../src/sim/stride';
+import { shoeOn, standsOn } from '../../src/sim/stride';
 import { runnerBody } from '../../src/sim/tagging';
 import type { PlayerRT, World } from '../../src/sim/world';
 
@@ -111,7 +111,8 @@ for (let i = 0; i < N; i++) {
             const body = runnerBody(r);
             if (distToBag(b, body.tx, body.tz) <= 0.04) ps.footOn = true;
           }
-          if (Math.hypot(P.vx, P.vz) < 1 && d <= 0.12) ps.footOn = true;
+          // stepping onto it from beside it at a walk (stride.ts standsOn: a foot reaches the bag)
+          if (standsOn(P, b)) ps.footOn = true;
         } else if (ps) {
           passes.push(ps);
           open.delete(key);

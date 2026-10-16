@@ -32,8 +32,8 @@ export const SLIDE_HINT: Record<SlideKind, AnimHint> = { feet: 'slide_feet', hea
  */
 export const limbLength = (k: SlideKind | null) => (k === 'feet' ? 0.85 : k === 'head' ? 0.86 : k === 'diveBack' ? 0.86 : k ? 0.75 : 0);
 
-/** Dirt friction on a sliding body (m/s^2, a friction coefficient of about 0.5): he slides into the bag still moving. */
-export const SLIDE_FRICTION = 5;
+/** Dirt friction on a sliding body (m/s^2: a friction coefficient of about 0.35 on loose infield dirt): he slides into the bag still moving. */
+export const SLIDE_FRICTION = 3.5;
 /** Once the leading foot / hand is on the bag the bag stops him: his leg (or arms) fold over about this much (m). */
 export const BAG_STOP = 0.45;
 
@@ -197,6 +197,8 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
   // from here the slide is the dirt's friction, until the bag stops him (`bagStops`); he sets off on the line that brings the limb he
   // leads with to the bag (a hook: the body past it on one side, the foot catching it)
   p.slideDecel = SLIDE_FRICTION;
+  // diving back he goes for the bag with his hands: no more friction than gets them onto it
+  if (kind === 'diveBack') p.slideDecel = clamp((speed * speed) / (2 * Math.max(0.3, dd - limbLength(kind) * 0.9)), 1, SLIDE_FRICTION);
   const end = LIMB_PATH[kind][LIMB_PATH[kind].length - 1];
   // (a hook: the body goes past wide, the foot takes the side corner of the bag, not the front of it where the glove waits)
   const wide = end[1] === 0 ? 0 : Math.sign(end[1]) * BAG_HALF_SIDE;
@@ -209,7 +211,7 @@ export function updateSlide(w: World, r: RunnerRT): { x: number; z: number } | n
 }
 
 /** Distance from the bag at which a slide into base b starts (m): a hook needs the room to swing out around the glove (see `updateSlide`). */
-const slideStart = (b: number, hook: boolean) => (hook || b === 4 ? 4.8 : 3.4);
+const slideStart = (b: number, hook: boolean) => (hook || b === 4 ? 3.8 : 3.4);
 
 /**
  * When the runner's leading foot / hand will be `dist` from the bag (s), as a fielder reads it: on his feet at his speed until he

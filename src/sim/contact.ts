@@ -34,6 +34,18 @@ function fieldingBall(w: World, F: PlayerRT): boolean {
   return (m === 'batted' || m === 'loose') && !w.ball.holder && w.play?.primary === F;
 }
 
+/**
+ * Is the runner hindering the fielder's play on the ball (not just meeting him on the way): the ball within his reach, and the runner
+ * clear of the bag he started from (the tangle of a runner and the man holding him on, or the batter-runner and the catcher, as they
+ * break, is incidental).
+ */
+function makingThePlay(w: World, r: RunnerRT, f: PlayerRT): boolean {
+  const b = w.ball.body;
+  if (Math.hypot(b.x - f.x, b.z - f.z) > 3 || b.y > 3) return false;
+  const from = r.base === 0 ? { x: 0, z: 0 } : BASE_POS[r.base % 4];
+  return Math.hypot(r.p.x - from.x, r.p.z - from.z) >= 3;
+}
+
 /** A throw to him is about to arrive (he is in the act of fielding it). */
 function takingThrow(w: World, F: PlayerRT): boolean {
   const b = w.ball;
@@ -55,10 +67,11 @@ export function contactRules(w: World, contacts: Contact[]): void {
     if (!R || !F || !R.run || !F.p) continue;
     const r = R.run, f = F.p;
     if (r.state !== 'live' || r.dead) continue;
-    if (fieldingBall(w, f)) {
+    if (fieldingBall(w, f) && makingThePlay(w, r, f)) {
       interference(w, r, f);
       return;
     }
+    if (fieldingBall(w, f)) continue;
     if (f.hasBall || w.ball.holder === f || takingThrow(w, f)) continue; // with the ball he may block and tag
     if (!impedes(w, r, f)) continue;
     obstruction(w, r, f);

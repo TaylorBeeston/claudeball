@@ -182,7 +182,9 @@ export function runnerETA(r: RunnerRT, b: number): number {
     const bp = bpos(b);
     t = travelTime(p, bp.x, bp.z);
   }
-  return Math.max(0, t - 0.1); // reach of the foot / slide
+  // reach of the foot / slide: a runner stopping on a bag has it under his foot a little later than one running across the plate
+  // (calibrated so his read errs as it did when the AI was tuned: measured over many advances, tools/contact notes)
+  return Math.max(0, t + (b === 4 ? -0.26 : -0.01));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -205,7 +207,9 @@ export function updateLeads(w: World): void {
       r.leadDist = clamp(ans.lead, 0, MAX_LEAD);
       r.leadKey = key;
     }
-    const lead = r.leadDist;
+    // the secondary lead: once the pitcher has committed to the plate he shuffles on toward the next base (he is going, or he goes back)
+    const windup = w.phase === 'windup';
+    const lead = r.leadDist + (windup ? secondaryLead(r.p.info.ratings) : 0);
     r.leadX = a.x + ((b.x - a.x) / d) * lead;
     r.leadZ = a.z + ((b.z - a.z) / d) * lead;
     const p = r.p;
@@ -213,10 +217,13 @@ export function updateLeads(w: World): void {
       p.x = r.leadX;
       p.z = r.leadZ;
       p.vx = p.vz = 0;
-    } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, 0.5);
+    } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, windup ? 0.3 : 0.5);
     p.lookAt = { x: w.pitcher.x, z: w.pitcher.z };
   }
 }
+
+/** The shuffle a runner takes on the pitch (m): a better baserunner gets a bigger, more confident one. */
+export const secondaryLead = (R: { baserunning: number; speed: number }) => clamp(1.0 + 0.01 * (R.baserunning - 50) + 0.004 * (R.speed - 50), 0.6, 1.5);
 
 /** Longest lead a runner may take (m): beyond this he is not standing near a base any more. */
 export const MAX_LEAD = 6;
@@ -225,7 +232,8 @@ export const MAX_LEAD = 6;
 export function aiLead(req: { runner: { ratings: { speed: number; baserunning: number } }; pitcher: { ratings: { holding: number } }; base: number }): LeadDecision {
   const R = req.runner.ratings;
   // a good runner takes a bigger lead, a pitcher who holds runners well shortens it
-  return { lead: clamp(3.0 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50) + holdingLeadAdjust(req.pitcher.ratings), 1.8, 4.6) * (req.base === 3 ? 0.8 : 1) };
+  // (an average major-league primary lead is 11-13 ft, about 3.5 m)
+  return { lead: clamp(3.5 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50) + holdingLeadAdjust(req.pitcher.ratings), 2.2, 4.8) * (req.base === 3 ? 0.8 : 1) };
 }
 
 /** Runners standing off a base should be able to run through their lead point quickly; snap to base when a play ends. */
@@ -382,7 +390,7 @@ export function aiSteal(w: World, r: RunnerRT, req: StealRequest): StealDecision
   const margin = req.ballTime - req.runnerTime + w.aiRng.normal(0, 0.25);
   const aggr = (P.info.ratings.baserunning - 50) / 100 + (w.outs === 2 ? 0.05 : 0) + (r.base === 2 ? 0.1 : 0);
   const situational = w.count.balls === 3 && w.count.strikes < 2 ? -0.1 : 0;
-  const thr = 0.4 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
+  const thr = 0.3 - 0.3 * aggr + situational + (w.inning >= 8 && Math.abs(w.battingTeam.runs - w.fieldingTeam.runs) > 2 ? 0.2 : 0);
   return { go: margin > thr };
 }
 
@@ -404,7 +412,8 @@ export function commitSteals(w: World): void {
   r.want = r.base + 1;
   r.target = r.base + 1;
   r.origin = r.base;
-  r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.13)));
+  // (he decided before the pitch to go: he breaks on the pitcher's first move, he is not reacting to something he did not expect)
+  r.reaction = w.tick + secToTicks(Math.max(0.03, 0.05 + 0.2 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.08)));
   w.pitcher.lookAt = null;
 }
 
@@ -612,7 +621,18 @@ function tickRunner(w: World, r: RunnerRT): void {
       if (dd < 0.6 && sp < 2.5) r.overrun = false;
     } else if (dd > 0.25 && !r.dead) setGoal(p, b.x, b.z, true, 1);
     else if (dd > 0.25) setGoal(p, b.x, b.z, true, mul);
-    if (r.retouch && (standsOn(p, r.base) || footOnBag(r, r.base))) r.retouchDone = true;
+    // going back to touch up: his steps go onto the bag (a foot, standing on it, or the hands diving back)
+    if (r.retouch && !r.retouchDone && !r.slideKind && dd > 0.3) {
+      const T = touchPoint(r.base, false, unit(b.x - p.x, b.z - p.z));
+      aimStep(w, p, T.x, T.z);
+    }
+    if (r.retouch && (standsOn(p, r.base) || footOnBag(r, r.base) || tagging.slideTouches(r, r.base))) r.retouchDone = true;
+    r.strikeSeen = Math.max(r.strikeSeen, p.stride.last?.tick ?? 0);
+    // his hands on the bag diving back: he is on it (a tag no longer gets him)
+    if (r.slideKind && tagging.slideTouches(r, r.base)) {
+      r.contactBase = r.base;
+      tagging.bagStops(r);
+    }
     // diving back to the bag with the ball coming
     tagging.updateSlide(w, r);
   }

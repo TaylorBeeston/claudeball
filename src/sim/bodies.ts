@@ -136,8 +136,12 @@ export function giveWay(w: World, me: Body, o: Body): number {
 
 /** A slide into a bag where a fielder is taking the play: the slide goes in at his feet (the tag is the contact), nobody is pushed. */
 function slideTangle(s: Body, f: Body): boolean {
-  if (!s.tip || !s.run || f.cls !== 'F') return false;
+  if (!s.run || f.cls !== 'F') return false;
   const r = s.run;
+  // (sliding, or just down on the bag after the slide, before he gets up)
+  const cb = r.contactBase >= 1 ? BASE_POS[r.contactBase % 4] : null;
+  const down = !s.tip && !!cb && Math.hypot(s.vx, s.vz) < 2.5 && Math.hypot(s.x - cb.x, s.z - cb.z) < 1.0;
+  if (!s.tip && !down) return false;
   const b = r.target > r.base ? r.target : r.base;
   if (b < 1) return false;
   const bp = BASE_POS[b % 4];

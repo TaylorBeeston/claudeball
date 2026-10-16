@@ -41,7 +41,7 @@ describe('home-run trot', () => {
     expect(nextBatter).toBeGreaterThan(hrAt);
     const trot = said.filter((s) => s.t > hrAt + 0.5 && s.t < nextBatter);
     // the calls and the analyst's reaction are fine; a topic (a 'could' line that is not a reaction phrase) is not
-    const topics = trot.filter((s) => s.imp === 'could' && !s.tag.startsWith('phrase.'));
+    const topics = trot.filter((s) => s.imp === 'could' && !s.tag.startsWith('phrase.') && s.tag !== 'react');
     expect(topics, JSON.stringify(trot)).toEqual([]);
     expect(trot.some((s) => s.imp === 'must')).toBe(true);
   });

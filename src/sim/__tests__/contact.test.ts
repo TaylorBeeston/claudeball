@@ -28,7 +28,9 @@ function steal(seed: string) {
     const near = gatherBodies(w).filter((b) => Math.hypot(b.x - bag.x, b.z - bag.z) < 6);
     for (let a = 0; a < near.length; a++) for (let b = a + 1; b < near.length; b++) {
       const A = near[a], B = near[b];
-      if (A.tip || B.tip) continue;
+      // (a slide, or the runner down on the bag after it, tangles with the tagger's feet: seen from above that is no body inside another)
+      const down = (x: typeof A) => !!x.tip || (!!x.run && x.run.contactBase === 2 && Math.hypot(x.vx, x.vz) < 2.5 && Math.hypot(x.x - bag.x, x.z - bag.z) < 1.0);
+      if (down(A) || down(B)) continue;
       const d = Math.hypot(A.x - B.x, A.z - B.z);
       if (d < closest) {
         closest = d;
@@ -86,6 +88,10 @@ describe('the rules on contact', () => {
     w.play!.primary = F;
     F.x = r.p.x + 0.3;
     F.z = r.p.z + 0.3;
+    // the grounder is at his feet: he is making the play on it
+    w.ball.body.x = F.x + 0.8;
+    w.ball.body.z = F.z;
+    w.ball.body.y = 0.1;
     const br = w.runners.find((q) => q.isBatter)!;
     contactRules(w, [{ a: bodyOf(w, r.p.info.id), b: bodyOf(w, F.info.id), speed: 5, x: F.x, z: F.z }]);
     expect(r.state).toBe('out');
@@ -128,6 +134,23 @@ describe('the rules on contact', () => {
         expect(r.want).toBe(2);
       }
     }
+  });
+
+  it('runner and fielder meeting as they break (the ball still well away from him, or the runner just off his bag) is incidental, not interference', async () => {
+    const { contactRules } = await import('../contact');
+    const { hitBall } = await import('./helpers');
+    const { w, r } = scene('int-2');
+    hitBall(w, 70, -5, 30);
+    const F = [...w.fieldingTeam.defense.values()].find((p) => p.fieldPos === '2B')!;
+    w.play!.primary = F;
+    F.x = r.p.x + 0.3;
+    F.z = r.p.z + 0.3;
+    w.ball.body.x = F.x + 8;
+    w.ball.body.z = F.z;
+    w.ball.body.y = 0.1;
+    contactRules(w, [{ a: bodyOf(w, r.p.info.id), b: bodyOf(w, F.info.id), speed: 5, x: F.x, z: F.z }]);
+    expect(r.state).toBe('live');
+    expect(w.play!.dead).toBe(false);
   });
 
   it('a fielder covering the bag the runner is going to, or brushing him, or a fielder with the ball: no obstruction', async () => {
