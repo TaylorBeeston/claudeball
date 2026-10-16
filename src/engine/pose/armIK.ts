@@ -164,6 +164,18 @@ export function softReach(d: number, max: number, soft = ARM_LIMITS.soft): numbe
   return da + r * (1 - Math.exp(-(d - da) / r));
 }
 
+/**
+ * One step of a critically damped spring toward `target` (exact, so stable at any frequency `w`, rad/s), its speed capped at `vmax` (units/s):
+ * a position that follows a jumping target without a step and without overshoot.
+ */
+export function springStep(pos: number, vel: number, target: number, w: number, dt: number, vmax = Infinity): { pos: number; v: number } {
+  const y = pos - target, j = vel + w * y, e = Math.exp(-w * dt);
+  const v = (vel - w * j * dt) * e;
+  if (Math.abs(v) <= vmax) return { pos: target + (y + j * dt) * e, v };
+  const vc = Math.sign(v) * vmax;
+  return { pos: pos + vc * dt, v: vc };
+}
+
 /** total twist of the hand vs the upper arm about the forearm axis (deg) -> pronation from neutral (> 0 pronated), as limits.ts measures it */
 const pronOf = (total: number, side: number) => side * total - ARM_LIMITS.restPron;
 /** the limits in force (a harness may override them through globalThis.__armLimits to measure what they cost) */
@@ -195,13 +207,7 @@ export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3)
     let x = curv > 1e-9 ? (s * (cm - cp)) / (2 * curv) : cm < cp ? -s : s;
     if (curv <= 1e-9 && Math.min(cm, cp) >= c0) x = 0;
     x = Math.max(-s, Math.min(s, x));
-    const follow = (pos: number, vel: number, target: number) => {
-      // exact step of a critically damped spring (stable at any frequency), then the speed capped
-      const w = LIM.follow ?? 30, vmax = LIM.followMax ?? 1500;
-      const y = pos - target, j = vel + w * y, e = Math.exp(-w * dt);
-      const v = Math.max(-vmax, Math.min(vmax, (vel - w * j * dt) * e));
-      return { pos: Math.abs(v) < vmax ? target + (y + j * dt) * e : pos + v * dt, v };
-    };
+    const follow = (pos: number, vel: number, target: number) => springStep(pos, vel, target, LIM.follow ?? 90, dt, LIM.followMax ?? 1500);
     const P = follow(p0, tr.vPole ?? 0, p0 + x);
     const pole = Math.max(-120, Math.min(120, P.pos));
     // the roll that is best at that swivel, then followed the same way

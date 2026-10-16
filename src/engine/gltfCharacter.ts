@@ -39,7 +39,7 @@ import { makeOnDeckBat } from './ondeckProp';
 import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { armRest, solveArm as solveArmIK, type ArmRest, type GripTrack } from './pose/armIK';
+import { armRest, solveArm as solveArmIK, springStep, type ArmRest, type GripTrack } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose, newConstrainState } from './pose/constrain';
@@ -534,6 +534,7 @@ export class GltfPuppet implements PuppetLike {
   lookStep = 0;
   maxLookStep = 0;
   private ikW = 0;
+  private ikWV = 0;
   /** the one-handed finish: how far the top hand has let go of the bat (0 on it, 1 off) */
   topRelease = 0;
   private topReleaseWant = false;
@@ -1570,7 +1571,16 @@ export class GltfPuppet implements PuppetLike {
     // a low pitch: the hitter's hands come down and the clip's own pose is the better guide than hands pinned to the sim's bat
     // the sim's bat is where the bat is: the fists stay on it for the whole swing (the hinge-aware solver keeps the elbows plausible; the old
     // fades for elbows in the trunk / low pitches let the hands leave the bat, which is what made the bat look wrongly held)
-    this.ikW += ((wantIK ? 1 : 0) - this.ikW) * (1 - Math.exp(-dt * (wantIK ? 90 : 25)));
+    // taking the bat: a critically damped spring (smooth over ~0.1 s, while the engine eases the bat out of the hands); the old 90/s exponential
+    // put 78 % of the gap between the clip's hands and the grip into one frame (the swing's hand / forearm flips at ikW ~0.4, B1 sweep)
+    if (wantIK) {
+      const sp = springStep(this.ikW, this.ikWV, 1, 30, Math.min(dt, 0.1));
+      this.ikW = Math.min(1, sp.pos);
+      this.ikWV = sp.v;
+    } else {
+      this.ikW += (0 - this.ikW) * (1 - Math.exp(-dt * 25));
+      this.ikWV = 0;
+    }
     this.ikDt = dt;
     if (!(this.ikW > 0.02 && env.batGrip)) this.armTrack.Left = this.armTrack.Right = null;
     else {
@@ -1960,6 +1970,10 @@ export class GltfPuppet implements PuppetLike {
 
   /** per arm: the swivel applied last frame (rad) and the side it was on */
   private swivel = { Left: 0, Right: 0 };
+  /** the swivel's and the abduction's speeds and the abduction applied (springs: no one-frame step into or out of the clearance) */
+  private swivelV = { Left: 0, Right: 0 };
+  private abd = { Left: 0, Right: 0 };
+  private abdV = { Left: 0, Right: 0 };
   /** last frame per arm: clearance before, swivel wanted, applied, clearance after (harness diagnostics) */
   swivelDbg: Record<'Left' | 'Right', number[]> = { Left: [0, 0, 0, 0], Right: [0, 0, 0, 0] };
   /**
@@ -2013,11 +2027,11 @@ export class GltfPuppet implements PuppetLike {
         const MAXSW = (60 * Math.PI) / 180;
         want = Math.max(-MAXSW, Math.min(MAXSW, swivelTarget([S.x, S.y, S.z], [H.x, H.y, H.z], [E.x, E.y, E.z], clearAt, prev > 0.01 ? 1 : prev < -0.01 ? -1 : 0, 0.02)));
       }
-      // ease toward it quickly (up to ~30 rad/s: a sprinting arm's elbow passes the trunk in a few frames) and back to the clip's own swivel
-      // slowly (~10 rad/s) once clear
-      const maxStep = (Math.abs(want) > Math.abs(prev) ? 30 : 10) * Math.min(dt, 0.1);
-      const applied = prev + Math.max(-maxStep, Math.min(maxStep, want - prev));
-      this.swivel[side] = Math.abs(applied) < 1e-4 ? 0 : applied;
+      // follow it on a critically damped spring: quickly in (a sprinting arm's elbow passes the trunk in a few frames), slower back to the
+      // clip's own swivel once clear. A fixed-rate approach stepped ~29 deg in the first frame: the runners' arm / hand flips (B1 sweep)
+      const sp = springStep(prev, this.swivelV[side], want, Math.abs(want) > Math.abs(prev) ? 70 : 20, Math.min(dt, 0.1), 40);
+      this.swivelV[side] = sp.v;
+      this.swivel[side] = Math.abs(sp.pos) < 1e-4 && Math.abs(sp.v) < 1e-3 ? 0 : sp.pos;
       const dbg0 = clear;
       if (this.swivel[side] !== 0) {
         const S = rig.pos(arm, new Vector3());
@@ -2035,7 +2049,8 @@ export class GltfPuppet implements PuppetLike {
       // still inside (the swivel was capped): lift the upper arm out to the side just enough, the forearm keeping its direction (the hand
       // moves the few centimetres the elbow does); not for an arm on a bat or reaching with the glove, whose hand must stay on its target
       const busy = this.ikW > 0.05 || (side === 'Left' && this.gloveW > 0.05);
-      if (clear < -0.005 && !off && !busy) {
+      let abdWant = 0;
+      if ((clear < -0.005 || this.abd[side] > 1e-3) && !off && !busy) {
         const S = rig.pos(arm, new Vector3()), E3 = rig.pos(fore, new Vector3());
         const l3 = E3.clone().sub(Ps).applyQuaternion(Qi);
         // outward from the trunk at the elbow, in the spine frame, then rig space
@@ -2046,8 +2061,12 @@ export class GltfPuppet implements PuppetLike {
         const axis = new Vector3().crossVectors(ua, out);
         if (axis.lengthSq() > 1e-10) {
           axis.normalize();
-          const ang = Math.asin(Math.min(1, (0.012 - clear) / Math.max(0.05, ua.length())));
-          const q = new Quaternion().setFromAxisAngle(axis, ang);
+          abdWant = clear < -0.005 ? Math.asin(Math.min(1, (0.012 - clear) / Math.max(0.05, ua.length()))) : 0;
+          // eased in and out like the swivel (the clearance it answers comes and goes with the arm's swing)
+          const sa = springStep(this.abd[side], this.abdV[side], abdWant, 70, Math.min(dt, 0.1), 40);
+          this.abd[side] = sa.pos;
+          this.abdV[side] = sa.v;
+          const q = new Quaternion().setFromAxisAngle(axis, Math.max(0, sa.pos));
           const qf = rig.quat(fore, new Quaternion());
           rig.rotate(arm, q);
           rig.rotate(fore, qf.multiply(rig.quat(fore, new Quaternion()).invert()));
@@ -2055,7 +2074,7 @@ export class GltfPuppet implements PuppetLike {
           const l4 = E4.clone().sub(Ps).applyQuaternion(Qi);
           clear = Math.min(torsoClearance(l4.x, l4.y, l4.z, this.torso), headClear([E4.x, E4.y, E4.z]));
         }
-      }
+      } else if (busy || off) this.abd[side] = this.abdV[side] = 0;
       const dg = this.swivelDbg[side];
       dg[0] = dbg0;
       dg[1] = want;
