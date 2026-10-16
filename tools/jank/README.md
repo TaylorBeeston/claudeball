@@ -15,7 +15,14 @@ npx tsx tools/jank/run.ts fades --constrain [--crossfade | --inertia]   # blends
 npx tsx tools/jank/run.ts game --seeds 1,2 --pre "globalThis.__noElbowFix = true"   # a switch flipped before the game (measure what a pass costs; trace takes it too;
                                                      # an object literal needs ./node_modules/.bin/tsx: npx brace-expands it)
 npx tsx tools/jank/compare.ts tools/jank/out/before tools/jank/out/after   # before / after tables of two game sweeps (incl. the bat per clip)
+npx tsx tools/jank/run.ts trace --seeds 1 --id batter --from 600 --to 900   # a role (whoever has it) instead of one player: many swings in one trace
+npx tsx tools/jank/run.ts fades --constrain --adaptive [--far 120]   # inertialize only the switches whose poses are far apart; --crossfade --continuous: pose/blend.ts
+npx tsx tools/jank/envelope.ts [--game tools/jank/out/<sweep>]   # the bat directions two hands can hold (for a sim thread), the sim's own bat overlaid
 ```
+
+In the game sweep the batter's swing clip is split by what it shows: `swing` (the sim's swing), `swing:stride` (the stride he takes on every pitch, the
+bat still in his hands) and `swing:finish` (the clip held in its finish while the sim's bat is out), so swing counts stay comparable across versions.
+The runtime sections of `jank:check` run the foot lock (pose/footLock.ts) like the game.
 
 `jank:check` gates four sections: the raw clips (`static`), raw blends (`fades`), and both through the runtime passes (`staticRuntime`,
 `fadesRuntime`: pose/neck.ts and pose/constrain.ts as the game applies them).
