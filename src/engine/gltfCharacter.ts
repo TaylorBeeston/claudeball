@@ -29,6 +29,7 @@ import {
 import { AnimationClip, SkinnedMesh } from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { FLAGS } from './flags';
+import { SIM_DRIVEN_TRAVEL, strideClipTime, stripGroundTravel, touchdowns } from './stridePhase';
 import { perf } from './perf';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
@@ -649,6 +650,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.mixer = new AnimationMixer(this.model);
     for (const [name, clip] of tpl.clips) {
+      if (SIM_DRIVEN_TRAVEL.test(name)) stripGroundTravel(clip); // (the sim moves the sliding body)
       const a = this.mixer.clipAction(clip);
       a.setLoop(this.isLoop(name) ? LoopRepeat : LoopOnce, Infinity);
       a.clampWhenFinished = true;
@@ -1442,10 +1444,18 @@ export class GltfPuppet implements PuppetLike {
       this.current.timeScale = 0; // no dedicated stance clip: hold frame 0 of the swing
       this.current.time = 0;
     } else if (locomotion && this.current) {
-      // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at); the gaits above already keep this near 1
-      const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.42 : name === 'jog' ? 3.5 : name.endsWith('sprint') ? 7 : 5;
-      const foot = this.footSpeedOf(name, fallback);
-      this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
+      const td = snap.stride ? touchdowns(this.tpl.scene, this.current.getClip()) : null;
+      if (td && snap.stride) {
+        // on the sim's footsteps: the foot drawn coming down is the sim's footstrike (a touch when it is on a bag)
+        this.current.paused = false;
+        this.current.timeScale = 0;
+        this.current.time = strideClipTime(td, snap.stride.next, snap.stride.phase, this.mirrored);
+      } else {
+        // no foot sliding: play the clip at (ground speed / the speed its stance foot moves back at); the gaits above already keep this near 1
+        const fallback = name === 'trot' ? 2.2 : name === 'walk' ? 1.42 : name === 'jog' ? 3.5 : name.endsWith('sprint') ? 7 : 5;
+        const foot = this.footSpeedOf(name, fallback);
+        this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
+      }
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
     if (!pit && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {

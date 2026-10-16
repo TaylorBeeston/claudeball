@@ -4,6 +4,7 @@
  * *after* the play — a strike a moment after the catch, safe / out ~0.2-0.6 s after the tag or the touch (longer when it is close) —
  * each an `umpireCall` event with his position and a gesture hint (`ump_*`) on his `anim`.
  */
+import { steer } from './bodies';
 import { emit } from './events';
 import { BASE_POS } from './field';
 import { clamp } from './math';
@@ -160,8 +161,7 @@ export function tickUmpires(w: World): void {
         const hx = via ? via.x - u.x : dx;
         const hz = via ? via.z - u.z : dz;
         const hd = Math.hypot(hx, hz) || 1;
-        vx = (hx / hd) * sp;
-        vz = (hz / hd) * sp;
+        [vx, vz] = steer(w, u.id, u.x, u.z, (hx / hd) * sp, (hz / hd) * sp);
       }
     }
     u.vx = vx;

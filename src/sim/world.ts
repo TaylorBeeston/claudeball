@@ -98,6 +98,10 @@ export interface PlayerRT {
   after: Goal | null;
   /** Tick of his next warm-up swing while on deck. */
   nextSwing: number;
+  /** His footsteps: the foot that lands next, the step in progress, the last footstrikes (see stride.ts). */
+  stride: import('./stride').Stride;
+  /** Sliding: the dirt slows him at this rate (m/s^2) and he cannot steer; 0 = on his feet. */
+  slideDecel: number;
 }
 
 export type PlanKind = 'idle' | 'chase' | 'cover' | 'backup' | 'cutoff' | 'receive' | 'tag' | 'hold' | 'wall';
@@ -248,6 +252,8 @@ export interface RunnerRT {
   asking: boolean;
   /** The slide he is in (null = running), when it began, and the base whose bag he is touching (0 = none). */
   slideKind: 'feet' | 'head' | 'hookL' | 'hookR' | 'diveBack' | null;
+  /** How far through the slide clip he is (0..1). */
+  slideProg: number;
   slideAt: number;
   contactBase: number;
   /** A sidestep away from a tag he has seen coming. */
@@ -261,6 +267,32 @@ export interface RunnerRT {
   outTick: number;
   /** A run scored on a home run: he celebrates at the plate until then. */
   celebrateUntil: number;
+  /** The closest any of his footstrikes came to the bag he is heading for (m), reset when he touches it. */
+  nearMiss: number;
+  /** He has run past this base without a foot on it and knows it: he goes back to touch it (0 = none). */
+  goBack: number;
+  /** The last footstrike already checked for a touch (tick). */
+  strikeSeen: number;
+  /** Obstructed with play going on: he cannot be put out short of this base and is given it after the play (0 = none). */
+  protectTo: number;
+  /** His line to the base when a tag attempt came (5.09(b)(1): no more than 3 ft off it), until the attempt is over. */
+  tagLine: { x0: number; z0: number; bx: number; bz: number; until: number } | null;
+  /** The bag he is approaching and the closest his body has come to it (m), to tell when he has gone past it. */
+  apBase: number;
+  apMin: number;
+}
+
+/** A base a runner ran past without touching it (he believes he did): the defense may appeal until the next pitch. */
+export interface MissedBase {
+  r: RunnerRT;
+  base: number;
+  /** a fielder saw it */
+  seen: boolean;
+  tick: number;
+  /** settled: appealed, or no longer appealable */
+  done: boolean;
+  /** he was forced to that base (an appeal there is a force out) */
+  forced: boolean;
 }
 
 export type BallMode = 'held' | 'pitched' | 'batted' | 'thrown' | 'loose' | 'dead';
@@ -535,6 +567,16 @@ export interface World {
   runners: RunnerRT[]; // all live/tracked runners (excluding removed)
   /** Runners who are out or scored and are walking off the field (still on screen). */
   exiting: RunnerRT[];
+  /** Bases run past without a touch since the last pitch (appealable). */
+  misses: MissedBase[];
+  /** The bodies on the field after the last tick's moves (bodies.ts), by id, and the tick of each pair's last `collision` event. */
+  bodies: import('./bodies').Body[];
+  bodyById: Map<string, import('./bodies').Body>;
+  collisionTick: Map<string, number>;
+  /** The next hitter, told to go on deck while still walking in to the dugout: he goes when he gets there. */
+  deckNext: PlayerRT | null;
+  /** A missed-base appeal being made after the play. */
+  appeal: import('./appeals').AppealRT | null;
   /** Tag sweeps in progress (open-field) and gloves set at a bag. */
   tags: TagSweep[];
   bagTags: BagTag[];

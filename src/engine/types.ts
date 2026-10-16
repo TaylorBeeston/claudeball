@@ -149,6 +149,8 @@ export interface PlayerSnap {
   number?: number;
   /** batter / thrower handedness */
   hand?: 'L' | 'R';
+  /** the sim's footsteps (foot landing next, 0 = left; progress through the step): locomotion clips are laid on them (stridePhase.ts) */
+  stride?: { next: 0 | 1; phase: number };
   pos: Vec3;
   /** yaw in radians, direction = (sin f, 0, cos f) */
   facing: number;

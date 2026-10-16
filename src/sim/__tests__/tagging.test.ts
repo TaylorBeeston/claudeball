@@ -278,11 +278,13 @@ describe('the body a tag has to find', () => {
     const up = runnerBody(r);
     expect(up.tx).toBe(up.cx);
     r.slideKind = 'feet';
+    r.slideProg = 0.5;
     const feet = runnerBody(r);
-    expect(Math.hypot(feet.tx - feet.cx, feet.tz - feet.cz)).toBeCloseTo(1.0, 1);
+    // (the reach of the slide clips' leading toe / hands past the hips: tools/contact/clipfeet.ts)
+    expect(Math.hypot(feet.tx - feet.cx, feet.tz - feet.cz)).toBeCloseTo(0.9, 2);
     r.slideKind = 'head';
     const head = runnerBody(r);
-    expect(Math.hypot(head.tx - head.cx, head.tz - head.cz)).toBeGreaterThan(1.1);
+    expect(Math.hypot(head.tx - head.cx, head.tz - head.cz)).toBeCloseTo(0.87, 2);
     expect(feet.radius).toBeLessThan(up.radius);
   });
 

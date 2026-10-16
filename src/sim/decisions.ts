@@ -32,7 +32,8 @@ export type DecisionKind =
   | 'pinchRun'
   | 'intentionalWalk'
   | 'wallPlay'
-  | 'coach';
+  | 'coach'
+  | 'appeal';
 
 interface Base<K extends DecisionKind> {
   /** Unique per game; pass it to `game.resolveDecision` for a deferred answer. */
@@ -396,6 +397,22 @@ export interface IntentionalWalkDecision {
   walk: boolean;
 }
 
+/**
+ * The defense, after a play in which a runner went past a base without touching it (he believes he did): appeal it? The umpire calls
+ * him out if they do. Asked once per missed base, before the next pitch. `seen`: one of the fielders noticed it.
+ */
+export interface AppealRequest extends Base<'appeal'> {
+  situation: Situation;
+  runner: PlayerInfo;
+  base: number;
+  seen: boolean;
+  /** he went on to score */
+  scored: boolean;
+}
+export interface AppealDecision {
+  appeal: boolean;
+}
+
 // ---------------------------------------------------------------------------------------------
 
 export interface DecisionMap {
@@ -414,6 +431,7 @@ export interface DecisionMap {
   intentionalWalk: [IntentionalWalkRequest, IntentionalWalkDecision];
   wallPlay: [WallPlayRequest, WallPlayDecision];
   coach: [CoachRequest, CoachDecision];
+  appeal: [AppealRequest, AppealDecision];
 }
 export type RequestOf<K extends DecisionKind> = DecisionMap[K][0];
 export type DecisionOf<K extends DecisionKind> = DecisionMap[K][1];

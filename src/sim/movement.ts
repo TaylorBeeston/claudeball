@@ -2,6 +2,8 @@ import { emit } from './events';
 import { fenceAt } from './field';
 import { LEGS_PER_SPRINT_SECOND, brakeDecel, LEGS_RECOVERY_PER_SECOND, legsSpeedFactor } from './attributes';
 import { clamp } from './math';
+import { stepStride } from './stride';
+import { steer } from './bodies';
 import type { PlayerRT, World } from './world';
 import { TICK } from './world';
 
@@ -88,7 +90,18 @@ export function stepPlayer(p: PlayerRT, w: World): void {
   let dvx = 0;
   let dvz = 0;
   const canMove = w.tick >= p.reactUntil;
-  if (g && canMove) {
+  if (p.slideDecel > 0) {
+    // sliding: no steering, the dirt takes his speed
+    const sp0 = Math.hypot(p.vx, p.vz);
+    const k = sp0 > 1e-6 ? Math.max(0, sp0 - p.slideDecel * TICK) / sp0 : 0;
+    p.vx *= k;
+    p.vz *= k;
+    if (sp0 * k < 0.2) p.slideDecel = 0; // he has come to rest
+    p.x += p.vx * TICK;
+    p.z += p.vz * TICK;
+    stepStride(w, p);
+    return;
+  } else if (g && canMove) {
     const dx = g.x - p.x;
     const dz = g.z - p.z;
     const d = Math.hypot(dx, dz);
@@ -97,14 +110,17 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     // plan the stop with the braking a person can actually do, starting far enough out to arrive near the spot at a walk
     if (g.stop) sp = Math.min(vmax, Math.sqrt(2 * Math.min(brakeDecel(p.info.ratings), p.accel * 0.9) * Math.max(0, d - 0.02)));
     if (d < 0.03 && g.stop) sp = 0;
-    const tvx = d > 1e-6 ? (dx / d) * sp : 0;
-    const tvz = d > 1e-6 ? (dz / d) * sp : 0;
+    let tvx = d > 1e-6 ? (dx / d) * sp : 0;
+    let tvz = d > 1e-6 ? (dz / d) * sp : 0;
+    // around anyone in the way (bodies.ts: who gives way to whom)
+    [tvx, tvz] = steer(w, p.info.id, p.x, p.z, tvx, tvz);
     dvx = tvx - p.vx;
     dvz = tvz - p.vz;
   } else {
-    // coast to a stop
-    dvx = -p.vx;
-    dvz = -p.vz;
+    // coast to a stop (or step out of the way of somebody coming: bodies.ts)
+    const [sx, sz] = canMove && p.onField ? steer(w, p.info.id, p.x, p.z, 0, 0) : [0, 0];
+    dvx = sx - p.vx;
+    dvz = sz - p.vz;
   }
   const dvl = Math.hypot(dvx, dvz);
   const maxDv = p.accel * (g && canMove ? 1 : 1.3) * TICK;
@@ -137,6 +153,7 @@ export function stepPlayer(p: PlayerRT, w: World): void {
     }
   }
   const sp = Math.hypot(p.vx, p.vz);
+  stepStride(w, p);
   // hard running tires the legs (durability decides how much it costs); walking and standing recover
   if (sp > 0.85 * p.vmax) p.legs = Math.min(1, p.legs + TICK * LEGS_PER_SPRINT_SECOND);
   else if (sp < 0.5 * p.vmax) p.legs = Math.max(0, p.legs - TICK * LEGS_RECOVERY_PER_SECOND);

@@ -9,6 +9,7 @@ import { baseCallDelay, scheduleCall } from './umpires';
 import { catcherExchange, deliverySeconds, holdingLeadAdjust, sprintOf } from './attributes';
 import { setGoal, travelTime } from './movement';
 import { setAnim } from './util';
+import { aimStep, distToBase, shoeOn, standsOn, touchPoint } from './stride';
 import type { PlayerRT, RunnerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import * as fielding from './fielding';
@@ -20,6 +21,7 @@ const visitsNoteClose = (w: World, id: string, b: number, margin: number, close:
 import type { CoachDecision } from './decisions';
 import * as inplay from './inplay';
 import * as rules from './rules';
+import * as contact from './contact';
 import * as clock from './clock';
 import { DUGOUT } from './setup';
 import { leaveDugout, toBench } from './dugout';
@@ -74,6 +76,14 @@ export function makeRunner(w: World, p: PlayerRT, isBatter: boolean): RunnerRT {
     exitDone: false,
     outTick: 0,
     celebrateUntil: 0,
+    nearMiss: 9,
+    goBack: 0,
+    slideProg: 0,
+    strikeSeen: p.stride.last?.tick ?? 0,
+    protectTo: 0,
+    tagLine: null,
+    apBase: 0,
+    apMin: 9,
   };
   p.role = 'runner';
   p.onField = true;
@@ -140,6 +150,8 @@ export function forced(w: World, r: RunnerRT, depth = 0): boolean {
   for (const q of w.runners) {
     if (q === r || q.state !== 'live') continue;
     if (q.target === r.base && q.target > q.base && forced(w, q, depth + 1)) return true;
+    // (the runner behind him who was forced there has already reached his base: the force stands, he cannot go back to it)
+    if (q.base === r.base && r.base >= 1 && q.origin < r.origin && q.target === q.base && q.base > q.origin && (q.isBatter || q.origin === r.origin - 1)) return true;
   }
   return false;
 }
@@ -170,7 +182,9 @@ export function runnerETA(r: RunnerRT, b: number): number {
     const bp = bpos(b);
     t = travelTime(p, bp.x, bp.z);
   }
-  return Math.max(0, t - 0.1); // reach of the foot / slide
+  // reach of the foot / slide: a runner stopping on a bag has it under his foot a little later than one running across the plate
+  // (calibrated so his read errs as it did when the AI was tuned: measured over many advances, tools/contact notes)
+  return Math.max(0, t + (b === 4 ? -0.26 : -0.01));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -193,7 +207,9 @@ export function updateLeads(w: World): void {
       r.leadDist = clamp(ans.lead, 0, MAX_LEAD);
       r.leadKey = key;
     }
-    const lead = r.leadDist;
+    // the secondary lead: once the pitcher has committed to the plate he shuffles on toward the next base (he is going, or he goes back)
+    const windup = w.phase === 'windup';
+    const lead = r.leadDist + (windup ? secondaryLead(r.p.info.ratings) : 0);
     r.leadX = a.x + ((b.x - a.x) / d) * lead;
     r.leadZ = a.z + ((b.z - a.z) / d) * lead;
     const p = r.p;
@@ -201,10 +217,13 @@ export function updateLeads(w: World): void {
       p.x = r.leadX;
       p.z = r.leadZ;
       p.vx = p.vz = 0;
-    } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, 0.5);
+    } else if (Math.hypot(p.x - r.leadX, p.z - r.leadZ) > 0.1) setGoal(p, r.leadX, r.leadZ, true, windup ? 0.3 : 0.5);
     p.lookAt = { x: w.pitcher.x, z: w.pitcher.z };
   }
 }
+
+/** The shuffle a runner takes on the pitch (m): a better baserunner gets a bigger, more confident one. */
+export const secondaryLead = (R: { baserunning: number; speed: number }) => clamp(1.0 + 0.01 * (R.baserunning - 50) + 0.004 * (R.speed - 50), 0.6, 1.5);
 
 /** Longest lead a runner may take (m): beyond this he is not standing near a base any more. */
 export const MAX_LEAD = 6;
@@ -213,16 +232,30 @@ export const MAX_LEAD = 6;
 export function aiLead(req: { runner: { ratings: { speed: number; baserunning: number } }; pitcher: { ratings: { holding: number } }; base: number }): LeadDecision {
   const R = req.runner.ratings;
   // a good runner takes a bigger lead, a pitcher who holds runners well shortens it
-  return { lead: clamp(3.0 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50) + holdingLeadAdjust(req.pitcher.ratings), 1.8, 4.6) * (req.base === 3 ? 0.8 : 1) };
+  // (an average major-league primary lead is 11-13 ft, about 3.5 m)
+  return { lead: clamp(3.5 + 0.035 * (R.speed - 50) + 0.015 * (R.baserunning - 50) + holdingLeadAdjust(req.pitcher.ratings), 2.2, 4.8) * (req.base === 3 ? 0.8 : 1) };
 }
 
 /** Runners standing off a base should be able to run through their lead point quickly; snap to base when a play ends. */
 export function snapRunnersToBases(w: World): void {
   for (const r of w.runners) {
     if (r.state !== 'live') continue;
+    if (r.protectTo > r.base) r.protectTo = contact.freeUpTo(w, r, r.protectTo);
+    if (r.protectTo > r.base) {
+      // obstructed: he is given the base he was running to (if nobody else has it)
+      for (let b = r.base + 1; b <= r.protectTo; b++) {
+        emit(w, { type: 'runnerAdvance', playerId: r.p.info.id, fromBase: b - 1, toBase: b });
+        r.touched[b] = true;
+      }
+      r.base = r.protectTo;
+      if (r.base >= 4) {
+        rules.scoreRun(w, r);
+        continue;
+      }
+    }
     if (r.base >= 1) {
       const b = bpos(r.base);
-      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.4 || Math.hypot(r.p.vx, r.p.vz) > 1.0)) {
+      if (w.cfg.pace > 0 && (Math.hypot(r.p.x - b.x, r.p.z - b.z) > 0.03 || Math.hypot(r.p.vx, r.p.vz) > 0.05)) {
         // not there yet, or still running through the bag (the play was called over): he brakes and walks back to it, nobody stops dead or jumps
         setGoal(r.p, b.x, b.z, true, 0.6);
       } else {
@@ -242,6 +275,8 @@ export function snapRunnersToBases(w: World): void {
       r.stealing = false;
       r.dead = false;
       r.awarded = false;
+      r.protectTo = 0;
+      r.tagLine = null;
       r.origin = r.base;
       r.isBatter = false;
       r.touched = [false, false, false, false, false];
@@ -299,6 +334,9 @@ function stealCandidate(w: World): RunnerRT | null {
   return r;
 }
 
+/** What a runner's straight-line read of his steal time leaves out (s), measured: actual touch minus the read, averaged over 130 steals. */
+const STEAL_READ_LAG = 0.15;
+
 /** Nominal times for a steal from the runner's current position (the numbers a runner / coach reads off the situation). */
 export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTime: number; runnerTime: number } {
   const P = r.p;
@@ -307,7 +345,11 @@ export function stealTimes(w: World, r: RunnerRT, windupSecs: number): { ballTim
   const jump = 0.32 - 0.002 * (P.info.ratings.baserunning - 50);
   const bp = bpos(nb);
   const dist = Math.hypot(bp.x - P.x, bp.z - P.z);
-  const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, dist, 0) - 0.08;
+  // (his own read of it: the run to where he slides, then the slide until his foot is on the bag)
+  const d0 = tagging.FEET_SLIDE_AT;
+  // (+ STEAL_READ_LAG: measured over many steals, the straight-line read comes out that much short of his real time to the bag:
+  // the jump, the turn out of his lead, the legs; tools/contact notes in docs/rules-and-contact-plan.md)
+  const runnerTime = jump + travelTime({ x: 0, z: 0, vx: 0.4, vz: 0, vmax: P.vmax, accel: P.accel }, Math.max(0, dist - d0), 0) + tagging.slideToBag(P.vmax, Math.min(dist, d0)) + STEAL_READ_LAG;
   const armV = 27 + 0.21 * catcher.info.ratings.arm;
   const D = Math.hypot(bp.x - catcher.x, bp.z - catcher.z);
   const exch = catcherExchange(catcher.info.ratings);
@@ -370,7 +412,8 @@ export function commitSteals(w: World): void {
   r.want = r.base + 1;
   r.target = r.base + 1;
   r.origin = r.base;
-  r.reaction = w.tick + secToTicks(Math.max(0.05, 0.1 + 0.28 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.13)));
+  // (he decided before the pitch to go: he breaks on the pitcher's first move, he is not reacting to something he did not expect)
+  r.reaction = w.tick + secToTicks(Math.max(0.03, 0.05 + 0.2 * (1 - P.info.ratings.baserunning / 100) + w.rng.normal(0, 0.08)));
   w.pitcher.lookAt = null;
 }
 
@@ -381,8 +424,9 @@ export function onPitchRelease(w: World): void {
     const pos = nb === 2 ? (w.batStance === 'R' ? 'SS' : '2B') : nb === 3 ? '3B' : 'C';
     const cover = w.fieldingTeam.defense.get(pos as never);
     if (cover && cover.onField) {
-      const bp = bpos(nb);
-      setGoal(cover, bp.x + (nb === 2 ? 0 : 0), bp.z - 0.6, true, 1);
+      // beside the bag on the catcher's side, out of the runner's lane
+      const spot = fielding.coverSpot(nb, w.catcher.x, w.catcher.z);
+      setGoal(cover, spot.x, spot.z, true, 1);
     }
   }
 }
@@ -451,6 +495,12 @@ function tickLeaving(w: World, r: RunnerRT): void {
 
 function tickRunner(w: World, r: RunnerRT): void {
   const p = r.p;
+  if (!r.slideKind) p.slideDecel = 0;
+  if (r.target <= r.base) {
+    // not on his way to a new base: whatever approach he made to one is over
+    r.apBase = 0;
+    r.nearMiss = 9;
+  }
   if (r.state !== 'live') {
     tickLeaving(w, r);
     return;
@@ -468,11 +518,22 @@ function tickRunner(w: World, r: RunnerRT): void {
     const cb = bpos(r.contactBase);
     if (Math.hypot(p.x - cb.x, p.z - cb.z) > 1.7) r.contactBase = 0;
   }
-  if (w.tick < r.reaction) return;
+  if (w.tick < r.reaction) {
+    // (his decisions wait for his reaction; his feet do not: a runner already on his way still times his steps onto the bag)
+    if (r.target > r.base && !r.slideKind) {
+      const T = touchPoint(r.target, r.want > r.target && r.target <= 3, wayIn(r.target));
+      const plan = aimStep(w, p, T.x, T.z);
+      if (plan && p.goal && !p.goal.stop) setGoal(p, plan.bx, plan.bz, false, p.goal.mul);
+      checkTouch(w, r);
+    }
+    return;
+  }
   // a runner can never pass, or share a base with, the runner ahead of him
   if (r.want > r.base && !r.dead) {
     for (const q of w.runners) {
-      if (q !== r && q.state === 'live' && q.base > r.base && q.target === q.base && q.want <= q.base && r.want >= q.base) r.want = Math.max(r.base, q.base - 1);
+      // (a forced runner, the batter-runner first of all, always runs for the next base: the man there is forced on by him in turn,
+      // even before he has been told so)
+      if (q !== r && q.state === 'live' && q.base > r.base && q.target === q.base && q.want <= q.base && r.want >= q.base) r.want = Math.max(forced(w, r) ? r.base + 1 : r.base, q.base - 1);
     }
   }
   r.target = r.want > r.base ? r.base + 1 : r.base;
@@ -493,6 +554,11 @@ function tickRunner(w: World, r: RunnerRT): void {
       // run through first base
       gx = tp.x + dIn.x * RUN_THROUGH;
       gz = tp.z + dIn.z * RUN_THROUGH;
+    } else if (r.target === 4 && !(r.dead && r.trot > 0)) {
+      // he runs across the plate (a foot on it), not to a stop on it; a home-run trot ends at the plate with the celebration
+      gx = tp.x + dIn.x * 4;
+      gz = tp.z + dIn.z * 4;
+      stop = false;
     } else if (continuing) {
       // round the bag: swing wide, cut in to touch it, and leave toward the next base
       stop = false;
@@ -505,9 +571,20 @@ function tickRunner(w: World, r: RunnerRT): void {
         gx = tp.x - dIn.x * ROUND_L + out.x * ROUND_W * sharp;
         gz = tp.z - dIn.z * ROUND_L + out.z * ROUND_W * sharp;
       } else {
+        // cut in across the inside of the bag, where his foot comes down
+        const T = touchPoint(r.target, true, dIn);
+        gx = T.x;
+        gz = T.z;
         m *= 1 - 0.1 * sharp;
         if (dist < ROUND_L && Math.hypot(p.vx, p.vz) > 3) p.gait = 'turn';
       }
+    }
+    if (r.goBack === r.target) {
+      // he ran past the bag without a foot on it, and knows it: back to it
+      gx = tp.x;
+      gz = tp.z;
+      stop = true;
+      m = Math.max(m, 0.8);
     }
     // a slide: chosen by the state of the play; a hook aims to the side of the bag, away from the glove
     const aim = tagging.updateSlide(w, r);
@@ -517,7 +594,18 @@ function tickRunner(w: World, r: RunnerRT): void {
     }
     setGoal(p, gx, gz, stop, m);
     p.lookAt = null;
-    if (tagging.touchesBag(r, r.target)) touchBase(w, r, r.target);
+    // he times his last steps so a foot comes down on the bag, and steers his body to pass where that foot lands beside it
+    if (!r.slideKind) {
+      const rounding = continuing && r.goBack !== r.target;
+      const T0 = touchPoint(r.target, rounding, dIn);
+      // (rounding, he cuts the inside corner on purpose; otherwise he hits the part of the bag on his line)
+      const T = rounding ? T0 : onHisLine(p, T0);
+      const plan = aimStep(w, p, T.x, T.z);
+      // (running through first he brakes only well past the bag: he steers onto it all the same)
+      const through = !stop || (r.target === 1 && r.want === 1 && !r.dead && r.goBack !== 1);
+      if (plan && through) setGoal(p, plan.bx, plan.bz, false, m);
+    }
+    checkTouch(w, r);
   } else if (r.base >= 1 && !(r.want === r.base && !r.dead && !r.overrun && !r.retouch && !r.isBatter && w.phase !== 'inPlay')) {
     // returning to / staying at the base
     const b = bpos(r.base);
@@ -533,20 +621,136 @@ function tickRunner(w: World, r: RunnerRT): void {
       if (dd < 0.6 && sp < 2.5) r.overrun = false;
     } else if (dd > 0.25 && !r.dead) setGoal(p, b.x, b.z, true, 1);
     else if (dd > 0.25) setGoal(p, b.x, b.z, true, mul);
-    if (r.retouch && dd <= 0.9) r.retouchDone = true;
+    // going back to touch up: his steps go onto the bag (a foot, standing on it, or the hands diving back)
+    if (r.retouch && !r.retouchDone && !r.slideKind && dd > 0.3) {
+      const T = touchPoint(r.base, false, unit(b.x - p.x, b.z - p.z));
+      aimStep(w, p, T.x, T.z);
+    }
+    if (r.retouch && (standsOn(p, r.base) || footOnBag(r, r.base) || tagging.slideTouches(r, r.base))) r.retouchDone = true;
+    r.strikeSeen = Math.max(r.strikeSeen, p.stride.last?.tick ?? 0);
+    // his hands on the bag diving back: he is on it (a tag no longer gets him)
+    if (r.slideKind && tagging.slideTouches(r, r.base)) {
+      r.contactBase = r.base;
+      tagging.bagStops(r);
+    }
     // diving back to the bag with the ball coming
     tagging.updateSlide(w, r);
   }
 }
 
-function touchBase(w: World, r: RunnerRT, b: number): void {
+/** He hits the part of the bag that is on his line: the touch point slides (up to 12 cm, staying on the bag) toward the line he is running. */
+function onHisLine(p: PlayerRT, T: { x: number; z: number }): { x: number; z: number } {
+  const v = Math.hypot(p.vx, p.vz);
+  if (v < 2) return T;
+  const ux = p.vx / v, uz = p.vz / v;
+  // his line's closest point to T, and how far T is off it
+  const t = (T.x - p.x) * ux + (T.z - p.z) * uz;
+  if (t <= 0) return T;
+  const cx = p.x + ux * t, cz = p.z + uz * t;
+  const off = Math.hypot(cx - T.x, cz - T.z);
+  if (off < 1e-3) return T;
+  const k = Math.min(off, 0.12) / off;
+  return { x: T.x + (cx - T.x) * k, z: T.z + (cz - T.z) * k };
+}
+
+/** Standing beside the bag he puts a foot on it: the point on its edge toward him (a few cm in). */
+function stepOnto(p: PlayerRT, b: number): { x: number; z: number; limb: 'foot' } {
+  const c = b === 4 ? { x: 0, z: 0.25 } : bpos(b);
+  const d = distToBase(b, p.x, p.z);
+  const l = Math.hypot(c.x - p.x, c.z - p.z) || 1;
+  const k = Math.min(l, d + 0.05) / l;
+  return { x: p.x + (c.x - p.x) * k, z: p.z + (c.z - p.z) * k, limb: 'foot' };
+}
+
+/** The direction of the base path into base b (from the base before it). */
+const wayIn = (b: number) => {
+  const tp = bpos(b), prev = bpos(b - 1);
+  return unit(tp.x - prev.x, tp.z - prev.z);
+};
+
+/** A footstrike since the last check that put a shoe on base b's bag (or the plate). */
+function footOnBag(r: RunnerRT, b: number): boolean {
+  const s = r.p.stride;
+  for (const st of [s.prev, s.last]) {
+    if (!st || st.tick <= r.strikeSeen) continue;
+    if (shoeOn(b, st)) return true;
+  }
+  return false;
+}
+
+/**
+ * Has the runner touched the bag he is heading for: a foot came down on it, he is standing on it, or his slide's leading foot / hand
+ * reached it. A runner whose body has gone past the bag with no touch has missed it: if he feels it he goes back for it, otherwise he
+ * carries on and the base is his, unless the defense appeals.
+ */
+function checkTouch(w: World, r: RunnerRT): void {
+  const p = r.p;
+  const b = r.target;
+  const s = p.stride;
+  for (const st of [s.prev, s.last]) if (st && st.tick > r.strikeSeen) r.nearMiss = Math.min(r.nearMiss, distToBase(b, st.x, st.z));
+  const byFoot = footOnBag(r, b);
+  const bySlide = !byFoot && tagging.slideTouches(r, b);
+  const byStanding = !byFoot && !bySlide && standsOn(p, b);
+  const touched = byFoot || bySlide || byStanding;
+  r.strikeSeen = Math.max(r.strikeSeen, s.last?.tick ?? 0);
+  if (touched) {
+    r.goBack = 0;
+    if (r.slideKind) tagging.bagStops(r);
+    // (where the touching foot / hand is: the footstrike, the slide's limb, or his feet under him as he steps onto it)
+    const s0 = p.stride.last && shoeOn(b, p.stride.last) ? p.stride.last : p.stride.prev && shoeOn(b, p.stride.prev) ? p.stride.prev : null;
+    const at = bySlide ? (() => { const bd = tagging.runnerBody(r); return { x: bd.tx, z: bd.tz, limb: r.slideKind === 'head' || r.slideKind === 'diveBack' ? ('hand' as const) : ('foot' as const) }; })() : byFoot && s0 ? { x: s0.x, z: s0.z, limb: 'foot' as const } : stepOnto(p, b);
+    touchBase(w, r, b, false, at);
+    return;
+  }
+  // past it: the body was close and is now moving away from the bag
+  const c = b === 4 ? { x: 0, z: 0.2 } : bpos(b);
+  const d = Math.hypot(p.x - c.x, p.z - c.z);
+  if (r.apBase !== b) {
+    r.apBase = b;
+    r.apMin = d;
+  }
+  r.apMin = Math.min(r.apMin, d);
+  // (at a walk he simply steps back onto it: only a man going past at a run can miss a bag)
+  if (r.goBack === b || r.apMin > 1.0 || d < r.apMin + 0.45 || r.slideKind || Math.hypot(p.vx, p.vz) < 2.5) return;
+  // he went by it: does he know? A foot that came down well off the bag he feels; one that just missed the edge he may not
+  const R = p.info.ratings;
+  const pKnow = clamp((r.nearMiss - 0.03) / 0.3, 0, 1) * (0.55 + 0.45 * (R.baserunning / 100)) + 0.05;
+  if (w.aiRng.next() < pKnow) {
+    r.goBack = b;
+    emit(w, { type: 'baseMissed', playerId: p.info.id, base: b, knows: true, by: r.nearMiss, pos: { x: p.x, y: 0, z: p.z } });
+    return;
+  }
+  missBase(w, r, b);
+}
+
+/** He runs on past base b believing he touched it: the base is his unless the defense appeals; the fielders who saw it know. */
+function missBase(w: World, r: RunnerRT, b: number): void {
+  const p = r.p;
+  let seen = false;
+  for (const F of fielding.fielders(w)) {
+    const c = b === 4 ? { x: 0, z: 0.2 } : bpos(b);
+    const d = Math.hypot(F.x - c.x, F.z - c.z);
+    if (d > 35) continue;
+    // was he looking that way: the angle between his facing and the bag
+    const look = Math.cos(Math.atan2(c.x - F.x, c.z - F.z) - F.facing);
+    const pSee = clamp(1 - d / 35, 0, 1) * clamp(0.25 + look, 0, 1) * (0.45 + 0.55 * (F.info.ratings.iq / 100));
+    if (w.aiRng.next() < pSee) seen = true;
+  }
+  w.misses.push({ r, base: b, seen, tick: w.tick, done: false, forced: forced(w, r) });
+  emit(w, { type: 'baseMissed', playerId: p.info.id, base: b, knows: false, by: r.nearMiss, seen, pos: { x: p.x, y: 0, z: p.z } });
+  touchBase(w, r, b, true);
+}
+
+function touchBase(w: World, r: RunnerRT, b: number, missed = false, at: { x: number; z: number; limb: 'foot' | 'hand' } | null = null): void {
   if (r.touched[b] && r.base >= b) return;
   const from = r.base;
   r.base = b;
-  r.touched[b] = true;
-  r.contactBase = b;
+  r.touched[b] = !missed;
+  r.contactBase = missed ? 0 : b;
+  r.nearMiss = 9;
+  r.apBase = 0;
   emit(w, { type: 'runnerAdvance', playerId: r.p.info.id, fromBase: from, toBase: b });
-  emit(w, { type: 'baseTouch', playerId: r.p.info.id, base: b, trot: r.dead, pos: { x: r.p.x, y: 0, z: r.p.z } });
+  if (!missed) emit(w, { type: 'baseTouch', playerId: r.p.info.id, base: b, trot: r.dead, pos: { x: r.p.x, y: 0, z: r.p.z }, ...(at ? { touch: { x: at.x, y: 0, z: at.z }, limb: at.limb } : {}) });
   if (!r.dead && fielding.playNearBase(w, b)) {
     const eta = tagging.fielderETA(w, b);
     emit(w, { type: 'safe', playerId: r.p.info.id, base: b, margin: -eta, closePlay: eta < 0.1 });

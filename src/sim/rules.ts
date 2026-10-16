@@ -1,3 +1,5 @@
+import * as contact from './contact';
+import * as appeals from './appeals';
 import { emit } from './events';
 import { toBench } from './dugout';
 import * as visits from './visits';
@@ -53,7 +55,7 @@ export function afterPitch(w: World, ballLive: boolean): void {
   else flow.readyNextPitch(w);
 }
 
-function creditOut(w: World, p: PlayerRT | null): void {
+export function creditOut(w: World, p: PlayerRT | null): void {
   // pitcher of record gets the out
   w.pitcher.pit.outs++;
   void p;
@@ -181,6 +183,11 @@ export function awardBases(w: World, batter: PlayerRT, bases: number): void {
 
 export function recordOut(w: World, r: RunnerRT, outType: OutType, fielders: PlayerRT[], base: number | null, force: boolean, info: { margin?: number } = {}): void {
   if (r.state !== 'live' || w.outs >= 3) return;
+  // obstructed earlier on this run: he cannot be put out short of the base he was running to
+  if (r.protectTo && (outType === 'tag' || outType === 'force' || outType === 'caughtStealing' || outType === 'pickoff') && (base === null || base <= r.protectTo)) {
+    contact.obstructedSafe(w, r);
+    return;
+  }
   r.state = 'out';
   w.outs++;
   creditOut(w, r.p);
@@ -317,6 +324,7 @@ export function toPlayOver(w: World, seconds = 2.6): void {
 export function afterPlayOver(w: World): void {
   if (w.gameOver) return;
   if (!visits.reviewStage(w)) return; // a managerial challenge of a close call (tempo)
+  if (!appeals.appealStage(w)) return; // a missed base the defense appeals
   if (w.outs >= 3) {
     endHalfInning(w);
     return;
@@ -341,6 +349,8 @@ export function endHalfInning(w: World): void {
   for (const r of w.exiting) toBench(w, r.p);
   w.runners = [];
   w.exiting = [];
+  w.misses = [];
+  w.appeal = null;
   w.paDone = false;
   const bat = w.batter;
   if (bat) toBench(w, bat);

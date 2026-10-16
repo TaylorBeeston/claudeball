@@ -292,7 +292,9 @@ export function tickLeavers(w: World): void {
     const d = DUGOUT[p.team.side];
     setGoal(p, d.x, d.z, true, 0.75);
     p.gait = 'trot';
-    if (Math.hypot(p.x - d.x, p.z - d.z) < 1.2 || w.tick - l.since > 15 * 240) {
+    // (a crowd at the door: someone held up close to it by the men ahead of him is there too)
+    const dd = Math.hypot(p.x - d.x, p.z - d.z);
+    if (dd < 1.2 || (dd < 3 && Math.hypot(p.vx, p.vz) < 0.4 && w.tick - l.since > 240) || w.tick - l.since > 15 * 240) {
       p.gait = null;
       toBench(w, p); // through the door, down the steps, back to his seat
       return false;

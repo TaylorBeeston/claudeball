@@ -188,6 +188,31 @@ const COVER_ORDER: Record<number, string[]> = {
   4: ['C', 'P', '1B'],
 };
 
+/** A runner on his way to base b who means to go on past it (he will round it). */
+export const roundingAt = (w: World, b: number) => w.runners.some((r) => r.state === 'live' && !r.dead && r.target === b && r.want > b && r.target > r.base);
+
+/**
+ * Where a fielder covering base b stands to take a throw (from (sx, sz)): beside the bag off the runner's lane into it (the base path from
+ * the base before), with a foot on the bag (`footOnBase` reaches 0.65 m from its middle). On its infield side, unless a runner is going to
+ * round the bag (`outside`): he cuts its inside corner, so the fielder gives him that and takes the throw on the outer side.
+ */
+export function coverSpot(b: number, sx: number, sz: number, outside = false): { x: number; z: number } {
+  const bp = bpos(b);
+  const prev = bpos(b - 1);
+  const il = Math.hypot(bp.x - prev.x, bp.z - prev.z) || 1;
+  const ix = (bp.x - prev.x) / il, iz = (bp.z - prev.z) / il;
+  // the two sides of the runner's lane: the infield side (toward the mound), out of the way of a runner who rounds the bag wide
+  void sx;
+  void sz;
+  let px = -iz, pz = ix;
+  if (((0 - bp.x) * px + (18.44 - bp.z) * pz < 0) !== outside) {
+    px = -px;
+    pz = -pz;
+  }
+  // (0.55 m out: clear of a runner crossing the middle of the bag, two body half-widths, with his foot still on its edge)
+  return { x: bp.x + px * 0.55 - ix * 0.05, z: bp.z + pz * 0.55 - iz * 0.05 };
+}
+
 export function defenseAI(w: World): void {
   const play = w.play!;
   const ball = w.ball;
@@ -285,15 +310,12 @@ export function defenseAI(w: World): void {
   for (const b of [1, 2, 3, 4]) {
     const F = covers[b];
     if (!F || F === holder || F === primary) continue;
-    const bp = bpos(b);
-    // stand a little inside the bag toward the ball
-    const dx = ball.body.x - bp.x;
-    const dz = ball.body.z - bp.z;
-    const dl = Math.hypot(dx, dz) || 1;
+    // beside the bag on the side the throw comes from, a foot on it, out of the runner's way (6.01(h), 6.01(i): without the ball he may not block it)
+    const spot = coverSpot(b, ball.body.x, ball.body.z, roundingAt(w, b));
     F.plan.kind = 'cover';
     F.plan.base = b;
-    F.plan.tx = bp.x + (dx / dl) * 0.5;
-    F.plan.tz = bp.z + (dz / dl) * 0.5;
+    F.plan.tx = spot.x;
+    F.plan.tz = spot.z;
     setGoal(F, F.plan.tx, F.plan.tz, true, 1);
     F.lookAt = { x: ball.body.x, z: ball.body.z };
   }
@@ -469,6 +491,9 @@ export function fieldingAttempts(w: World): void {
     if (ball.mode === 'thrown' && ball.thrower === F && w.tick - (w.play?.lastThrowTick ?? 0) < 60) continue;
     // a throw takes a moment to get there, even to a man standing beside the thrower (the catch clip has to start before the arrival)
     if (ball.mode === 'thrown' && w.tick - (w.play?.lastThrowTick ?? -999) < 30) continue;
+    // a throw to a base meant for somebody else, going past him away from that base (the catcher's throw to second over the mound): he
+    // gets out of its way, unless it is at his feet; whoever is at the bag takes it
+    if (ball.mode === 'thrown' && ball.throwTo && ball.throwTo !== F && F.plan.kind !== 'cutoff' && b.y > 0.5 && ball.throwBase && Math.hypot(F.x - bpos(ball.throwBase).x, F.z - bpos(ball.throwBase).z) > 3) continue;
     const dh = Math.hypot(b.x - F.x, b.z - F.z);
     const sp = Math.hypot(F.vx, F.vz);
     const low = b.y < 0.5;
@@ -1023,13 +1048,10 @@ export function doThrow(w: World, F: PlayerRT): void {
   let tx: number;
   let tz: number;
   if (atBase) {
-    // aim at the bag, a little toward the thrower, where the receiver will be standing
-    const bp2 = bpos(base);
-    const ddx = F.x - bp2.x;
-    const ddz = F.z - bp2.z;
-    const dl2 = Math.hypot(ddx, ddz) || 1;
-    tx = bp2.x + (ddx / dl2) * 0.5;
-    tz = bp2.z + (ddz / dl2) * 0.5;
+    // aim where the receiver stands at the bag: beside it, out of the runner's way (coverSpot)
+    const spot = coverSpot(base, F.x, F.z, roundingAt(w, base));
+    tx = spot.x;
+    tz = spot.z;
     R!.plan.tx = tx;
     R!.plan.tz = tz;
     R!.plan.kind = 'receive';
