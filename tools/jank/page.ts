@@ -196,7 +196,8 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       const clip = pu.currentName as string;
       // the batter's swing clip held in its finish after the sim's swing ended (the swing clip, but not the swing): its own key, so the swing
       // counts stay comparable with sweeps from before the finish hold
-      const tag = p.role === 'batter' && clip === 'swing' && p.anim !== 'swing' ? 'swing:finish' : clip;
+      // (and the stride the batter now takes on every pitch, the swing clip's first part with the bat still in his hands: swing:stride)
+      const tag = p.role === 'batter' && clip === 'swing' && p.anim !== 'swing' ? (e.bat.visible ? 'swing:finish' : 'swing:stride') : clip;
       const fl = clipFlags(clip);
       const vel = { x: p.vel.x, z: p.vel.z };
       const bat = batFor(p, pu);
