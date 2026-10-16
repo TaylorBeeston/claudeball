@@ -11,7 +11,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadRig, sampleClip, blendLocals, type RigFile } from './glb';
 import { B, type PoseLocals, newLocals, localPoint, fk, newWorld, copyLocals } from '../../src/engine/pose/skeleton';
-import { Inertia, useInertia } from '../../src/engine/pose/inertia';
+import { FAR_APART, Inertia, maxLocalAngle, useInertia } from '../../src/engine/pose/inertia';
+import { ContinuousBlend } from '../../src/engine/pose/blend';
+import { NB } from '../../src/engine/pose/skeleton';
 import { qrot } from '../../src/engine/pose/qmath';
 import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation } from './validate';
 export { gripBat };
@@ -94,10 +96,13 @@ export interface Transition {
  * One cross-fade the way three plays it: the old action keeps playing (looping or clamped) at weight 1 - k, the new one from toT at k, k linear
  * over `fade` s; a frame counts as `blend` when the blended pose breaks a limit that neither clip breaks at that instant.
  */
-export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, tx: Transition, loops: Set<string>, mode: 'game' | 'crossfade' | 'inertia' = 'game', constrain = false) {
-  const crossfade = mode === 'crossfade' || (mode === 'game' && !useInertia(tx.from, tx.to));
+export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, tx: Transition, loops: Set<string>, mode: 'game' | 'crossfade' | 'inertia' | 'adaptive' = 'game', constrain = false, far = FAR_APART) {
   const A = rig.clips.get(tx.from), Bc = rig.clips.get(tx.to);
   if (!A || !Bc) return;
+  const at0 = (c: typeof A, t: number) => (loops.has(c.name) ? t % Math.max(1e-6, c.duration) : Math.min(t, c.duration));
+  // adaptive: inertialize only a switch whose two poses are far apart somewhere (a crossfade could take the short way round there)
+  const apart = mode === 'adaptive' ? maxLocalAngle(sampleClip(A, at0(A, tx.fromT), rig.rest).lq, sampleClip(Bc, at0(Bc, tx.toT), rig.rest).lq) : 0;
+  const crossfade = mode === 'crossfade' || (mode === 'game' && !useInertia(tx.from, tx.to)) || (mode === 'adaptive' && apart < far);
   const fl = clipFlags(tx.to);
   const trBlend = newTrack(), trA = newTrack(), trB = newTrack();
   const vb: Violation[] = [], va: Violation[] = [], vB: Violation[] = [];
@@ -109,6 +114,8 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   // the game's transition (pose/inertia.ts): the new clip at once, the old pose as an offset decaying over 1.5 x the fade; `crossfade` models
   // three's crossFadeTo (the game before B1)
   const inert = new Inertia();
+  const cb = new ContinuousBlend();
+  const continuous = (globalThis as { __continuousBlend?: boolean }).__continuousBlend ?? false;
   const cs = [newConstrainState(), newConstrainState(), newConstrainState()];
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
@@ -116,7 +123,11 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     sampleClip(Bc, at(Bc, tx.toT + t), rig.rest, LB);
     if (crossfade) {
       const k = i < 0 ? 0 : Math.min(1, t / Math.max(1e-6, tx.fade));
-      blendLocals(LA, LB, k, L);
+      if (continuous) {
+        // the game's blend (pose/blend.ts): the arc chosen at the fade's start, each clip followed continuously
+        blendLocals(LA, LB, k, L);
+        for (let b = 0; b < NB; b++) cb.blend(LA.lq, b * 4, LB.lq, b * 4, k, b, L.lq, b * 4, i <= -2);
+      } else blendLocals(LA, LB, k, L);
     } else if (i < 0) {
       copyLocals(LA, L);
     } else {
