@@ -98,6 +98,36 @@ async function main() {
     lines.push('```', '', `${ok} of ${n} directions holdable (${((ok / n) * 100).toFixed(0)} %).`, '');
     console.log(`[envelope] ${label}: ${ok}/${n} holdable; clip's bat az ${own.az.toFixed(0)} el ${own.el.toFixed(0)}`);
   }
+  // the sim's own bat in the game (a game sweep's worst bat samples): its direction in the same shoulder frame, on the drawn body
+  const gdir = opt('game', '');
+  if (gdir) {
+    const g = JSON.parse(fs.readFileSync(path.join(gdir, 'game.json'), 'utf8')) as { entries: { src: string; clip: string; kinds: Record<string, { max: number; worst: { lq: number[]; lp: number[]; base: number[]; model: number[]; bat?: { knob: number[]; tip: number[] }; ctx: { seed: number; t: number; bat: string } } }> }[] };
+    lines.push('## The sim\'s bat in the game (worst samples of a game sweep, the drawn body\'s shoulder frame)', '', '| clip / kind | seed, t | az | el | past the hand\'s range |', '|---|---|---:|---:|---:|');
+    for (const e of g.entries) {
+      if (!e.src.startsWith('game:') || !/^(swing|swing:finish)$/.test(e.clip)) continue;
+      for (const [k, sm] of Object.entries(e.kinds)) {
+        const wst = sm.worst;
+        if (!k.startsWith('bat:') || !wst?.bat || wst.ctx.bat !== 'sim') continue;
+        const L = { lq: Float64Array.from(wst.lq), lp: Float64Array.from(wst.lp), base: Float64Array.from(wst.base) };
+        const w = fk(L, undefined, R.rest);
+        const m = wst.model;
+        // world -> rig (the model matrix's inverse, scale and mirror included)
+        const a = [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]];
+        const det = a[0] * (a[4] * a[8] - a[5] * a[7]) - a[3] * (a[1] * a[8] - a[2] * a[7]) + a[6] * (a[1] * a[5] - a[2] * a[4]);
+        const inv = (p: number[]) => { const x = p[0] - m[12], y = p[1] - m[13], z = p[2] - m[14]; return [((a[4] * a[8] - a[5] * a[7]) * x - (a[3] * a[8] - a[5] * a[6]) * y + (a[3] * a[7] - a[4] * a[6]) * z) / det, (-(a[1] * a[8] - a[2] * a[7]) * x + (a[0] * a[8] - a[2] * a[6]) * y - (a[0] * a[7] - a[1] * a[6]) * z) / det, ((a[1] * a[5] - a[2] * a[4]) * x - (a[0] * a[5] - a[2] * a[3]) * y + (a[0] * a[4] - a[1] * a[3]) * z) / det]; };
+        const K = inv(wst.bat.knob), T = inv(wst.bat.tip);
+        const d = norm(sub(T, K));
+        const x = norm(sub(sl(w.wp, B.LeftArm, 3), sl(w.wp, B.RightArm, 3)));
+        const up0 = norm(sub(sl(w.wp, B.Spine2, 3), sl(w.wp, B.Hips, 3)));
+        const y = norm(sub(up0, x.map((v) => v * dot(up0, x))));
+        const z = cross(x, y);
+        const az = (Math.atan2(dot(d, x), dot(d, z)) * 180) / Math.PI, el = (Math.asin(Math.max(-1, Math.min(1, dot(d, y)))) * 180) / Math.PI;
+        lines.push(`| ${e.clip} / ${k} | ${wst.ctx.seed}, ${wst.ctx.t} | ${az.toFixed(0)} | ${el.toFixed(0)} | ${k === 'bat:hand-axis' ? sm.max.toFixed(0) + ' deg' : sm.max.toFixed(2) + ' m'} |`);
+      }
+    }
+    lines.push('');
+  }
+  lines.push("## How the batter's body is laid on the sim's swing (src/engine/gltfCharacter.ts batterTiming)", '', '- while the pitch is in the air: the clip\'s load and stride (to key 13, 0.583 s), done 0.155 s before the ball reaches the plate (the sim\'s TAU_CONTACT);', '- the sim\'s swing hint (its animT p over 2.1 x tauC, contact at p = 1 / 2.1): clip time = 0.583 + (0.917 - 0.583) p / (1 / 2.1) up to contact, then 0.917 -> 1.167 s (key 27) to the end of the hint;', '- then the finish (the clip played out and held) while the sim\'s bat is out; the top hand lets go when it would need more than ~12 deg past its range.', '');
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, lines.join('\n') + '\n');
   fs.writeFileSync(OUT.replace(/\.md$/, '.json'), JSON.stringify(samples));
