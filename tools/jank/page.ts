@@ -194,6 +194,9 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       s.last = frame;
       s.pos = [p.pos.x, p.pos.y, p.pos.z];
       const clip = pu.currentName as string;
+      // the batter's swing clip held in its finish after the sim's swing ended (the swing clip, but not the swing): its own key, so the swing
+      // counts stay comparable with sweeps from before the finish hold
+      const tag = p.role === 'batter' && clip === 'swing' && p.anim !== 'swing' ? 'swing:finish' : clip;
       const fl = clipFlags(clip);
       const vel = { x: p.vel.x, z: p.vel.z };
       const bat = batFor(p, pu);
@@ -213,13 +216,13 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       // the mixer's pose with the bat where it would be: in the hand (on Bat_Grip) when the hand holds it, else where the sim has it
       const batC = bat && (bat.state === 'held' || bat.state === 'ondeck') ? { ...gripBat(s.C, s.info, Array.from(model), bat.hands), state: bat.state } : bat;
       validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
-      agg.add('frames', p.role, clip, [], animDt || dt);
+      agg.add('frames', p.role, tag, [], animDt || dt);
       // visible: inside the camera's frustum
       const f = e.players.frustum;
       const vis = !f || f.intersectsSphere({ center: tmpV.set(p.pos.x, p.pos.y + 1, p.pos.z), radius: 1.3 });
       if (vis) stats.visibleFrames++;
       if (!vF.length) {
-        agg.add(vis ? 'game' : 'game-off', p.role, clip, vF, animDt || dt);
+        agg.add(vis ? 'game' : 'game-off', p.role, tag, vF, animDt || dt);
         continue;
       }
       const fading = mixerFading(pu.mixer) || !!pu.inertia?.active;
@@ -236,7 +239,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       const ctx = { seed: opts.seed, t: +st.time.toFixed(3), id: p.id, role: p.role, hint: p.anim, clip, hand: p.hand, vis, fading, ikW: +(pu.ikW ?? 0).toFixed(2), gloveW: +(pu.gloveW ?? 0).toFixed(2), look: [+(pu.headLook?.yaw ?? 0).toFixed(3), +(pu.headLook?.pitch ?? 0).toFixed(3)], speed: +Math.hypot(p.vel.x, p.vel.z).toFixed(2), bat: bat?.state ?? null };
       for (const a of ['clip', 'blend', 'override']) {
         if (!byAttr[a].length) continue;
-        agg.add(`${vis ? 'game' : 'game-off'}:${a}`, p.role, clip, byAttr[a], animDt || dt, () => snapOf(s!.L, model, bat, { ...ctx, attr: a, clipPose: snapOf(s!.C, model, null, {}) }));
+        agg.add(`${vis ? 'game' : 'game-off'}:${a}`, p.role, tag, byAttr[a], animDt || dt, () => snapOf(s!.L, model, bat, { ...ctx, attr: a, clipPose: snapOf(s!.C, model, null, {}) }));
       }
     }
     const db = e.droppedBat;

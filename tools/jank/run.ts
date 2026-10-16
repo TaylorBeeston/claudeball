@@ -324,6 +324,10 @@ function pickWorst(files: [string, (s: string) => boolean][], top: number): Pick
 function hot(kind: string): string[] {
   const k = kind.split(':')[1] ?? '';
   const side = /[A-Za-z]L\./.test(k) || /-L$/.test(k) ? 'Left' : /[A-Za-z]R\./.test(k) || /-R$/.test(k) ? 'Right' : '';
+  // body volumes first (their kind names start like the joints': body:elbow-torso is not the elbow's hinge)
+  if (kind.startsWith('body:elbow')) return ['LeftForeArm', 'RightForeArm'];
+  if (kind.startsWith('body:hand')) return ['LeftHand', 'RightHand'];
+  if (kind.startsWith('body')) return ['LeftHand', 'RightHand', 'LeftForeArm', 'RightForeArm'];
   if (k.startsWith('elbow') || k.startsWith('forearm')) return [`${side}ForeArm`];
   if (k.startsWith('wrist')) return [`${side}Hand`];
   if (k.startsWith('shoulder') || k.startsWith('clavicle')) return [`${side}Arm`];
@@ -335,9 +339,6 @@ function hot(kind: string): string[] {
   if (/^(Left|Right)/.test(k)) return [k];
   if (kind.startsWith('foot')) return ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'];
   if (kind.startsWith('bat')) return ['LeftHand', 'RightHand'];
-  if (kind.startsWith('body:elbow')) return ['LeftForeArm', 'RightForeArm'];
-  if (kind.startsWith('body:hand')) return ['LeftHand', 'RightHand'];
-  if (kind.startsWith('body')) return ['LeftHand', 'RightHand', 'LeftForeArm', 'RightForeArm'];
   return [];
 }
 

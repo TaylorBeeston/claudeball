@@ -54,7 +54,7 @@ const batOf = (r: ReturnType<typeof load>, key: string) => {
   }
   return o;
 };
-for (const key of ['batter|swing', 'batter|batting_stance', 'batter|batter_practice_swing', 'ondeck|ondeck_swing', 'ondeck|ondeck_ready']) {
+for (const key of ['batter|swing', 'batter|swing:finish', 'batter|batting_stance', 'batter|batter_practice_swing', 'ondeck|ondeck_swing', 'ondeck|ondeck_ready']) {
   const x = batOf(a, key), y = batOf(b, key);
   const na = da.get(key) ?? 0, nb = db.get(key) ?? 0;
   const pc = (v: number | undefined, n: number) => (n ? `${(((v ?? 0) / n) * 100).toFixed(1)} %` : '-');
