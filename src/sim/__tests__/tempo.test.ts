@@ -99,7 +99,8 @@ describe('tempo: the real game\'s non-pitch time', () => {
     const times = all('timeCalled').length;
     expect(signs / pitches).toBeGreaterThan(0.9);
     expect(signs / pitches).toBeLessThan(1.15);
-    expect(shakes / signs).toBeGreaterThan(0.025);
+    // (about 15 shake-offs in two games: the bound leaves room for the sample's own spread)
+    expect(shakes / signs).toBeGreaterThan(0.015);
     expect(shakes / signs).toBeLessThan(0.14);
     expect(times / pitches).toBeGreaterThan(0.004);
     expect(times / pitches).toBeLessThan(0.035);

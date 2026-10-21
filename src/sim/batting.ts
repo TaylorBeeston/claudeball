@@ -41,29 +41,33 @@ export const ARM_REACH = 0.64; // shoulder -> fist on the handle (the model's ar
  * The shape of the swing (all lengths for the 1.85 m model; tools/swing tunes and checks these against the drawn body):
  * - hands: the knob at contact, toward the plate (fwd) and toward the pitcher (lat) from the root; its height follows from the bat's angle;
  * - vba: the bat's elevation at contact (deg, negative = barrel below the hands) for a pitch at height y: v0 + slope * (y - 0.8), clamped;
- *   real hitters: about -10 for a high pitch, -25 to -35 mid-zone, -40 to -45 low (Statcast "vertical bat angle");
- * - rh: the bat turns about a point this far behind the knob along the bat (the hands lead: knob speed rh * omega, ~7 m/s at contact);
+ *   real hitters: about -10 for a high pitch, -25 to -35 mid-zone, -40 to -45 low (Statcast "vertical bat angle"); flatter here (-13 mid-zone,
+ *   -26 low, -3 high): the drawn body's top hand holds a level bat, not a steep one (tools/swing, docs/swing-kinematics.md);
+ * - rh: the bat turns about a point this far behind the knob along the bat (the hands lead the barrel: knob speed rh * omega, ~5 m/s at
+ *   contact; real hands are 4-7 m/s at impact, slowing as the barrel releases);
  * - ramp: the turn rate rises as (tau / tauC)^ramp to contact, then dies over 0.9 tauC;
- * - inStart, blendIn: between these shares of tauC the bat leaves the clip's own swing for the swing plane (the hands drop, the barrel lays
- *   back); before inStart it is the clip's bat;
+ * - via: on its way from the clip's launch the bat is turned off the clip's own path (by dAz / dEl, the knob moved by dKnob, all in full at
+ *   the share `at` of tauC) to where both fists can hold it on the drawn body (its top hand cannot hold the clip's own bat in range);
+ * - inStart, blendIn: between these shares of tauC the bat leaves that path for the swing plane (the hands drop, the barrel lays back);
  * - outStart: tau / tauC at which the follow-through starts to wrap toward the clip's finish (reached at 2.1 tauC);
  * - extMax: how far the hands reach out toward a pitch the bat cannot meet from the nominal hands;
- * - aimLift: how far under the ball's centre he aims the sweet spot (m; under it = backspin and lift);
- * - timeErr: scale of his timing error;
- * - attackAdd: added to every hitter's attack angle (deg): the plane matched to the pitch's descent.
+ * - timeErr: scale of his timing error: a bat on plane forgives a timing error in height (the barrel stays on the ball's line), so the error
+ *   is larger than the old cone-shaped path needed for the same whiff rate (calibrated: 200 games, docs/swing-kinematics.md);
+ * - attackAdd: added to every hitter's attack angle (deg): the plane rising to meet the pitch's descent (league attack angle ~15 deg at
+ *   contact, a gap hitter's drawn toward GAP_ANGLE_DEG).
  */
 export const SWING = {
   hands: { fwd: 0.08, lat: 0.18 },
-  vba: { v0: -21, slope: 40, min: -40, max: -3 },
+  vba: { v0: -13, slope: 45, min: -40, max: -3 },
   rh: 0.12,
   ramp: 1.6,
+  via: { dKnob: { x: -0.12, y: -0.12, z: 0.09 }, dAz: 30, dEl: 2, at: 0.45 },
   inStart: 0.45,
   blendIn: 0.75,
   outStart: 1.3,
   extMax: 0.15,
-  aimLift: 0.004,
-  timeErr: 1.5,
-  attackAdd: 6,
+  timeErr: 1.15,
+  attackAdd: 7,
   finish: { dKnob: { x: -0.297, y: -0.4, z: 0.191 }, dAz: 74.9, dEl: 19.3 },
 };
 
@@ -332,7 +336,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   // a puller meets the ball further out in front, an opposite-field hitter deeper (the depth sets the bat's angle at contact)
   zc = clamp(zc + pullDepth(R.pull), 0.1, 1.5);
   pred = predictAtZ(zc);
-  const aim = { x: pred.x + (choice.aimX ?? 0), y: pred.y - b.traits.aimBelow - SWING.aimLift + (choice.aimY ?? 0), z: zc };
+  const aim = { x: pred.x + (choice.aimX ?? 0), y: pred.y - b.traits.aimBelow + (choice.aimY ?? 0), z: zc };
   // the knob: S_AIM back along the bat from the aim, horizontally toward the hands (reaching out by ext for a pitch he cannot meet from them)
   const hx = hRef.x + Math.sign(aim.x - hRef.x) * ext;
   const ux0 = aim.x - hx, uz0 = aim.z - hRef.z, ul = Math.hypot(ux0, uz0) || 1;
@@ -363,7 +367,7 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03 * noise));
   const rh = SWING.rh;
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
-  const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + SWING.attackAdd + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
+  const alpha = (gapAttackAngle(b.traits.attackAngleDeg + SWING.attackAdd, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
   // the swing plane at contact: the bat and the sweet spot's heading (across the bat, toward the pitcher, rising at the attack angle)
   const hd = { x: sg * Math.cos(thetaC), y: 0, z: -sg * Math.sin(thetaC) };
   const up = { x: -Math.sin(epsC) * Math.sin(thetaC), y: Math.cos(epsC), z: -Math.sin(epsC) * Math.cos(thetaC) };
@@ -476,6 +480,19 @@ export class BatSwing {
     return this.plan.bunt ? clamp(this.tau / 0.6, 0, 1) : clamp(this.tau / (this.plan.tauC * 1.9), 0, 1);
   }
 
+  /** The early swing at the share u of tauC: the clip's bat, turned off its path toward the holdable (SWING.via). */
+  early(u: number): { knob: Vec3; dir: Vec3 } {
+    const c = clipBat(this.st, this.plan.scale, u);
+    const V = SWING.via, w = smooth(u / V.at);
+    if (w <= 0) return c;
+    const sg = this.st === 'R' ? 1 : -1, sc = this.plan.scale;
+    const az = Math.atan2(sg * c.dir.x, c.dir.z) + V.dAz * DEG * w, el = Math.asin(clamp(c.dir.y, -1, 1)) + V.dEl * DEG * w;
+    return {
+      knob: { x: c.knob.x + sg * sc * V.dKnob.x * w, y: c.knob.y + sc * V.dKnob.y * w, z: c.knob.z + sc * V.dKnob.z * w },
+      dir: { x: sg * Math.cos(el) * Math.sin(az), y: Math.sin(el), z: Math.cos(el) * Math.cos(az) },
+    };
+  }
+
   /** The bat at time tau of the swing: knob and unit direction. */
   at(tau: number): { knob: Vec3; dir: Vec3 } {
     const p = this.plan;
@@ -487,7 +504,7 @@ export class BatSwing {
     // the clip's own swing first, then into the plane (the hands drop and come forward, the barrel lays back)
     const g = smooth((tau / p.tauC - SWING.inStart) / (SWING.blendIn - SWING.inStart));
     if (g < 1) {
-      const L = clipBat(this.st, p.scale, tau / p.tauC);
+      const L = this.early(tau / p.tauC);
       d = slerpDir(L.dir, d, g);
       k = { x: L.knob.x + (k.x - L.knob.x) * g, y: L.knob.y + (k.y - L.knob.y) * g, z: L.knob.z + (k.z - L.knob.z) * g };
     }

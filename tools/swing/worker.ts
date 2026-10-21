@@ -40,6 +40,11 @@ async function main() {
   // --swing '{"timeErr": 1.3}': try a variant of the swing's shape (src/sim/batting.ts SWING) without editing it
   const deep = (o: any, v: any) => { for (const k of Object.keys(v)) if (v[k] && typeof v[k] === 'object') deep(o[k], v[k]); else o[k] = v[k]; };
   if (opt('swing', '')) deep(SWING, JSON.parse(opt('swing', '{}')));
+  // SWING_ARM_LIMITS='{"sup":130}': the arm solver's ranges widened (what the engine's limits cost; armIK.ts reads globalThis.__armLimits)
+  if (process.env.SWING_ARM_LIMITS) {
+    const { ARM_LIMITS } = await import('../../src/engine/pose/armIK');
+    (globalThis as any).__armLimits = { ...ARM_LIMITS, ...JSON.parse(process.env.SWING_ARM_LIMITS) };
+  }
   const holder = new Holder();
   await holder.init(HERE);
 

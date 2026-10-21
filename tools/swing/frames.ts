@@ -30,7 +30,8 @@ export function swingFrames(holder: Holder, bs: SwingLike, stance: 'L' | 'R', h:
   const tauC = bs.plan.tauC, tEnd = tauC * 2.1;
   const track = {};
   const out: Frame[] = [];
-  const W = ikWeights(Math.ceil(tEnd * 60) + 10);
+  // SWING_IKW1=1: as if the engine took the grip at once (what its arm blend-in costs)
+  const W = process.env.SWING_IKW1 ? new Array(Math.ceil(tEnd * 60) + 10).fill(1) : ikWeights(Math.ceil(tEnd * 60) + 10);
   for (let k = 0; k / 60 <= tEnd + 1e-9; k++) {
     const tau = k / 60;
     while (bs.tau < tau - 1e-9 && !bs.done) bs.advance(Math.min(DT, tau - bs.tau));
