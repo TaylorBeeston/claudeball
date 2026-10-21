@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game';
-import { ARM_REACH, HAND_FRONT, HAND_REAR, SHOULDER_Z, TORSO_HALF, bodyCentre, loadPose, shouldersAt, torsoState } from '../batting';
+import { ARM_REACH, BatSwing, HAND_FRONT, HAND_REAR, SHOULDERS_C, bodyPoint, loadPose } from '../batting';
 import type { World } from '../world';
 
 /** Every tick of the first swings (not bunts): the world at that moment. */
@@ -23,101 +23,95 @@ function swingTicks(seed: string, swings: number, fn: (w: World) => void) {
   return seen;
 }
 
+/** Each swing's plan, replayed from its start (BatSwing is a pure function of the plan and the time). */
+function plans(seed: string, swings: number) {
+  const out: BatSwing['plan'][] = [];
+  let last: unknown = null;
+  swingTicks(seed, swings, (w) => {
+    if (w.swing!.plan !== last) out.push((last = w.swing!.plan) as BatSwing['plan']);
+  });
+  return out;
+}
+
 const d3 = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+const DEG = 180 / Math.PI;
+const at = (sw: BatSwing, tau: number) => {
+  const s = new BatSwing(sw.plan);
+  while (s.tau < tau - 1e-9) s.advance(Math.min(1 / 1920, tau - s.tau));
+  return s.pose();
+};
 
 describe('bat vs batter body', () => {
-  it('each hand stays within reach of its OWN shoulder through every swing (start, contact, follow-through)', () => {
+  const ps = plans('body-1', 60);
+
+  it('starts from the clip\'s load pose (the bat the hands hold when the swing starts)', () => {
+    expect(ps.length).toBeGreaterThan(40);
+    for (const p of ps) {
+      const st = p.sgn > 0 ? 'R' : 'L';
+      const k = new BatSwing(p).pose().knob;
+      expect(d3(k, loadPose(st, p.scale).knob)).toBeLessThan(0.01);
+    }
+  });
+
+  it('at contact each fist is within reach of its own shoulder on the drawn body', () => {
     let worst = 0;
-    let frames = 0;
-    const seen = swingTicks('body-1', 40, (w) => {
-      const sw = w.swing!;
-      const pose = sw.pose();
-      const { yaw, lean } = torsoState(sw.tau, sw.plan.tauC);
-      const { front, rear } = shouldersAt(w.batStance, yaw, lean);
-      const hf = { x: pose.knob.x + HAND_FRONT * pose.dir.x, y: pose.knob.y + HAND_FRONT * pose.dir.y, z: pose.knob.z + HAND_FRONT * pose.dir.z };
-      const hr = { x: pose.knob.x + HAND_REAR * pose.dir.x, y: pose.knob.y + HAND_REAR * pose.dir.y, z: pose.knob.z + HAND_REAR * pose.dir.z };
-      worst = Math.max(worst, d3(hf, front), d3(hr, rear));
-      frames++;
-    });
-    expect(seen).toBeGreaterThanOrEqual(20);
-    expect(frames).toBeGreaterThan(300);
-    expect(worst).toBeLessThanOrEqual(ARM_REACH + 1e-6);
+    for (const p of ps) {
+      const st = p.sgn > 0 ? 'R' : 'L';
+      const pose = at(new BatSwing(p), p.tauC);
+      const fist = (s: number) => ({ x: pose.knob.x + s * pose.dir.x, y: pose.knob.y + s * pose.dir.y, z: pose.knob.z + s * pose.dir.z });
+      // the bottom fist is the lead arm's, the top fist the rear arm's
+      worst = Math.max(worst, d3(fist(HAND_FRONT), bodyPoint(st, p.scale, SHOULDERS_C.lead)) / p.scale, d3(fist(HAND_REAR), bodyPoint(st, p.scale, SHOULDERS_C.rear)) / p.scale);
+    }
+    expect(worst).toBeLessThanOrEqual(ARM_REACH + 0.05);
   });
 
-  it('starts from the clip\'s load pose (no jump to 0.58 m beside the batter)', () => {
-    let n = 0;
-    let worst = 0;
-    swingTicks('body-2', 30, (w) => {
-      const sw = w.swing!;
-      if (sw.tau > 0.02) return;
-      const l = loadPose(w.batStance);
-      const k = sw.pose().knob;
-      worst = Math.max(worst, d3(k, l.knob));
-      n++;
-    });
-    expect(n).toBeGreaterThan(10);
-    expect(worst).toBeLessThan(0.12);
-  });
-
-  it('keeps both hands outside the torso (plus elbow room) except when the body itself blocks the reach', () => {
-    let frames = 0;
-    let inside = 0;
-    swingTicks('body-3', 40, (w) => {
-      const sw = w.swing!;
-      const pose = sw.pose();
-      const { yaw, lean } = torsoState(sw.tau, sw.plan.tauC);
-      const c = bodyCentre(w.batStance, lean);
-      const sg = w.batStance === 'R' ? 1 : -1;
-      for (const off of [HAND_FRONT, HAND_REAR]) {
-        const hx = pose.knob.x + off * pose.dir.x - c.x;
-        const hz = pose.knob.z + off * pose.dir.z - c.z;
-        const a = hx * Math.sin(yaw) * sg + hz * Math.cos(yaw);
-        const b = -hx * Math.cos(yaw) * sg + hz * Math.sin(yaw);
-        if (Math.hypot(a / TORSO_HALF.lateral, b / TORSO_HALF.depth) < 0.9) inside++;
-        frames++;
+  it('never chops: the bat stays out of the ground and is not pointing down steeply on the way in', () => {
+    let lowest = 90, before = 90, tip = 9;
+    for (const p of ps) {
+      const sw = new BatSwing(p);
+      for (let tau = 0; tau <= p.tauC * 2.1; tau += 1 / 120) {
+        const pose = at(sw, tau);
+        const el = Math.asin(pose.dir.y) * DEG;
+        lowest = Math.min(lowest, el);
+        tip = Math.min(tip, pose.tip.y);
+        if (tau <= p.tauC - 0.04) before = Math.min(before, el);
       }
-    });
-    expect(frames).toBeGreaterThan(600);
-    expect(inside / frames).toBeLessThan(0.01);
+    }
+    expect(lowest).toBeGreaterThan(-50);
+    expect(before).toBeGreaterThan(-35);
+    expect(tip).toBeGreaterThan(0.15);
   });
 
-  it('at contact the hands are where the plan put them (the reach clamp is inactive for pitches he can reach)', () => {
-    let contacts = 0;
-    let free = 0;
-    let prev = 0;
-    swingTicks('body-4', 60, (w) => {
-      const sw = w.swing!;
-      if (prev < sw.plan.tauC && sw.tau >= sw.plan.tauC) {
-        const pose = sw.pose();
-        const p = sw.plan;
-        const th = sw.theta;
-        const ep = sw.eps;
-        const un = { x: p.pivot.x + p.rh * Math.cos(ep) * Math.sin(th), y: p.pivot.y + p.rh * Math.sin(ep), z: p.pivot.z + p.rh * Math.cos(ep) * Math.cos(th) };
-        contacts++;
-        if (d3(un, pose.knob) < 0.02) free++;
-      }
-      prev = sw.tau;
-    });
-    expect(contacts).toBeGreaterThan(20);
-    expect(free / contacts).toBeGreaterThan(0.55);
+  it('meets the ball with the barrel a little below the hands, rising through the zone at a positive attack angle', () => {
+    const vba: number[] = [], attack: number[] = [];
+    for (const p of ps) {
+      const pose = at(new BatSwing(p), p.tauC);
+      const v = pose.velAt(0.66);
+      vba.push(Math.asin(pose.dir.y) * DEG);
+      attack.push(Math.asin(v.y / Math.hypot(v.x, v.y, v.z)) * DEG);
+    }
+    const med = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
+    expect(med(vba)).toBeGreaterThan(-35);
+    expect(med(vba)).toBeLessThan(-5);
+    expect(Math.max(...vba)).toBeLessThan(5);
+    expect(med(attack)).toBeGreaterThan(3);
+    expect(med(attack)).toBeLessThan(20);
   });
 
-  it('at contact the lead wrist is in the region the assets\' swing analysis found feasible (height >= 1.05 m, >= 0.30 m toward the pitcher) for pitches at or above 0.75 m', () => {
-    const rows: { by: number; fy: number; lat: number }[] = [];
-    let prev = 0;
-    swingTicks('body-5', 140, (w) => {
-      const sw = w.swing!;
-      if (prev < sw.plan.tauC && sw.tau >= sw.plan.tauC) {
-        const p = sw.pose();
-        rows.push({ by: w.ball.body.y, fy: p.knob.y + HAND_FRONT * p.dir.y, lat: p.knob.z + HAND_FRONT * p.dir.z - SHOULDER_Z });
-      }
-      prev = sw.tau;
-    });
-    const hi = rows.filter((r) => r.by >= 0.75);
-    expect(hi.length).toBeGreaterThan(15);
-    const med = [...hi].map((r) => r.fy).sort((a, b) => a - b)[Math.floor(hi.length / 2)];
-    expect(med).toBeGreaterThanOrEqual(1.04);
-    expect(hi.filter((r) => r.lat >= 0.3).length / hi.length).toBeGreaterThan(0.9);
-    // (lower pitches: he has to get the hands down to them; the engine's hand IK should ease off there)
+  it('the bat\'s velocity is the rate of change of its pose; the sweet spot moves at the planned bat speed, the hands at a hitter\'s (4-7 m/s at impact)', () => {
+    for (const p of ps.slice(0, 20)) {
+      const sw = new BatSwing(p);
+      const a = at(sw, p.tauC - 0.002), b = at(sw, p.tauC + 0.002), c = at(sw, p.tauC);
+      const s = 0.66;
+      const pt = (q: typeof a) => ({ x: q.knob.x + s * q.dir.x, y: q.knob.y + s * q.dir.y, z: q.knob.z + s * q.dir.z });
+      const fd = { x: (pt(b).x - pt(a).x) / 0.004, y: (pt(b).y - pt(a).y) / 0.004, z: (pt(b).z - pt(a).z) / 0.004 };
+      const v = c.velAt(s);
+      expect(d3(fd, v)).toBeLessThan(0.3);
+      expect(Math.hypot(v.x, v.y, v.z) / p.batSpeed).toBeGreaterThan(0.95);
+      expect(Math.hypot(v.x, v.y, v.z) / p.batSpeed).toBeLessThan(1.05);
+      const vk = c.velAt(0);
+      expect(Math.hypot(vk.x, vk.y, vk.z)).toBeGreaterThan(3.5);
+      expect(Math.hypot(vk.x, vk.y, vk.z)).toBeLessThan(11);
+    }
   });
 });

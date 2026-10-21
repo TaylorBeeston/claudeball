@@ -1,7 +1,7 @@
 /**
  * The sim's swing, measured over a `npm run sim -- N seed` game set (the same games, sharded over the cores): the league line scripts/simulate.ts
  * prints, exit velocity / launch angle distributions, and the bat through every swing against what two hands can hold on the drawn body.
- *   npx tsx tools/swing/run.ts [--games 200] [--seed 7] [--root <tree, default this one>] [--jobs 24] [--every 1] [--out tools/swing/out/<name>]
+ *   npx tsx tools/swing/run.ts [--games 200] [--seed 7] [--root <tree, default this one>] [--jobs 24] [--every 1] [--out tools/swing/out/<name>] [--swing '<SWING overrides, JSON>']
  * Writes <out>/swing.json (everything) and <out>/report.md (the tables).
  */
 import { spawn } from 'node:child_process';
@@ -19,7 +19,7 @@ const OUT = path.resolve(opt('out', path.join(HERE, 'tools/swing/out', `${path.b
 
 const shard = (from: number, to: number, file: string) =>
   new Promise<void>((res, rej) => {
-    const p = spawn(path.join(HERE, 'node_modules/.bin/tsx'), [path.join(HERE, 'tools/swing/worker.ts'), '--root', ROOT, '--seed', SEED, '--from', String(from), '--to', String(to), '--out', file, '--every', opt('every', '1')], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const p = spawn(path.join(HERE, 'node_modules/.bin/tsx'), [path.join(HERE, 'tools/swing/worker.ts'), '--root', ROOT, '--seed', SEED, '--from', String(from), '--to', String(to), '--out', file, '--every', opt('every', '1'), ...(opt('swing', '') ? ['--swing', opt('swing', '')] : [])], { stdio: ['ignore', 'inherit', 'inherit'] });
     p.on('exit', (c) => (c === 0 ? res() : rej(new Error(`shard ${from}-${to} exited ${c}`))));
   });
 
@@ -125,19 +125,19 @@ async function main() {
   }
   lines.push('');
   // holdability per phase
-  lines.push('## Can two hands hold it (60 Hz frames, the sim\'s knob and bat line on the drawn body)', '', 'launch: tau < 0.4 tauC; mid: < 0.85; contact: 0.85-1.15; follow: to 2.1 tauC (the hint); finish: the last pose held 0.1 s into the clip\'s finish.', '', '| phase | frames | strict | relaxed | shoulder az p5/p50/p95 | shoulder el p5/p50/p95 | world el p5/p50/p95 (min..max) | knob off the clip\'s (cm) p50/p95 | past range (deg) p50/p95 | miss (cm) p95 |', '|---|---:|---:|---:|---|---|---|---|---|---|');
+  lines.push('## Can two hands hold it (60 Hz frames, the sim\'s knob and bat line on the drawn body)', '', 'launch: tau < 0.4 tauC; mid: < 0.85; contact: 0.85-1.15; follow: to 2.1 tauC (the hint); finish: the last pose held 0.1 s into the clip\'s finish. held = neither fist > 3 cm off the handle nor its grip axis > 25 deg off the bat (the validator\'s bat:grip / bat:hand-axis); strict / relaxed = the envelope\'s tiers (past range <= 5 / 35 deg, miss < 2 cm).', '', '| phase | frames | held | on handle | axes along | strict | relaxed | shoulder az p5/p50/p95 | shoulder el p5/p50/p95 | world el p5/p50/p95 (min..max) | knob off the clip\'s (cm) p50/p95 | past range (deg) p50/p95 | top fist axis p50/p95 | bottom fist axis p50/p95 | off handle top/bottom p95 (cm) |', '|---|---:|---:|---:|---:|---:|---:|---|---|---|---|---|---|---|---|');
   for (const ph of [...PHASES, 'all'] as const) {
     const t = H.t[ph];
     if (!t) continue;
     const P = (n: string, ps = [0.05, 0.5, 0.95]) => (ph === 'all' ? '' : H.pct(`${ph}:${n}`, ps).join(' / '));
     const r = ph === 'all' ? ['', ''] : H.range(`${ph}:wel`);
-    lines.push(`| ${ph} | ${t[0]} | ${pct(t[1] / t[0])} | ${pct(t[2] / t[0])} | ${P('az')} | ${P('el')} | ${P('wel')}${ph === 'all' ? '' : ` (${r[0]}..${r[1]})`} | ${P('knobOff', [0.5, 0.95])} | ${P('over', [0.5, 0.95])} | ${P('miss', [0.95])} |`);
+    lines.push(`| ${ph} | ${t[0]} | ${pct(t[3] / t[0])} | ${pct(t[4] / t[0])} | ${pct(t[5] / t[0])} | ${pct(t[1] / t[0])} | ${pct(t[2] / t[0])} | ${P('az')} | ${P('el')} | ${P('wel')}${ph === 'all' ? '' : ` (${r[0]}..${r[1]})`} | ${P('knobOff', [0.5, 0.95])} | ${P('over', [0.5, 0.95])} | ${P('axisR', [0.5, 0.95])} | ${P('axisL', [0.5, 0.95])} | ${ph === 'all' ? '' : `${P('gripR', [0.95])} / ${P('gripL', [0.95])}`} |`);
   }
   lines.push('', '| split | ' + [...PHASES, 'all'].join(' | ') + ' |', '|---|' + [...PHASES, 'all'].map(() => '---').join('|') + '|');
   const splits = [...new Set(Object.keys(H.t).filter((k) => k.includes('|')).map((k) => k.split('|')[1]))].sort();
   for (const s of splits)
-    lines.push(`| ${s} | ` + [...PHASES, 'all'].map((ph) => { const t = H.t[`${ph}|${s}`]; return t ? `${pct(t[2] / t[0])} (${pct(t[1] / t[0])})` : ''; }).join(' | ') + ' |');
-  lines.push('', '(relaxed (strict) rates)', '', '## Worst frames per phase', '', '| phase | past range | miss cm | shoulder az / el | world el | context |', '|---|---:|---:|---|---:|---|');
+    lines.push(`| ${s} | ` + [...PHASES, 'all'].map((ph) => { const t = H.t[`${ph}|${s}`]; return t ? `${pct(t[3] / t[0])} (${pct(t[2] / t[0])})` : ''; }).join(' | ') + ' |');
+  lines.push('', '(held (relaxed) rates)', '', '## Worst frames per phase', '', '| phase | past range | miss cm | shoulder az / el | world el | context |', '|---|---:|---:|---|---:|---|');
   for (const ph of PHASES) for (const w of H.worst[ph] ?? []) lines.push(`| ${ph} | ${w.over.toFixed(0)} | ${(w.miss * 100).toFixed(1)} | ${w.az.toFixed(0)} / ${w.el.toFixed(0)} | ${w.wel.toFixed(0)} | ${JSON.stringify(w.ctx)} |`);
   lines.push('', `${parts.reduce((s, p) => s + p.nSwings, 0)} swings; wall ${((Date.now() - t0) / 1000).toFixed(0)} s over ${JOBS} jobs.`);
   fs.writeFileSync(path.join(OUT, 'report.md'), lines.join('\n') + '\n');

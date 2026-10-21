@@ -24,8 +24,8 @@ export interface Worst {
 export class Hist {
   /** name -> value (rounded to 1 unit) -> count */
   h: Record<string, Record<string, number>> = {};
-  /** phase|split -> [n, strict, relaxed] */
-  t: Record<string, [number, number, number]> = {};
+  /** phase|split -> [n, strict, relaxed, held (no validator bat:grip / bat:hand-axis), both fists on the handle, both fist axes along it] */
+  t: Record<string, number[]> = {};
   worst: Record<string, Worst[]> = {};
 
   add(name: string, v: number) {
@@ -36,10 +36,13 @@ export class Hist {
   }
 
   tally(key: string, s: HoldSample) {
-    const t = (this.t[key] ??= [0, 0, 0]);
+    const t = (this.t[key] ??= [0, 0, 0, 0, 0, 0]);
     t[0]++;
     if (s.strict) t[1]++;
     if (s.relaxed) t[2]++;
+    if (s.held) t[3]++;
+    if (Math.max(s.gripL, s.gripR) <= 0.03) t[4]++;
+    if (Math.max(s.axisL, s.axisR) <= 25) t[5]++;
   }
 
   phase(ph: Phase, split: string[], s: HoldSample, wel: number, waz: number, tipY: number, ctx: Record<string, unknown>) {
@@ -57,6 +60,10 @@ export class Hist {
     this.add(`${ph}:knobOff`, s.knobOff * 100);
     this.add(`${ph}:over`, Math.max(s.overL, s.overR));
     this.add(`${ph}:miss`, Math.max(s.missL, s.missR) * 100);
+    this.add(`${ph}:gripL`, s.gripL * 100);
+    this.add(`${ph}:gripR`, s.gripR * 100);
+    this.add(`${ph}:axisL`, s.axisL);
+    this.add(`${ph}:axisR`, s.axisR);
     const over = Math.max(s.overL, s.overR) + Math.max(s.missL, s.missR) * 500;
     const list = (this.worst[ph] ??= []);
     if (list.length < 8 || over > list[list.length - 1].over + list[list.length - 1].miss * 500) {
@@ -78,10 +85,8 @@ export class Hist {
         for (const [k, c] of Object.entries(b)) d[k] = (d[k] ?? 0) + c;
       }
       for (const [k, v] of Object.entries(p.t)) {
-        const d = (o.t[k] ??= [0, 0, 0]);
-        d[0] += v[0];
-        d[1] += v[1];
-        d[2] += v[2];
+        const d = (o.t[k] ??= [0, 0, 0, 0, 0, 0]);
+        v.forEach((x, i) => (d[i] = (d[i] ?? 0) + x));
       }
       for (const [k, v] of Object.entries(p.worst)) {
         const l = (o.worst[k] ??= []);

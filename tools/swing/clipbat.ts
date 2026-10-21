@@ -49,5 +49,13 @@ async function main() {
     console.log(`${t.toFixed(3)} ${(t * 24).toFixed(1).padStart(4)} | ${f3(k)} | ${el.toFixed(0).padStart(4)} ${az.toFixed(0).padStart(5)} | ${f3(hr)} | ${f3(hl)} | ${f3(sr)} | ${f3(sL)}`);
   }
   if (argv.includes('--json')) console.log(JSON.stringify(rows));
+  if (argv.includes('--table')) {
+    // the launch -> contact frames as a table for src/sim/batting.ts (relative to the root, a righty, 1.85 m)
+    const r3 = (v: number[]) => `{ x: ${v[0].toFixed(3)}, y: ${v[1].toFixed(3)}, z: ${v[2].toFixed(3)} }`;
+    for (const r of rows as { t: number; knob: number[]; dir: number[] }[]) {
+      if (r.t < 14 / 24 - 1e-6 || r.t > 22 / 24 + 1e-6) continue;
+      console.log(`  { knob: ${r3([r.knob[0] - root[0], r.knob[1], r.knob[2] - root[2]])}, dir: ${r3(r.dir)} },`);
+    }
+  }
 }
 main().catch((e) => { console.error(e); process.exit(1); });

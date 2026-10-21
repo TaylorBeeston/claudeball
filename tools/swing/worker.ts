@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Holder, type V3 } from './hold';
+import { swingFrames } from './frames';
 import { Hist, type Phase, splitKeys } from './agg';
 
 const argv = process.argv.slice(2);
@@ -35,7 +36,10 @@ interface SwingRec {
 async function main() {
   const { createGame } = await import(path.join(ROOT, 'src/sim/game.ts'));
   const { generateTeam } = await import(path.join(ROOT, 'src/sim/roster.ts'));
-  const { BatSwing } = await import(path.join(ROOT, 'src/sim/batting.ts'));
+  const { BatSwing, SWING } = await import(path.join(ROOT, 'src/sim/batting.ts'));
+  // --swing '{"timeErr": 1.3}': try a variant of the swing's shape (src/sim/batting.ts SWING) without editing it
+  const deep = (o: any, v: any) => { for (const k of Object.keys(v)) if (v[k] && typeof v[k] === 'object') deep(o[k], v[k]); else o[k] = v[k]; };
+  if (opt('swing', '')) deep(SWING, JSON.parse(opt('swing', '{}')));
   const holder = new Holder();
   await holder.init(HERE);
 
@@ -120,47 +124,30 @@ async function main() {
     const split = splitKeys(r.stance, r.py, r.h);
     const tEnd = tauC * 2.1;
     const markT: Record<string, number> = { t0: 0, half: tauC / 2, 'c-60ms': tauC - 0.06, contact: tauC, '1.5c': 1.5 * tauC, '2.1c': tEnd };
-    const track = {};
-    const want: { tau: number; kind: string }[] = [];
-    for (let k = 0; k / 60 <= tEnd + 1e-9; k++) want.push({ tau: k / 60, kind: 'frame' });
-    for (const [m, t] of Object.entries(markT)) want.push({ tau: t, kind: 'mark:' + m });
-    want.sort((a, b) => a.tau - b.tau);
-    for (const wnt of want) {
-      while (bs.tau < wnt.tau - 1e-9 && !bs.done) bs.advance(Math.min(DT, wnt.tau - bs.tau));
+    const want = Object.entries(markT).sort((a, b) => a[1] - b[1]);
+    for (const [m, tm] of want) {
+      while (bs.tau < tm - 1e-9 && !bs.done) bs.advance(Math.min(DT, tm - bs.tau));
       const pose = bs.pose();
       const el = wEl(pose.knob, pose.tip), az = wAz(pose.knob, pose.tip, sg);
-      if (wnt.kind.startsWith('mark:')) {
-        const m = wnt.kind.slice(5);
-        H.add(`mark:${m}:wel`, el);
-        H.add(`mark:${m}:waz`, az);
-        H.add(`mark:${m}:tipY`, pose.tip.y * 100);
-        H.add(`mark:${m}:knobY`, pose.knob.y * 100);
-        if (m === 'contact') {
-          const vs = pose.velAt(0.66);
-          const vk = pose.velAt(0);
-          const d = pose.dir;
-          // swing plane: the bat line and the sweet spot's velocity
-          const nx = d.y * vs.z - d.z * vs.y, ny = d.z * vs.x - d.x * vs.z, nz = d.x * vs.y - d.y * vs.x;
-          const tilt = Math.acos(Math.min(1, Math.abs(ny) / Math.hypot(nx, ny, nz))) * DEG;
-          const sp = Math.hypot(vs.x, vs.y, vs.z);
-          atContact.push({ vba: el, attack: Math.asin(vs.y / sp) * DEG, tilt, sweet: sp, hands: Math.hypot(vk.x, vk.y, vk.z), knobY: pose.knob.y, py: r.py, px: sg * r.px, hit: r.contact ? 1 : 0, ev: r.contact?.ev ?? NaN, la: r.contact?.la ?? NaN });
-        }
-        continue;
+      H.add(`mark:${m}:wel`, el);
+      H.add(`mark:${m}:waz`, az);
+      H.add(`mark:${m}:tipY`, pose.tip.y * 100);
+      H.add(`mark:${m}:knobY`, pose.knob.y * 100);
+      if (m === 'contact') {
+        const vs = pose.velAt(0.66);
+        const vk = pose.velAt(0);
+        const d = pose.dir;
+        // swing plane: the bat line and the sweet spot's velocity
+        const nx = d.y * vs.z - d.z * vs.y, ny = d.z * vs.x - d.x * vs.z, nz = d.x * vs.y - d.y * vs.x;
+        const tilt = Math.acos(Math.min(1, Math.abs(ny) / Math.hypot(nx, ny, nz))) * DEG;
+        const sp = Math.hypot(vs.x, vs.y, vs.z);
+        atContact.push({ vba: el, attack: Math.asin(vs.y / sp) * DEG, tilt, sweet: sp, hands: Math.hypot(vk.x, vk.y, vk.z), knobY: pose.knob.y, py: r.py, px: sg * r.px, hit: r.contact ? 1 : 0, ev: r.contact?.ev ?? NaN, la: r.contact?.la ?? NaN });
       }
-      const u = wnt.tau / tauC;
-      const ph = phaseOf(u);
-      const t = holder.clipTime(wnt.tau / tEnd);
-      const s = holder.sample(r.stance, r.h, pose.knob, pose.tip, t, track);
-      H.phase(ph, split, s, el, az, pose.tip.y, { g: r.g, tau: +wnt.tau.toFixed(4), stance: r.stance, px: +r.px.toFixed(3), py: +r.py.toFixed(3), h: r.h, t: +t.toFixed(3) });
     }
-    // the finish: the sim's last pose held while the clip plays out its finish (0.1 s of it)
-    while (!bs.done) bs.advance(DT);
-    const pose = bs.pose();
-    for (let j = 1; j <= 6; j++) {
-      const t = holder.clipTime(1.01, j / 60);
-      const s = holder.sample(r.stance, r.h, pose.knob, pose.tip, t, track);
-      H.phase('finish', split, s, wEl(pose.knob, pose.tip), wAz(pose.knob, pose.tip, sg), pose.tip.y, { g: r.g, tau: -j, stance: r.stance, px: +r.px.toFixed(3), py: +r.py.toFixed(3), h: r.h, t: +t.toFixed(3) });
-    }
+    swingFrames(holder, new BatSwing(plan), r.stance, r.h, (f) => {
+      const ph: Phase = f.finish ? 'finish' : phaseOf(f.tau / tauC);
+      H.phase(ph, split, f.s, wEl(f.knob, f.tip), wAz(f.knob, f.tip, sg), f.tip.y, { g: r.g, tau: +f.tau.toFixed(4), stance: r.stance, px: +r.px.toFixed(3), py: +r.py.toFixed(3), h: r.h, t: +f.t.toFixed(3) });
+    });
   }
   fs.writeFileSync(opt('out', 'shard.json'), JSON.stringify({ bat, pit, L, calls, contacts, hist: H.toJSON(), atContact, nSwings: recs.length }));
 }
