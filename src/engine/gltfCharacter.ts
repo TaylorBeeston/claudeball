@@ -520,6 +520,9 @@ function edgeUnit(m: Mesh): number {
   return k > 0 ? k : 1;
 }
 
+/** the hand's share of its turn onto the bat handle on a grip's first frames (then 1) */
+const GRIP_HAND_EASE = [0.35, 0.7];
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   /** (set in the constructor) this puppet's matrices are updated by the puppet itself, not by the scene-wide pass in `renderer.render` */
@@ -2293,6 +2296,8 @@ export class GltfPuppet implements PuppetLike {
   /** per arm, the take-up of the bat grip (its arc chosen when the grip started) */
   private gripBlend = { Left: new ContinuousBlend(), Right: new ContinuousBlend() };
   private gripFresh = { Left: true, Right: true };
+  /** frames since each hand took the bat grip (the hand's turn onto the handle is spread over GRIP_HAND_EASE) */
+  private gripAge = { Left: 0, Right: 0 };
   private qTmp = new Float64Array(8);
   private readClipPose() {
     this.readPose();
@@ -2463,7 +2468,10 @@ export class GltfPuppet implements PuppetLike {
       const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
       gripDir = a.toArray();
     }
-    if (gripDir && !this.armTrack[side]) this.gripFresh[side] = true;
+    if (gripDir && !this.armTrack[side]) {
+      this.gripFresh[side] = true;
+      this.gripAge[side] = 0;
+    }
     const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, sup: o.sup, dt: this.ikDt, track: gripDir ? (this.armTrack[side] ?? { pole: 0, roll: 0 }) : undefined });
     if (gripDir) this.armTrack[side] = { pole: out.pole, roll: out.roll, pron: out.pron, vPole: out.vPole, vRoll: out.vRoll, over: out.over };
     // rig rotations -> locals, blended from the clip's locals by w
@@ -2492,7 +2500,10 @@ export class GltfPuppet implements PuppetLike {
     } else {
       arm.quaternion.slerp(lU, w);
       fore.quaternion.slerp(lF, w);
-      hand.quaternion.slerp(lH, w);
+      // the grip taken at once: the arm puts the wrist on the bat in the first frame, the hand turns onto the handle over a few (the swing
+      // clip's bottom fist does not lie along its own bat: turned in one frame it was a 20-35 deg hand flip on the grip's first frame)
+      const age = gripDir ? this.gripAge[side]++ : GRIP_HAND_EASE.length;
+      hand.quaternion.slerp(lH, w * (GRIP_HAND_EASE[age] ?? 1));
       if (gripDir) this.gripFresh[side] = false;
     }
     arm.updateMatrixWorld(true);
