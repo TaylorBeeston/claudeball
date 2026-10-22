@@ -144,7 +144,8 @@ literal metric (the bat's direction alone in envelope.ts's relaxed grid at the n
 good guide once the knob moves: it reads lower after (launch 0 %, mid 22, contact 22, follow 2 %) than before (10 / 60 / 20 / 37 %) while
 the game's own grip and axis counts fall.
 
-**What the sim cannot reach.** The rest is the engine's: rerunning the proxy on the same swings with the top hand's supination limit
-widened from 88 to 130 deg lifts held from 54 to 76 %; with that and the arm blend-in taken at once, 82 %. Fists still 2 cm past the
+**What the sim cannot reach.** The rest is the engine's (proxy, 24 games, the final path): held 52 %; with the top hand's supination
+limit widened from 88 to 130 deg (armIK.ts ARM_LIMITS.sup) 65 % (fist axes 32 -> 10 %); with that and the grip taken at once instead of
+the ~0.1 s arm blend-in (gltfCharacter.ts ikW), 90 % (fists off the handle 41 -> 0.1 %). Fists still 2 cm past the
 tolerance in the game where the proxy has them on (the body's lean / neck passes and the blend-in move the shoulders after the sim chose
 the knob) need the engine to read the sim's knob as a target to blend toward, not a place the clip's arms start from.
