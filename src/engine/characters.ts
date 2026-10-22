@@ -334,6 +334,10 @@ export interface PuppetLike {
   lodReset?(): void;
   /** show the simplified geometry (true) or the full one (warm-up uploads both) */
   useLodGeometry?(on: boolean): void;
+  /** the game's face events for this person (face/reactions.ts) and a close-up hold (glTF characters only) */
+  faceAction?(snap: PlayerSnap | null, a: import('./face/reactions').FaceAction): void;
+  faceHold?(sec: number): boolean;
+  faceProbe?(): unknown;
   /** the catcher's sign sequence for the coming pitch (shown on his fingers; glTF characters only) */
   setSigns?(seq: number[]): void;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */
@@ -363,6 +367,8 @@ export interface PuppetEnv {
   anims?: Map<string, string>;
   /** every player's scene position by id (for tags: where the runner is) */
   positions?: Map<string, Vector3>;
+  /** the pressure of the moment for a person's face (face/reactions.ts tensionFor), 0..1 */
+  faceTension?: (role: string, id: string) => number;
   /** the camera's position (scene): far extras drop to a cheaper animation */
   cameraPos?: { x: number; y: number; z: number };
   /**

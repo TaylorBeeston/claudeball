@@ -18,7 +18,8 @@ import {
 import { DIM, quatToScene, toScene } from './dims';
 import type { Environment } from './environment';
 import { Puppet, setMaterialRegistrar, type Look, type PuppetEnv, type PuppetLike } from './characters';
-import type { GameState, PlayerSnap, TeamInfo } from './types';
+import { reactionsFor, tensionFor, type FaceCtx, type FaceEvent } from './face/reactions';
+import type { GameEvent, GameState, PlayerSnap, TeamInfo } from './types';
 
 function ballTexture(): CanvasTexture {
   const c = document.createElement('canvas');
@@ -368,6 +369,26 @@ export class PlayerManager {
     this.puppets.get(catcherId)?.setSigns?.(seq);
   }
 
+  /**
+   * The game's events on the faces (face/reactions.ts): who reacts how, the teams' moods, talking. `state` gives the cast (who is batting, the
+   * batter, the pitcher, every person's team and role).
+   */
+  faceEvent(ev: GameEvent | FaceEvent, state: GameState) {
+    if (ev.type === 'homerun') this.homer = { id: (ev as { batterId: string }).batterId, t: state.time };
+    const homer = this.homer && state.time - this.homer.t < 1 ? this.homer.id : undefined;
+    const ctx: FaceCtx = { half: state.half, batterId: state.batter?.id, pitcherId: state.pitcher?.id, homer, cast: state.players.map((p) => ({ id: p.id, team: p.team, role: p.role, hand: p.hand })) };
+    for (const a of reactionsFor(ev as FaceEvent, ctx)) this.puppets.get(a.id)?.faceAction?.(state.players.find((p) => p.id === a.id) ?? null, a);
+  }
+  private homer: { id: string; t: number } | null = null;
+  /** a close-up of this person began: the reaction he shows (or just showed) holds through the shot (docs/faces.md: close-ups hold) */
+  faceShot(id: string, holdSec: number) {
+    return this.puppets.get(id)?.faceHold?.(holdSec) ?? false;
+  }
+  /** the face of a person now (probes) */
+  faceProbe(id: string) {
+    return this.puppets.get(id)?.faceProbe?.() ?? null;
+  }
+
   noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number, runnerId?: string) {
     const prev = this.tags.get(fielderId);
     this.tags.set(fielderId, { result, until: simTime + 1.6, runner: runnerId ?? prev?.runner ?? null });
@@ -451,6 +472,7 @@ export class PlayerManager {
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;
+    this.penv.faceTension = (role) => tensionFor(role, state);
     this.penv.tagOutcome = (id) => {
       const t = this.tags.get(id);
       return t && t.until > state.time ? t.result : null;

@@ -357,6 +357,14 @@ export type GameEvent =
   | { type: 'on_deck'; playerId: string; team: number }
   /** a ball kid tossed a ball to a fan in the stands; `pos` is where the fan sits */
   | { type: 'ball_tossed_to_fan'; kidId: string; pos: Vec3; from?: Vec3 }
+  /** a plate appearance ended (`result` as the sim names it: 'strikeout looking', 'walk', 'single', 'home run', 'groundout', 'hit by pitch', ...) */
+  | { type: 'pa_end'; batterId: string; result: string }
+  /** a fielder's error (drop, bobble, throw) */
+  | { type: 'error'; fielderId: string; kind: string }
+  /** the pitch hit the batter */
+  | { type: 'hbp'; batterId: string }
+  /** a player came in for another (`reason`: 'pitching change', ...) */
+  | { type: 'substitution'; team: number; inId: string; outId: string; reason: string }
   /** non-pitch moments from the sim's `tempo` (payloads as sent: ids, positions) */
   | { type: 'signs_given' | 'shake_off' | 'time_called' | 'mound_visit' | 'challenge' | 'pitching_change_start' | 'mound_visit_end' | 'challenge_result' | 'break_start'; playerId?: string; pos?: Vec3; data?: Record<string, unknown> }
   | { type: 'broadcast'; event: BroadcastEvent }

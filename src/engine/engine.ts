@@ -191,6 +191,8 @@ export class Engine {
     // the director's `shot` events drive the lower-third card of a person-shot (on deck, walk-up, face close-up, ...): shown with the shot, hidden at its end; no per-frame work
     this.broadcast.on((e) => {
       if (e.type !== 'shot') return;
+      // a person-shot holds the reaction its subject shows (or just showed) through the shot's hold
+      if (e.phase === 'start' && e.subjectId) this.players.faceShot(e.subjectId, e.holdMs / 1000);
       const card = e.phase === 'start' && e.card && e.subjectId;
       this.hud?.subjectShot(card ? { kind: e.kind, subject: e.subjectId, hold: e.holdMs / 1000 } : null, this.sim.state);
     });
@@ -233,7 +235,12 @@ export class Engine {
       }
     });
     this.sim.on((te) => (te.event.type === 'pitch' || te.event.type === 'throw' || te.event.type === 'catch') && (this.batted = false));
-    this.sim.onPitchCross((x, y, inZone) => this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b'));
+    this.sim.onPitchCross((x, y, inZone) => {
+      this.hud?.pitchCrossed(x, y, inZone ? 's' : 'b');
+      this.players.faceEvent({ type: 'pitch_crossed', x, y }, this.sim.state);
+    });
+    // the faces: reactions to what happens (face/reactions.ts)
+    this.sim.on((te) => this.players.faceEvent(te.event, this.sim.state));
 
     this.canvas.addEventListener('webglcontextrestored', () => this.env.setTimeOfDay(this.env.todName));
     window.addEventListener('resize', () => this.resize());
