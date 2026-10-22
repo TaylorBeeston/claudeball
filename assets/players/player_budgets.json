@@ -1,6 +1,6 @@
 {
  "lod0/player_away": {
-  "size_mb": 7.29,
+  "size_mb": 7.23,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -31,15 +31,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 69008,
-  "vertices_default": 43436,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.45,
+  "triangles_default": 69504,
+  "vertices_default": 43695,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.07,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -49,8 +49,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -58,8 +58,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -67,8 +67,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -103,8 +103,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -211,8 +211,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -344,7 +344,7 @@
   ]
  },
  "lod0/player_away_1b": {
-  "size_mb": 7.26,
+  "size_mb": 7.2,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -375,15 +375,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 68060,
-  "vertices_default": 42200,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.39,
+  "triangles_default": 68556,
+  "vertices_default": 42459,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.02,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -393,8 +393,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -402,8 +402,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -411,8 +411,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -447,8 +447,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -555,8 +555,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -688,7 +688,7 @@
   ]
  },
  "lod0/player_away_of": {
-  "size_mb": 7.32,
+  "size_mb": 7.26,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -719,15 +719,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 70945,
-  "vertices_default": 44534,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.5,
+  "triangles_default": 71441,
+  "vertices_default": 44793,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.12,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -737,8 +737,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -746,8 +746,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -755,8 +755,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -791,8 +791,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -899,8 +899,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -1032,7 +1032,7 @@
   ]
  },
  "lod0/player_ballkid": {
-  "size_mb": 5.63,
+  "size_mb": 5.68,
   "lod1": false,
   "visible_meshes": 19,
   "draw_calls_default": 19,
@@ -1052,15 +1052,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 54391,
-  "vertices_default": 32348,
-  "morph_targets_total": 81,
-  "morph_memory_mb": 3.71,
+  "triangles_default": 54887,
+  "vertices_default": 32607,
+  "morph_targets_total": 108,
+  "morph_memory_mb": 5.34,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 21,
-  "texture_file_kb": 2406,
+  "texture_file_kb": 2343,
   "gpu_texture_mb_worst": 23.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 11.7,
   "gpu_texture_mb_used_by_visible": 23.3,
@@ -1070,8 +1070,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 156,
-    "sha1": "62b388501bac",
+    "kb": 157,
+    "sha1": "3f1fa54bf9b1",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1080,7 +1080,7 @@
     "h": 1024,
     "mime": "image/ktx2",
     "kb": 66,
-    "sha1": "d9af9f509f6c",
+    "sha1": "4d7955d0a071",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1088,8 +1088,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 125,
-    "sha1": "fc76f9075359",
+    "kb": 81,
+    "sha1": "3bb3d651b34e",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1124,8 +1124,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "5034951d62dc",
+    "kb": 13,
+    "sha1": "f7a3c88a449b",
     "gpu_mb_worst": 0.67
    },
    {
@@ -1205,8 +1205,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "e5755a93570a",
+    "kb": 29,
+    "sha1": "2da6e83fce7a",
     "gpu_mb_worst": 0.33
    },
    {
@@ -1257,7 +1257,7 @@
   ]
  },
  "lod0/player_base": {
-  "size_mb": 12.67,
+  "size_mb": 12.73,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -1288,15 +1288,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 69008,
-  "vertices_default": 43436,
-  "morph_targets_total": 117,
-  "morph_memory_mb": 4.37,
+  "triangles_default": 69504,
+  "vertices_default": 43695,
+  "morph_targets_total": 144,
+  "morph_memory_mb": 5.99,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 47,
-  "texture_file_kb": 5505,
+  "texture_file_kb": 5286,
   "gpu_texture_mb_worst": 57,
   "gpu_texture_mb_etc1s_opaque_4bpp": 28.5,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -1306,8 +1306,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "2c9edcf40e57",
+    "kb": 473,
+    "sha1": "8c761f9d79e9",
     "gpu_mb_worst": 5.33
    },
    {
@@ -1315,8 +1315,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "bbf2301bac13",
+    "kb": 61,
+    "sha1": "4a31daab26e5",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1324,8 +1324,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "c7731c5f3d42",
+    "kb": 209,
+    "sha1": "fce21f353917",
     "gpu_mb_worst": 5.33
    },
    {
@@ -1360,8 +1360,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "4a0b856ef5d3",
+    "kb": 13,
+    "sha1": "7302adbb3ed4",
     "gpu_mb_worst": 0.67
    },
    {
@@ -1396,8 +1396,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 79,
-    "sha1": "832036a66acc",
+    "kb": 82,
+    "sha1": "156a119dd994",
     "gpu_mb_worst": 0.33
    },
    {
@@ -1405,8 +1405,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 43,
-    "sha1": "633ad458d58e",
+    "kb": 46,
+    "sha1": "bb9ce1fba5ba",
     "gpu_mb_worst": 0.33
    },
    {
@@ -1513,8 +1513,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "b716bfa10fc6",
+    "kb": 29,
+    "sha1": "fda71b07b00d",
     "gpu_mb_worst": 0.33
    },
    {
@@ -1675,8 +1675,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 173,
-    "sha1": "4c81e8530dcf",
+    "kb": 128,
+    "sha1": "07061fbce361",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1727,7 +1727,7 @@
   ]
  },
  "lod0/player_batter": {
-  "size_mb": 7.03,
+  "size_mb": 6.96,
   "lod1": false,
   "visible_meshes": 27,
   "draw_calls_default": 27,
@@ -1757,15 +1757,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 63813,
-  "vertices_default": 40421,
-  "morph_targets_total": 114,
-  "morph_memory_mb": 4.64,
+  "triangles_default": 64079,
+  "vertices_default": 40540,
+  "morph_targets_total": 140,
+  "morph_memory_mb": 6.21,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 30,
-  "texture_file_kb": 3375,
+  "texture_file_kb": 3197,
   "gpu_texture_mb_worst": 36.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 18.2,
   "gpu_texture_mb_used_by_visible": 36.1,
@@ -1775,8 +1775,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -1784,8 +1784,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -1793,8 +1793,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -1829,8 +1829,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -1892,8 +1892,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -2043,7 +2043,7 @@
   ]
  },
  "lod0/player_catcher": {
-  "size_mb": 7.91,
+  "size_mb": 7.84,
   "lod1": false,
   "visible_meshes": 32,
   "draw_calls_default": 33,
@@ -2076,15 +2076,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 84267,
-  "vertices_default": 53595,
-  "morph_targets_total": 139,
-  "morph_memory_mb": 5.74,
+  "triangles_default": 84533,
+  "vertices_default": 53745,
+  "morph_targets_total": 165,
+  "morph_memory_mb": 7.32,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 34,
-  "texture_file_kb": 3879,
+  "texture_file_kb": 3700,
   "gpu_texture_mb_worst": 43.7,
   "gpu_texture_mb_etc1s_opaque_4bpp": 21.9,
   "gpu_texture_mb_used_by_visible": 43.4,
@@ -2094,8 +2094,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2103,8 +2103,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -2112,8 +2112,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2148,8 +2148,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -2238,8 +2238,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -2398,7 +2398,7 @@
   ]
  },
  "lod0/player_coach": {
-  "size_mb": 7.07,
+  "size_mb": 7.01,
   "lod1": false,
   "visible_meshes": 28,
   "draw_calls_default": 28,
@@ -2427,15 +2427,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 64013,
-  "vertices_default": 38976,
-  "morph_targets_total": 121,
-  "morph_memory_mb": 4.82,
+  "triangles_default": 64279,
+  "vertices_default": 39095,
+  "morph_targets_total": 147,
+  "morph_memory_mb": 6.39,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 30,
-  "texture_file_kb": 3375,
+  "texture_file_kb": 3197,
   "gpu_texture_mb_worst": 36.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 18.2,
   "gpu_texture_mb_used_by_visible": 36.1,
@@ -2445,8 +2445,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2454,8 +2454,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -2463,8 +2463,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2499,8 +2499,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -2607,8 +2607,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -2713,7 +2713,7 @@
   ]
  },
  "lod0/player_home": {
-  "size_mb": 7.29,
+  "size_mb": 7.23,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -2744,15 +2744,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 69008,
-  "vertices_default": 43436,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.45,
+  "triangles_default": 69504,
+  "vertices_default": 43695,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.07,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -2762,8 +2762,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2771,8 +2771,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -2780,8 +2780,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -2816,8 +2816,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -2924,8 +2924,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -3057,7 +3057,7 @@
   ]
  },
  "lod0/player_home_1b": {
-  "size_mb": 7.26,
+  "size_mb": 7.2,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -3088,15 +3088,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 68060,
-  "vertices_default": 42200,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.39,
+  "triangles_default": 68556,
+  "vertices_default": 42459,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.02,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -3106,8 +3106,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3115,8 +3115,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -3124,8 +3124,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3160,8 +3160,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -3268,8 +3268,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -3401,7 +3401,7 @@
   ]
  },
  "lod0/player_home_of": {
-  "size_mb": 7.32,
+  "size_mb": 7.26,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -3432,15 +3432,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 70945,
-  "vertices_default": 44534,
-  "morph_targets_total": 119,
-  "morph_memory_mb": 4.5,
+  "triangles_default": 71441,
+  "vertices_default": 44793,
+  "morph_targets_total": 146,
+  "morph_memory_mb": 6.12,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3690,
+  "texture_file_kb": 3511,
   "gpu_texture_mb_worst": 40.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 20.2,
   "gpu_texture_mb_used_by_visible": 40.1,
@@ -3450,8 +3450,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3459,8 +3459,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -3468,8 +3468,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3504,8 +3504,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -3612,8 +3612,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -3745,7 +3745,7 @@
   ]
  },
  "lod0/player_manager": {
-  "size_mb": 7.67,
+  "size_mb": 7.76,
   "lod1": false,
   "visible_meshes": 29,
   "draw_calls_default": 29,
@@ -3775,15 +3775,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 66397,
-  "vertices_default": 41132,
-  "morph_targets_total": 124,
-  "morph_memory_mb": 4.66,
+  "triangles_default": 67339,
+  "vertices_default": 41778,
+  "morph_targets_total": 156,
+  "morph_memory_mb": 6.63,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 33,
-  "texture_file_kb": 3727,
+  "texture_file_kb": 3554,
   "gpu_texture_mb_worst": 38.4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 19.2,
   "gpu_texture_mb_used_by_visible": 36.1,
@@ -3793,8 +3793,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "26e24b3026da",
+    "kb": 473,
+    "sha1": "82f1252783ee",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3802,8 +3802,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "28f8d5c5e2f5",
+    "kb": 61,
+    "sha1": "e2aac03d3678",
     "gpu_mb_worst": 1.33
    },
    {
@@ -3811,8 +3811,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "e3237172ed72",
+    "kb": 209,
+    "sha1": "419688683f61",
     "gpu_mb_worst": 5.33
    },
    {
@@ -3847,8 +3847,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "54dbfb0814cb",
+    "kb": 13,
+    "sha1": "7e2fdb2d50ec",
     "gpu_mb_worst": 0.67
    },
    {
@@ -3856,8 +3856,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 79,
-    "sha1": "3259159ba1d0",
+    "kb": 82,
+    "sha1": "4b284d720b69",
     "gpu_mb_worst": 0.33
    },
    {
@@ -3865,8 +3865,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 43,
-    "sha1": "8bdf0744ad97",
+    "kb": 46,
+    "sha1": "d699f2b0e626",
     "gpu_mb_worst": 0.33
    },
    {
@@ -3973,8 +3973,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "a3f5b2061474",
+    "kb": 29,
+    "sha1": "bc2f6596cd62",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4088,7 +4088,7 @@
   ]
  },
  "lod0/player_umpire": {
-  "size_mb": 7.22,
+  "size_mb": 7.16,
   "lod1": false,
   "visible_meshes": 28,
   "draw_calls_default": 29,
@@ -4115,15 +4115,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 69195,
-  "vertices_default": 45335,
-  "morph_targets_total": 115,
-  "morph_memory_mb": 4.73,
+  "triangles_default": 69691,
+  "vertices_default": 45632,
+  "morph_targets_total": 142,
+  "morph_memory_mb": 6.35,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 27,
-  "texture_file_kb": 3517,
+  "texture_file_kb": 3338,
   "gpu_texture_mb_worst": 39.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 19.7,
   "gpu_texture_mb_used_by_visible": 39.3,
@@ -4160,8 +4160,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "6938c325db41",
+    "kb": 473,
+    "sha1": "5a83a164816a",
     "gpu_mb_worst": 5.33
    },
    {
@@ -4169,8 +4169,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "9b6e7370bddb",
+    "kb": 61,
+    "sha1": "abaa4a5b87c7",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4178,8 +4178,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "bd0740357a9e",
+    "kb": 209,
+    "sha1": "fe665e47ab42",
     "gpu_mb_worst": 5.33
    },
    {
@@ -4214,8 +4214,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "e9221ecaf356",
+    "kb": 13,
+    "sha1": "4fe7aab18715",
     "gpu_mb_worst": 0.67
    },
    {
@@ -4322,8 +4322,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "e89c6bfb187d",
+    "kb": 29,
+    "sha1": "69b2f5413972",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4374,7 +4374,7 @@
   ]
  },
  "lod0/player_umpire_base": {
-  "size_mb": 6.65,
+  "size_mb": 6.59,
   "lod1": false,
   "visible_meshes": 23,
   "draw_calls_default": 23,
@@ -4398,15 +4398,15 @@
    "uniform_socks",
    "uniform_undershirt"
   ],
-  "triangles_default": 57559,
-  "vertices_default": 35189,
-  "morph_targets_total": 97,
-  "morph_memory_mb": 3.97,
+  "triangles_default": 58055,
+  "vertices_default": 35448,
+  "morph_targets_total": 124,
+  "morph_memory_mb": 5.6,
   "joints": 22,
   "animations": 118,
   "animation_mb": 1.06,
   "textures": 24,
-  "texture_file_kb": 3297,
+  "texture_file_kb": 3118,
   "gpu_texture_mb_worst": 35.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 17.7,
   "gpu_texture_mb_used_by_visible": 35.3,
@@ -4416,8 +4416,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 472,
-    "sha1": "6938c325db41",
+    "kb": 473,
+    "sha1": "5a83a164816a",
     "gpu_mb_worst": 5.33
    },
    {
@@ -4425,8 +4425,8 @@
     "w": 1024,
     "h": 1024,
     "mime": "image/ktx2",
-    "kb": 66,
-    "sha1": "9b6e7370bddb",
+    "kb": 61,
+    "sha1": "abaa4a5b87c7",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4434,8 +4434,8 @@
     "w": 2048,
     "h": 2048,
     "mime": "image/ktx2",
-    "kb": 364,
-    "sha1": "bd0740357a9e",
+    "kb": 209,
+    "sha1": "fe665e47ab42",
     "gpu_mb_worst": 5.33
    },
    {
@@ -4470,8 +4470,8 @@
     "w": 1024,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 35,
-    "sha1": "e9221ecaf356",
+    "kb": 13,
+    "sha1": "4fe7aab18715",
     "gpu_mb_worst": 0.67
    },
    {
@@ -4578,8 +4578,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 27,
-    "sha1": "e89c6bfb187d",
+    "kb": 29,
+    "sha1": "69b2f5413972",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4630,7 +4630,7 @@
   ]
  },
  "lod1/player_away": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -4640,15 +4640,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11242,
-  "vertices_default": 8173,
+  "triangles_default": 11370,
+  "vertices_default": 8246,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -4658,8 +4658,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4667,8 +4667,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4676,8 +4676,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4710,7 +4710,7 @@
   ]
  },
  "lod1/player_away_1b": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -4720,15 +4720,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11192,
-  "vertices_default": 8065,
+  "triangles_default": 11320,
+  "vertices_default": 8138,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -4738,8 +4738,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4747,8 +4747,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4756,8 +4756,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4790,7 +4790,7 @@
   ]
  },
  "lod1/player_away_of": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -4800,15 +4800,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11377,
-  "vertices_default": 8294,
+  "triangles_default": 11505,
+  "vertices_default": 8367,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -4818,8 +4818,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4827,8 +4827,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4836,8 +4836,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4879,15 +4879,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 10011,
-  "vertices_default": 6758,
+  "triangles_default": 10139,
+  "vertices_default": 6831,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 4,
-  "texture_file_kb": 563,
+  "texture_file_kb": 555,
   "gpu_texture_mb_worst": 3.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3,
   "gpu_texture_mb_used_by_visible": 0.7,
@@ -4897,8 +4897,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 314,
-    "sha1": "2dacd1e81c4c",
+    "kb": 316,
+    "sha1": "f7285aaccfdf",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4906,8 +4906,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 169,
-    "sha1": "7f24303158a9",
+    "kb": 168,
+    "sha1": "ebe73fe9ba8b",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4915,8 +4915,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 41,
-    "sha1": "04fce788f374",
+    "kb": 32,
+    "sha1": "d9de8b699326",
     "gpu_mb_worst": 0.33
    },
    {
@@ -4931,7 +4931,7 @@
   ]
  },
  "lod1/player_base": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -4941,15 +4941,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11242,
-  "vertices_default": 8175,
+  "triangles_default": 11370,
+  "vertices_default": 8248,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -4959,8 +4959,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4968,8 +4968,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -4977,8 +4977,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5011,7 +5011,7 @@
   ]
  },
  "lod1/player_batter": {
-  "size_mb": 0.83,
+  "size_mb": 0.82,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5021,15 +5021,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 12734,
-  "vertices_default": 9217,
+  "triangles_default": 12774,
+  "vertices_default": 9242,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5039,8 +5039,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5048,8 +5048,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5057,8 +5057,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5091,7 +5091,7 @@
   ]
  },
  "lod1/player_catcher": {
-  "size_mb": 0.88,
+  "size_mb": 0.87,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5101,15 +5101,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 16456,
-  "vertices_default": 12400,
+  "triangles_default": 16497,
+  "vertices_default": 12432,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5119,8 +5119,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5128,8 +5128,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5137,8 +5137,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5171,7 +5171,7 @@
   ]
  },
  "lod1/player_coach": {
-  "size_mb": 0.82,
+  "size_mb": 0.81,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5181,15 +5181,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 13042,
-  "vertices_default": 9017,
+  "triangles_default": 13082,
+  "vertices_default": 9042,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5199,8 +5199,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5208,8 +5208,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5217,8 +5217,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5251,7 +5251,7 @@
   ]
  },
  "lod1/player_home": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5261,15 +5261,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11242,
-  "vertices_default": 8173,
+  "triangles_default": 11370,
+  "vertices_default": 8246,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5279,8 +5279,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5288,8 +5288,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5297,8 +5297,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5331,7 +5331,7 @@
   ]
  },
  "lod1/player_home_1b": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5341,15 +5341,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11192,
-  "vertices_default": 8065,
+  "triangles_default": 11320,
+  "vertices_default": 8138,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5359,8 +5359,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5368,8 +5368,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5377,8 +5377,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5411,7 +5411,7 @@
   ]
  },
  "lod1/player_home_of": {
-  "size_mb": 0.81,
+  "size_mb": 0.8,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5421,15 +5421,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11377,
-  "vertices_default": 8294,
+  "triangles_default": 11505,
+  "vertices_default": 8367,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5439,8 +5439,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5448,8 +5448,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5457,8 +5457,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5491,7 +5491,7 @@
   ]
  },
  "lod1/player_manager": {
-  "size_mb": 0.82,
+  "size_mb": 0.81,
   "lod1": true,
   "visible_meshes": 4,
   "draw_calls_default": 4,
@@ -5501,15 +5501,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 11902,
-  "vertices_default": 8517,
+  "triangles_default": 12030,
+  "vertices_default": 8590,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 6,
-  "texture_file_kb": 650,
+  "texture_file_kb": 637,
   "gpu_texture_mb_worst": 4,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3.3,
   "gpu_texture_mb_used_by_visible": 1.3,
@@ -5519,8 +5519,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5528,8 +5528,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5537,8 +5537,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "676dba6bcc2c",
+    "kb": 32,
+    "sha1": "073115497e71",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5571,7 +5571,7 @@
   ]
  },
  "lod1/player_umpire": {
-  "size_mb": 0.78,
+  "size_mb": 0.77,
   "lod1": true,
   "visible_meshes": 3,
   "draw_calls_default": 3,
@@ -5580,15 +5580,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 15036,
-  "vertices_default": 11983,
+  "triangles_default": 15164,
+  "vertices_default": 12090,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 4,
-  "texture_file_kb": 565,
+  "texture_file_kb": 552,
   "gpu_texture_mb_worst": 3.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3,
   "gpu_texture_mb_used_by_visible": 0.7,
@@ -5598,8 +5598,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5607,8 +5607,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5616,8 +5616,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "9d12cccdcc28",
+    "kb": 32,
+    "sha1": "20e1bc5db24c",
     "gpu_mb_worst": 0.33
    },
    {
@@ -5632,7 +5632,7 @@
   ]
  },
  "lod1/player_umpire_base": {
-  "size_mb": 0.71,
+  "size_mb": 0.7,
   "lod1": true,
   "visible_meshes": 3,
   "draw_calls_default": 3,
@@ -5641,15 +5641,15 @@
    "lod_cloth",
    "skin"
   ],
-  "triangles_default": 10818,
-  "vertices_default": 7659,
+  "triangles_default": 10946,
+  "vertices_default": 7732,
   "morph_targets_total": 0,
   "morph_memory_mb": 0,
   "joints": 22,
   "animations": 0,
   "animation_mb": 0,
   "textures": 4,
-  "texture_file_kb": 565,
+  "texture_file_kb": 552,
   "gpu_texture_mb_worst": 3.3,
   "gpu_texture_mb_etc1s_opaque_4bpp": 3,
   "gpu_texture_mb_used_by_visible": 0.7,
@@ -5659,8 +5659,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 319,
-    "sha1": "5b6db944eaff",
+    "kb": 320,
+    "sha1": "f5d62c7cb3e3",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5668,8 +5668,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/png",
-    "kb": 168,
-    "sha1": "246a12a93ff5",
+    "kb": 161,
+    "sha1": "c03308e0cf84",
     "gpu_mb_worst": 1.33
    },
    {
@@ -5677,8 +5677,8 @@
     "w": 512,
     "h": 512,
     "mime": "image/ktx2",
-    "kb": 39,
-    "sha1": "9d12cccdcc28",
+    "kb": 32,
+    "sha1": "20e1bc5db24c",
     "gpu_mb_worst": 0.33
    },
    {

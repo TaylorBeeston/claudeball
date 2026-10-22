@@ -23,7 +23,8 @@ SH["Gear_Jacket"] = make_shell_cut(body, "Gear_Jacket", f_jacket, "jersey", .021
 belt_shell = make_shell_cut(body, "Gear_Belt", f_belt, "x", .036)                                # 4 cm belt band at the waist, outside the (looser, bloused) tucked jersey
 NORM = full_normals(); PARTS = split_parts(); bpy.data.objects.remove(body, do_unlink=True)
 body, _vm = build_mesh("Body_Skin", PARTS["body"]); set_weights(body, _vm); smooth_normals(body, NORM[_vm]); body_vm = _vm
-_remap, HEAD_BB = head_uv_remap(PARTS["head"]); head, head_vm = build_mesh("Head", PARTS["head"], uv_remap=_remap); set_weights(head, head_vm); smooth_normals(head, NORM[head_vm])
+head, head_vm = build_mesh("Head", PARTS["head"]); set_weights(head, head_vm)           # (the skin atlas UVs as they are: face and skin share the atlas, perf_prep merges the materials)
+BAG = add_mouth_bag(head); _hn = np.array([v.normal[:] for v in head.data.vertices]); _hn[:len(head_vm)] = NORM[head_vm]; smooth_normals(head, _hn)
 eyeobj, eyecornea = build_eyes()
 # hands: finger-posed variants of the MPFB hand (fist = bat grip, claw = ball hold fitted to the ball, open = inside the glove, relaxed = default)
 handL, handL_vm = hand_object("Hand_L", "Left", "fist", norm=NORM); handR, handR_vm = hand_object("Hand_R", "Right", "fist", norm=NORM)
@@ -77,10 +78,9 @@ hlogo_o = cap_logo(helm_o, w=.054, h=.038, zc=1.806); hlogo_o.name = "Gear_Helme
 HAIR_NAMES = []
 for nm_, asset_, shr_, cut_ in HAIR_STYLES:
     o = hair_style(nm_, asset_, head, shr_, cut_); gear[nm_] = o; set_weight(o, arm, "Head"); HAIR_NAMES.append(nm_)
-for nm_, asset_ in (("Gear_Eyebrows", "eyebrow004"), ("Gear_Eyelashes", "eyelashes02")):
-    o = asset_object(asset_, nm_); gear[nm_] = o; set_weight(o, arm, "Head")
-o = asset_object("teeth_base", "Gear_Teeth"); gear["Gear_Teeth"] = o; set_weight(o, arm, "Head")
-o = asset_object("tongue01", "Gear_Tongue"); gear["Gear_Tongue"] = o; set_weight(o, arm, "Head")
+for nm_, asset_ in (("Gear_Eyebrows", "eyebrow004"), ("Gear_Eyelashes", "eyelashes02"), ("Gear_Teeth", "teeth_base"), ("Gear_Tongue", "tongue01")):
+    o = asset_object(asset_, nm_); style_follow(o); gear[nm_] = o; set_weight(o, arm, "Head")
+thicken_brows(gear["Gear_Eyebrows"], 1.6)                                                          # bolder brows (docs/faces.md: they read at B-roll sizes)
 belt_o, buckle_o = finish_belt(belt_shell); gear["Gear_Belt"] = belt_o; gear["Gear_BeltBuckle"] = buckle_o
 copy_weights(buckle_o, [belt_o])
 set_weight(eyeobj, arm, "Head"); set_weight(eyecornea, arm, "Head")
@@ -154,15 +154,22 @@ HAIR_SQUASH = {}
 BODY_MORPH_OBJS = [body] + [SH[n] for n in SH if n not in ("Cleats",)] + [gear[n] for n in ("Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R",
                    "Gear_Piping", "Gear_Buttons", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_Number_Tens", "Gear_Number_Ones") + tuple(DECALS)]
 for o in BODY_MORPH_OBJS: add_keys(o, body_morph, BODY_KEYS)
-HEAD_ONLY = HEAD_KEYS
-add_keys(head, head_morph, HEAD_ONLY)
-for n in ["Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher", "Gear_CatcherMask", "Gear_UmpireMask", "Gear_EyeBlack"] + HAIR_NAMES: add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy") + (("ears_large",) if n.startswith("Gear_Hair") else ()) + (("ears_large", "jaw_square", "cheeks_full") if n in ("Gear_Helmet", "Gear_Helmet_Catcher") else ()))   # the flaps cover the ears: they follow big ears / a square jaw / full cheeks
+def _head_keys(P, k):
+    """Head's own keys: each vertex takes its base vertex's exact delta (the nearest-vertex field blends neighbours, and across the closed lips those are the
+    other lip's: an open jaw tore the lip line into spikes); the mouth bag rides like the teeth (jaw_open: lower half with the lower lip)."""
+    n = len(head_vm); out = P.copy(); out[:n] += base()["D_" + k][head_vm]*_seam_fade(P[:n])[:, None]
+    out[BAG] = teeth_morph(P[BAG], k, low=P[BAG][:, 2] < MOUTH_BAG["c"][2]) if k in EXPR_KEYS else head_morph(P[BAG], k)   # (its top stays with the upper jaw: the bag stretches open)
+    return out
+add_keys(head, _head_keys, HEAD_KEYS + EXPR_KEYS)
+for n in ["Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher", "Gear_CatcherMask", "Gear_UmpireMask", "Gear_EyeBlack"] + HAIR_NAMES: add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy") + (("ears_large",) if n.startswith("Gear_Hair") else ()) + (("ears_large", "jaw_square", "cheeks_full") if n in ("Gear_Helmet", "Gear_Helmet_Catcher") else ("jaw_square",) if n == "Gear_Cap" else ()))   # the flaps cover the ears: they follow big ears / a square jaw / full cheeks
 for n in ("Gear_Helmet", "Gear_Helmet_Catcher"): add_keys(gear[n], head_morph, ("ears_large", "jaw_square"))
 for n in HAIR_NAMES: HAIR_SQUASH[n] = add_under_cap_key(gear[n], cap_inner)
 add_keys(eyeobj, head_morph, ("head_narrow", "head_wide")); add_keys(eyecornea, head_morph, ("head_narrow", "head_wide"))
-for n in ("Gear_Eyebrows", "Gear_Eyelashes"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy", "eyes_deep", "eyes_blink", "brow_raise", "brow_furrow"))
-for n in ("Gear_Teeth", "Gear_Tongue"): add_keys(gear[n], (lambda P, k, _t=(n == "Gear_Tongue"): teeth_morph(P, k, _t)), ("head_narrow", "head_wide", "mouth_open", "smile", "mouth_pucker", "jaw_square", "chin_strong"))
-for n in ("Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "jaw_square", "chin_strong", "mouth_open", "smile", "mouth_pucker"))
+for n in ("Gear_Eyebrows", "Gear_Eyelashes"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "brow_heavy", "eyes_deep") + FOLLOW[n])
+add_keys(gear["Gear_EyeBlack"], head_morph, FOLLOW["Gear_EyeBlack"])
+_tlow = teeth_lower_mask(gear["Gear_Teeth"])
+for n in ("Gear_Teeth", "Gear_Tongue"): add_keys(gear[n], (lambda P, k, _t=(n == "Gear_Tongue"): teeth_morph(P, k, _t, None if _t else _tlow)), ("head_narrow", "head_wide", "jaw_square", "chin_strong") + FOLLOW["teeth"])
+for n in ("Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "jaw_square", "chin_strong") + FOLLOW["beard"])
 GROUPS = {"jersey": ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless", "Gear_Jacket"), "pants": ("Pants", "Pants_Long", "Shorts"), "prop": ("Umpire_Broom", "Ball_Bag"), "hair": tuple(h[0] for h in HAIR_STYLES), "face_parts": ("Gear_Eyebrows", "Gear_Eyelashes", "Gear_Teeth", "Gear_Tongue", "Eyes_Cornea"),
           "facial_hair": ("Gear_Beard_Stubble", "Gear_Beard_Full", "Gear_Mustache", "Gear_Goatee"), "jersey_decal": tuple(DECALS), "headwear": ("Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher"),
           "accessory": ("Gear_LineupCard", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R", "Gear_Glove"),
@@ -281,7 +288,8 @@ allnodes = {**allobjs, **gear, "Elbow_Pole_L": E_ELBOW["L"], "Elbow_Pole_R": E_E
 GLOVE_NODES = {k_: (gear[K_["node"]], gear[K_["node"] + "_Laces"], POCKET[k_]) for k_, K_ in KINDS.items()}
 GROUPS["accessory"] = tuple(n for n in GROUPS["accessory"] if n != "Gear_Glove") + tuple(K_["node"] for K_ in KINDS.values()) + tuple(K_["node"] + "_Laces" for K_ in KINDS.values())
 GROUPS["hand"] = ("Hand_L", "Hand_L_Open", "Hand_R", "Hand_R_Ball")
-for vn, (cols, gl, gkind, rhand, lhand) in ({} if FAST else VARIANTS).items():
+ONLY = globals().get('CB_ONLY')                                                                   # (a quick look: CB_FAST + CB_ONLY = ["player_base"] exports that file without clips)
+for vn, (cols, gl, gkind, rhand, lhand) in ({k: VARIANTS[k] for k in ONLY} if ONLY else {} if FAST else VARIANTS).items():
     if "Gear_Cap" in gl: gl = list(gl) + ["Gear_CapLogo"]
     if "Gear_Helmet" in gl and vn != "player_catcher": gl = list(gl) + ["Gear_HelmetLogo"]
     for k, c in cols.items(): setc(k, c)

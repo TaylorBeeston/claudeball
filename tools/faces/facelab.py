@@ -26,6 +26,7 @@ CANDS = {
                   "head_age_decr": 1.0, **LR0("x_eye_SIDE_closure", .2), "nose_scale_horiz_decr": .4, "nose_volume_decr": .7, "nose_point_up": .5, "nose_hump_decr": 1.0, "nose_flaring_decr": .6,
                   "mouth_upperlip_volume_incr": .8, "mouth_lowerlip_volume_incr": .7, "mouth_cupidsbow_incr": .6, "chin_prominent_incr": .6, "nose_scale_depth_decr": .3, "mouth_laugh_lines_in": .5,
                   "eyebrows_trans_forward": .4}),
+ "BUILD": dict(label="built (stage 2)", style={}, eye_s=1.0, iris=(37.0, 12.5, .75), blur=0, nrm=None, brow=0.0, lash=0.0, gain=1.0, paint=0.0, toon=False, iris_flat=0.0),
  "C": dict(label="C: graphic toon", eye_s=1.24, iris=(40.0, 14.0), blur=24, nrm=0.0, brow=1.6, lash=1.4, gain=2.0, paint=1.0, toon=True, iris_flat=1.0,
            style={**SYM(dict(eye_scale_incr=3.8, eye_height2_incr=1.4, eye_height1_incr=.8, eye_bag_decr=1.0, ear_scale_decr=.8, ear_flap_decr=.6, cheek_bones_incr=.8)),
                   "head_age_decr": 1.0, **LR0("x_eye_SIDE_closure", .26), "nose_scale_horiz_decr": .6, "nose_scale_vert_decr": .4, "nose_volume_decr": 1.0, "nose_point_up": .7, "nose_hump_decr": 1.0, "nose_flaring_decr": .8,
@@ -53,6 +54,19 @@ EXPR = {
  "wince": {**LR("x_eyebrows_SIDE_down", .6), **LR("x_eyebrows_SIDE_inner_up", .5), **LR("x_eye_SIDE_closure", .7), "x_mouth_retraction": .8, "x_mouth_upward_retraction": .4, "mouth_open": .2},
 }
 
+# CAND=BUILD renders a stage-2 build as it is (its own style, keys and materials): the presets on the final keys (docs/faces.md section 4)
+LRk = lambda k, v: {k + "_L": v, k + "_R": v}
+if CAND == "BUILD":
+    EXPR = {
+     "neutral": {},
+     "joy": {**LRk("brow_up", .35), **LRk("squint", .45), **LRk("smile", 1.0), "jaw_open": .42},
+     "shout": {**LRk("brow_down", .8), **LRk("squint", .5), "jaw_open": 1.0, "sneer": .6, **LRk("smile", .3)},
+     "anger": {**LRk("brow_down", 1.0), **LRk("squint", .35), "lip_press": .8, "sneer": .35, "frown": .3},
+     "dejected": {**LRk("brow_inner_up", 1.0), **LRk("blink", .5), "frown": 1.0, "lip_press": .3},
+     "shock": {**LRk("brow_up", 1.0), **LRk("wide", 1.0), "jaw_open": .84},
+     "wince": {**LRk("brow_down", .6), **LRk("brow_inner_up", .5), **LRk("blink", 1.0), **LRk("squint", .3), "sneer": .3, "jaw_open": .24},
+    }
+LAB = CAND not in ("C0", "BUILD")                                     # the stage-1 previews (style, mouth bag, cap) only for the candidates
 # ------------------------------------------------------------------------------------------------ scene
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=E["GLB"], import_shading='NORMALS')
@@ -114,19 +128,19 @@ for n in HEADLIKE:
         if not o.data.shape_keys:
             for i, vv in enumerate(o.data.vertices): vv.co = Vector(X[i] + d[i])
 # expression keys (MPFB units) on the head (exact map), brows / lashes / beards / eye black (field); gain = the candidate's exaggeration
-XKEYS = sorted({k for e in EXPR.values() for k in e if k.startswith("x_")} | {"x_mouth_open"})
+XKEYS = sorted({k for e in EXPR.values() for k in e if k.startswith("x_")} | {"x_mouth_open"}) if CAND != "BUILD" else []
 for n in ("Head", "Gear_Eyebrows", "Gear_Eyelashes", "Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee", "Gear_EyeBlack"):
     o = OB.get(n)
     if not o: continue
     X = keyco(o)
     for k in XKEYS: setkey(o, k, X + field(X, FT[k], n == "Head"))
-for n in ("Gear_Teeth", "Gear_Tongue"):
+for n in (("Gear_Teeth", "Gear_Tongue") if CAND != "BUILD" else ()):
     o = OB.get(n); X = keyco(o); D = FT["x_mouth_open"]; xm = np.abs(P[:, 0]) < .02
     lo = D[xm & (P[:, 2] > 1.635) & (P[:, 2] < 1.652) & (P[:, 1] < -.14)].mean(0); Y = X.copy(); Y[X[:, 2] < 1.656] += lo; setkey(o, "x_mouth_open", Y)
-if CAND != "C0":                                                      # stage-2 mouth bag preview: a dark cavity behind the lips
+if LAB:                                                               # stage-2 mouth bag preview: a dark cavity behind the lips
     bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location=(0, -.100, 1.646)); mb = bpy.context.object; mb.name = "MouthBag"; mb.scale = (.022, .030, .020)
     mm = bpy.data.materials.new("mouthbag"); mm.use_nodes = True; _b = next(n for n in mm.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'); _b.inputs["Base Color"].default_value = (.08, .015, .015, 1); _b.inputs["Roughness"].default_value = .6; mb.data.materials.append(mm)
-if CAND != "C0":                                                      # stage-2 preview: the MPFB inner-lip / mouth faces get the dark cavity material (they stretched into a pale sheet)
+if LAB:                                                               # stage-2 preview: the MPFB inner-lip / mouth faces get the dark cavity material (they stretched into a pale sheet)
     hd = OB["Head"]; hd.data.materials.append(mm); Xh = keyco(hd); k_ = len(hd.data.materials) - 1; nin = 0; DARK = []
     Xo = keyco(hd, "x_mouth_open"); Xo = Xh + (Xo - Xh)*.75
     def area(X, vs): a_ = X[vs[1]] - X[vs[0]]; b_ = X[vs[2]] - X[vs[0]]; return np.linalg.norm(np.cross(a_, b_))
@@ -171,7 +185,7 @@ if CFG["blur"]:
     for m in skin_mats:
         for n in m.node_tree.nodes:
             if n.type == 'TEX_IMAGE' and n.image == alb: n.image = alb2
-for m in skin_mats:
+for m in (skin_mats if CFG["nrm"] is not None else []):
     for n in m.node_tree.nodes:
         if n.type == 'NORMAL_MAP': n.inputs["Strength"].default_value = CFG["nrm"]
     bsdf(m).inputs["Specular IOR Level"].default_value = .5 - .2*CFG["paint"]
@@ -250,7 +264,7 @@ bsdf(bpy.data.materials["eye"]).inputs["Roughness"].default_value = .12
 # ------------------------------------------------------------------------------------------------ cap fit preview: lower, bill flatter (stage-2 build does it properly)
 cap = OB.get("Gear_Cap"); logo = OB.get("Gear_CapLogo")
 HC = np.array([0, -.065, 1.735])
-for o in ([cap, logo] if CAND != "C0" else []):
+for o in ([cap, logo] if LAB else []):
     if o:
         for kb in o.data.shape_keys.key_blocks:
             Y = keyco(o, kb.name); zt = 1.867
@@ -262,7 +276,7 @@ for o in ([cap, logo] if CAND != "C0" else []):
                 y0 = -.150; z0 = out[bill, 2].max(); ang = math.radians(4); dy = out[bill, 1] - y0; dz = out[bill, 2] - z0
                 out[bill, 1] = y0 + dy*math.cos(ang) - dz*math.sin(ang); out[bill, 2] = z0 + dy*math.sin(ang) + dz*math.cos(ang)
             kb.data.foreach_set("co", out.astype(np.float32).ravel())
-if CAND != "C0":                                                      # the lowered cap needs the hair under it pressed further in
+if LAB:                                                               # the lowered cap needs the hair under it pressed further in
     for o in OB:
         if o.name.startswith("Gear_Hair") and o.data.shape_keys and "hair_under_cap" in o.data.shape_keys.key_blocks:
             Y = keyco(o, "hair_under_cap"); d = Y - HC; r = np.linalg.norm(d, axis=1); t = np.clip((Y[:, 2] - 1.74)/.05, 0, 1); t = t*t*(3 - 2*t)
@@ -294,7 +308,7 @@ bpy.ops.mesh.primitive_plane_add(size=200, location=(0, 0, 0)); gp = bpy.context
 bsdf(gm).inputs["Base Color"].default_value = (.10, .20, .06, 1); bsdf(gm).inputs["Roughness"].default_value = .95; gp.data.materials.append(gm)
 cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam")); sc.collection.objects.link(cam); sc.camera = cam
 FACE_C = Vector((0, -.09, 1.735)); WIN = .42
-SPANS = {"close": .95, "mid": 2.0, "bcast": 4.6}
+SPANS = {"close": .95, "mid": 2.0, "bcast": 4.6, **json.loads(E.get("SPANS", "{}"))}       # SPANS='{"eye": .3}': a zoom for checks
 def frame(dist_kind, yaw=22, pitch=4):
     d = 8.0; span = SPANS[dist_kind]; px = int(round(WIN*1080/span))
     sc.render.resolution_x = sc.render.resolution_y = px; sc.render.resolution_percentage = 100
@@ -302,7 +316,7 @@ def frame(dist_kind, yaw=22, pitch=4):
     cam.location = FACE_C + v*d; cam.rotation_euler = (-v).to_track_quat('-Z', 'Y').to_euler()
     cam.data.sensor_fit = 'VERTICAL'; cam.data.angle = 2*math.atan(WIN/2/d)
 WEAR = {"cap": ["Gear_Cap", "Gear_CapLogo"], "helmet": ["Gear_Helmet", "Gear_HelmetLogo"], "catcher": ["Gear_Helmet_Catcher", "Gear_CatcherMask"], None: []}
-CONTEXT = ["Body_Skin", "Jersey", "Undershirt", "Head", "Eyes", "Gear_Eyebrows", "Gear_Eyelashes", "Gear_Teeth", "Gear_Tongue", "MouthBag", "Plane"]
+CONTEXT = [n for n in ["Body_Skin", "Jersey", "Undershirt", "Head", "Eyes", "Gear_Eyebrows", "Gear_Eyelashes", "Gear_Teeth", "Gear_Tongue", "MouthBag", "Plane"] if n not in E.get("HIDE", "").split(",")]
 def set_keys(o, vals):
     if not o or not o.data.shape_keys: return
     for kb in o.data.shape_keys.key_blocks[1:]: kb.value = vals.get(kb.name, 0.0)
@@ -310,12 +324,12 @@ DARK = globals().get("DARK", [])
 def dress(F, expr):
     for o in OB:
         if o.type == 'MESH': o.hide_render = True
-    show = CONTEXT + WEAR[F["wear"]] + ([F["hair"]] if F["hair"] else []) + ([F["fh"]] if F["fh"] else []) + (["Gear_EyeBlack"] if F.get("eyeblack") else [])
+    show = CONTEXT + WEAR[F["wear"]] + ([F["hair"]] if F["hair"] and not (CAND == "BUILD" and F["wear"]) else [])     # (the game hides hair under caps / helmets) + ([F["fh"]] if F["fh"] else []) + (["Gear_EyeBlack"] if F.get("eyeblack") else [])
     for n in show:
         if n in OB: OB[n].hide_render = False
     g = CFG["gain"]; gb = 1 + (g - 1)*2.0; ge = 1 + (g - 1)*1.3
     e = {k: v*(gb if k.startswith("x_eyebrows") else ge if k.startswith("x_eye_") else g) for k, v in EXPR[expr].items()}
-    if CAND != "C0" and "mouth_open" in e: e["x_mouth_open"] = min(.75, .5*e.pop("mouth_open"))      # full MPFB opening (needs the stage-2 mouth bag)
+    if LAB and "mouth_open" in e: e["x_mouth_open"] = min(.75, .5*e.pop("mouth_open"))      # full MPFB opening (needs the stage-2 mouth bag)
     if "mouth_open" in e: e["mouth_open"] = min(1.0, e["mouth_open"])
     keys = {**F["keys"], **e, "eyes_look_left": .45}
     for n in show + ["Eyes", "Eyes_Cornea"]: set_keys(OB.get(n), {**keys, "hair_under_cap": 1.0 if F["wear"] else 0.0})

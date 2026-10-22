@@ -85,7 +85,7 @@ def stubble_keep(q):
     return min(edge - q.z, .060 - q.y, .088 - abs(q.x), _mouth(q, .0275, .0125, -.0815)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
 def _taper(v, k=.014): return max(0.0, min(1.0, v/k))
 def beard_full(head):
-    f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0018 + .0065*_taper(f(q))*(1 + .35*max(0.0, -q.z-.10)/.05))
+    f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0007 + .0072*_taper(f(q), .018)*(1 + .35*max(0.0, -q.z-.10)/.05))      # a thin edge that melts into the skin
 def beard_stubble(head):
     return head_copy(head, "Gear_Beard_Stubble", stubble_keep, lambda q: .0007*_taper(stubble_keep(q), .008))
 def mustache(head):

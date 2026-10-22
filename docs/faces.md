@@ -211,7 +211,36 @@ frames. Stage 3 checks that `cameraDirector` / `broll` still centre the face wit
   broadcast and phone sizes without brows / lashes geometry.
 - `npm run perf:check` must stay green; stage 3 reports CPU per frame for the face driver and the draw calls (no new ones).
 
-## 7. Stage-2 single-rebuild checklist
+## 7. Stage 2 as built (the single player rebuild)
+
+Sources: `assets/src/face_style.py` (the tables: FACE_STYLE, the 20 FACE_KEYS, which keys each follower carries, eye scale, iris), `mpfb_face_extract.py`
+-> `assets/src/mpfb/face_targets.npz` (the 54 MPFB units the tables use, head vertices only, float16, 121 KB; the fit checks exactly against
+`base_body.npz`), `player_mpfb.py` (`_face_style`, `style_follow`, the mouth bag, teeth rows), `player_mats.py` (painted skin), `player_build.py`.
+
+- **Style** in `base()`: P0 keeps MPFB's positions, P = P0 + the style delta (faded at the neck seam). Every part built from the head (cap, helmets,
+  masks, beards, eye black) follows by construction; the bundled parts fitted to the unstyled head (hair cards, brows, lashes, teeth, tongue) are moved
+  by `style_follow`. The style moves the eye sockets < 1 mm on average (the eye centres stay); the lips go up 2-3 mm (`STOMION_Z`).
+- **Head keys are exact per vertex.** The nearest-vertex field (`head_morph`) weights its 4 neighbours with 1 / (d^2 + 1e-6), and across the closed lips
+  (~1 mm apart) half of a lip-line vertex's motion came from the other lip: an open jaw tore the lip line into light spikes. That was the real cause of
+  the old "spikes beyond 30 % of the opening" (MOUTH_OPEN_SCALE). Head now takes its base vertex's own delta for every key; followers keep the field.
+- **Mouth:** MPFB's mouth-interior faces are their own atlas island: painted a dark matte cavity (a wet one mirrored the sky in streaks). A boxy mouth
+  bag (part of Head: no draw call) closes the cavity; its lower half rides the jaw. The teeth are opaque (their alpha card texture cut them into saw
+  teeth); each tooth goes whole with its row (upper row fixed to the skull, lower row with the jaw: a flat height split cut through the overlapping
+  rows). The engine shows Gear_Teeth / Gear_Tongue only while jaw_open > 0.05 on an animated face. `jaw_open` 1 = 75 % of MPFB's opening.
+- **Skin:** the photo atlas softened (masked blur, sigma 16 + 60 px at 2K), painted warmth (cheeks, ears, nose tip, lips), lash line and brow shape in
+  the atlas (they survive LOD tier 1), the eye pockets' red tear-duct texels repainted plain skin (they read as red eyes with the bigger lid opening),
+  normal strength 0.15. Brow cards x1.6 tall and denser (alpha^0.39), lashes denser (alpha^0.7; ^0.41 read as false lashes).
+- **Eyes:** globe x1.12, iris 37 deg / pupil 12.5 deg with 75 % of a flat graphic iris (clean gradient, strong limbal ring), regenerated for every
+  colour (`players/textures/eyes_*.webp`).
+- **Beards:** lighter strand albedo and a thinner shell edge. The engine already feathers beards / stubble in the shader (`facialHair.ts`), so the
+  Blender lab (no feather) shows them harder than the game does.
+- **Cap:** edge 12 mm lower in front (1.764), flatter crown (+1.5 mm over the skull top instead of +4), the bill 4 deg down from the band; follows
+  `jaw_square` too (the lower cap reached where that key widens the head). Fit report: >= 1.4 mm clear at rest, -0.1 mm at the band with brow_heavy.
+- **Hairline:** not changed. The game hides hair under every cap and helmet (only the crowd impostors are bare-headed), so the ragged cards never
+  show on the field.
+- **Batting stance** re-keyed (see the commit and the report): both forearms and wrists in range.
+
+## 8. Stage-2 single-rebuild checklist (the plan)
 
 - [ ] `mpfb_face_extract.py` -> `assets/src/mpfb/face_targets.npz` (style + expression units; the fit is checked against `base_body.npz`)
 - [ ] style delta in `base()`; landmarks re-measured; eye radius / iris textures
