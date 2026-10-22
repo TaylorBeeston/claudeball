@@ -13,6 +13,8 @@ import { slerpRaw } from '../jank/glb';
 import { armRest, solveArm, springStep } from '../../src/engine/pose/armIK';
 
 export type V3 = { x: number; y: number; z: number };
+// SWING_TOP_SUP=130: the top hand's own supination limit (armIK.ts goal.sup); SWING_FRESH=1: the grip taken with a full swivel search
+const TOP_SUP = process.env.SWING_TOP_SUP ? +process.env.SWING_TOP_SUP : undefined, FRESH = !!process.env.SWING_FRESH;
 const sl = (a: ArrayLike<number>, i: number, n: number) => Array.from(a).slice(i * n, i * n + n);
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -200,7 +202,7 @@ export class Holder {
       const sAlong = side === 'Right' ? this.gripTop : this.gripBottom;
       const target = [knob[0] + d[0] * sAlong, knob[1] + d[1] * sAlong, knob[2] + d[2] * sAlong];
       const [a, f, h] = [B[`${side}Arm`], B[`${side}ForeArm`], B[`${side}Hand`]];
-      const out = solveArm(this.rests[side], { S: sl(w.wp, a, 3), E: sl(w.wp, f, 3), H: sl(w.wp, h, 3), qUpper: sl(w.wq, a, 4), qFore: sl(w.wq, f, 4), qHand: sl(w.wq, h, 4) }, { target, fist, gripLocal: gl, gripDir: d, ...(track ? { track: track[side] ?? { pole: 0, roll: 0 }, dt } : {}) });
+      const out = solveArm(this.rests[side], { S: sl(w.wp, a, 3), E: sl(w.wp, f, 3), H: sl(w.wp, h, 3), qUpper: sl(w.wq, a, 4), qFore: sl(w.wq, f, 4), qHand: sl(w.wq, h, 4) }, { target, fist, gripLocal: gl, gripDir: d, ...(side === 'Right' && TOP_SUP !== undefined ? { sup: TOP_SUP } : {}), ...(track ? { track: track[side] ?? (FRESH ? undefined : { pole: 0, roll: 0 }), dt } : {}) });
       if (track) track[side] = { pole: out.pole, roll: out.roll, pron: out.pron, vPole: out.vPole, vRoll: out.vRoll };
       return out;
     };

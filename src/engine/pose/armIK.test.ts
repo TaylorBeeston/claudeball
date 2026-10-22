@@ -110,6 +110,49 @@ describe('analytic arm IK', () => {
     const again = solveArm(rest, pose, { ...goal, track: { pole: fixed.pole, roll: fixed.roll, pron: fixed.pron } });
     expect(Math.abs(again.pole - fixed.pole)).toBeLessThanOrEqual(ARM_LIMITS.poleStep + 1e-9);
   });
+  it("a grip's own supination limit (a batter's top hand): the fist turns further along the bat, the twist still shared by forearm and hand", () => {
+    const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
+    const w = fk(L0, undefined, R.rest);
+    const g = rig.attach.get('Bat_Grip')!;
+    const a = qrot(g.q, 0, 1, 0, [0, 0, 0]) as number[];
+    const hp = sl(w.wp, B.RightHand, 3), E = sl(w.wp, B.RightForeArm, 3);
+    const rest = restOf('Right');
+    const pose = { S: sl(w.wp, B.RightArm, 3), E, H: hp, qUpper: sl(w.wq, B.RightArm, 4), qFore: sl(w.wq, B.RightForeArm, 4), qHand: sl(w.wq, B.RightHand, 4) };
+    const g0 = qrot(pose.qHand, a[0], a[1], a[2]) as number[];
+    const fa = [hp[0] - E[0], hp[1] - E[1], hp[2] - E[2]];
+    const fn = Math.hypot(...fa);
+    const lim = globalThis as { __armLimits?: typeof ARM_LIMITS };
+    // the fist may not roll on the handle here: only the forearm's turn can bring the grip line round
+    lim.__armLimits = { ...ARM_LIMITS, roll: 0 };
+    try {
+      // the clip's grip line turned about the forearm until the default range runs out on the supination side
+      // (the grip taken as the engine takes it: from the clip's swivel and roll, so the elbow cannot simply swing round instead)
+      const goalAt = (deg: number) => ({ target: [hp[0], hp[1], hp[2]], fist: [0.024, 0.074, -0.028], gripLocal: a, gripDir: qrot(qaxisAngle(fa[0] / fn, fa[1] / fn, fa[2] / fn, (deg * Math.PI) / 180), g0[0], g0[1], g0[2]) as number[], track: { pole: 0, roll: 0 } });
+      let deg = 0;
+      for (const s of [1, -1])
+        for (let d = 10; d <= 120 && !deg; d += 10) if (solveArm(rest, pose, goalAt(s * d)).pron <= -ARM_LIMITS.sup + 1) deg = s * (d + 30);
+      expect(deg).not.toBe(0);
+      const goal = goalAt(deg);
+      const base = solveArm(rest, pose, goal), wide = solveArm(rest, pose, { ...goal, sup: ARM_LIMITS.supTop });
+      expect(base.pron).toBeGreaterThanOrEqual(-ARM_LIMITS.sup - 1e-6);
+      expect(wide.pron).toBeLessThan(-ARM_LIMITS.sup - 20);
+      expect(wide.pron).toBeGreaterThanOrEqual(-ARM_LIMITS.supTop - 1e-6);
+      expect(wide.over).toBeLessThan(base.over - 20);
+      const err = (q: number[]) => (Math.acos(Math.min(1, dot3(qrot(q, a[0], a[1], a[2]) as number[], goal.gripDir))) * 180) / Math.PI;
+      expect(err(wide.qHand)).toBeLessThan(err(base.qHand) - 20);
+      // the pose as the validator measures it: that supination, shared half and half (no wrist wrung like a towel)
+      const L = { lq: L0.lq.slice(), lp: L0.lp.slice(), base: L0.base.slice() };
+      const [ua, fo, ha] = [B.RightArm, B.RightForeArm, B.RightHand];
+      L.lq.set(qmul(qinv(sl(w.wq, PARENT[ua], 4)), wide.qUpper), ua * 4);
+      L.lq.set(qmul(qinv(wide.qUpper), wide.qFore), fo * 4);
+      L.lq.set(qmul(qinv(wide.qFore), wide.qHand), ha * 4);
+      const m = measureJoints(fk(L, undefined, R.rest), R);
+      expect(m['forearmR.pron']).toBeCloseTo(wide.pron, 0);
+      expect(m['wristR.split']).toBeLessThan(5);
+    } finally {
+      delete lim.__armLimits;
+    }
+  });
   it('a held grip follows a turning bat continuously: the fist rolls on the round handle, the elbow and the hand never hop', () => {
     const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
     const w = fk(L0, undefined, R.rest);

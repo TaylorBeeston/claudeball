@@ -225,6 +225,8 @@ export class BatView {
   readonly grip = { top: new Vector3(), bottom: new Vector3(), knob: new Vector3(), tip: new Vector3() };
   visible = false;
   private q = new Quaternion();
+  /** the gap from the sim's pose to the hands' at a swing's first frame (closed over the ease), null when none is being closed */
+  private ease: { dp: Vector3; dq: Quaternion; tq: Quaternion } | null = null;
 
   constructor(env: Environment) {
     // knob at origin, barrel along +Y (0.86 m)
@@ -306,11 +308,14 @@ export class BatView {
   held = false;
 
   /**
-   * `from`/`t`: while a swing starts, the bat is blended from where the hands hold it (t = 0) to the sim's pose (t = 1) so it
-   * does not pop out of the hands; the sim's early swing arc is far from the batter's stance and the ball is nowhere near yet.
+   * `from`/`t`: while a swing starts, the bat does not pop out of the hands: the gap between where they hold it on the swing's first frame
+   * (`from`, captured once) and the sim's pose then is closed as t goes 0 -> 1, on top of the sim's own motion (the sim's first frames run
+   * 13-18 cm behind the clip's hands). Blending toward the hands' grip every frame instead fed back once the fists followed the drawn bat at
+   * once: the bat froze for three frames and then turned ~60 deg in one.
    */
   update(state: GameState, from?: { pos: Vector3; quat: Quaternion }, t = 1) {
     const b = state.bat;
+    if (!from || t >= 1) this.ease = null;
     if (this.held) {
       this.visible = false; // no sim pose: hands keep their clip pose
       this.obj.visible = true;
@@ -322,9 +327,14 @@ export class BatView {
     toScene(b.pos, this.obj.position);
     quatToScene(b.quat, this.q);
     if (from && t < 1) {
+      if (!this.ease) {
+        this.ease = { dp: new Vector3(), dq: new Quaternion(), tq: new Quaternion() };
+        this.ease.dp.copy(from.pos).sub(this.obj.position);
+        this.ease.dq.copy(this.q).invert().premultiply(from.quat);
+      }
       const k = t * t * (3 - 2 * t);
-      this.obj.position.lerpVectors(from.pos, this.obj.position, k);
-      this.q.copy(from.quat).slerp(this.q, k);
+      this.obj.position.addScaledVector(this.ease.dp, 1 - k);
+      this.q.premultiply(this.ease.tq.identity().slerp(this.ease.dq, 1 - k));
     }
     this.obj.quaternion.copy(this.q);
     this.grip.bottom.set(0, 0.12, 0).applyQuaternion(this.q).add(this.obj.position);
