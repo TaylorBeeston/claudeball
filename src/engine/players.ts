@@ -18,7 +18,8 @@ import {
 import { DIM, quatToScene, toScene } from './dims';
 import type { Environment } from './environment';
 import { Puppet, setMaterialRegistrar, type Look, type PuppetEnv, type PuppetLike } from './characters';
-import type { GameState, PlayerSnap, TeamInfo } from './types';
+import { reactionsFor, tensionFor, type FaceCtx, type FaceEvent } from './face/reactions';
+import type { GameEvent, GameState, PlayerSnap, TeamInfo } from './types';
 
 function ballTexture(): CanvasTexture {
   const c = document.createElement('canvas');
@@ -368,6 +369,52 @@ export class PlayerManager {
     this.puppets.get(catcherId)?.setSigns?.(seq);
   }
 
+  /**
+   * The game's events on the faces (face/reactions.ts): who reacts how, the teams' moods, talking. `state` gives the cast (who is batting, the
+   * batter, the pitcher, every person's team and role).
+   */
+  faceEvent(ev: GameEvent | FaceEvent, state: GameState) {
+    if (ev.type === 'homerun') this.homer = { id: (ev as { batterId: string }).batterId, t: state.time };
+    const homer = this.homer && state.time - this.homer.t < 1 ? this.homer.id : undefined;
+    const ctx: FaceCtx = { half: state.half, batterId: state.batter?.id, pitcherId: state.pitcher?.id, homer, cast: state.players.map((p) => ({ id: p.id, team: p.team, role: p.role, hand: p.hand })) };
+    for (const a of reactionsFor(ev as FaceEvent, ctx)) this.puppets.get(a.id)?.faceAction?.(state.players.find((p) => p.id === a.id) ?? null, a);
+  }
+  private homer: { id: string; t: number } | null = null;
+  /** a close-up of this person began: the reaction he shows (or just showed) holds through the shot (docs/faces.md: close-ups hold) */
+  faceShot(id: string, holdSec: number) {
+    return this.puppets.get(id)?.faceHold?.(holdSec) ?? false;
+  }
+  /**
+   * The director's group shots of a moment: `dugoutReaction` (the side that just scored, on its bench) and `moundHuddle` (the people on the mound).
+   * They frame heads at 3-4 % of the picture, under the faces' gate, and the dugout shot can come many seconds after the run: the faces in them
+   * are animated for the shot (a lower gate) and the moment is shown again (the bench cheers, the huddle talks), held through the shot.
+   */
+  faceGroupShot(kind: string, state: GameState, holdSec: number) {
+    const MOUND = { x: 0, z: 18.44 };
+    let members: PlayerSnap[] = [];
+    if (kind === 'dugoutReaction') {
+      const team = state.half === 'top' ? 0 : 1;
+      members = state.players.filter((p) => p.team === team && /^(bench|manager|pitchcoach|bullpen)/.test(p.role));
+      for (const p of members) this.puppets.get(p.id)?.faceAction?.(p, { id: p.id, reaction: 'joy', intensity: 0.9 });
+    } else if (kind === 'moundHuddle') {
+      members = state.players.filter((p) => p.team >= 0 && Math.hypot(p.pos.x - MOUND.x, p.pos.z - MOUND.z) < 6);
+      for (const p of members) {
+        const talker = p.role !== 'pitcher';
+        this.puppets.get(p.id)?.faceAction?.(p, talker ? { id: p.id, talk: holdSec * 0.6, reaction: 'concentration', intensity: 0.6 } : { id: p.id, reaction: 'concern', intensity: 0.6, talk: holdSec * 0.25 });
+      }
+    } else return 0;
+    for (const p of members) {
+      const pu = this.puppets.get(p.id);
+      pu?.faceHold?.(holdSec);
+      pu?.faceBoost?.(holdSec);
+    }
+    return members.length;
+  }
+  /** the face of a person now (probes) */
+  faceProbe(id: string) {
+    return this.puppets.get(id)?.faceProbe?.() ?? null;
+  }
+
   noteTag(fielderId: string, result: 'tag' | 'avoided' | 'attempt', simTime: number, runnerId?: string) {
     const prev = this.tags.get(fielderId);
     this.tags.set(fielderId, { result, until: simTime + 1.6, runner: runnerId ?? prev?.runner ?? null });
@@ -451,6 +498,7 @@ export class PlayerManager {
     this.penv.positions = this.positions;
     this.penv.anims = this.anims;
     this.penv.tagRunner = (id) => this.tags.get(id)?.runner ?? null;
+    this.penv.faceTension = (role) => tensionFor(role, state);
     this.penv.tagOutcome = (id) => {
       const t = this.tags.get(id);
       return t && t.until > state.time ? t.result : null;

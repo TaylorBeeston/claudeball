@@ -51,6 +51,8 @@ import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
+import { FACE_KEYS, FaceState, personalityFor } from './face/emotion';
+import type { FaceAction } from './face/reactions';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
 
 const LOOPING = new Set(['idle', 'run', 'trot', 'jog', 'run_sprint', 'run_turn', 'run_turn_sprint', 'walk', 'field_ready', 'field_ready_infield', 'field_ready_outfield', 'field_ready_hands_knees', 'celebrate', 'catcher_crouch', 'batting_stance', 'pitcher_rock', 'pitcher_set', 'ump_ready', 'ump_set_base', 'bench_sit', 'ondeck_ready', 'ondeck_stretch', 'coach_ready', 'coach_go_loop', 'ballkid_sit', 'catch_ready']);
@@ -73,6 +75,15 @@ proxyMaterial.name = 'shadow_proxy';
 /** parts the GTAO depth/normal prepass skips: details, cards and thin layers (the proxy stands in for none of them: they are simply not part of the occlusion) */
 const GBUF_SKIP = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_BeltBuckle|Gear_Number_|Gear_Glove.*Laces|Gear_EyeBlack|Gear_Wristband|Gear_Beard|Gear_Mustache|Gear_Eyebrows|Gear_Eyelashes|Gear_CapLogo|Gear_Spikes|Gear_Collar|Undershirt|Gear_Belt|Socks|Gear_Goatee|Gear_Hair|Face_Hair|Hair)/;
 /** puppet level of detail: parts dropped from tier 1 (small on screen) and from tier 2 (tiny), by mesh name; the rest always draws */
+/** the head's height as a fraction of the picture from which the face is animated (~55 px at 1080p; the onDeck B-roll frames a head at ~55 px) */
+const FACE_MIN = 0.05;
+/** in a director group shot of a moment (dugout reaction, mound huddle: heads at 3-4 % of the picture), for its length */
+const FACE_MIN_GROUP = 0.025;
+/** and from which the eyes get their glassy cornea shell (~60 px) */
+const CORNEA_MIN = 0.055;
+const CORNEA_ON = false;
+const LOOK_KEYS = ['eyes_look_left', 'eyes_look_right', 'eyes_look_up', 'eyes_look_down'] as const;
+const JAW = FACE_KEYS.indexOf('jaw_open');
 const LOD_TIER1 = /^(Eyes_Cornea|Gear_Eyebrows|Gear_Eyelashes|Gear_Buttons|Gear_Piping|Gear_BeltBuckle|Gear_Soles|Gear_Spikes|Gear_Wristband|Gear_EyeBlack|Gear_Beard_Stubble|Gear_Mustache|Gear_Glove.*Laces|Gear_CapLogo|Jersey_(BackName|FrontNumber|SleeveNumber)Decal)/;
 const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undershirt|Gear_Number_|Gear_Goatee|Gear_ArmSleeve)/;
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
@@ -1466,6 +1477,20 @@ export class GltfPuppet implements PuppetLike {
     r.updateMatrixWorld(true);
   }
   private offscreen = false;
+  private faceOn = false;
+  private headSphere = new Sphere(new Vector3(), 0.2);
+  /** the head's height as a fraction of the picture (0 when it is outside the picture); 1 without camera information */
+  private headInPicture(snap: PlayerSnap, env: PuppetEnv): number {
+    const cam = env.cameraPos;
+    if (!cam || !env.lodK) return 1;
+    const hy = snap.pos.y + 1.65 * this.bodyScale;
+    if (env.frustum) {
+      this.headSphere.center.set(snap.pos.x, hy, snap.pos.z);
+      if (!env.frustum.intersectsSphere(this.headSphere)) return 0;
+    }
+    const d = Math.max(0.3, Math.hypot(cam.x - snap.pos.x, cam.y - hy, cam.z - snap.pos.z));
+    return (0.25 * this.bodyScale * env.lodK) / d;
+  }
   private skipAcc = 0;
   private skipN = 0;
   private cullSphere = new Sphere(new Vector3(), 2.6);
@@ -1562,9 +1587,14 @@ export class GltfPuppet implements PuppetLike {
     const lod1 = this.offscreen || (AMBIENT_ROLES.has(snap.role) && !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) > LOD1_DISTANCE) || (this.lodTier >= 2 && !FLAGS.noskip && !puppetIsKey(snap, env));
     this.lod1 = lod1;
     this.updateLod(snap, env);
+    // the face (expressions, blinks, eye moves) and the eyes' glassy cornea (a draw call each) by how big the head is in the picture and whether it is
+    // in it, not by world distance: the pitcher's own close-up camera stands 12 m away (docs/faces.md section 6)
+    const head = this.headInPicture(snap, env);
+    this.faceBoostT = Math.max(0, this.faceBoostT - dt);
+    this.faceOn = (this.lodTier === 0 || this.faceBoostT > 0) && !lod1 && head >= (this.faceBoostT > 0 ? FACE_MIN_GROUP : FACE_MIN);
     if (this.cornea.length) {
-      const near = !!env.cameraPos && Math.hypot(env.cameraPos.x - snap.pos.x, env.cameraPos.z - snap.pos.z) < 12; // close-ups only: each shell is a draw call
-      const vis = shadingTier() === 'full' && !lod1 && near;
+      // off for now: on the stylized eye (bigger globe, flat dark iris, t-0025) the shell's sky reflection whited the whole eye into a pale disc
+      const vis = CORNEA_ON && shadingTier() === 'full' && this.faceOn && head >= CORNEA_MIN;
       for (const c of this.cornea) c.visible = vis;
     }
     const tMix = perf.t();
@@ -1692,83 +1722,94 @@ export class GltfPuppet implements PuppetLike {
     }
     this.updateHeldBall(snap, env, place, dt);
     this.updateHands(snap);
-    this.updateFace(snap, dt);
+    const tFace = perf.t();
+    this.updateFace(snap, dt, env);
+    if (perf.on) perf.sub('pup.face', tFace);
   }
 
   // ---- face ---------------------------------------------------------------------------------------------------------------
   private lookGoal: LookTarget | null = null;
   private eyeYaw = 0;
   private eyePitch = 0;
-  private face: { meshes: Mesh[]; blinkAt: number; blinkT: number; sacAt: number; sacYaw: number; sacPitch: number; base: Record<string, number>; cur: Record<string, number>; clock: number } | null = null;
+  /** the emotion model (face/emotion.ts) and, per face mesh, the morph index of each of its keys (-1: the mesh lacks it) */
+  private faceSt: FaceState | null = null;
+  private face: { meshes: Mesh[]; idx: Int16Array[]; look: Int16Array[] } | null = null;
+  private faceTalk = 0;
+  private faceTension = 0;
+  private faceState(snap: PlayerSnap): FaceState {
+    return (this.faceSt ??= new FaceState(snap.id, personalityFor(snap.id, snap.ratings, snap.role)));
+  }
+  /** a reaction (or talk, or mood) from the game's events (players.ts, face/reactions.ts); a calm person shows the calm variant */
+  faceAction(snap: PlayerSnap | null, a: FaceAction) {
+    if (!snap && !this.faceSt) return;
+    const st = snap ? this.faceState(snap) : this.faceSt!;
+    if (a.mood) st.moodShift(a.mood[0], a.mood[1]);
+    if (a.talk) this.faceTalk = Math.max(this.faceTalk, a.talk);
+    const r = a.reaction && a.calmAlt && st.pers.fiery < 0.4 ? a.calmAlt : a.reaction;
+    if (r) st.react(r, a.intensity ?? 1, a.delay ?? 0);
+  }
+  private faceBoostT = 0;
+  faceBoost(sec: number) {
+    this.faceBoostT = Math.max(this.faceBoostT, sec);
+  }
+  /** a close-up of this person: the reaction running (or just over) holds through the shot */
+  faceHold(sec: number) {
+    return this.faceSt?.holdFor(sec) ?? false;
+  }
+  /** the face now, for probes: reaction, mood and the non-zero keys */
+  faceProbe() {
+    const st = this.faceSt;
+    return st ? { on: this.faceOn, reaction: st.reaction, valence: +st.valence.toFixed(2), arousal: +st.arousal.toFixed(2), keys: st.weights() } : null;
+  }
   /**
-   * The face is alive (t-0014: "faces look weird, like uncanny valley": the expression morphs were never driven, so every face stared without blinking):
-   * blinks at natural random intervals (2.5-6 s, ~0.15 s each), the eyes lead the head to its look target with small saccades, a relaxed per-person
-   * baseline (a hint of a smile, brows not knitted), focus on the pitch (batter, pitcher, catcher), an effort face on swings / throws / slides, smiles
-   * celebrating. Only for close players (detail tier 0); the morphs are the files' MPFB expression keys (mouth_open kept <= 0.6).
+   * The face (docs/faces.md section 5): the emotion model's mood, reactions and life (blinks, saccades, chewing, talking) on the files' face keys, plus
+   * what the person is doing (focus on the pitch, an effort face, cheering) and the pressure of the moment. Only while the head is big enough in the
+   * picture and in it (`faceOn`); otherwise just the model's clocks run, so a reaction is where it should be when the camera cuts to the face.
    */
-  private updateFace(snap: PlayerSnap, dt: number) {
-    if (this.lodTier > 0) return;
+  private updateFace(snap: PlayerSnap, dt: number, env: PuppetEnv) {
+    const teeth = this.nodes.get('Gear_Teeth'), tongue = this.nodes.get('Gear_Tongue');
+    const st = this.faceState(snap);
+    this.faceTalk = Math.max(0, this.faceTalk - dt);
+    this.faceTension = env.faceTension?.(snap.role, snap.id) ?? 0;
+    if (!this.faceOn) {
+      st.tick(dt, this.faceTension);
+      if (teeth) teeth.visible = false;
+      if (tongue) tongue.visible = false;
+      return;
+    }
     if (!this.face) {
-      const meshes: Mesh[] = [];
+      const meshes: Mesh[] = [], idx: Int16Array[] = [], look: Int16Array[] = [];
       for (const m of this.meshes) {
         const d = (m as Mesh).morphTargetDictionary;
-        if (d && (d.eyes_blink !== undefined || d.eyes_look_left !== undefined || d.smile !== undefined)) meshes.push(m as Mesh);
+        if (!d || (d.blink_L === undefined && d.eyes_look_left === undefined && d.jaw_open === undefined)) continue;
+        meshes.push(m as Mesh);
+        idx.push(Int16Array.from(FACE_KEYS, (k) => d[k] ?? -1));
+        look.push(Int16Array.from(LOOK_KEYS, (k) => d[k] ?? -1));
       }
-      if (!meshes.length) return;
-      const h = hashString(snap.id + ':face');
-      const r = (k: number) => ((h >>> (k * 3)) % 997) / 997;
-      this.face = {
-        meshes, blinkAt: 0.5 + 3 * r(1), blinkT: -1, sacAt: 0, sacYaw: 0, sacPitch: 0, clock: 0,
-        base: { smile: 0.04 + 0.14 * r(2), brow_raise: 0.12 + 0.16 * r(3), brow_furrow: 0, mouth_open: 0.02 + 0.05 * r(4), mouth_pucker: 0 },
-        cur: { eyes_blink: 0, smile: 0, brow_raise: 0, brow_furrow: 0, mouth_open: 0, mouth_pucker: 0, eyes_look_left: 0, eyes_look_right: 0, eyes_look_up: 0, eyes_look_down: 0 },
-      };
+      this.face = { meshes, idx, look };
     }
-    const F = this.face;
-    F.clock += dt;
-    // blink: close 0.06 s, open 0.10 s; the next one 2.5-6 s later (sometimes a double blink)
-    if (F.blinkT < 0 && F.clock >= F.blinkAt) F.blinkT = 0;
-    let blink = 0;
-    if (F.blinkT >= 0) {
-      F.blinkT += dt;
-      blink = F.blinkT < 0.06 ? F.blinkT / 0.06 : Math.max(0, 1 - (F.blinkT - 0.06) / 0.1);
-      if (F.blinkT > 0.16) {
-        F.blinkT = -1;
-        const u = (Math.sin(F.clock * 12.9898 + hashString(snap.id)) * 43758.5453) % 1;
-        const v = Math.abs(u);
-        F.blinkAt = F.clock + (v < 0.12 ? 0.25 : 2.5 + 3.5 * v);
-      }
-    }
-    // micro-saccades: a small new fixation offset every 0.5-1.8 s
-    if (F.clock >= F.sacAt) {
-      const v = Math.abs((Math.sin(F.clock * 78.233 + 1.7) * 43758.5453) % 1), w = Math.abs((Math.sin(F.clock * 39.425 + 0.3) * 24634.6345) % 1);
-      F.sacYaw = (v - 0.5) * 0.09;
-      F.sacPitch = (w - 0.5) * 0.06;
-      F.sacAt = F.clock + 0.5 + 1.3 * w;
-    }
-    const EYE = (22 * Math.PI) / 180, EYE_V = (18 * Math.PI) / 180;
-    const ey = Math.max(-1, Math.min(1, (this.eyeYaw + F.sacYaw) / EYE)), ep = Math.max(-1, Math.min(1, (this.eyePitch + F.sacPitch) / EYE_V));
-    // the situation
     const a = snap.anim;
-    const want: Record<string, number> = { ...F.base, eyes_blink: blink, eyes_look_left: Math.max(0, ey), eyes_look_right: Math.max(0, -ey), eyes_look_down: Math.max(0, ep), eyes_look_up: Math.max(0, -ep) };
-    const focus = (snap.role === 'batter' && a === 'idle') || a === 'windup' || (snap.role === 'catcher' && a === 'idle') || a === 'catcher_signs';
-    if (focus) { want.brow_furrow = 0.22; want.brow_raise = 0.02; want.smile = 0; want.mouth_open = 0.02; }
-    if (a === 'swing' || a === 'pitch' || a === 'throw' || a.startsWith('slide') || a === 'catch_jump' || a === 'dive_back') { want.brow_furrow = 0.55; want.brow_raise = 0; want.mouth_open = 0.35; want.smile = 0.2; }
-    if (a === 'celebrate' || a === 'bench_cheer' || a === 'coach_go') { want.smile = 0.75; want.mouth_open = 0.45; want.brow_raise = 0.35; want.brow_furrow = 0; }
-    if (a.startsWith('mound_talk') || a === 'manager_signal') { want.mouth_open = 0.12 + 0.12 * Math.abs(Math.sin(F.clock * 9)); }
-    want.mouth_open = Math.min(0.6, want.mouth_open);
-    // ease toward it (blinks and eye moves are fast, expressions slower)
-    for (const k in want) {
-      const fast = k === 'eyes_blink' || k.startsWith('eyes_look');
-      const rate = fast ? 1 : 1 - Math.exp(-dt * 6);
-      F.cur[k] = (F.cur[k] ?? 0) + (want[k] - (F.cur[k] ?? 0)) * rate;
+    const w = st.step(dt, {
+      focus: (snap.role === 'batter' && a === 'idle') || a === 'windup' || (snap.role === 'catcher' && a === 'idle') || a === 'catcher_signs',
+      effort: a === 'swing' || a === 'pitch' || a === 'throw' || a.startsWith('slide') || a === 'catch_jump' || a === 'dive_back',
+      cheering: a === 'celebrate' || a === 'bench_cheer' || a === 'coach_go',
+      talking: this.faceTalk > 0 || a.startsWith('mound_talk') || a === 'manager_signal',
+      tension: this.faceTension,
+    });
+    // the eyes: what the head has not turned yet (they lead it) plus the saccade, kept inside 70 % of their range (no parked side-eye)
+    const EYE = (22 * Math.PI) / 180, EYE_V = (18 * Math.PI) / 180;
+    const ey = Math.max(-0.7, Math.min(0.7, (this.eyeYaw + st.sacYaw) / EYE)), ep = Math.max(-0.7, Math.min(0.7, (this.eyePitch + st.sacPitch) / EYE_V));
+    const lk = [Math.max(0, ey), Math.max(0, -ey), Math.max(0, -ep), Math.max(0, ep)];
+    const F = this.face;
+    for (let m = 0; m < F.meshes.length; m++) {
+      const inf = F.meshes[m].morphTargetInfluences!, ix = F.idx[m], il = F.look[m];
+      for (let k = 0; k < ix.length; k++) if (ix[k] >= 0) inf[ix[k]] = w[k];
+      for (let k = 0; k < il.length; k++) if (il[k] >= 0) inf[il[k]] = lk[k];
     }
-    for (const m of F.meshes) {
-      const d = m.morphTargetDictionary!, inf = m.morphTargetInfluences!;
-      for (const k in F.cur) {
-        const i = d[k];
-        if (i !== undefined) inf[i] = F.cur[k];
-      }
-    }
+    // teeth and tongue (two draw calls) only while the mouth is open far enough to show them
+    const jaw = w[JAW];
+    if (teeth) teeth.visible = jaw > 0.04;
+    if (tongue) tongue.visible = jaw > 0.04;
     // the cornea shells share the eyes' morphs
     for (const c of this.cornea) {
       const cm = c as Mesh, eyes = this.nodes.get('Eyes') as Mesh | undefined;

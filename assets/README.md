@@ -417,3 +417,23 @@ The baked numbers (`Gear_Number_Tens/Ones`, material `jersey_number`) stay in th
 - **Stadium** (`stadium.py`): `Canopy` (new node: roof cantilevered ~9 m over the upper deck where the 3-tier stands are, steel struts; the engine lets it cast shadows), light towers 56 m (lamp heads clear the roof) with tapered octagonal masts, catwalk + railing, braces and a lamp-head frame (same node names).
 - **KTX2** (`src/ktx_world.sh`, run after field.py / stadium.py instead of the optimize.sh WebP step for these files): field, stadium, ball and bats use Basis ETC1S like the players; GPU texture memory (estimate) 533 -> 344 MB on the high preset.
 - Building: `player_build.py` needs the git-ignored MPFB photos in `src/mpfb/tex/`; set `CB_ASSETS` to this checkout (common.py defaults to an old path); `blender -b --python` runs the whole build (~13 min). Contract check: `node tools/visual/glb-contract.mjs old.glb new.glb`.
+
+## Twelfth pass (t-0025): stylized faces, mouth interior, cap fit, batting stance
+- **Style** (`src/face_style.py`, design and evidence in `docs/faces.md`): one smooth MPFB reshaping of the shared head (bigger eyes with a relaxed
+  upper lid, simpler nose, fuller lips, smaller ears) applied in `player_mpfb.base()`; `src/mpfb/face_targets.npz` holds the MPFB units it uses (written
+  by `src/mpfb_face_extract.py`, needs MPFB; head vertices only, float16, 121 KB). Bundled parts fitted to the unstyled head follow (`style_follow`).
+- **Face keys**: the six MPFB expression keys (`eyes_blink`, `mouth_open`, `smile`, `brow_raise`, `brow_furrow`, `mouth_pucker`) are replaced by 20:
+  `blink_L/R`, `squint_L/R`, `wide_L/R`, `brow_up_L/R`, `brow_down_L/R`, `brow_inner_up_L/R`, `smile_L/R`, `jaw_open`, `frown`, `lip_press`, `sneer`,
+  `pucker`, `cheek_puff` (`_L` = the model's left). Followers carry only theirs (`FOLLOW`): brows, lashes, eye black, beards, teeth / tongue
+  (`jaw_open`). Head keys are each vertex's exact delta (the nearest-vertex field mixed the two lips and tore an open mouth into spikes).
+- **Mouth**: the MPFB mouth-interior atlas island is painted a dark matte cavity; a mouth bag (part of `Head`, no draw call) closes it; teeth are
+  opaque, upper row fixed, lower row on the jaw. `jaw_open` 1 = 75 % of MPFB's opening (it was 30 %).
+- **Skin / eyes / brows**: painted atlas (soft tone zones, warmth, lash line, brow shape), normal strength 0.15, the eye pockets' red tear ducts
+  repainted; eyes x1.12 with a flat dark-ringed iris (`players/textures/eyes_*.webp` regenerated); brow cards x1.6 tall and denser. The Head UVs are the
+  atlas UVs as they are (a 1 % rescale to the head's bounding box was left over).
+- **Cap**: 12 mm lower in front, flatter crown, bill 4 deg down; follows `jaw_square`. **Beards**: lighter strands, thinner edge (the engine feathers).
+- **Batting stance**: bat laid back ~36 deg, hands lower and in front, poles optimised with the forearm twist / wrist bend (`player_arms.STANCE`);
+  the bottom fist goes onto the bat the top hand holds (`GRIP_S`); the swing's right poles from launch on stay as recorded (`src/swing_frozen.json`,
+  the sim's CLIP_SWING / FINISH were measured on that bat path).
+- Headless quick look: `CB_FAST` + `CB_ONLY = ["player_base"]` (globals before exec'ing `player_build.py`) exports one file without clips in ~2 min;
+  `tools/faces/facelab.py` with `CAND=BUILD` renders it (faces x expressions x distances, day / night).

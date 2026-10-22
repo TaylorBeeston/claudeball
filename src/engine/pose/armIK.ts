@@ -120,6 +120,9 @@ export const ARM_LIMITS = {
    */
   supTop: 130,
   wrist: 72,
+  /** the elbow's (and knee's) flexion limit, deg: a target closer to the shoulder than the limb folds to is met at this bend, never past it
+   *  (limits.ts allows 155) */
+  flex: 154,
   /** the rest pose is this many degrees from neutral (limits.ts PRON_REST) */
   restPron: 20,
   /** how far the fist may roll about a round handle from the clip's grip, deg */
@@ -283,7 +286,9 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
     const d = len(D);
     if (d < 1e-6) break;
     const dir = [D[0] / d, D[1] / d, D[2] / d];
-    const dEff = Math.max(Math.abs(L1 - L2) + 1e-4, goal.soft === undefined ? softReach(d, L1 + L2) : softReach(d, L1 + L2, goal.soft));
+    // (never closer than the limb folds to at its flexion limit: a target nearer the shoulder bent the elbow past 155 deg)
+    const dFold = Math.sqrt(Math.max(0, L1 * L1 + L2 * L2 + 2 * L1 * L2 * Math.cos(ARM_LIMITS.flex * DEG)));
+    const dEff = Math.max(Math.abs(L1 - L2) + 1e-4, dFold, goal.soft === undefined ? softReach(d, L1 + L2) : softReach(d, L1 + L2, goal.soft));
     const a = (L1 * L1 - L2 * L2 + dEff * dEff) / (2 * dEff);
     const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
     // pole: the clip's elbow around the shoulder -> wrist line (keeps the clip's swivel), else away from the flexion side

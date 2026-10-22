@@ -33,6 +33,8 @@ def ik2(root, target, l1, l2, pole):
 # bent 150-175 deg in batting_stance / ondeck_swing / batter_step_out, glove meshes collapsing). Now the upper arm is rolled so the elbow's hinge axis is
 # the normal of the arm's plane, the forearm is that hinge rotation plus a pronation share (<= PRON_MAX) of the hand's remaining twist, and the hand keeps
 # exactly the world orientation it had (grips, ball, glove pocket and bat are where they were). Joint positions are unchanged.
+GRIP_S = 1 + (1.24 - 1)*(lambda u: u*u*(3 - 2*u))(.08/.09)                    # the hand mesh's scale at the fist (player_mpfb.HAND_S about the wrist; player_build places Bat_Grip with it):
+                                                                               # the fist centre is GRIP_S x (6 cm along the hand + 3 cm off the palm) from the wrist
 PRON_SHARE, PRON_MAX = .5, 90.0                                    # a big twist is split evenly between the elbow end and the wrist end of the forearm skin
 FRONT = Vector((0, -1, 0))
 def _hinge_basis(y, a):
@@ -88,7 +90,8 @@ def solve(spec):
     ny = P['neck_yaw'] if P['neck_yaw'] is not None else yaw + NECK_YAW_SHARE*(hy - yaw)   # neck turns only part of the way from the torso to the head (no candy-wrapper twist at the collar)
     place('Neck'); setb('Neck', Rz(ny) @ lean_dir(P['head_pitch']*.5), ny)
     place('Head'); setb('Head', Rz(hy) @ lean_dir(P['head_pitch']), hy)
-    for sd, sx in (("Left", 1), ("Right", -1)):
+    bat_shift = Vector()                                                           # the held bat's offset from the spec's (set by the right hand, which carries Bat_Grip)
+    for sd, sx in ((("Right", -1), ("Left", 1)) if P['bat'] else (("Left", 1), ("Right", -1))):
         k = sd[0].lower()
         for n in (sd+"Shoulder", sd+"Arm"):
             place(n)
@@ -97,7 +100,7 @@ def solve(spec):
         hd_dir = P[k+'hand_dir']; hd_tw = P[k+'hand_twist']; wr_target = Vector(P[k+'hand'])
         if P['bat']:
             knob, B = Vector(P['bat'][0]), Vector(P['bat'][1]).normalized()
-            grip = knob + B*(.035 if sd == "Left" else .135)
+            grip = knob + B*(.035 if sd == "Left" else .135) + (bat_shift if sd == "Left" else Vector())
             ref = Vector((1, 0, 0)) if abs(B.dot(Vector((1, 0, 0)))) < .9 else Vector((0, 0, -1))
             # the hand wraps the handle: its axis (wrist -> knuckles) is perpendicular to the bat and as close as it can be to the arm's own line
             # (shoulder -> grip); a fixed ref x bat direction pointed the hand back along the forearm for some bat angles (wrist bent 150-170 deg)
@@ -109,15 +112,17 @@ def solve(spec):
                 tgt = (B - dd*B.dot(dd)).normalized()*(1 if sd == "Right" else -1); ya_p = (ya - dd*ya.dot(dd)).normalized()
                 ang = math.atan2(dd.dot(ya_p.cross(tgt)), ya_p.dot(tgt)); tw_ = math.degrees(ang) + (P['bat'][2] if len(P['bat']) > 2 else 0)
                 qt = Quaternion(dd, math.radians(tw_)) @ q; N = qt @ xr
-                return dd, tw_, grip - dd*.06 - N*.03
-            dd, hd_tw, wr_target = grip_frame(arm_line)
+                return dd, tw_, grip - (dd*.06 + N*.03)*(GRIP_S if sd == "Left" else 1.0), N
+            dd, hd_tw, wr_target, _N = grip_frame(arm_line)
             # second pass: the forearm (elbow -> wrist) of that solution is the line the hand should continue
             _d1, _d2 = ik2(head[sd+"Arm"], wr_target, LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
-            dd, hd_tw, wr_target = grip_frame(_d2)
+            dd, hd_tw, wr_target, _N = grip_frame(_d2)
             hd_dir = dd
         if P[k+'hand_rel'] is not None: wr_target = head[sd+"Arm"] + Vector(P[k+'hand_rel'])
         wr_target = clear_of_head(wr_target, head['Head'], delta['Head'])
         d1, d2 = ik2(head[sd+"Arm"], wr_target, LEN[sd+"Arm"], LEN[sd+"ForeArm"], Vector(P[k+'pole']))
+        if P['bat'] and sd == "Right":                                               # Bat_Grip sits at the real (scaled) fist: the bottom fist goes onto that bat
+            bat_shift = head[sd+"Arm"] + d1*LEN[sd+"Arm"] + d2*LEN[sd+"ForeArm"] + (dd*.06 + _N*.03)*GRIP_S - grip
         dd_ = Vector(hd_dir).normalized() if hd_dir is not None else d2
         if P[k+'hand_face'] is not None:                                            # twist about the hand axis so that the palm (pocket) faces the requested direction
             xr_, yr_, zr_ = hand_frame(sd); pn = REST_DIR[sd+"Hand"].rotation_difference(dd_) @ xr_; tg = Vector(P[k+'hand_face']); tg = tg - dd_*tg.dot(dd_)

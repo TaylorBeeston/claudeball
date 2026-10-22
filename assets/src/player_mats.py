@@ -79,6 +79,36 @@ def build_skin_maps(size=2048, src="skin_middleage_caucasian_male.jpg", age=0.0,
     shadow = np.clip(g(z, 1.62, .03)*(ax < .07)*(y < -.1) + g(z, 1.668, .012)*(ax < .035)*(y < -.15)*.7 + .6*(g(z, 1.60, .025)*(ax < .075)), 0, 1)*head
     alb *= (1 - .07*shadow[..., None])*np.array([1, 1, 1.02], np.float32)
     eyebag = head*np.exp(-((ax - .032)/.022)**2)*g(z, 1.715, .008)*(y < -.1); alb *= (1 - .05*eyebag[..., None])*np.array([1, .99, 1.0], np.float32)
+    # --- stylized (face_style, docs/faces.md): the photo's pores and blotches softened into painted tone zones; painted warmth, lash line and brows go into
+    # the atlas (they survive LOD tier 1, which hides the brow / lash cards); MPFB's mouth-interior island painted a dark, wet cavity
+    from scipy.ndimage import gaussian_filter
+    def _cblur(a, sg):
+        w_ = gaussian_filter(cov.astype(np.float32), sg) + 1e-6; return np.stack([gaussian_filter(a[..., c]*cov, sg) for c in range(3)], -1)/w_[..., None]
+    alb = np.where(cov[..., None], .5*_cblur(alb, 16*size/2048) + .5*_cblur(alb, 60*size/2048), alb).astype(np.float32)
+    def _blob(c, r): return np.exp(-(((pos - np.array(c, np.float32))/np.array(r, np.float32))**2).sum(-1))
+    tint = np.ones_like(alb)
+    def _tint(w, rgb): tint[...] += w[..., None]*(np.array(rgb, np.float32) - 1)
+    for sx in (1, -1):
+        _tint(.55*_blob((sx*.045, -.125, 1.69), (.022, .02, .02)), (1.0, .82, .78))                   # cheeks
+        _tint(.5*_blob((sx*.088, -.06, 1.725), (.012, .03, .03)), (1.0, .8, .76))                      # ears
+        _tint(.7*_blob((sx*.032, -.135, 1.744), (.016, .02, .006)), (.66, .60, .57))                   # upper lid / lash line
+        bx = sx*x; zb = 1.7665 + .004*(1 - ((bx - .036)/.026)**2) - .006*np.clip((bx - .05)/.015, 0, 1)    # brow line: up over the eye, down at the tail
+        brow = np.exp(-((z - zb)/.0042)**2)*np.clip((bx - .010)/.006, 0, 1)*np.clip((.066 - bx)/.008, 0, 1)*(y < -.09)
+        _tint(.45*brow, (.55, .5, .48))
+    _tint(.5*_blob((0, -.185, 1.687), (.012, .012, .01)), (1.0, .84, .8))                             # nose tip
+    _tint(.7*_blob((0, -.152, 1.6505), (.02, .02, .009)), (.86, .64, .62))                            # lips
+    alb = np.clip(alb*tint, 0, 1)
+    from PIL import ImageDraw
+    _mi = Image.new("L", (size, size)); _dr = ImageDraw.Draw(_mi); _b = base(); _q, _nq, _off = _faces()
+    for fi in mouth_interior_faces(): _dr.polygon([(float(u*size), float((1 - v)*size)) for u, v in _b["uv"][_off[fi]:_off[fi] + _nq[fi]]], fill=255)
+    mouth_in = gaussian_filter(np.asarray(_mi, np.float32)/255.0, 1.5)
+    _ep = Image.new("L", (size, size)); _dr = ImageDraw.Draw(_ep)                                      # the eye pockets' lining (the photo's red tear ducts read as red eyes): plain skin
+    for fi in range(len(_q)):
+        _uv = _b["uv"][_off[fi]:_off[fi] + _nq[fi]]; _c = _b["P"][_q[fi, :_nq[fi]]].mean(0); _u = _uv.mean(0)
+        if _u[0] < .17 and .5 < _u[1] < .7 and 1.70 < _c[2] < 1.77: _dr.polygon([(float(u*size), float((1 - v)*size)) for u, v in _uv], fill=255)
+    eye_in = gaussian_filter(np.asarray(_ep, np.float32)/255.0, 1.5)[..., None]
+    alb = alb*(1 - eye_in) + np.median(alb[cov & head], axis=0)*np.array([.97, .93, .92], np.float32)*eye_in
+    alb = alb*(1 - mouth_in[..., None]) + np.array([.08, .03, .035], np.float32)*mouth_in[..., None]
     # --- height field (mm-ish units): pores, micro relief, wrinkles
     n_pore = noise_tex(size, [512, 1024], seed); n_micro = noise_tex(size, [96, 192, 384], seed + 1); n_big = noise_tex(size, [24, 48], seed + 2)
     poredens = np.where(head, .9, .5)*(1 + .5*g(ax, .0, .03)*g(z, 1.69, .03)) ; pore = (np.clip(n_pore - .52, 0, 1))**1.3*2.4*poredens
@@ -99,6 +129,7 @@ def build_skin_maps(size=2048, src="skin_middleage_caucasian_male.jpg", age=0.0,
     cav = np.clip(-cu*60, 0, 1); ao = np.clip(1 - .55*cav - .20*g(z, 1.717, .014)*(ax < .06)*head*(y < -.1), 0, 1)
     tz = head*(g(ax, 0, .028)*g(z, 1.73, .06) + .6*g(ax, 0, .03)*g(z, 1.675, .02)); lipm = np.clip((a0[..., 0] - a0[..., 1]*1.35 - .02)*9, 0, 1)*mouthreg
     rough = np.clip(.56 - .2*tz - .17*lipm + .06*g(ax, .07, .03)*head + .02*(n_micro - .5)*4 + .04*age, .2, .9)
+    ao = ao*(1 - .5*mouth_in); rough = rough*(1 - mouth_in) + .9*mouth_in                                                                   # the mouth: shadowed, matte (a wet one mirrored the sky in streaks)
     orm_ = np.stack([ao, rough, np.zeros_like(ao)], -1).astype(np.float32); orm_ = _dilate(orm_, cov)
     sss = np.stack([np.clip(th/.04, 0, 1), np.clip(.5 + cu*40, 0, 1), np.zeros_like(th)], -1).astype(np.float32); sss = _dilate(sss, cov)
     return dict(albedo=alb[::-1].copy(), normal=nmap, orm=orm_[::-1].copy(), sss=sss[::-1].copy(), cov=cov)
@@ -134,8 +165,8 @@ I["face_a"], I["face_n"], I["face_o"] = I["skin_a"], I["skin_n"], I["skin_o"]; I
 os.makedirs(ROOT + "/players/textures", exist_ok=True)
 for _ec in EYE_COLORS: Image.fromarray((eye_equirect(_ec)*255).astype(np.uint8)).save(ROOT + f"/players/textures/eyes_{_ec}.webp", quality=92)       # equirect iris textures (v = 1 at the gaze pole is the TOP row of the file) for the engine to swap
 MATS = {
- "skin": pbr("skin", (.80, .50, .32, 1), I["skin_a"], I["skin_n"], I["skin_o"], nstrength=.5),
- "face": pbr("face", (.80, .50, .32, 1), I["face_a"], I["face_n"], I["face_o"], nstrength=.45),
+ "skin": pbr("skin", (.80, .50, .32, 1), I["skin_a"], I["skin_n"], I["skin_o"], nstrength=.15),                     # (stylized: broad forms, no pores)
+ "face": pbr("face", (.80, .50, .32, 1), I["face_a"], I["face_n"], I["face_o"], nstrength=.15),
  "eye": pbr("eye", (1, 1, 1, 1), I["eye_a"], None, None, rough=.08),
  "hair": pbr("hair", (.09, .06, .035, 1), None, I["leather_n"], None, rough=.6, nstrength=.25),
  "uniform_jersey": pbr("uniform_jersey", (.8, .8, .8, 1), I["jersey_a"], I["jersey_n"], I["jersey_o"], nstrength=2.0),
@@ -182,8 +213,8 @@ def _alpha_mat(name, color, tex, rough=.6, blend=False, lum_norm=False, nrm=None
     else: nt.links.new(t.outputs["Alpha"], b.inputs["Alpha"])
     m.surface_render_method = 'BLENDED' if blend else 'DITHERED'; m.use_backface_culling = False
     return m
-def card_image(name, fname, lum=True, size=1024):
-    im = Image.open(os.path.join(MP, "tex", fname)).convert("RGBA"); a = np.asarray(im, np.float32)/255.0
+def card_image(name, fname, lum=True, size=1024, apow=1.0):
+    im = Image.open(os.path.join(MP, "tex", fname)).convert("RGBA"); a = np.asarray(im, np.float32)/255.0; a[..., 3] = a[..., 3]**apow     # apow < 1: denser cards
     if lum:
         l = (a[..., :3]*np.array([.3, .55, .15], np.float32)).sum(2); m = a[..., 3] > .5; ref = np.percentile(l[m], 85) if m.any() else 1.0
         a[..., :3] = np.clip((l/ref)[..., None]*.92, 0, 1)
@@ -198,13 +229,15 @@ def _beard_maps(n=512, seed=17):
     """Opaque fibre texture for beards / mustache / goatee (the hair-card textures are alpha cards: on a head shell they cut the beard into shards): per-column fibres with slow vertical shading; luminance-normalised so baseColorFactor is the hair colour."""
     rng = np.random.default_rng(seed); col = rng.random(n).astype(np.float32); col = (col + np.roll(col, 1)*.5 + np.roll(col, -1)*.5)/2
     slow = noise_tex(n, [4, 16], seed)[:n, :n]; fine = rng.random((n, n)).astype(np.float32)*.25
-    h = np.clip(.55*col[None, :] + .30*slow + fine, 0, 1); lum = np.clip(.78 + .30*(h - .5), 0, 1)
+    h = np.clip(.55*col[None, :] + .30*slow + fine, 0, 1); lum = np.clip(.92 + .60*(h - .5), .45, 1)          # strands with light tips (the darker, flatter fibre read as a rubber mask)
     return np.repeat(lum[..., None], 3, 2).astype(np.float32), h
 _bl, _bh = _beard_maps()
-MATS["hair_beard"] = pbr("hair_beard", (.09, .06, .035, 1), make_image("beard_albedo", _bl[::-1].copy(), 'sRGB', None), make_image("beard_normal", height_to_normal(_bh, 3.0)[::-1].copy(), 'Non-Color', None), None, rough=.55, nstrength=.9)
-MATS["eyebrow"] = _alpha_mat("eyebrow", (.07, .045, .03, 1), card_image("eyebrow_a", "eyebrow004.webp"), .6, blend=True)
-MATS["eyelash"] = _alpha_mat("eyelash", (.03, .02, .015, 1), card_image("eyelash_a", "eyelashes02.webp"), .6, clip=True)
+MATS["hair_beard"] = pbr("hair_beard", (.09, .06, .035, 1), make_image("beard_albedo", _bl[::-1].copy(), 'sRGB', None), make_image("beard_normal", height_to_normal(_bh, 4.0)[::-1].copy(), 'Non-Color', None), None, rough=.68, nstrength=1.2)
+MATS["eyebrow"] = _alpha_mat("eyebrow", (.05, .032, .022, 1), card_image("eyebrow_a", "eyebrow004.webp", apow=.39), .6, blend=True)       # bolder brows / a lash line that reads (docs/faces.md)
+MATS["eyelash"] = _alpha_mat("eyelash", (.02, .014, .01, 1), card_image("eyelash_a", "eyelashes02.webp"), .6, clip=True)
 MATS["teeth"] = _alpha_mat("teeth", (1, 1, 1, 1), card_image("teeth_a", "teeth.webp", lum=False), .3, clip=True)
+for _l in list(MATS["teeth"].node_tree.links):                                                   # opaque: every tooth is a closed little mesh, and the texture's cutoff sawed them into spikes
+    if _l.to_socket.name == "Alpha": MATS["teeth"].node_tree.links.remove(_l)
 MATS["tongue"] = _alpha_mat("tongue", (1, 1, 1, 1), card_image("tongue_a", "tongue01_diffuse.webp", lum=False), .35)
 _cm = bpy.data.materials.new("cornea"); _cm.use_nodes = True; _cb = _cm.node_tree.nodes["Principled BSDF"]; _cb.inputs["Alpha"].default_value = .10; _cb.inputs["Roughness"].default_value = .03; _cm.surface_render_method = 'BLENDED'
 try: _cb.inputs["IOR"].default_value = 1.38

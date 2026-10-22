@@ -39,6 +39,23 @@ describe('analytic arm IK', () => {
     expect(softReach(1.2, 1)).toBeLessThan(1);
     expect(softReach(0.99, 1)).toBeGreaterThan(softReach(0.97, 1));
   });
+  it('never bends the elbow past its flexion limit for a target closer to the shoulder than the arm folds to', () => {
+    const L = sampleClip(rig.clips.get('batting_stance')!, 0.5, rig.rest);
+    const w = fk(L, undefined, R.rest);
+    for (const side of ['Left', 'Right'] as const) {
+      const S = sl(w.wp, B[`${side}Arm`], 3);
+      const fist = [side === 'Right' ? 0.024 : -0.024, 0.074, -0.028];
+      // targets 2-10 cm from the shoulder joint, in front of and across the chest
+      for (const off of [[0, 0, 0.02], [0, -0.05, 0.08], [side === 'Left' ? -0.06 : 0.06, 0, 0.05], [0, 0.03, 0.1]]) {
+        const L2 = { lq: L.lq.slice(), lp: L.lp.slice(), base: L.base.slice() };
+        const out = solveInto(L2, side, [S[0] + off[0], S[1] + off[1], S[2] + off[2]], fist);
+        const m = measureJoints(fk(L2, undefined, R.rest), R);
+        expect(m[`elbow${side[0]}.flex`]).toBeLessThanOrEqual(ARM_LIMITS.flex + 0.5);
+        expect(Math.abs(m[`elbow${side[0]}.off`])).toBeLessThan(0.5);
+        expect(out.miss).toBeGreaterThan(0);
+      }
+    }
+  });
   for (const side of ['Left', 'Right'] as const) {
     it(`${side}: puts the fist on a reachable target, bends only in the hinge plane, keeps the elbow in range`, () => {
       const L = sampleClip(rig.clips.get('batting_stance')!, 0.5, rig.rest);
@@ -55,7 +72,12 @@ describe('analytic arm IK', () => {
         const reach = Math.hypot(E[0] - S[0], E[1] - S[1], E[2] - S[2]) + Math.hypot(hp[0] - E[0], hp[1] - E[1], hp[2] - E[2]);
         // (the wrist sits a fist's length, ~8 cm, behind the target: count it)
         const near = Math.hypot(target[0] - S[0], target[1] - S[1], target[2] - S[2]) + Math.hypot(fist[0], fist[1], fist[2]) > 0.9 * reach;
-        expect(out.miss).toBeLessThan(near ? 0.12 : 0.005);
+        // and the other end: a target closer to the shoulder than the arm folds to at the elbow's limit is met at that bend, short of it (the t-0025
+        // stance puts the left-hand target [0.2, 0.1, -0.1] 12 cm from the shoulder); the elbow checks below still hold for it
+        const l1 = Math.hypot(E[0] - S[0], E[1] - S[1], E[2] - S[2]), l2 = Math.hypot(hp[0] - E[0], hp[1] - E[1], hp[2] - E[2]);
+        const folded = Math.sqrt(l1 * l1 + l2 * l2 + 2 * l1 * l2 * Math.cos((ARM_LIMITS.flex * Math.PI) / 180));
+        const close = Math.hypot(target[0] - S[0], target[1] - S[1], target[2] - S[2]) - Math.hypot(fist[0], fist[1], fist[2]) < folded;
+        expect(out.miss).toBeLessThan(near ? 0.12 : close ? 0.2 : 0.005);
         const w2 = fk(L2, undefined, R.rest);
         const m = measureJoints(w2, R);
         const s = side[0];
@@ -65,7 +87,7 @@ describe('analytic arm IK', () => {
         // the fist really is there (forward kinematics of the written locals)
         const qh = sl(w2.wq, B[`${side}Hand`], 4), hw = sl(w2.wp, B[`${side}Hand`], 3);
         const fo = qrot(qh, fist[0], fist[1], fist[2]) as number[];
-        expect(Math.hypot(hw[0] + fo[0] - target[0], hw[1] + fo[1] - target[1], hw[2] + fo[2] - target[2])).toBeLessThan(near ? 0.12 : 0.005);
+        expect(Math.hypot(hw[0] + fo[0] - target[0], hw[1] + fo[1] - target[1], hw[2] + fo[2] - target[2])).toBeLessThan(near ? 0.12 : close ? 0.2 : 0.005);
       }
     });
     it(`${side}: turns the fist's grip line onto a bat axis, sharing the twist between forearm and hand`, () => {

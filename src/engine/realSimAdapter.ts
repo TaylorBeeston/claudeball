@@ -248,6 +248,19 @@ export class RealSimAdapter implements GameLike {
       case 'walk':
         this.emit({ type: 'play', text: `${this.who(e.batterId)} draws a walk.` });
         break;
+      // (for the faces: who reacts to what, src/engine/face/reactions.ts)
+      case 'plateAppearanceEnd':
+        this.emit({ type: 'pa_end', batterId: String(e.batterId), result: String(e.result) });
+        break;
+      case 'error':
+        this.emit({ type: 'error', fielderId: String(e.fielderId), kind: String(e.kind) });
+        break;
+      case 'hitByPitch':
+        this.emit({ type: 'hbp', batterId: String(e.batterId) });
+        break;
+      case 'substitution':
+        this.emit({ type: 'substitution', team: e.team === 'home' ? 1 : 0, inId: String(e.inId), outId: String(e.outId), reason: String(e.reason) });
+        break;
       case 'call': {
         const kind = (e.call as { kind: string }).kind;
         if (kind === 'ball') this.emit({ type: 'ball' });

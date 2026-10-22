@@ -6,8 +6,9 @@ from mathutils import Matrix
 from mathutils import Vector
 from mathutils.kdtree import KDTree
 MP = os.path.join(globals().get("CB_SRC") or os.path.join(os.environ.get("CB_ASSETS", "."), "src"), "mpfb")
+exec(open(os.path.join(os.path.dirname(MP), "face_style.py")).read())     # FACE_STYLE, FACE_KEYS, EXPR_KEYS, FOLLOW, EYE_S, IRIS (docs/faces.md)
 _B = None
-MOUTH_OPEN_SCALE = .3; FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
+FOOT_K = .89; FOOT_ANK = .0844; FOOT_LIFT = FOOT_ANK*(1 - FOOT_K)
 HAND_S = 1.24                                                      # hands + fingers scaled about the wrist: the MPFB fit made them ~25 % too small (wrist to middle fingertip 15 cm instead of ~18-19 cm for a 1.85 m man)
 def hand_scale_map(P, side, S=None):
     """Scale of hand + fingers about the wrist joint, blended in from 2 cm before the wrist to 7 cm beyond it (the forearm is unchanged). Same map is used for the hand mesh, the finger chains and the gloves."""
@@ -25,8 +26,57 @@ def base():
             P = _hand_map(P, sd); _B["CH_" + sd] = _hand_map(np.asarray(_B["CH_" + sd], float).reshape(-1, 3), sd).reshape(np.asarray(_B["CH_" + sd]).shape)
         _B["P"] = P
         for sd in ("Left", "Right"): _B["CH_" + sd] = _fix_knuckles(P, _B["FW_" + sd], _B["CH_" + sd])
-        _B["D_mouth_open"] = _B["D_mouth_open"]*MOUTH_OPEN_SCALE                                         # the MPFB mouth interior (stretched inner-lip faces) turns into jagged spikes beyond ~30 % of the original opening: weight 1 = that usable opening
+        _face_style(_B)
     return _B
+def _face_units():
+    """The MPFB units of face_style.py (mpfb/face_targets.npz: head vertices only, float16) as full-length deltas."""
+    f = np.load(os.path.join(MP, "face_targets.npz")); idx = f["idx"]; n = len(_B["P"]); out = {}
+    for u in FACE_UNITS:
+        d = np.zeros((n, 3)); d[idx] = f[u].astype(np.float64); out[u] = d
+    return out
+def _face_style(b):
+    """The stylized head: FACE_STYLE summed into one delta, faded out at the neck seam like the head keys, and added to P (every part is built on the
+    styled head; P0 keeps the unstyled MPFB positions for the bundled parts fitted to it: hair cards, brows, lashes, teeth, tongue). The expression keys
+    become D_<key> deltas like the build keys (head_morph evaluates them on any part near the head)."""
+    U = _face_units(); P0 = b["P"].copy(); b["P0"] = P0
+    ring = P0[np.abs(P0[:, 2] - NECK_CUT) < .006]; c = ring[:, :2].mean(0); r = np.hypot(P0[:, 0] - c[0], P0[:, 1] - c[1])
+    sm = lambda a, b_, x: (lambda t: t*t*(3 - 2*t))(np.clip((x - a)/(b_ - a), 0, 1))
+    fade = 1 - (1 - sm(1.594, 1.625, P0[:, 2]))*(1 - sm(.095, .11, r))                        # = _seam_fade (which needs base())
+    D = sum(U[u]*w for u, w in FACE_STYLE.items())*fade[:, None]; b["D_style"] = D; b["P"] = P0 + D
+    # the inner-lip ring: MPFB's mouth units move neighbouring vertices there by very different amounts, and an open jaw tore it into spikes; the deltas
+    # are smoothed over the mesh there (the outer, visible lip surface keeps its own)
+    x_, y_, z_ = P0[:, 0], P0[:, 1], P0[:, 2]
+    inner = (np.abs(x_) < .036) & (z_ > 1.622) & (z_ < 1.678) & (y_ > -.153)
+    q, nq = b["quads"], b["nq"]; nb = [[] for _ in range(len(P0))]
+    for i in range(len(q)):
+        vs = q[i, :nq[i]]
+        for j in range(nq[i]): nb[vs[j]] += [vs[j - 1], vs[(j + 1) % nq[i]]]
+    ii = np.where(inner)[0]; nbs = [np.array(sorted(set(nb[i]))) for i in ii]
+    def smooth_inner(d, it=12):
+        d = d.copy()
+        for _ in range(it): d[ii] = .5*d[ii] + .5*np.array([d[n].mean(0) for n in nbs])
+        return d
+    for k, (units, amp, side) in FACE_KEYS.items():
+        d = sum(U[u]*w for u, w in units)*amp
+        if side: m = sm(-.01, .01, P0[:, 0]); d = d*(m if side == "L" else 1 - m)[:, None]   # *_L = +X, the model's left
+        b["D_" + k] = smooth_inner(d) if np.abs(d[ii]).max() > 1e-5 else d
+    near = np.linalg.norm(P0 - np.array([0, -.150, 1.652]), axis=1) < .012
+    b["STOMION_Z"] = 1.652 + float(D[near, 2].mean())                                     # the lips moved up with the style (teeth rows split here)
+_SFIELD = {}
+def style_follow(obj):
+    """Move a bundled part fitted to the unstyled MPFB head (hair cards, brows, lashes, teeth, tongue) onto the styled head: D_style through the same
+    4-nearest field as head_morph, built on the unstyled positions."""
+    b = base()
+    if "kd" not in _SFIELD:
+        fc = np.array([b["P0"][b["quads"][i, :b["nq"][i]]].mean(0) for i in range(len(b["quads"]))])
+        hv = np.unique(np.concatenate([b["quads"][i, :b["nq"][i]] for i in np.where(fc[:, 2] >= NECK_CUT - .03)[0]])); kd = KDTree(len(hv))
+        for j, v in enumerate(hv): kd.insert(Vector(b["P0"][v]), j)
+        kd.balance(); _SFIELD.update(kd=kd, hv=hv)
+    me = obj.data; P = np.empty(len(me.vertices)*3); me.vertices.foreach_get("co", P); P = P.reshape(-1, 3); out = P.copy()
+    for i, p in enumerate(P):
+        hits = _SFIELD["kd"].find_n(Vector(p), 4); w = np.array([1.0/(h[2]*h[2] + 1e-6) for h in hits]); w = w/w.sum()*math.exp(-(max(0.0, hits[0][2] - .008)/.06)**2)
+        out[i] += sum(b["D_style"][_SFIELD["hv"][h[1]]]*wk for h, wk in zip(hits, w))
+    me.vertices.foreach_set("co", out.ravel()); me.update()
 def _fix_knuckles(P, FW, CH):
     """The extracted chains' first joint (the knuckle, MCP) of the index, middle and ring fingers lay 8-9 cm off to the thumb side, outside the hand, so every
     curled variant (fist, claw, fingers_n) swung those fingers about a point in the air ("the catcher's fingers are insane"). The knuckle is re-derived from the
@@ -112,7 +162,7 @@ def _neigh(P):
         dmin = hits[0][2]
         w[i] = w[i]/w[i].sum()*math.exp(-(max(0.0, dmin - .008)/.06)**2)
     c[key] = (idx, w); return idx, w
-HEAD_KEYS = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large", "brow_heavy", "chin_strong", "cheeks_full", "nose_narrow", "eyes_deep", "eyes_blink", "mouth_open", "smile", "brow_raise", "brow_furrow", "mouth_pucker")
+HEAD_KEYS = ("head_narrow", "head_wide", "jaw_square", "nose_large", "ears_large", "brow_heavy", "chin_strong", "cheeks_full", "nose_narrow", "eyes_deep")      # build keys; the expression keys are EXPR_KEYS
 def _seam_fade(P):
     """0 on the neck at the Head / Body_Skin cut (seam vertices z 1.576-1.593, up to 8.3 cm from the neck axis), 1 from 3 cm above it and away
     from the neck (chin, jaw): Body_Skin carries no head keys, so a head morph that moved the cut ring opened cracks at the seam."""
@@ -123,15 +173,66 @@ def _seam_fade(P):
     return 1 - (1 - sm(1.594, 1.625, z))*(1 - sm(.095, .11, r))
 def head_morph(P, kind):
     b = base(); idx, w = _neigh(P); D = b["D_" + kind]; return P + (D[idx]*w[:, :, None]).sum(1)*_seam_fade(P)[:, None]
-def teeth_morph(P, kind, tongue=False):
-    """Morph for teeth / tongue: the nearest-surface field tears the tooth rows apart when the mouth opens (spikes), so `mouth_open` moves the upper teeth with the upper lip and the lower teeth (and tongue) rigidly with the lower lip; smile / pucker leave them alone; the head-shape keys use the normal field."""
-    if kind in ("smile", "mouth_pucker"): return P.copy()
-    if kind != "mouth_open": return head_morph(P, kind)
-    b = base(); BP = b["P"]; D = b["D_mouth_open"]; x = np.abs(BP[:, 0]) < .02
-    up = D[x & (BP[:, 2] > 1.655) & (BP[:, 2] < 1.675) & (BP[:, 1] < -.14)].mean(0); lo = D[x & (BP[:, 2] > 1.635) & (BP[:, 2] < 1.652) & (BP[:, 1] < -.14)].mean(0)
-    out = P.copy(); low = P[:, 2] < 1.656
-    out[low] += lo*(.75 if tongue else 1.0); out[~low] += up
+def teeth_split(P):
+    """The plane between the upper and lower teeth rows (tilted with the jaw: 1.6585 at the incisors, 1.666 at the molars, plus the style's lift):
+    above = upper row (rides with the upper lip), below = lower row."""
+    return base()["STOMION_Z"] + .0065 + .19*(np.asarray(P)[:, 1] + .15)
+def teeth_lower_mask(obj):
+    """Per vertex of the teeth mesh: True for the lower row. Each tooth (a separate piece) goes whole by its centre, the gums piece per vertex; a flat
+    height split cut through the overlapping rows and stretched every tooth into a fang when the jaw opened."""
+    me = obj.data; P = np.array([v.co[:] for v in me.vertices]); par = list(range(len(P)))
+    def f(a):
+        while par[a] != a: par[a] = par[par[a]]; a = par[a]
+        return a
+    for e in me.edges: par[f(e.vertices[0])] = f(e.vertices[1])
+    roots = np.array([f(i) for i in range(len(P))]); low = P[:, 2] < teeth_split(P)
+    for r in np.unique(roots):
+        m = roots == r
+        if m.sum() < 200: low[m] = P[m, 2].mean() < teeth_split(P[m].mean(0)[None])[0]
+    return low
+def teeth_morph(P, kind, tongue=False, low=None):
+    """Morph for teeth / tongue (and the mouth bag): the nearest-surface field tears the tooth rows apart when the mouth opens (spikes), so `jaw_open` moves the
+    upper teeth with the upper lip and the lower teeth (and tongue) rigidly with the lower lip; the other expressions leave them alone; the head-shape keys use
+    the normal field."""
+    if kind in EXPR_KEYS and kind != "jaw_open": return P.copy()
+    if kind != "jaw_open": return head_morph(P, kind)
+    b = base(); BP = b["P"]; D = b["D_jaw_open"]; x = np.abs(BP[:, 0]) < .02; zs = b["STOMION_Z"]
+    lo = D[x & (BP[:, 2] > zs - .017) & (BP[:, 2] < zs) & (BP[:, 1] < -.14)].mean(0)
+    out = P.copy(); low = (P[:, 2] < teeth_split(P)) if low is None else low
+    out[low] += lo*(.75 if tongue else 1.0)                                    # (the upper row stays with the skull: only the jaw moves)
     return out
+
+# ---------------------------------------------------------------- mouth interior: MPFB's own inner-mouth faces (a separate island of the skin atlas, painted dark
+# in build_skin_maps) and a closed mouth bag behind them, part of Head (no new draw call), its UVs on that dark island
+def mouth_interior_faces():
+    """Base face indices of the MPFB mouth interior: the atlas island at u > .75, v < .16 (the inner lips / cheeks that stretch when the jaw opens; with
+    the photo skin on them they read as a pale sheet)."""
+    b = base(); q, nq, off = _faces(); uv = b["uv"]; P = b["P0"]; out = []
+    for i in range(len(q)):
+        c = P[q[i, :nq[i]]].mean(0); u = uv[off[i]:off[i] + nq[i]].mean(0)
+        if u[0] > .75 and u[1] < .16 and c[2] > NECK_CUT and abs(c[0]) < .05 and c[1] > -.16: out.append(i)
+    return out
+def _mouth_texel():
+    b = base(); q, nq, off = _faces(); return np.concatenate([b["uv"][off[i]:off[i] + nq[i]] for i in mouth_interior_faces()]).mean(0)
+MOUTH_BAG = dict(c=(0, -.110, 1.6475), r=(.032, .035, .021), p=.6)                              # boxy in plan (|x|, |y| ** p): it backs the corners of a shout, inside the cheeks
+def add_mouth_bag(head):
+    """Append the mouth bag (a closed ellipsoid, normals inward) to the Head mesh: weighted fully to the Head bone, UVs on one texel of the dark mouth island.
+    Returns the new vertices' indices (their jaw_open key moves the lower half with the lower lip, like the lower teeth)."""
+    u0 = _mouth_texel()                                                                 # the island's centre: painted dark there (build_skin_maps)
+    bm = bmesh.new(); bm.from_mesh(head.data); n0 = len(bm.verts); uvl = bm.loops.layers.uv.active
+    sph = bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=1.0); c, r = Vector(MOUTH_BAG["c"]), MOUTH_BAG["r"]
+    pw = MOUTH_BAG["p"]; sg = lambda t: math.copysign(abs(t)**pw, t)
+    for v in sph["verts"]: v.co = Vector((sg(v.co.x)*r[0], sg(v.co.y)*r[1], v.co.z*r[2])) + c
+    faces = list({f for v in sph["verts"] for f in v.link_faces})
+    for f in faces:
+        f.smooth = True
+        for lp in f.loops: lp[uvl].uv = tuple(u0)
+    bmesh.ops.recalc_face_normals(bm, faces=faces); bmesh.ops.reverse_faces(bm, faces=faces)          # seen from inside the mouth
+    bm.to_mesh(head.data); bm.free(); n1 = len(head.data.vertices); idx = list(range(n0, n1))
+    g = head.vertex_groups.get(PFX + "Head") or head.vertex_groups.new(name=PFX + "Head"); g.add(idx, 1.0, 'REPLACE')
+    for gg in head.vertex_groups:
+        if gg != g: gg.remove(idx)
+    return idx
 
 # ---------------------------------------------------------------- hands: finger-posed variants of the MPFB hand (no finger bones in the rig; the clips pick a variant / morph)
 FULL = ((78, 95, 62), (42, 50, 55))        # full-curl joint angles (deg): fingers MCP / PIP / DIP, thumb CMC / MCP / IP
@@ -260,7 +361,7 @@ def ball_hand_frame_coords(C, side="Right"):
     xr, yr, zr = hand_frame(side); wr = JOINTS[side + "Hand"][1]; d = Vector(C) - wr; return (d.dot(xr), d.dot(yr), d.dot(zr))
 
 # ---------------------------------------------------------------- eyes: eyeball sphere + cornea shell, equirect texture from the MPFB iris crops, look shape keys
-EYE_R = .0123
+EYE_R = .0123*EYE_S                                               # (the style's bigger eyes; the centres stay: the style moves the lids < 1 mm on average)
 EYE_Y = -.138                                                     # globe centre y: the globes sat 1-7 mm in front of the lid surface (startled look, blink could not cover them); moved 8 mm back
 EYE_COLORS = dict(brown=((.20, .095, .035), (.43, .24, .10)), hazel=((.26, .17, .06), (.45, .36, .13)), green=((.12, .20, .09), (.30, .46, .22)), blue=((.12, .22, .38), (.38, .58, .78)), gray=((.20, .23, .26), (.52, .56, .60)))
 def _noise2(w, h, scales, seed):
@@ -272,7 +373,7 @@ def eye_equirect(color="brown", w=1024, h=512, seed=3):
     """Procedural equirect (u = angle around the gaze axis, v = angle from the front pole): iris with radial fibres, crypts, collarette and limbal ring, pupil, sclera with faint vessels / yellowing at the limbus."""
     dark, light = (np.array(c, np.float32) for c in EYE_COLORS[color])
     u = (np.arange(w) + .5)/w; v = (np.arange(h) + .5)/h; U, V = np.meshgrid(u, v); phi = (U - .5)*2*np.pi; th = np.degrees(V*np.pi)
-    ir, pr = 29.0, 9.5                                                      # iris / pupil angular radius (deg) (iris 11.7 mm, pupil ~ 4 mm on a 24 mm globe, pupil mid-dilated)
+    ir, pr, flat = IRIS                                                     # iris / pupil angular radius (deg) and the flat graphic share (face_style: big, dark-ringed, reads at B-roll sizes)
     fib = _noise2(w, h, (3, 8), seed); fib = np.asarray(Image.fromarray((fib*255).astype(np.uint8)).resize((w, h)), np.float32)/255.0
     ang = .5 + .5*np.sin(phi*47 + 3*_noise2(w, h, (16,), seed + 1))         # radial fibres (angle dependent, long along theta)
     r = np.clip((th - pr)/(ir - pr), 0, 1)                                    # 0 at the pupil edge .. 1 at the limbus
@@ -285,6 +386,10 @@ def eye_equirect(color="brown", w=1024, h=512, seed=3):
     tint = np.exp(-((th - ir)/16.0)**2)[..., None]; sclera = sclera*(1 - .08*tint) - .02*tint*np.array([0, .04, .1], np.float32)
     out = np.where((th < ir)[..., None], iris, sclera); out = np.where((th < pr)[..., None], np.array([.012, .010, .010], np.float32), out)
     edge = np.clip(1 - np.abs(th - ir)/1.2, 0, 1)[..., None]; out = out*(1 - .35*edge)                                # soft darkening exactly at the limbus
+    if flat:                                                                 # stylized: a clean radial gradient (light toward the pupil), a strong dark limbal ring, clean sclera
+        g = dark*.55 + light*.45 + (light - dark)*.35*(1 - r[..., None]); g = g*(1 - .8*np.clip((r[..., None] - .8)/.2, 0, 1)**1.2)
+        isir = ((th > pr) & (th < ir))[..., None]; isscl = (th >= ir)[..., None]
+        out = np.where(isir, out*(1 - flat) + g*flat, out); out = np.where(isscl, out*(1 - flat) + np.array([.86, .85, .82], np.float32)*flat, out)
     return np.clip(out, 0, 1)
 def build_eyes():
     """Both eyeballs as ONE object `Eyes` (+ `Eyes_Cornea`): front pole = -Y, equirect UV, shape keys eyes_look_left / right / up / down (both eyes rotate together)."""
@@ -336,12 +441,20 @@ def shrink_to_surface(obj, surf_obj, k):
         loc, n, i, d = bvh.find_nearest(v.co)
         if loc is not None and (v.co - loc).dot(n) > 0: v.co = loc + (v.co - loc)*(1 - k)
 def hair_style(name, asset, head_obj, shrink=0.0, cut=None):
-    o = asset_object(asset, name)
+    o = asset_object(asset, name); style_follow(o)
     if shrink: shrink_to_surface(o, head_obj, shrink)
     if cut is not None:
         bm = bmesh.new(); bm.from_mesh(o.data); cut_bm(bm, cut); bm.to_mesh(o.data); bm.free()
         for p in o.data.polygons: p.use_smooth = True
     return o
+def thicken_brows(obj, k):
+    """Brow cards k times taller about each brow's own centre line (a parabola fitted per side): bolder brows."""
+    me = obj.data; P = np.empty(len(me.vertices)*3); me.vertices.foreach_get("co", P); P = P.reshape(-1, 3); out = P.copy()
+    for sx in (1, -1):
+        m = P[:, 0]*sx > 0
+        if m.sum() < 3: continue
+        zc = np.polyval(np.polyfit(P[m, 0], P[m, 2], 2), P[m, 0]); out[m, 2] = zc + (P[m, 2] - zc)*k
+    me.vertices.foreach_set("co", out.ravel()); me.update()
 def _receding(co): return -1.0 if (co.y < -.105 and co.z > 1.77) else 1.0
 def _balding(co):
     e = math.hypot(co.x/.075, (co.y + .035)/.095) - 1.0; return e if co.z > 1.79 else 1.0

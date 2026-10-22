@@ -87,7 +87,7 @@ def brim_from_edge(bm, inner_bm_verts, length, droop, side_curl, width_taper=0.5
     return grid
 
 # ---------------------------------------------------------------- cap
-CAP_EDGE = (1.776, 1.772, 1.712)                                   # front / temple / nape edge heights: the sides stay above the ears (ear top 1.754, +1 cm with ears_large)
+CAP_EDGE = (1.764, 1.765, 1.704)                                   # front / temple / nape edge heights: 12 mm lower in front than before (the forehead showed: a beanie), the sides still clear the ears (ear top 1.754)
 def build_cap(head):
     edge = _crown_edge(CAP_EDGE[0], CAP_EDGE[1], CAP_EDGE[2])
     def decorate(bm, inner):
@@ -100,8 +100,8 @@ def build_cap(head):
         bm.normal_update()
         edge_verts = [v for v in bm.verts if v.is_boundary]
         # a pre-curved bill: 7.8 cm at the centre, the tip ~1.4 cm lower, the sides ~2.8 cm lower (the old 3 / 6.5 cm read as a band hanging over the eyes)
-        brim_from_edge(bm, edge_verts, length=.078, droop=.014, side_curl=.028, thick=.0035, lift=0.0, arc=52, width_taper=.45)
-    bm, inner, hbvh = head_shell(head, "Gear_Cap", lambda co: co.z - edge(co.x, co.y), lambda q: .0105 + .004*_sm1(-.02, .12, q.z), smooth_iters=6, thick=.0035, decorate=decorate, min_clear=.006)
+        brim_from_edge(bm, edge_verts, length=.078, droop=.014, side_curl=.028, thick=.0035, lift=-.0055, arc=52, width_taper=.45)      # the bill 4 deg down from the band (it read tilted up)
+    bm, inner, hbvh = head_shell(head, "Gear_Cap", lambda co: co.z - edge(co.x, co.y), lambda q: .0100 + .0015*_sm1(-.02, .12, q.z), smooth_iters=6, thick=.0035, decorate=decorate, min_clear=.006)   # a flatter, lower crown
     # button, eyelets
     top = Vector((HC.x, HC.y, 1.95))
     l, n, i, d = inner.ray_cast(top, Vector((0, 0, -1)))
@@ -198,7 +198,7 @@ def hair_cap_gap(cap_obj, hair_obj, cap_edge=None):
         worst = min(worst, (dist + .02) - r); n += 1
     return round(worst, 4), n
 def fit_summary(head, gear):
-    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide", "brow_heavy"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"]),
+    items = {"cap": (gear["Gear_Cap"], ["head_narrow", "head_wide", "brow_heavy", "jaw_square"]), "helmet": (gear["Gear_Helmet"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"]),
              "catcher_helmet": (gear["Gear_Helmet_Catcher"], ["head_narrow", "head_wide", "ears_large", "jaw_square", "brow_heavy"]), "hockey_cage": (gear["Gear_CatcherMask"], ["head_narrow", "head_wide", "brow_heavy"]),
              "umpire_mask": (gear["Gear_UmpireMask"], ["head_narrow", "head_wide", "brow_heavy"])}
     for k, n in (("hair", "Gear_Hair"), ("buzz", "Gear_Hair_Buzz"), ("curly", "Gear_Hair_Curly"), ("long", "Gear_Hair_Long")): items[k] = (gear[n], ["head_narrow", "head_wide", "ears_large", "brow_heavy"])
