@@ -40,7 +40,7 @@ import { makeOnDeckBat } from './ondeckProp';
 import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
 import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
-import { armRest, solveArm as solveArmIK, springStep, type ArmRest, type GripTrack } from './pose/armIK';
+import { ARM_LIMITS, armRest, solveArm as solveArmIK, springStep, type ArmRest, type GripTrack } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose, newConstrainState } from './pose/constrain';
@@ -520,6 +520,9 @@ function edgeUnit(m: Mesh): number {
   return k > 0 ? k : 1;
 }
 
+/** the hand's share of its turn onto the bat handle on a grip's first frames (then 1) */
+const GRIP_HAND_EASE = [0.35, 0.7];
+
 export class GltfPuppet implements PuppetLike {
   root = new Group();
   /** (set in the constructor) this puppet's matrices are updated by the puppet itself, not by the scene-wide pass in `renderer.render` */
@@ -542,7 +545,6 @@ export class GltfPuppet implements PuppetLike {
   lookStep = 0;
   maxLookStep = 0;
   private ikW = 0;
-  private ikWV = 0;
   /** the one-handed finish: how far the top hand has let go of the bat (0 on it, 1 off) */
   topRelease = 0;
   private topReleaseWant = false;
@@ -1641,16 +1643,12 @@ export class GltfPuppet implements PuppetLike {
     // a low pitch: the hitter's hands come down and the clip's own pose is the better guide than hands pinned to the sim's bat
     // the sim's bat is where the bat is: the fists stay on it for the whole swing (the hinge-aware solver keeps the elbows plausible; the old
     // fades for elbows in the trunk / low pitches let the hands leave the bat, which is what made the bat look wrongly held)
-    // taking the bat: a critically damped spring (smooth over ~0.1 s, while the engine eases the bat out of the hands); the old 90/s exponential
-    // put 78 % of the gap between the clip's hands and the grip into one frame (the swing's hand / forearm flips at ikW ~0.4, B1 sweep)
-    if (wantIK) {
-      const sp = springStep(this.ikW, this.ikWV, 1, 30, Math.min(dt, 0.1));
-      this.ikW = Math.min(1, sp.pos);
-      this.ikWV = sp.v;
-    } else {
-      this.ikW += (0 - this.ikW) * (1 - Math.exp(-dt * 25));
-      this.ikWV = 0;
-    }
+    // taking the bat: at once, the fists on the drawn bat from the swing's first frame. That bat starts in the hands and eases onto the sim's
+    // over 70 ms (engine.ts BAT_BLEND: the sim's first frames run 13-18 cm behind the clip's hands), so the grip starts where the clip's hands
+    // are and the fists ride the ease; the old ~0.1 s spring held the arms between the clip and the grip while the bat moved on (fists off the
+    // handle on most of the swing's first frames)
+    if (wantIK) this.ikW = 1;
+    else this.ikW += (0 - this.ikW) * (1 - Math.exp(-dt * 25));
     this.ikDt = dt;
     if (!env.batGrip && this.ikW > 0.02) {
       // the bat left the IK mid-swing (out of reach: the hands keep it now): the arms ease back from their last solve to the clip as the weight
@@ -1677,7 +1675,7 @@ export class GltfPuppet implements PuppetLike {
       if (finish && this.armTrack.Right && (this.armTrack.Right.over ?? 0) > 12) this.topReleaseWant = true;
       if (!finish) this.topReleaseWant = false;
       this.topRelease += ((this.topReleaseWant ? 1 : 0) - this.topRelease) * (1 - Math.exp(-dt * 10));
-      if (this.topRelease < 0.98) this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW * (1 - this.topRelease), { gripDir: axis });
+      if (this.topRelease < 0.98) this.armIK('Right', this.tmpT.copy(g.knob).addScaledVector(axis, this.gripTop), this.ikW * (1 - this.topRelease), { gripDir: axis, sup: ARM_LIMITS.supTop });
     }
     if (!env.batGrip) this.topRelease = 0;
     this.reachIK(snap, env, dt);
@@ -2298,6 +2296,8 @@ export class GltfPuppet implements PuppetLike {
   /** per arm, the take-up of the bat grip (its arc chosen when the grip started) */
   private gripBlend = { Left: new ContinuousBlend(), Right: new ContinuousBlend() };
   private gripFresh = { Left: true, Right: true };
+  /** frames since each hand took the bat grip (the hand's turn onto the handle is spread over GRIP_HAND_EASE) */
+  private gripAge = { Left: 0, Right: 0 };
   private qTmp = new Float64Array(8);
   private readClipPose() {
     this.readPose();
@@ -2451,7 +2451,7 @@ export class GltfPuppet implements PuppetLike {
    * (world) the hand also turns so its grip line runs along it, barrel toward the thumb. The elbow keeps the clip's swivel and bends only in
    * its hinge plane; `w` blends from the clip pose.
    */
-  private armIK(side: 'Left' | 'Right', targetWorld: Vector3, w: number, o: { fist?: Vector3; gripDir?: Vector3 } = {}) {
+  private armIK(side: 'Left' | 'Right', targetWorld: Vector3, w: number, o: { fist?: Vector3; gripDir?: Vector3; sup?: number } = {}) {
     const A = this.arms[side];
     const sh = this.bones[`${side}Shoulder`], arm = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (!A || !sh || !arm || !fore || !hand || w <= 0) return;
@@ -2468,8 +2468,11 @@ export class GltfPuppet implements PuppetLike {
       const a = rig.toRig(targetWorld.clone().add(o.gripDir), new Vector3()).sub(target).normalize();
       gripDir = a.toArray();
     }
-    if (gripDir && !this.armTrack[side]) this.gripFresh[side] = true;
-    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, dt: this.ikDt, track: gripDir ? (this.armTrack[side] ?? { pole: 0, roll: 0 }) : undefined });
+    if (gripDir && !this.armTrack[side]) {
+      this.gripFresh[side] = true;
+      this.gripAge[side] = 0;
+    }
+    const out = solveArmIK(A.rest, { S: S.toArray(), E: E.toArray(), H: H.toArray(), qUpper: qU.toArray(), qFore: qF.toArray(), qHand: qH.toArray() }, { target: target.toArray(), fist: fp.toArray(), gripLocal: gripDir ? A.grip.toArray() : undefined, gripDir, sup: o.sup, dt: this.ikDt, track: gripDir ? (this.armTrack[side] ?? { pole: 0, roll: 0 }) : undefined });
     if (gripDir) this.armTrack[side] = { pole: out.pole, roll: out.roll, pron: out.pron, vPole: out.vPole, vRoll: out.vRoll, over: out.over };
     // rig rotations -> locals, blended from the clip's locals by w
     const qSh = rig.quat(sh, new Quaternion());
@@ -2497,7 +2500,10 @@ export class GltfPuppet implements PuppetLike {
     } else {
       arm.quaternion.slerp(lU, w);
       fore.quaternion.slerp(lF, w);
-      hand.quaternion.slerp(lH, w);
+      // the grip taken at once: the arm puts the wrist on the bat in the first frame, the hand turns onto the handle over a few (the swing
+      // clip's bottom fist does not lie along its own bat: turned in one frame it was a 20-35 deg hand flip on the grip's first frame)
+      const age = gripDir ? this.gripAge[side]++ : GRIP_HAND_EASE.length;
+      hand.quaternion.slerp(lH, w * (GRIP_HAND_EASE[age] ?? 1));
       if (gripDir) this.gripFresh[side] = false;
     }
     arm.updateMatrixWorld(true);

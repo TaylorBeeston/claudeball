@@ -149,3 +149,45 @@ limit widened from 88 to 130 deg (armIK.ts ARM_LIMITS.sup) 65 % (fist axes 32 ->
 the ~0.1 s arm blend-in (gltfCharacter.ts ikW), 90 % (fists off the handle 41 -> 0.1 %). Fists still 2 cm past the
 tolerance in the game where the proxy has them on (the body's lean / neck passes and the blend-in move the shoulders after the sim chose
 the knob) need the engine to read the sim's knob as a target to blend toward, not a place the clip's arms start from.
+
+## The engine's half (thread t-0026)
+
+What t-0024 left to the engine: the top hand's twist range, the arms' ~0.1 s blend into the grip, and the bat's 70 ms ease. Changed
+(engine only; the sim and the player files untouched):
+
+- **Top-hand supination 130 deg** (`armIK.ts` `ARM_LIMITS.supTop`, passed as the grip's own `goal.sup` by gltfCharacter.ts for the
+  top hand only; every other reach and the constraint layer keep 88). A forearm turns ~85-90 deg past neutral; a hitter's palm-up top
+  hand gets the rest from the shoulder's external rotation, which this solver cannot express (the upper arm's twist is fixed by the
+  elbow's hinge plane), so the extra is drawn as forearm twist, still shared half and half by forearm and hand (wrist.split 0, no wrist
+  snap). The validator's forearm range (+-100) still counts it: that is the price, shown below.
+- **The grip taken at once** (`ikW = 1` from the swing's first frame; the release is unchanged).
+- **The bat's ease kept, without feedback.** Taking the grip at once exposed that the ease blended toward the hand's grip every frame
+  while the hand followed the drawn bat: the bat stood still for three frames and then turned ~60 deg in one (the hands flipped with it).
+  The ease now captures where the hands hold the bat on the swing's first frame and closes that gap over 70 ms on top of the sim's own
+  motion (players.ts `BatView.update`). The ease is needed: on the first frame the sim's knob is 13-18 cm behind the clip's hands
+  (it runs ~2 frames behind them), which without it is a visible hitch.
+
+Measured in the real game (tools/jank game sweep, seeds 1-3, 9 innings, before = main 7f3286b, after = this branch; share of the
+sim swing's frames, both hands counted, so 200 % = both hands every frame):
+
+| | before | after | also bottom hand 130 (not shipped) |
+|---|---|---|---|
+| fists off the handle (bat:grip) | 103.1 % | 9.2 % | 9.7 % |
+| fist turned against the bat (bat:hand-axis) | 38.2 % | 32.9 % | 19.6 % |
+| wrong hand at the knob | 0.2 % | 0.0 % | 0.0 % |
+| top forearm past +-100 (frames) | 2772 | 4346 | 4338 |
+| bottom forearm past +-100 (frames) | 1515 | 398 | 4060 |
+| hand / forearm flips (frames, both sides) | 340 | 433 | |
+
+(Sweep noise: the same code swept twice, t-0024's after and this before, read 97.0 / 36.0 % and 103.1 / 38.2 %.) Whole-game severity
+-0 %; no other clip's bat counts moved (stride, finish, stance, practice and on-deck swings identical); pitch, throw, catch and run poses
+untouched (no change outside the batter's grip). `jank:check` (static clips and blends) is unchanged: it has no batter IK.
+
+What the sweep shows is left:
+- **The fist axis.** The tools/swing proxy predicted 10 % with this change; the game has 33 %, about half on each hand. The bottom hand
+  needs supination past 88 too (widening it: 19.6 %), which for a lead hand points at the swing clip's bottom-hand pose / grip, not at
+  anatomy: t-0025's stance re-key ("the bottom fist now sits on the held bat") should be measured first.
+- **The grip-take frame.** The swing clip's bottom fist does not lie along its own held bat, so on the first frame the bottom hand turns
+  20-35 deg onto it (a flip on ~30 % of swings, flip:LeftHand 89 -> 114 frames); the same t-0025 re-key should remove most of it.
+- **The top hand's 70-90 deg turn ~6 frames in** (present before: the bat turns ~30 deg a frame there and the top fist runs out of
+  range, then rolls on the handle).
