@@ -112,6 +112,20 @@ def optimise(keys, cfg, cyclic=False, init=None):
     if cyclic: res[-1] = (res[-1][0], dict(res[-1][1], lpole=res[0][1]['lpole'], rpole=res[0][1]['rpole']))      # close the loop exactly
     return res
 
+def _frozen_swing(keys):
+    """The bat hangs from the right hand, so the right elbow poles decide the drawn bat: from the launch on they stay as recorded in swing_frozen.json
+    (the bat path the sim's tables were measured on), blended in from `blend_from`; the left arm keeps its optimised poles."""
+    import json, os
+    p = os.path.join(CB_SRC, "swing_frozen.json")
+    if not os.path.exists(p): return keys
+    fz = json.load(open(p)); rp = {int(f): Vector(v) for f, v in fz["rpole"]}; a, b = fz["blend_from"], fz["launch"]; out = []
+    for f, sp in keys:
+        if f in rp:
+            t = 1.0 if f >= b else max(0.0, (f - a)/(b - a)); t = t*t*(3 - 2*t)
+            v = Vector(sp['rpole']).normalized().slerp(rp[f].normalized(), t) if t < 1 else rp[f]
+            sp = dict(sp, rpole=tuple(v))
+        out.append((f, sp))
+    return out
 def _strip(keys): return [(f, {k: v for k, v in sp.items() if not k.startswith('_m_')}) for f, sp in keys]
 SIDE = lambda s: s
 # --- which clips get optimised, and how
@@ -129,10 +143,10 @@ for _n in ("catch_throw", "catch_throw_high", "catch_throw_low", "catch_stretch"
            "pop_up", "pop_up_head", "ump_strike", "ump_strike_swinging", "ump_ball", "ump_safe", "ump_out", "ump_out_strikeout", "ump_foul", "ump_fair", "ump_homerun", "ump_time"):
     OPT_CLIPS[_n] = (CATCHCFG, False)
 for _n in ("ondeck_ready", "bench_sit", "ballkid_sit", "coach_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
-OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BATW, False)
+OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BAT, False)
 for _n in ("bench_stand_up", "bench_cheer", "coach_stop", "coach_go", "coach_advance", "coach_slide", "coach_signs", "ballkid_pickup", "ballkid_toss", "ballkid_wave"): OPT_CLIPS[_n] = (CATCHCFG, False)
 RIT_BAT = ("batter_step_in", "batter_practice_swing", "batter_step_out")
-for _n in RIT_BAT: OPT_CLIPS[_n] = (BATW, False)
+for _n in RIT_BAT: OPT_CLIPS[_n] = (BAT, False)
 for _n in ("batter_adjust", "catcher_signs", "catcher_signs_runner_on", "catcher_signal_infield", "pitcher_shake_off", "pitcher_nod", "pitcher_step_off", "pitcher_step_on", "pitcher_rosin", "pitcher_adjust",
            "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw", "toss_underhand", "roll_ball", "toss_sidearm_short"): OPT_CLIPS[_n] = (CATCHCFG, False)
 for _n in ("mound_talk", "mound_talk_listen", "mound_talk_cover", "ump_huddle", "bullpen_catcher_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
@@ -147,6 +161,7 @@ def run_optimiser():
         keys = optimise(keys, cfg, cyc, init if nm == "swing" else None)
         if nm == "batting_stance": init = {'l': keys[0][1]['lpole'], 'r': keys[0][1]['rpole']}
         if nm == "swing": keys[0] = (keys[0][0], dict(keys[0][1], lpole=init['l'], rpole=init['r']))    # swing frame 0 == stance frame 0 (same poles too)
+        if nm == "swing": keys = _frozen_swing(keys)
         ms = [sp['_m_l'][:3] for f, sp in keys] + [sp['_m_r'][:3] for f, sp in keys]
         ARM_REPORT[nm] = dict(min_cc=round(min(m[0] for m in ms), 3), max_dz=round(max(m[1] for m in ms), 3), max_abd=round(max(m[2] for m in ms), 3))
         if cfg.get('hc_min') is not None: ARM_REPORT[nm]['min_hc'] = round(min(sp['_m_'+k][4] for f, sp in keys for k in ('l', 'r')), 3); ARM_REPORT[nm]['min_dz'] = round(min(m[1] for m in ms), 3)
