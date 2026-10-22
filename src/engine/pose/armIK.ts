@@ -58,6 +58,8 @@ export interface ArmGoal {
   keepEnd?: boolean;
   /** limit the middle bone's own twist (deg; a shin's twist about itself) */
   twistLimit?: number;
+  /** this grip's supination limit (deg from neutral) in place of ARM_LIMITS.sup (a batter's top hand: ARM_LIMITS.supTop) */
+  sup?: number;
   /** the frame's step (s), for a tracked grip's springs */
   dt?: number;
   /** where the soft reach starts (share of full length; default ARM_LIMITS.soft): a leg standing straight needs ~1 or its foot rises */
@@ -107,6 +109,16 @@ export const ARM_LIMITS = {
   /** pronation (from neutral, thumb-forward) and supination limits, deg; the wrist's bend limit, deg */
   pron: 88,
   sup: 88,
+  /**
+   * a batter's top hand (the rear one: the model's right for both sides, lefties mirrored), deg. The swing clip's own top-hand grip, and the
+   * sim's bat laid on it, need 60-150 deg more than `sup` on every frame (docs/swing-kinematics.md): the swing's "palm up" top hand, whose
+   * elbow this body cannot tuck under the handle as a hitter does (the elbow keeps the clip's swivel). Measured on the swing's frames: 130 keeps
+   * the top fist along the bat (tools/swing proxy: fist axis p95 18 deg at contact, was 40), 110 halfway. A forearm itself turns ~85-90 deg
+   * past neutral; the rest of a hitter's palm-up top hand is the shoulder's external rotation, which this solver cannot express (the upper
+   * arm's twist is fixed by the elbow's hinge plane): it is drawn as forearm twist, shared half and half by forearm and hand like the rest
+   * (no wrist snap: wrist.split stays 0). The validator's forearm range (limits.ts, +-100) still counts it.
+   */
+  supTop: 130,
   wrist: 72,
   /** the rest pose is this many degrees from neutral (limits.ts PRON_REST) */
   restPron: 20,
@@ -181,7 +193,10 @@ export function springStep(pos: number, vel: number, target: number, w: number, 
 /** total twist of the hand vs the upper arm about the forearm axis (deg) -> pronation from neutral (> 0 pronated), as limits.ts measures it */
 const pronOf = (total: number, side: number) => side * total - ARM_LIMITS.restPron;
 /** the limits in force (a harness may override them through globalThis.__armLimits to measure what they cost) */
-const limits = () => ((globalThis as { __armLimits?: typeof ARM_LIMITS }).__armLimits ?? ARM_LIMITS);
+const limits = (goal?: ArmGoal) => {
+  const L = (globalThis as { __armLimits?: typeof ARM_LIMITS }).__armLimits ?? ARM_LIMITS;
+  return goal?.sup === undefined ? L : { ...L, sup: goal.sup };
+};
 
 /**
  * With a grip line to follow, the elbow's swivel (the upper arm's rotation about the shoulder -> wrist line) and the fist's roll about the
@@ -192,7 +207,7 @@ const limits = () => ((globalThis as { __armLimits?: typeof ARM_LIMITS }).__armL
  */
 export function solveArm(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters = 3): ArmOut {
   if (!goal.gripDir || !goal.gripLocal) return solveArmPole(rest, pose, goal, iters, 0).out;
-  const LIM = limits();
+  const LIM = limits(goal);
   const tr = goal.track;
   // degrees past the hand's range cost most; a swivel away from the clip's costs a little
   const cost = (r: { over: number }, ang: number) => r.over * 4 + Math.abs(ang) * 0.3;
@@ -298,7 +313,7 @@ function solveArmPole(rest: ArmRest, pose: ArmPose, goal: ArmGoal, iters: number
       // the twist the hand needs about the forearm axis (forearm without its own twist first), then shared and clamped
       const aF0 = qmul(aU, flex);
       const relGoal0 = qmul(qinv(aF0), anat(qHandGoal, rest.qHand));
-      const LIM = limits();
+      const LIM = limits(goal);
       // a handle is round: the fist may roll about the grip line (here in the forearm's frame) to keep the forearm and wrist in range
       const gF = norm(qrot(qinv(aF0), goal.gripDir![0], goal.gripDir![1], goal.gripDir![2]) as number[]);
       roll = rollFix ?? pickRoll(relGoal0, gF, uf, side, LIM, goal.track, pronRef);

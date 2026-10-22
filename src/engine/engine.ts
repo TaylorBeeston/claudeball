@@ -695,12 +695,15 @@ export class Engine {
       useGrip = this.tmpV.distanceTo(new Vector3(rs.bat.pos.x, rs.bat.pos.y, rs.bat.pos.z)) > BAT_REACH_MAX;
     }
     this.bat.hold(useGrip ? grip : null, this.scene);
-    this.batAge = rs.bat.visible ? this.batAge + animDt : 0;
+    // the swing's first frame is drawn where the hands hold the bat (blend 0), the gap to the sim's pose closed over BAT_BLEND
     const blend = this.batAge / BAT_BLEND;
+    this.batAge = rs.bat.visible ? this.batAge + animDt : 0;
     if (grip && !useGrip && blend < 1) {
-      grip.updateWorldMatrix(true, false);
-      grip.getWorldPosition(this.gripFrom.pos);
-      grip.getWorldQuaternion(this.gripFrom.quat);
+      if (blend === 0) {
+        grip.updateWorldMatrix(true, false);
+        grip.getWorldPosition(this.gripFrom.pos);
+        grip.getWorldQuaternion(this.gripFrom.quat);
+      }
       this.bat.update(rs, this.gripFrom, blend);
     } else this.bat.update(rs);
     // the side cast moves with the live game (not the replay) and is added to whichever state is drawn
