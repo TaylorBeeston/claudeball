@@ -6,29 +6,86 @@ import { PitchSample, StrikeZone, ThrownPitch, pathAt, timeAtZ, zoneDistance } f
 import { Rng } from './rng';
 import type { PlayerInfo } from './types';
 
-// --- batter geometry & bat properties -------------------------------------------------------
-// The batter's body. SHOULDER_* is the shoulder-centre point of the rendered batter (BATTER_X = 0.72 m off the plate centre, model root z = 0.15;
-// the shoulders are ~1.36 m up, SHOULDER_HALF either side of it along the shoulder line). The shoulder line turns with the swing (TORSO_YAW_C at contact).
-export const SHOULDER_X = 0.72;
-export const SHOULDER_Y = 1.36;
-export const SHOULDER_Z = 0.15;
-export const SHOULDER_HALF = 0.19;
-export const ARM_REACH = 0.68; // shoulder -> the hand on the bat (arm ~0.6 to the grip, plus a little lean)
-export const HAND_FRONT = 0.12; // lead (front) hand: this far along the bat from the knob
-export const HAND_REAR = 0.26; // rear hand
-export const LEAN_C = { fwd: 0.12, down: 0.05, lat: 0.1 }; // the shoulder centre moves this far (toward the plate, down, toward the pitcher) by contact: weight shift onto the front foot
-export const TORSO_YAW_C = 1.05; // shoulder line turned this far (rad) toward the pitcher at contact (hips lead, the shoulders follow)
-export const TORSO_HALF = { lateral: 0.28, depth: 0.2 }; // torso plus elbow room: the hands stay outside this ellipse
-// where the hands were in the clip's load: knob (0.62, 1.40, -0.15) and bat (0.2, 0.81, -0.555) for a righty at (0.72, 0.15)
-const LOAD_KNOB = { x: -0.1, y: 1.4, z: -0.3 }; // relative to (BATTER_X, 0, goal z)
-const LOAD_DIR = { x: 0.2, y: 0.807, z: -0.555 };
-// Where the hands are at contact for a pitch he can reach comfortably, relative to his body (a righty: 0.30 m in front of the shoulder centre toward the plate,
-// 0.05 m toward the pitcher, 0.26 m below the shoulders). The bat is aimed from here: the depth at which he meets the ball follows from it (an inside pitch is met
-// further out in front, a pitch off the plate is reached for and the hands extend). Chosen so both hands stay within reach of their own shoulders over the strike zone.
-export const HANDS_FWD = 0.2; // toward the plate from the shoulder centre
-export const HANDS_Y = 1.15;
-export const HANDS_LAT = 0.3; // toward the pitcher from the shoulder centre
-export const RH_NOM = 0.48; // the bat turns about a virtual point this far behind the knob along the bat (near the rear shoulder)
+// --- the batter's body and the bat ------------------------------------------------------------------------------------------
+// The batter the engine draws: the `swing` clip on the 1.85 m model, its root in the box (SHOULDER_X off the plate centre, z BOX_Z; a righty
+// on +x, a lefty the mirror image), scaled by his height (engine/playerLook.ts). The bat's path is laid on that body: where its hands are
+// at each phase of the swing (tools/swing/clipbat.ts measures the clip; tools/swing/run.ts checks that two hands can hold the bat there).
+// Body points below are relative to the root, for a righty, at 1.85 m (x < 0 is toward the plate, z > 0 toward the pitcher).
+export const SHOULDER_X = 0.72; // the box: his root, metres off the plate centre (flow.ts BATTER_X)
+export const BOX_Z = 0.15;
+const MODEL_HEIGHT = 1.85;
+/** The drawn body's size: the model scaled by his height (engine/playerLook.ts). */
+export const bodyScale = (heightM: number) => clamp(heightM / MODEL_HEIGHT, 0.88, 1.14);
+/**
+ * The clip's bat from its launch (0.583 s, knob over the rear shoulder, bat up and back) to its contact frame (0.917 s), 24 fps: the engine
+ * lays these frames on the sim's swing from its start to contact (gltfCharacter.ts batterTiming), so early in the swing, while the engine is
+ * still blending the arms from the clip's onto the bat, the bat follows the clip's (tools/swing/clipbat.ts --table).
+ */
+export const CLIP_SWING: { knob: Vec3; dir: Vec3 }[] = [
+  { knob: { x: -0.159, y: 1.409, z: -0.262 }, dir: { x: 0.088, y: 0.807, z: -0.584 } },
+  { knob: { x: -0.182, y: 1.397, z: -0.236 }, dir: { x: 0.005, y: 0.791, z: -0.612 } },
+  { knob: { x: -0.232, y: 1.371, z: -0.181 }, dir: { x: -0.189, y: 0.727, z: -0.66 } },
+  { knob: { x: -0.283, y: 1.344, z: -0.126 }, dir: { x: -0.379, y: 0.629, z: -0.679 } },
+  { knob: { x: -0.307, y: 1.332, z: -0.102 }, dir: { x: -0.458, y: 0.576, z: -0.677 } },
+  { knob: { x: -0.333, y: 1.301, z: -0.031 }, dir: { x: -0.616, y: 0.536, z: -0.578 } },
+  { knob: { x: -0.385, y: 1.243, z: 0.103 }, dir: { x: -0.857, y: 0.4, z: -0.325 } },
+  { knob: { x: -0.414, y: 1.211, z: 0.177 }, dir: { x: -0.933, y: 0.31, z: -0.18 } },
+  { knob: { x: -0.393, y: 1.206, z: 0.248 }, dir: { x: -0.871, y: 0.224, z: 0.438 } },
+];
+export const FINISH = { knob: { x: -0.006, y: 1.553, z: 0.221 }, dir: { x: 0.824, y: 0.5, z: -0.268 } };
+/** The drawn body's shoulders at contact (the clip at 0.917 s: rear, lead). */
+export const SHOULDERS_C = { rear: { x: -0.213, y: 1.324, z: 0.095 }, lead: { x: 0.101, y: 1.326, z: 0.289 } };
+export const ARM_REACH = 0.64; // shoulder -> fist on the handle (the model's arm nearly straight: 0.62 to the wrist, the fist beyond it)
+
+/**
+ * The shape of the swing (all lengths for the 1.85 m model; tools/swing tunes and checks these against the drawn body):
+ * - hands: the knob at contact, toward the plate (fwd) and toward the pitcher (lat) from the root; its height follows from the bat's angle;
+ * - vba: the bat's elevation at contact (deg, negative = barrel below the hands) for a pitch at height y: v0 + slope * (y - 0.8), clamped;
+ *   real hitters: about -10 for a high pitch, -25 to -35 mid-zone, -40 to -45 low (Statcast "vertical bat angle"); flatter here (-13 mid-zone,
+ *   -26 low, -3 high): the drawn body's top hand holds a level bat, not a steep one (tools/swing, docs/swing-kinematics.md);
+ * - rh: the bat turns about a point this far behind the knob along the bat (the hands lead the barrel: knob speed rh * omega, ~5 m/s at
+ *   contact; real hands are 4-7 m/s at impact, slowing as the barrel releases);
+ * - ramp: the turn rate rises as (tau / tauC)^ramp to contact, then dies over 0.9 tauC;
+ * - via: on its way from the clip's launch the bat is turned off the clip's own path (by dAz / dEl, the knob moved by dKnob, all in full at
+ *   the share `at` of tauC) to where both fists can hold it on the drawn body (its top hand cannot hold the clip's own bat in range);
+ * - inStart, blendIn: between these shares of tauC the bat leaves that path for the swing plane (the hands drop, the barrel lays back);
+ * - outStart: tau / tauC at which the follow-through starts to wrap toward the clip's finish (reached at 2.1 tauC);
+ * - extMax: how far the hands reach out toward a pitch the bat cannot meet from the nominal hands;
+ * - timeErr: scale of his timing error: a bat on plane forgives a timing error in height (the barrel stays on the ball's line), so the error
+ *   is larger than the old cone-shaped path needed for the same whiff rate (calibrated: 200 games, docs/swing-kinematics.md);
+ * - attackAdd: added to every hitter's attack angle (deg): the plane rising to meet the pitch's descent (league attack angle ~15 deg at
+ *   contact, a gap hitter's drawn toward GAP_ANGLE_DEG).
+ */
+export const SWING = {
+  hands: { fwd: 0.08, lat: 0.18 },
+  vba: { v0: -13, slope: 45, min: -40, max: -3 },
+  rh: 0.12,
+  ramp: 1.6,
+  via: { dKnob: { x: -0.12, y: -0.12, z: 0.09 }, dAz: 30, dEl: 2, at: 0.45 },
+  inStart: 0.45,
+  blendIn: 0.75,
+  outStart: 1.3,
+  extMax: 0.15,
+  timeErr: 1.15,
+  attackAdd: 7,
+  finish: { dKnob: { x: -0.297, y: -0.4, z: 0.191 }, dAz: 74.9, dEl: 19.3 },
+};
+
+/** A body point (root-relative, righty, 1.85 m) in the world for this stance and size. */
+export function bodyPoint(stance: Stance, sc: number, p: Vec3): Vec3 {
+  const sg = stance === 'R' ? 1 : -1;
+  return { x: sg * (SHOULDER_X + sc * p.x), y: sc * p.y, z: BOX_Z + sc * p.z };
+}
+export const bodyDir = (stance: Stance, d: Vec3): Vec3 => ({ x: (stance === 'R' ? 1 : -1) * d.x, y: d.y, z: d.z });
+
+/** The bat's elevation at contact for a pitch at height y (rad), on a body of size sc. */
+export function contactVba(y: number, sc = 1): number {
+  const v = SWING.vba;
+  return clamp(v.v0 + v.slope * (y / sc - 0.8), v.min, v.max) * DEG;
+}
+
+export const HAND_FRONT = 0.05; // the bottom fist: this far along the bat from the knob (engine gripBottom)
+export const HAND_REAR = 0.135; // the top fist (engine gripTop)
 export const BAT_LEN = 0.84;
 const BAT_MASS = 0.88;
 const BAT_I_CM = 0.05;
@@ -62,15 +119,23 @@ export interface SwingPlan {
   // when swing === true:
   startTime: number; // time since release at which the swing begins
   plannedContactTime: number;
+  /** The point the bat turns about near contact (rh behind the knob along the bat). */
   pivot: Vec3;
   rh: number;
+  /** The bat at contact: knob, direction (azimuth thetaC from +z, elevation epsC), and the swing plane's second axis (the sweet spot's heading). */
+  knobC: Vec3;
+  dirC: Vec3;
+  planeC: Vec3;
   thetaC: number;
   epsC: number;
-  omegaPk: number;
+  /** Turn rate at contact (rad/s). */
+  omegaC: number;
   alpha: number;
   sgn: number;
   tauC: number;
   batSpeed: number;
+  /** The drawn body's size (bodyScale). */
+  scale: number;
   protect: boolean;
   /** Bunt: the bat is squared around and held still at (x, y, z); psi = direction the ball should be deadened toward (rad, + toward third base). */
   bunt?: { psi: number; x: number; y: number; z: number; stance: Stance };
@@ -81,36 +146,24 @@ export function stanceFor(bats: PlayerInfo['bats'], pitcherThrows: 'L' | 'R'): S
   return bats;
 }
 
-export const shoulderFor = (stance: Stance): Vec3 => ({ x: stance === 'R' ? SHOULDER_X : -SHOULDER_X, y: SHOULDER_Y, z: SHOULDER_Z });
+/** The hands' reference point at contact (the knob for a pitch he meets comfortably, before its height is set by the bat's angle). */
+export const pivotFor = (stance: Stance, sc = 1): Vec3 => bodyPoint(stance, sc, { x: -SWING.hands.fwd, y: 1.0, z: SWING.hands.lat });
 
-/** The two shoulders (lead = toward the pitcher) when the shoulder line has turned `yaw` rad toward the pitcher. */
-export function bodyCentre(stance: Stance, lean: number): Vec3 {
-  const c = shoulderFor(stance);
-  const sg = stance === 'R' ? 1 : -1;
-  return { x: c.x - sg * LEAN_C.fwd * lean, y: c.y - LEAN_C.down * lean, z: c.z + LEAN_C.lat * lean };
+/** The clip's bat at the share u of the way from its launch to contact (world, this stance and size). */
+export function clipBat(stance: Stance, sc: number, u: number): { knob: Vec3; dir: Vec3 } {
+  const f = clamp(u, 0, 1) * (CLIP_SWING.length - 1);
+  const i = Math.min(CLIP_SWING.length - 2, Math.floor(f)), k = f - i;
+  const a = CLIP_SWING[i], b = CLIP_SWING[i + 1];
+  const knob = { x: a.knob.x + (b.knob.x - a.knob.x) * k, y: a.knob.y + (b.knob.y - a.knob.y) * k, z: a.knob.z + (b.knob.z - a.knob.z) * k };
+  return { knob: bodyPoint(stance, sc, knob), dir: bodyDir(stance, slerpDir(a.dir, b.dir, k)) };
 }
-
-export function shouldersAt(stance: Stance, yaw: number, lean = 0): { front: Vec3; rear: Vec3 } {
-  const c = bodyCentre(stance, lean);
-  const sg = stance === 'R' ? 1 : -1;
-  const lx = sg * Math.sin(yaw) * SHOULDER_HALF;
-  const lz = Math.cos(yaw) * SHOULDER_HALF;
-  return { front: { x: c.x + lx, y: c.y, z: c.z + lz }, rear: { x: c.x - lx, y: c.y, z: c.z - lz } };
-}
-
-/** The batter's torso through the swing: the shoulder line's yaw (rad toward the pitcher) and the weight shift (0..1) at time tau of a swing that makes contact at tauC. */
-export function torsoState(tau: number, tauC: number): { yaw: number; lean: number } {
-  const v = clamp(tau / tauC, 0, 1);
-  const lean = v * v * (3 - 2 * v);
-  return { yaw: TORSO_YAW_C * lean + (tau > tauC ? 0.5 * clamp((tau - tauC) / tauC, 0, 1) : 0), lean };
-}
-
-export const pivotFor = (stance: Stance): Vec3 => ({ x: (stance === 'R' ? 1 : -1) * (SHOULDER_X - HANDS_FWD), y: HANDS_Y, z: SHOULDER_Z + HANDS_LAT });
-
-/** The clip's load pose (bat cocked over the rear shoulder) in world coordinates for this stance. */
-export function loadPose(stance: Stance): { knob: Vec3; dir: Vec3 } {
-  const sg = stance === 'R' ? 1 : -1;
-  return { knob: { x: sg * (SHOULDER_X + LOAD_KNOB.x), y: LOAD_KNOB.y, z: SHOULDER_Z + LOAD_KNOB.z }, dir: { x: sg * LOAD_DIR.x, y: LOAD_DIR.y, z: LOAD_DIR.z } };
+/** The swing's start: the clip's load (bat cocked over the rear shoulder) in world coordinates for this stance and size. */
+export const loadPose = (stance: Stance, sc = 1) => clipBat(stance, sc, 0);
+export function finishPose(stance: Stance, sc = 1): { knob: Vec3; dir: Vec3 } {
+  const F = SWING.finish;
+  const knob = bodyPoint(stance, sc, { x: FINISH.knob.x + F.dKnob.x, y: FINISH.knob.y + F.dKnob.y, z: FINISH.knob.z + F.dKnob.z });
+  const az = Math.atan2(FINISH.dir.x, FINISH.dir.z) + F.dAz * DEG, el = Math.asin(FINISH.dir.y) + F.dEl * DEG;
+  return { knob, dir: bodyDir(stance, { x: Math.cos(el) * Math.sin(az), y: Math.sin(el), z: Math.cos(el) * Math.cos(az) }) };
 }
 
 /** Bat speed at the sweet spot for a swing of normal effort (m/s). */
@@ -140,7 +193,7 @@ export interface SwingObservation {
 export function perceivePitch(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, zone: StrikeZone, fbMphSeen: number, rng: Rng): SwingObservation {
   const R = b.ratings;
   const ne = clamp(1.55 - 0.011 * R.eye, 0.55, 1.5); // perception noise multiplier
-  const pivot = pivotFor(stance);
+  const pivot = pivotFor(stance, bodyScale(b.height));
   const tDec = decisionTime(pitch);
   const s0 = pitch.path[0];
   const sd = pathAt(pitch.path, tDec);
@@ -235,8 +288,9 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
   const { pivot, tDec, front, predictAtZ } = obsv;
   const protect = choice.protect ?? ctx.strikes === 2;
   const baseInfo = { perceivedX: front.x, perceivedY: front.y, decisionTime: tDec };
+  const still = { pivot, rh: 0, knobC: pivot, dirC: { x: 0, y: 1, z: 0 }, planeC: { x: 0, y: 0, z: 1 }, thetaC: 0, epsC: 0, omegaC: 0, alpha: 0, sgn: 0, batSpeed: 0, scale: bodyScale(b.height) };
   if (!choice.swing) {
-    return { swing: false, ...baseInfo, startTime: 0, plannedContactTime: 0, pivot, rh: 0, thetaC: 0, epsC: 0, omegaPk: 0, alpha: 0, sgn: 0, tauC: 0, batSpeed: 0, protect };
+    return { swing: false, ...baseInfo, ...still, startTime: 0, plannedContactTime: 0, tauC: 0, protect };
   }
   const late = choice.timing ?? 0;
 
@@ -254,53 +308,73 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
       ...baseInfo,
       startTime: Math.max(now, pb.t - 0.34 + late),
       plannedContactTime: pb.t,
-      pivot,
-      rh: 0,
-      thetaC: 0,
-      epsC: 0,
-      omegaPk: 0,
-      alpha: 0,
-      sgn: 0,
+      ...still,
       tauC: 0.34,
-      batSpeed: 0,
       protect,
       bunt: { psi: buntPsi + rng.normal(0, 0.035 * sk), x: px, y: py, z: 0.7, stance },
     };
   }
 
   // --- swing planning ---------------------------------------------------------------------
-  // choose the contact depth from the geometry so the sweet spot meets the ball at a comfortable hand extension
-  let zc = 0.9;
+  // Where he meets the ball: the hands go to their reference point (lower for a low pitch: the bat's angle at contact follows the pitch
+  // height, contactVba), the sweet spot S_AIM out along the bat. The depth follows from that geometry (an inside pitch is met further out in
+  // front, a pitch off the plate deeper, the hands reaching out for it).
+  const sc = bodyScale(b.height);
+  const sg = stance === 'R' ? 1 : -1;
+  const hRef = pivotFor(stance, sc);
+  let zc = hRef.z + 0.4;
   let pred = predictAtZ(zc);
-  for (let i = 0; i < 4; i++) {
-    const dx = pred.x - pivot.x;
-    const dy = pred.y - pivot.y;
-    const dz2 = S_AIM * S_AIM - dx * dx - dy * dy;
-    zc = clamp(pivot.z + Math.sqrt(Math.max(dz2, 0.04)), 0.1, 1.5);
+  let ext = 0;
+  for (let i = 0; i < 5; i++) {
+    const rH = S_AIM * Math.cos(contactVba(pred.y, sc));
+    const dx = Math.abs(pred.x - hRef.x);
+    ext = clamp(dx - 0.98 * rH, 0, SWING.extMax * sc);
+    const dxe = dx - ext;
+    zc = clamp(hRef.z + Math.sqrt(Math.max(rH * rH - dxe * dxe, 0.04 * rH * rH)), 0.1, 1.5);
     pred = predictAtZ(zc);
   }
   // a puller meets the ball further out in front, an opposite-field hitter deeper (the depth sets the bat's angle at contact)
   zc = clamp(zc + pullDepth(R.pull), 0.1, 1.5);
   pred = predictAtZ(zc);
   const aim = { x: pred.x + (choice.aimX ?? 0), y: pred.y - b.traits.aimBelow + (choice.aimY ?? 0), z: zc };
-  const dx = aim.x - pivot.x;
-  const dy = aim.y - pivot.y;
-  const dz = aim.z - pivot.z;
-  const r3 = Math.hypot(dx, dy, dz);
-  // the hands are at `pivot` (HANDS_*) when the sweet spot is exactly S_AIM from the ball; a pitch farther away is reached for (the hands extend toward it)
-  const ext = clamp(r3 - S_AIM, 0, 0.45);
-  const rh = RH_NOM;
-  const bPivot = { x: pivot.x + (dx / r3) * (ext - rh), y: pivot.y + (dy / r3) * (ext - rh), z: pivot.z + (dz / r3) * (ext - rh) }; // the bat's turning point: rh behind the knob at contact
-  const thetaC = Math.atan2(dx, dz);
-  const epsC = Math.atan2(dy, Math.hypot(dx, dz)) + rng.normal(0, (0.012 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
+  // the knob: S_AIM back along the bat from the aim, horizontally toward the hands (reaching out by ext for a pitch he cannot meet from them)
+  const hx = hRef.x + Math.sign(aim.x - hRef.x) * ext;
+  const ux0 = aim.x - hx, uz0 = aim.z - hRef.z, ul = Math.hypot(ux0, uz0) || 1;
+  const ux = ux0 / ul, uz = uz0 / ul;
+  const v = contactVba(aim.y, sc);
+  const knobC = { x: aim.x - S_AIM * Math.cos(v) * ux, y: aim.y - S_AIM * Math.sin(v), z: aim.z - S_AIM * Math.cos(v) * uz };
+  const thetaC = Math.atan2(ux, uz);
+  // the arms reach no farther than they reach: a pitch beyond them is met further out on the barrel (or not at all)
+  const lead = bodyPoint(stance, sc, SHOULDERS_C.lead), rear = bodyPoint(stance, sc, SHOULDERS_C.rear);
+  const bx = Math.cos(v) * ux, by = Math.sin(v), bz = Math.cos(v) * uz;
+  for (let it = 0; it < 3; it++) {
+    for (const [off, sh] of [[HAND_FRONT, lead], [HAND_REAR, rear]] as const) {
+      const px = knobC.x + off * bx - sh.x, py = knobC.y + off * by - sh.y, pz = knobC.z + off * bz - sh.z;
+      const d = Math.hypot(px, py, pz), reach = ARM_REACH * sc;
+      if (d > reach) {
+        const f = (d - reach) / d;
+        knobC.x -= px * f;
+        knobC.y -= py * f;
+        knobC.z -= pz * f;
+      }
+    }
+  }
+  // his plane error: the bat comes through a little steeper or flatter than he meant (the sweet spot passes above / below the ball)
+  const epsC = v + rng.normal(0, (0.012 * (1.5 - R.contact / 100) * (protect ? 0.9 : 1.0) + 0.004) * noise);
+  const dirC = { x: Math.cos(epsC) * ux, y: Math.sin(epsC), z: Math.cos(epsC) * uz };
 
   const effort = clamp(choice.effort ?? (protect ? 0.965 : 1.0), 0.6, 1);
   const batSpeed = baseBatSpeed(R.power) * effort * (1 + rng.normal(0, 0.03 * noise));
-  const rSweet = rh + BAT_S_NODE;
+  const rh = SWING.rh;
   // a gap hitter's bat path is level and repeatable: drawn toward ~11 deg with less spread
-  const alpha = (gapAttackAngle(b.traits.attackAngleDeg, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
-  const omegaPk = (batSpeed * Math.cos(alpha)) / (rSweet * Math.max(0.5, Math.cos(epsC)));
-  const sigmaT = 0.0125 * (1.5 - R.contact / 100) * (protect ? 1.0 : 1) * noise;
+  const alpha = (gapAttackAngle(b.traits.attackAngleDeg + SWING.attackAdd, R.gap) + rng.normal(0, 3.2 * gapSpread(R.gap) * consistencyScale(R.consistency))) * DEG;
+  // the swing plane at contact: the bat and the sweet spot's heading (across the bat, toward the pitcher, rising at the attack angle)
+  const hd = { x: sg * Math.cos(thetaC), y: 0, z: -sg * Math.sin(thetaC) };
+  const up = { x: -Math.sin(epsC) * Math.sin(thetaC), y: Math.cos(epsC), z: -Math.sin(epsC) * Math.cos(thetaC) };
+  const beta = Math.asin(clamp(Math.sin(alpha) / Math.cos(epsC), -1, 1));
+  const planeC = { x: Math.cos(beta) * hd.x + Math.sin(beta) * up.x, y: Math.cos(beta) * hd.y + Math.sin(beta) * up.y, z: Math.cos(beta) * hd.z + Math.sin(beta) * up.z };
+  const omegaC = batSpeed / (rh + BAT_S_NODE);
+  const sigmaT = 0.0125 * (1.5 - R.contact / 100) * (protect ? 1.0 : 1) * noise * SWING.timeErr;
   const timeErr = rng.normal(0, sigmaT) + rng.normal(0, 0.0011);
   const startTime = Math.max(now, pred.t - TAU_CONTACT + timeErr + late);
   return {
@@ -308,15 +382,19 @@ export function buildSwing(b: PlayerInfo, stance: Stance, pitch: ThrownPitch, ob
     ...baseInfo,
     startTime,
     plannedContactTime: pred.t,
-    pivot: bPivot,
+    pivot: { x: knobC.x - rh * dirC.x, y: knobC.y - rh * dirC.y, z: knobC.z - rh * dirC.z },
     rh,
+    knobC,
+    dirC,
+    planeC,
     thetaC,
     epsC,
-    omegaPk,
+    omegaC,
     alpha,
-    sgn: stance === 'R' ? 1 : -1,
+    sgn: sg,
     tauC: TAU_CONTACT,
     batSpeed,
+    scale: sc,
     protect,
   };
 }
@@ -336,38 +414,64 @@ export interface BatPose {
   velAt(s: number): Vec3;
 }
 
+function smooth(u: number): number {
+  const v = clamp(u, 0, 1);
+  return v * v * (3 - 2 * v);
+}
+/** Unit vectors a -> b by the share t of the angle between them. */
+function slerpDir(a: Vec3, b: Vec3, t: number): Vec3 {
+  const c = clamp(a.x * b.x + a.y * b.y + a.z * b.z, -1, 1);
+  const th = Math.acos(c);
+  if (th < 1e-4) return b;
+  const s = Math.sin(th);
+  const ka = Math.sin((1 - t) * th) / s, kb = Math.sin(t * th) / s;
+  return { x: a.x * ka + b.x * kb, y: a.y * ka + b.y * kb, z: a.z * ka + b.z * kb };
+}
+
+/**
+ * The swing: the bat leaves the clip's load pose (over the rear shoulder) and drops into the swing plane, turns in that plane about a point
+ * rh behind the knob (the plane holds the bat at contact and the sweet spot's heading, rising at the attack angle: the barrel lies back
+ * toward the catcher a little below the hands, comes round under them through the zone and rises into the follow-through), and wraps
+ * toward the clip's finish over the lead shoulder. The pose is a function of the time since the swing started; the bat's velocity is its
+ * true rate of change (the collision sees the bat as drawn, the hands' travel included).
+ */
 export class BatSwing {
   tau = 0; // time since swing start
-  theta: number;
-  eps: number;
   done = false;
   contacted = false;
-  private rampExp = 1.6;
+  private readonly st: Stance;
+  private readonly fin: { knob: Vec3; dir: Vec3 } | null;
 
   constructor(readonly plan: SwingPlan) {
-    const ac = (plan.omegaPk * plan.tauC) / (this.rampExp + 1);
-    this.theta = plan.thetaC - plan.sgn * ac;
-    this.eps = plan.epsC - Math.tan(plan.alpha) * ac;
+    this.st = plan.sgn < 0 ? 'L' : 'R';
+    this.fin = plan.bunt ? null : finishPose(this.st, plan.scale);
   }
 
+  /** Turn rate in the swing plane (rad/s). */
   omega(tau: number): number {
     const u = tau / this.plan.tauC;
     if (u <= 0) return 0;
-    if (u <= 1) return this.plan.omegaPk * Math.pow(u, this.rampExp);
-    return this.plan.omegaPk * Math.max(0, 1 - (u - 1) / 0.9);
+    if (u <= 1) return this.plan.omegaC * Math.pow(u, SWING.ramp);
+    return this.plan.omegaC * Math.max(0, 1 - (u - 1) / 0.9);
+  }
+
+  /** Angle turned in the plane from the bat at contact (rad; negative before contact). */
+  phi(tau: number): number {
+    const { tauC, omegaC } = this.plan;
+    const n = SWING.ramp;
+    const u = clamp(tau / tauC, 0, 2.1);
+    if (u <= 1) return ((-omegaC * tauC) / (n + 1)) * (1 - Math.pow(u, n + 1));
+    const D = 0.9 * tauC, d = Math.min((u - 1) * tauC, D);
+    return omegaC * (d - (d * d) / (2 * D));
   }
 
   /** Advance the swing by dt seconds. */
   advance(dt: number): void {
+    this.tau += dt;
     if (this.plan.bunt) {
-      this.tau += dt;
       if (this.tau > 0.8) this.done = true;
       return;
     }
-    const w = this.omega(this.tau + dt * 0.5);
-    this.theta += this.plan.sgn * w * dt;
-    this.eps += Math.tan(this.plan.alpha) * w * dt;
-    this.tau += dt;
     if (this.tau > this.plan.tauC * 2.1) this.done = true;
   }
 
@@ -376,8 +480,45 @@ export class BatSwing {
     return this.plan.bunt ? clamp(this.tau / 0.6, 0, 1) : clamp(this.tau / (this.plan.tauC * 1.9), 0, 1);
   }
 
+  /** The early swing at the share u of tauC: the clip's bat, turned off its path toward the holdable (SWING.via). */
+  early(u: number): { knob: Vec3; dir: Vec3 } {
+    const c = clipBat(this.st, this.plan.scale, u);
+    const V = SWING.via, w = smooth(u / V.at);
+    if (w <= 0) return c;
+    const sg = this.st === 'R' ? 1 : -1, sc = this.plan.scale;
+    const az = Math.atan2(sg * c.dir.x, c.dir.z) + V.dAz * DEG * w, el = Math.asin(clamp(c.dir.y, -1, 1)) + V.dEl * DEG * w;
+    return {
+      knob: { x: c.knob.x + sg * sc * V.dKnob.x * w, y: c.knob.y + sc * V.dKnob.y * w, z: c.knob.z + sc * V.dKnob.z * w },
+      dir: { x: sg * Math.cos(el) * Math.sin(az), y: Math.sin(el), z: Math.cos(el) * Math.cos(az) },
+    };
+  }
+
+  /** The bat at time tau of the swing: knob and unit direction. */
+  at(tau: number): { knob: Vec3; dir: Vec3 } {
+    const p = this.plan;
+    const f = this.phi(tau);
+    const c = Math.cos(f), s = Math.sin(f);
+    let d = { x: c * p.dirC.x + s * p.planeC.x, y: c * p.dirC.y + s * p.planeC.y, z: c * p.dirC.z + s * p.planeC.z };
+    const pv = p.pivot;
+    let k = { x: pv.x + p.rh * d.x, y: pv.y + p.rh * d.y, z: pv.z + p.rh * d.z };
+    // the clip's own swing first, then into the plane (the hands drop and come forward, the barrel lays back)
+    const g = smooth((tau / p.tauC - SWING.inStart) / (SWING.blendIn - SWING.inStart));
+    if (g < 1) {
+      const L = this.early(tau / p.tauC);
+      d = slerpDir(L.dir, d, g);
+      k = { x: L.knob.x + (k.x - L.knob.x) * g, y: L.knob.y + (k.y - L.knob.y) * g, z: L.knob.z + (k.z - L.knob.z) * g };
+    }
+    // the follow-through wraps toward the finish over the lead shoulder
+    const h = smooth((tau / p.tauC - SWING.outStart) / (2.1 - SWING.outStart));
+    if (h > 0 && this.fin) {
+      const F = this.fin;
+      d = slerpDir(d, F.dir, h);
+      k = { x: k.x + (F.knob.x - k.x) * h, y: k.y + (F.knob.y - k.y) * h, z: k.z + (F.knob.z - k.z) * h };
+    }
+    return { knob: k, dir: d };
+  }
+
   pose(): BatPose {
-    const { theta, eps } = this;
     const p = this.plan;
     if (p.bunt) {
       const bu = p.bunt;
@@ -390,75 +531,22 @@ export class BatSwing {
       const still = { x: -Math.sin(bu.psi) * 1.5, y: 0, z: -Math.cos(bu.psi) * 1.5 };
       return { knob, tip: { x: knob.x + dir.x * BAT_LEN, y: bu.y, z: knob.z + dir.z * BAT_LEN }, dir, velAt: () => still };
     }
-    const ce = Math.cos(eps);
-    const se = Math.sin(eps);
-    const st = Math.sin(theta);
-    const ct = Math.cos(theta);
-    const dir = { x: ce * st, y: se, z: ce * ct };
-    const w = this.omega(this.tau);
-    const th = p.sgn * w;
-    const ep = Math.tan(p.alpha) * w;
-    const dd = { x: -se * st * ep + ce * ct * th, y: ce * ep, z: -se * ct * ep - ce * st * th };
-    const pv = p.pivot;
-    const rh = p.rh;
-    const stance: Stance = p.sgn > 0 ? 'R' : 'L';
-    // The bat turns about a virtual pivot near the rear shoulder (it lets the sweet spot meet the ball squarely). The swing starts from
-    // the clip's load pose and the hands extend into that arc over the first 80 % of the swing (so the path near contact is the pure arc)
-    let kx = pv.x + rh * dir.x, ky = pv.y + rh * dir.y, kz = pv.z + rh * dir.z;
-    let dx = dir.x, dy = dir.y, dz = dir.z;
-    const u = clamp(this.tau / (0.8 * p.tauC), 0, 1);
-    const g = u * u * (3 - 2 * u);
-    if (g < 1) {
-      const ld = loadPose(stance);
-      kx = ld.knob.x + (kx - ld.knob.x) * g;
-      ky = ld.knob.y + (ky - ld.knob.y) * g;
-      kz = ld.knob.z + (kz - ld.knob.z) * g;
-      dx = ld.dir.x + (dx - ld.dir.x) * g;
-      dy = ld.dir.y + (dy - ld.dir.y) * g;
-      dz = ld.dir.z + (dz - ld.dir.z) * g;
-      const n = Math.hypot(dx, dy, dz);
-      dx /= n;
-      dy /= n;
-      dz /= n;
-    }
-    // The body: the arms cannot reach farther than each hand's own shoulder allows, and the hands cannot go through the torso.
-    const { yaw: yawT, lean } = torsoState(this.tau, p.tauC);
-    const { front, rear } = shouldersAt(stance, yawT, lean);
-    const cen = bodyCentre(stance, lean);
-    const sg = p.sgn;
-    const fwdX = -Math.cos(yawT) * sg, fwdZ = Math.sin(yawT); // torso facing (toward the plate, turning toward the pitcher)
-    const latX = Math.sin(yawT) * sg, latZ = Math.cos(yawT); // toward the lead shoulder
-    for (let it = 0; it < 3; it++) {
-      for (const [off, sh] of [[HAND_FRONT, front], [HAND_REAR, rear]] as const) {
-        // outside the torso ellipse
-        const hx = kx + off * dx - cen.x, hz = kz + off * dz - cen.z;
-        const a = hx * latX + hz * latZ, b = hx * fwdX + hz * fwdZ;
-        const e = Math.hypot(a / TORSO_HALF.lateral, b / TORSO_HALF.depth);
-        if (e < 1) {
-          const k = e > 1e-6 ? 1 / e : 1;
-          const a2 = e > 1e-6 ? a * k : 0, b2 = e > 1e-6 ? b * k : TORSO_HALF.depth;
-          kx += (a2 - a) * latX + (b2 - b) * fwdX;
-          kz += (a2 - a) * latZ + (b2 - b) * fwdZ;
-        }
-        // within reach of its own shoulder
-        const px = kx + off * dx - sh.x, py = ky + off * dy - sh.y, pz = kz + off * dz - sh.z;
-        const d = Math.hypot(px, py, pz);
-        if (d > ARM_REACH) {
-          const f = (d - ARM_REACH) / d;
-          kx -= px * f;
-          ky -= py * f;
-          kz -= pz * f;
-        }
-      }
-    }
+    const tau = Math.min(this.tau, p.tauC * 2.1);
+    const { knob, dir } = this.at(tau);
+    // velocity: the pose's rate of change (central difference; one-sided at the start)
+    const hs = 0.0004;
+    const t0 = Math.max(0, tau - hs), t1 = tau + hs;
+    const a = this.at(t0), b = this.at(t1);
+    const k = this.done ? 0 : 1 / (t1 - t0);
     return {
-      knob: { x: kx, y: ky, z: kz },
-      tip: { x: kx + BAT_LEN * dx, y: ky + BAT_LEN * dy, z: kz + BAT_LEN * dz },
-      dir: { x: dx, y: dy, z: dz },
-      velAt: (s: number) => {
-        const r = rh + s;
-        return { x: r * dd.x, y: r * dd.y, z: r * dd.z };
-      },
+      knob,
+      tip: { x: knob.x + BAT_LEN * dir.x, y: knob.y + BAT_LEN * dir.y, z: knob.z + BAT_LEN * dir.z },
+      dir,
+      velAt: (s: number) => ({
+        x: (b.knob.x + s * b.dir.x - a.knob.x - s * a.dir.x) * k,
+        y: (b.knob.y + s * b.dir.y - a.knob.y - s * a.dir.y) * k,
+        z: (b.knob.z + s * b.dir.z - a.knob.z - s * a.dir.z) * k,
+      }),
     };
   }
 }
