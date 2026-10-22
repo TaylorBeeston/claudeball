@@ -337,6 +337,8 @@ export interface PuppetLike {
   /** the game's face events for this person (face/reactions.ts) and a close-up hold (glTF characters only) */
   faceAction?(snap: PlayerSnap | null, a: import('./face/reactions').FaceAction): void;
   faceHold?(sec: number): boolean;
+  /** animate the face for `sec` s from a smaller head size (a director group shot of a moment) */
+  faceBoost?(sec: number): void;
   faceProbe?(): unknown;
   /** the catcher's sign sequence for the coming pitch (shown on his fingers; glTF characters only) */
   setSigns?(seq: number[]): void;

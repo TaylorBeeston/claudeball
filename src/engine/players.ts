@@ -384,6 +384,32 @@ export class PlayerManager {
   faceShot(id: string, holdSec: number) {
     return this.puppets.get(id)?.faceHold?.(holdSec) ?? false;
   }
+  /**
+   * The director's group shots of a moment: `dugoutReaction` (the side that just scored, on its bench) and `moundHuddle` (the people on the mound).
+   * They frame heads at 3-4 % of the picture, under the faces' gate, and the dugout shot can come many seconds after the run: the faces in them
+   * are animated for the shot (a lower gate) and the moment is shown again (the bench cheers, the huddle talks), held through the shot.
+   */
+  faceGroupShot(kind: string, state: GameState, holdSec: number) {
+    const MOUND = { x: 0, z: 18.44 };
+    let members: PlayerSnap[] = [];
+    if (kind === 'dugoutReaction') {
+      const team = state.half === 'top' ? 0 : 1;
+      members = state.players.filter((p) => p.team === team && /^(bench|manager|pitchcoach|bullpen)/.test(p.role));
+      for (const p of members) this.puppets.get(p.id)?.faceAction?.(p, { id: p.id, reaction: 'joy', intensity: 0.9 });
+    } else if (kind === 'moundHuddle') {
+      members = state.players.filter((p) => p.team >= 0 && Math.hypot(p.pos.x - MOUND.x, p.pos.z - MOUND.z) < 6);
+      for (const p of members) {
+        const talker = p.role !== 'pitcher';
+        this.puppets.get(p.id)?.faceAction?.(p, talker ? { id: p.id, talk: holdSec * 0.6, reaction: 'concentration', intensity: 0.6 } : { id: p.id, reaction: 'concern', intensity: 0.6, talk: holdSec * 0.25 });
+      }
+    } else return 0;
+    for (const p of members) {
+      const pu = this.puppets.get(p.id);
+      pu?.faceHold?.(holdSec);
+      pu?.faceBoost?.(holdSec);
+    }
+    return members.length;
+  }
   /** the face of a person now (probes) */
   faceProbe(id: string) {
     return this.puppets.get(id)?.faceProbe?.() ?? null;

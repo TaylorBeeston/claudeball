@@ -77,6 +77,8 @@ const GBUF_SKIP = /^(Eyes|Gear_Buttons|Gear_Piping|Gear_Laces|Gear_Soles|Gear_Be
 /** puppet level of detail: parts dropped from tier 1 (small on screen) and from tier 2 (tiny), by mesh name; the rest always draws */
 /** the head's height as a fraction of the picture from which the face is animated (~55 px at 1080p; the onDeck B-roll frames a head at ~55 px) */
 const FACE_MIN = 0.05;
+/** in a director group shot of a moment (dugout reaction, mound huddle: heads at 3-4 % of the picture), for its length */
+const FACE_MIN_GROUP = 0.025;
 /** and from which the eyes get their glassy cornea shell (~60 px) */
 const CORNEA_MIN = 0.055;
 const CORNEA_ON = false;
@@ -1588,7 +1590,8 @@ export class GltfPuppet implements PuppetLike {
     // the face (expressions, blinks, eye moves) and the eyes' glassy cornea (a draw call each) by how big the head is in the picture and whether it is
     // in it, not by world distance: the pitcher's own close-up camera stands 12 m away (docs/faces.md section 6)
     const head = this.headInPicture(snap, env);
-    this.faceOn = this.lodTier === 0 && !lod1 && head >= FACE_MIN;
+    this.faceBoostT = Math.max(0, this.faceBoostT - dt);
+    this.faceOn = (this.lodTier === 0 || this.faceBoostT > 0) && !lod1 && head >= (this.faceBoostT > 0 ? FACE_MIN_GROUP : FACE_MIN);
     if (this.cornea.length) {
       // off for now: on the stylized eye (bigger globe, flat dark iris, t-0025) the shell's sky reflection whited the whole eye into a pale disc
       const vis = CORNEA_ON && shadingTier() === 'full' && this.faceOn && head >= CORNEA_MIN;
@@ -1744,6 +1747,10 @@ export class GltfPuppet implements PuppetLike {
     if (a.talk) this.faceTalk = Math.max(this.faceTalk, a.talk);
     const r = a.reaction && a.calmAlt && st.pers.fiery < 0.4 ? a.calmAlt : a.reaction;
     if (r) st.react(r, a.intensity ?? 1, a.delay ?? 0);
+  }
+  private faceBoostT = 0;
+  faceBoost(sec: number) {
+    this.faceBoostT = Math.max(this.faceBoostT, sec);
   }
   /** a close-up of this person: the reaction running (or just over) holds through the shot */
   faceHold(sec: number) {
