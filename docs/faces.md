@@ -128,7 +128,7 @@ midline) where a side is needed. The MPFB targets are exactly symmetric (measure
 | `cheek_puff` | `mouth-compression` 0.5 + `{l,r}-cheek-volume-incr` x2 | x1 | beards |
 | `eyes_look_left/right/up/down` | existing (on `Eyes`; the engine's cornea shell copies them) | | |
 
-**Lefties (mirrored puppets).** The engine mirrors lefties with `scale.x = -1`, so every `_L` / `_R` target (and `eyes_look_left/right`)
+**Lefties (mirrored puppets)** (stage 3: checked in game, no swap needed, see section 8). The engine mirrors lefties with `scale.x = -1`, so every `_L` / `_R` target (and `eyes_look_left/right`)
 shows on the visual opposite side for them. Symmetric presets don't care. Asymmetric ones do: a wink, a smirk, a one-brow glare, the blink
 offset and the saccade direction. The emotion module therefore swaps L / R for mirrored puppets; stage 3 checks how today's look-at
 handles eye yaw under the mirror. Stage 2 also measures which side (+X = model left, or -X) MPFB's `*-left-*` units move before naming the
@@ -245,7 +245,34 @@ Sources: `assets/src/face_style.py` (the tables: FACE_STYLE, the 20 FACE_KEYS, w
   its sky reflection whited the whole eye into a pale disc (in-game A/B); stage 3 can bring a subtler highlight back. The upper lid rests at 0.28 of
   MPFB's closure (0.2 still read wide in game).
 
-## 8. Stage-2 single-rebuild checklist (the plan)
+## 8. Stage 3 as built (the emotion model in the game)
+
+- **Modules** (pure, unit tested: `src/engine/face/emotion.test.ts`, 21 tests):
+  - `src/engine/face/emotion.ts` (`FaceState`): mood (valence / arousal, the goal decays to the person's baseline with tau 20-90 s by calm),
+    19 presets with attack / hold / release and priorities, delayed chains (grin, then shout 2.2 s later), life (blinks 2.5-6 s with 12 % double
+    blinks and 20 % uneven lids, saccades every 0.3-1.5 s, brow flickers, gum for ~30 %, a syllable-rate jaw while talking), critically damped
+    springs (lids 30, jaw 18, brows / mouth 12 rad/s), at most 10 non-zero keys. A face too small or off the picture runs only `tick` (clocks, mood,
+    envelopes); when the camera cuts to it, it snaps to its current expression instead of ramping up from a stale one.
+  - `src/engine/face/reactions.ts`: the event table of section 5 and the tension of the moment. Personality: `personalityFor` (id hash, the
+    `clutch` rating calms; umpires calm and never fiery, ball kids lively). A temper preset (yell, anger, glare, argue) scales with how fiery
+    the person is; the table names a calm variant (`calmAlt`: nod, concern) for people under 0.4 fiery.
+- **Events**: the adapter passes the sim's own `plateAppearanceEnd`, `error`, `hitByPitch` and `substitution` on as `pa_end`, `error`, `hbp`,
+  `substitution` (read only: headless stats identical to main's). The brushback is derived from the plate crossing (`onPitchCross`: higher than
+  1.25 m and more than 0.45 m inside, toward the batter's side). The batter's own run, sent with his homer, does not cut his grin short.
+- **Close-ups hold**: every director person-shot (`broadcast` `shot` start with a subject) calls `Players.faceShot`: the subject's reaction
+  (running, or ended within 0.5 s) holds through the shot. Person-shots are rare (4 in 2400 game seconds of seed 24 at broadcast tempo; the one
+  that met a reaction, a ball kid's delight, held). The director does not yet cut to the reacting player; that is a director change.
+- **Eyes lead the head**: the look-at's head spring lags, the eyes cover the rest of the angle (existing), plus the saccade, now kept inside 70 %
+  of the eyes' range (no parked side-eye).
+- **Left-handers**: checked on REN-away-b9 (seed 24, ~237 s) against a right-hander from the pitcher's eye point: both look at the pitcher. The eye
+  look is solved in rig space (the model's mirror divided out), like the head's turn, so it needs no swap; a lefty's own asymmetries (smirk side,
+  uneven blink) show mirrored, which does not matter. The L / R swap rule of section 4 is not needed.
+- **Cornea**: stays off. A shader catchlight (no draw call) was tried at the pitcherFace and onDeck framings: the eyes' clearcoat already puts
+  a small sky highlight in each pupil, and the extra catchlight added nothing visible (library `faces-24`); the shell gave pale discs.
+- **Cost** (`?perf=1`, RTX 4090, quality high, 1080p): `pup.face` 0.014 ms mean / 0.1 ms p95 per frame for all puppets in normal play, 0.01 / 0.1
+  during a pitcher close-up (puppets in total 1.9 ms); no new draw calls (teeth and tongue, 2 calls, only on an animated face with the jaw open).
+
+## 9. Stage-2 single-rebuild checklist (the plan)
 
 - [ ] `mpfb_face_extract.py` -> `assets/src/mpfb/face_targets.npz` (style + expression units; the fit is checked against `base_body.npz`)
 - [ ] style delta in `base()`; landmarks re-measured; eye radius / iris textures
