@@ -3,7 +3,7 @@
 # Requires player_anim.py (solve, DEFAULT), player_motion.py (densify) exec'd. Blender axes; everything in armature (rest) space.
 import math
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, Quaternion
 
 def _fib(n):
     out = []; ga = math.pi*(3 - math.sqrt(5))
@@ -63,6 +63,15 @@ def shoulder_behind(M, rest, side):
     b = q.inverted() @ (M[side+'ForeArm'].translation - M[side+'Arm'].translation).normalized(); tv = (b.x, b.z, -b.y)
     medial = -(1 if side == 'Left' else -1)*tv[0]
     return math.degrees(math.asin(min(1.0, min(medial, -tv[2])))) if tv[1] > -.75 and medial > 0 and tv[2] < 0 else 0.0
+def _twist_deg(r, ax): return math.degrees((2*math.atan2(Vector((r.x, r.y, r.z)).dot(ax), r.w) + math.pi) % (2*math.pi) - math.pi)
+def forearm_wrist(M, rest, side):
+    """(pronation, wrist bend) in deg as tools/jank measures them (src/engine/pose/limits.ts): pronation (> 0) / supination (< 0) of forearm + hand from the
+    thumbs-forward neutral (the rest pose is 20 deg pronated), and the hand's swing off the forearm axis."""
+    d = lambda n: (M[n].to_3x3() @ rest[n].to_3x3().inverted()).to_quaternion()
+    ax = REST_DIR[side+'ForeArm']; rf = d(side+'Arm').inverted() @ d(side+'ForeArm'); rh = d(side+'ForeArm').inverted() @ d(side+'Hand')
+    pr = (1 if side == 'Left' else -1)*(_twist_deg(rf, ax) + _twist_deg(rh, ax)) - 20; pr -= 360*round(pr/360)
+    sw = rh @ Quaternion(ax, math.radians(_twist_deg(rh, ax))).inverted()
+    return pr, math.degrees(2*math.acos(min(1.0, abs(sw.w))))
 def _swivel(M, side, pole):
     """The side of the shoulder -> wrist line the pole puts the elbow on (the pole's part across that line): what decides the elbow, not the pole itself."""
     sh = M[side+'Arm'].translation; wr = M[side+'Hand'].translation; dn = (wr - sh).normalized(); return pole - dn*pole.dot(dn)
@@ -93,6 +102,9 @@ def optimise(keys, cfg, cyclic=False, init=None):
                     # and the upper arm's twist inside its range (|twist| <= 90 deg against the chest: a swivel that keeps an over-twisted arm is not kept)
                     tw_ = shoulder_twist(M, rest, side); J += 50*max(0.0, math.radians(abs(tw_) - 90))
                     J += 50*max(0.0, math.radians(shoulder_behind(M, rest, side) - 12))         # nor swung behind and across the back (limit 15 deg)
+                    if cfg.get('wrist_max') is not None:                                         # the wrist (and for the stance the forearm's twist) inside its range
+                        pr_, ws_ = forearm_wrist(M, rest, side); J += 50*max(0.0, math.radians(ws_ - cfg['wrist_max']))
+                        if cfg.get('pron_max') is not None: J += 50*max(0.0, math.radians(abs(pr_) - cfg['pron_max']))
                     if best is None or J < best[0]: best = (J, c, cc, dz, abd, hc)
                 prev[k] = best[1].copy(); new[k+'pole'] = tuple(best[1]); new['_m_'+k] = (round(best[2], 3), round(best[3], 3), round(best[4], 3), round(best[0], 3), round(best[5], 3))
             if lap == laps-1: out[f] = new
@@ -106,19 +118,21 @@ SIDE = lambda s: s
 LOCO = dict(cc_min=.03, cc_cap=.10, dz_max=-.14, abd_max=.13, w_base=.15, w_prev=.9)
 READY = dict(cc_min=.03, cc_cap=.14, dz_max=-.08, abd_max=.14, w_base=.15, w_prev=.9)
 BAT = dict(cc_min=.03, hc_min=.0, dz_max=.02, dz_min=-.22, w_base=.35, w_prev=1.2, bonus=0.0)      # elbows between chest and shoulder height, away from the torso, never through the head / neck
+STANCE = dict(BAT, pron_max=75, wrist_max=72)
+BATW = dict(BAT, wrist_max=80)                                                                        # the other bat clips: the wrist only (their bat path, the sim's CLIP_SWING, fixes the forearms' twist)                                                         # the stance also keeps both forearms' twist and the wrists in range (limits 100 / 85; the runtime clamps at 88)
 OPT_CLIPS = {"run": (LOCO, True), "jog": (LOCO, True), "run_sprint": (dict(LOCO, dz_max=-.10), True), "run_turn_sprint": (dict(LOCO, abd_max=.16, dz_max=-.10), True), "run_turn": (dict(LOCO, abd_max=.16, dz_max=-.12), True), "trot": (LOCO, True), "walk": (LOCO, True),
              "field_ready": (READY, True), "field_ready_infield": (READY, True), "field_ready_outfield": (READY, True), "field_ready_hands_knees": (dict(READY, abd_max=.18, cc_cap=.2), True),
-             "idle": (READY, True), "ump_ready": (READY, True), "ump_set_base": (READY, True), "catcher_crouch": (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True), "batting_stance": (BAT, True), "swing": (BAT, False)}
+             "idle": (READY, True), "ump_ready": (READY, True), "ump_set_base": (READY, True), "catcher_crouch": (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True), "batting_stance": (STANCE, True), "swing": (BATW, False)}
 CATCHCFG = dict(cc_min=.03, w_base=.15, w_prev=.9)
 for _n in ("catch_throw", "catch_throw_high", "catch_throw_low", "catch_stretch", "catch_fly", "catch_fly_run", "catch_line_drive", "catch_backhand", "field_grounder", "field_grounder_backhand",
            "catch_pitch", "catch_pitch_low", "catch_pitch_high", "catch_comebacker", "pitcher_catch_toss", "throw_casual", "pickoff", "tag_glove", "tag_hand", "catcher_block", "slide_feet", "slide_hook_left", "slide_hook_right", "slide_head", "dive_back",
            "pop_up", "pop_up_head", "ump_strike", "ump_strike_swinging", "ump_ball", "ump_safe", "ump_out", "ump_out_strikeout", "ump_foul", "ump_fair", "ump_homerun", "ump_time"):
     OPT_CLIPS[_n] = (CATCHCFG, False)
 for _n in ("ondeck_ready", "bench_sit", "ballkid_sit", "coach_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)
-OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BAT, False)
+OPT_CLIPS["coach_go_loop"] = (CATCHCFG, True); OPT_CLIPS["ondeck_stretch"] = (CATCHCFG, True); OPT_CLIPS["ondeck_swing"] = (BATW, False)
 for _n in ("bench_stand_up", "bench_cheer", "coach_stop", "coach_go", "coach_advance", "coach_slide", "coach_signs", "ballkid_pickup", "ballkid_toss", "ballkid_wave"): OPT_CLIPS[_n] = (CATCHCFG, False)
 RIT_BAT = ("batter_step_in", "batter_practice_swing", "batter_step_out")
-for _n in RIT_BAT: OPT_CLIPS[_n] = (BAT, False)
+for _n in RIT_BAT: OPT_CLIPS[_n] = (BATW, False)
 for _n in ("batter_adjust", "catcher_signs", "catcher_signs_runner_on", "catcher_signal_infield", "pitcher_shake_off", "pitcher_nod", "pitcher_step_off", "pitcher_step_on", "pitcher_rosin", "pitcher_adjust",
            "pitcher_look_runner", "pitcher_handoff", "warmup_pitch", "bullpen_throw", "manager_signal", "manager_challenge", "ump_brush_plate", "ump_new_ball", "throw", "toss_underhand", "roll_ball", "toss_sidearm_short"): OPT_CLIPS[_n] = (CATCHCFG, False)
 for _n in ("mound_talk", "mound_talk_listen", "mound_talk_cover", "ump_huddle", "bullpen_catcher_ready"): OPT_CLIPS[_n] = (dict(READY, dz_max=-.02, cc_cap=.2, abd_max=.2), True)

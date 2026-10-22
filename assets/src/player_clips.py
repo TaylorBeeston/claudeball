@@ -54,14 +54,16 @@ def celebrate_clip():
 # Batting stance (right-handed; the engine mirrors lefties). Body faces model-forward, which the engine turns to face the plate: chest/shoulders square to the
 # plate = perpendicular to the mound line, head turned ~78 deg over the front (left) shoulder to the pitcher (neck 39, head 78), knees flexed and out,
 # weight on the back foot, hands back by the rear shoulder, bat cocked over it.  The `swing` clip starts from exactly this pose (frame 0).
+# The bat is laid back ~36 deg over the rear shoulder, the hands in front of it at chest height: with the bat nearly upright (20 deg) both forearms ran
+# almost parallel to it, so the fists could only wrap the handle with the wrists bent ~85 deg and the forearms twisted 110-140 deg (limit 100, runtime 88).
 STANCE0 = dict(hips=(-.03, .02, -.12), lean=14, yaw=-7, hyaw=-4, head_yaw=78, head_pitch=-14, lfoot=(.30, 0, .085), rfoot=(-.30, .02, .085),
-               lknee=(.30, -1, 0), rknee=(-.30, -1, 0), bat=((-.17, -.20, 1.36), (-.30, .12, .94)), lpole=(.2, .3, -.9), rpole=(-.5, .8, -.3))
+               lknee=(.30, -1, 0), rknee=(-.30, -1, 0), bat=((-.15, -.28, 1.30), (-.259, .529, .808)), lpole=(.2, .3, -.9), rpole=(-.5, .8, -.3))
 def S0(**k): d = dict(STANCE0); d.update(k); return d
 def stance_clip():
     return [(0, S0()),
-            (12, S0(hips=(-.06, .03, -.115), yaw=-10, hyaw=-6, bat=((-.19, -.17, 1.38), (-.33, .17, .93)))),
-            (24, S0(hips=(-.01, .015, -.135), yaw=-5, hyaw=-2, head_pitch=-16, bat=((-.15, -.23, 1.35), (-.27, .05, .96)))),
-            (36, S0(hips=(-.045, .025, -.11), yaw=-8, hyaw=-4, bat=((-.18, -.19, 1.37), (-.31, .14, .94)))),
+            (12, S0(hips=(-.06, .03, -.115), yaw=-10, hyaw=-6, bat=((-.17, -.25, 1.32), (-.278, .570, .773)))),
+            (24, S0(hips=(-.01, .015, -.135), yaw=-5, hyaw=-2, head_pitch=-16, bat=((-.13, -.31, 1.29), (-.240, .467, .851)))),
+            (36, S0(hips=(-.045, .025, -.11), yaw=-8, hyaw=-4, bat=((-.16, -.27, 1.31), (-.264, .545, .796)))),
             (48, S0())]
 
 # `catch_jump`: outfielder leaping at the wall, 29 frames = 1.21 s (plant 0-4, load 4, take-off 8, apex 14 = glove highest, hang 11-17, touch-down 20, absorb 23, settle 29).
