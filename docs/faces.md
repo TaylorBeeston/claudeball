@@ -239,6 +239,11 @@ Sources: `assets/src/face_style.py` (the tables: FACE_STYLE, the 20 FACE_KEYS, w
 - **Hairline:** not changed. The game hides hair under every cap and helmet (only the crowd impostors are bare-headed), so the ragged cards never
   show on the field.
 - **Batting stance** re-keyed (see the commit and the report): both forearms and wrists in range.
+- **Engine (stage-2 glue, `gltfCharacter.ts`)**: faces animate while the head is >= 5 % of the picture's height (~55 px at 1080p) and in the
+  frustum (no 12 m rule); today's six expressions drive the new keys scaled to their amplitude (unscaled, the resting brow raise read as a startled
+  stare); teeth / tongue visible only while jaw_open > 0.04. The engine's cornea shell is off (`CORNEA_ON`): over the bigger globe and flat dark iris
+  its sky reflection whited the whole eye into a pale disc (in-game A/B); stage 3 can bring a subtler highlight back. The upper lid rests at 0.28 of
+  MPFB's closure (0.2 still read wide in game).
 
 ## 8. Stage-2 single-rebuild checklist (the plan)
 
