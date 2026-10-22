@@ -133,6 +133,11 @@ async function main() {
     const r = ph === 'all' ? ['', ''] : H.range(`${ph}:wel`);
     lines.push(`| ${ph} | ${t[0]} | ${pct(t[3] / t[0])} | ${pct(t[4] / t[0])} | ${pct(t[5] / t[0])} | ${pct(t[1] / t[0])} | ${pct(t[2] / t[0])} | ${P('az')} | ${P('el')} | ${P('wel')}${ph === 'all' ? '' : ` (${r[0]}..${r[1]})`} | ${P('knobOff', [0.5, 0.95])} | ${P('over', [0.5, 0.95])} | ${P('axisR', [0.5, 0.95])} | ${P('axisL', [0.5, 0.95])} | ${ph === 'all' ? '' : `${P('gripR', [0.95])} / ${P('gripL', [0.95])}`} |`);
   }
+  const envRate = (ph: string) => {
+    const b = H.h[`env:${ph}`];
+    return b ? (b['1'] ?? 0) / ((b['1'] ?? 0) + (b['0'] ?? 0)) : NaN;
+  };
+  if (H.h['env:launch']) lines.push('', `The bat's direction alone in envelope.ts's relaxed tier (nearest phase, the clip's own knob): ${PHASES.map((p) => `${p} ${pct(envRate(p))}`).join(', ')}.`);
   lines.push('', '| split | ' + [...PHASES, 'all'].join(' | ') + ' |', '|---|' + [...PHASES, 'all'].map(() => '---').join('|') + '|');
   const splits = [...new Set(Object.keys(H.t).filter((k) => k.includes('|')).map((k) => k.split('|')[1]))].sort();
   for (const s of splits)

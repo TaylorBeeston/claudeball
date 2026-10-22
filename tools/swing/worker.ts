@@ -6,7 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { Holder, type V3 } from './hold';
+import { EnvelopeGrid, Holder, type V3 } from './hold';
 import { swingFrames } from './frames';
 import { Hist, type Phase, splitKeys } from './agg';
 
@@ -47,6 +47,9 @@ async function main() {
   }
   const holder = new Holder();
   await holder.init(HERE);
+  // the brief's literal metric: the bat's direction alone in envelope.ts's grid (run `npx tsx tools/jank/envelope.ts` first)
+  const envFile = path.join(HERE, 'tools/jank/out/envelope.json');
+  const grid = fs.existsSync(envFile) ? new EnvelopeGrid(JSON.parse(fs.readFileSync(envFile, 'utf8'))) : null;
 
   const bat: Record<string, number> = { pa: 0, ab: 0, h: 0, doubles: 0, triples: 0, hr: 0, bb: 0, so: 0, hbp: 0, rbi: 0, r: 0, sb: 0, cs: 0, sf: 0, sh: 0 };
   const pit: Record<string, number> = { outs: 0, bf: 0, h: 0, r: 0, er: 0, bb: 0, so: 0, hr: 0, hbp: 0, pitches: 0, strikes: 0, wp: 0 };
@@ -151,6 +154,7 @@ async function main() {
     }
     swingFrames(holder, new BatSwing(plan), r.stance, r.h, (f) => {
       const ph: Phase = f.finish ? 'finish' : phaseOf(f.tau / tauC);
+      if (grid) H.add(`env:${ph}`, grid.relaxed(f.t, f.s.az, f.s.el) ? 1 : 0);
       H.phase(ph, split, f.s, wEl(f.knob, f.tip), wAz(f.knob, f.tip, sg), f.tip.y, { g: r.g, tau: +f.tau.toFixed(4), stance: r.stance, px: +r.px.toFixed(3), py: +r.py.toFixed(3), h: r.h, t: +f.t.toFixed(3) });
     });
   }

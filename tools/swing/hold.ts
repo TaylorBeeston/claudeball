@@ -71,6 +71,26 @@ export function ikWeights(n: number, dt = 1 / 60): number[] {
   return out;
 }
 
+/** envelope.ts's grid (tools/jank/out/envelope.json): is a shoulder-frame direction in the relaxed ('+' or '#') tier at the nearest phase? */
+export class EnvelopeGrid {
+  private cells = new Map<string, boolean>();
+  private phases: [number, string][] = [];
+  constructor(samples: { phase: string; az: number; el: number; overL: number; overR: number; missL: number; missR: number }[]) {
+    const ph = new Set<string>();
+    for (const x of samples) {
+      ph.add(x.phase);
+      this.cells.set(`${x.phase}|${x.az}|${x.el}`, Math.max(x.overL, x.overR) <= 35 && Math.max(x.missL, x.missR) < 0.02);
+    }
+    this.phases = [...ph].map((p) => [+(/\((\d+)\)/.exec(p)?.[1] ?? 0) / 24, p] as [number, string]);
+  }
+  relaxed(t: number, az: number, el: number): boolean {
+    let best = this.phases[0];
+    for (const p of this.phases) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+    const a = ((Math.round(az / 10) * 10 + 540) % 360) - 180, e = Math.max(-80, Math.min(80, Math.round(el / 10) * 10));
+    return this.cells.get(`${best[1]}|${a}|${e}`) ?? false;
+  }
+}
+
 export class Holder {
   rig!: RigFile;
   clip!: Clip;
