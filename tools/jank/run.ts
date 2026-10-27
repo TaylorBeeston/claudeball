@@ -193,7 +193,7 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
 // ---- report ------------------------------------------------------------------------------------------------------------------------
 
 const UNITS: Record<string, string> = { joint: 'deg', len: 'ratio', foot: 'm', 'foot:slide': 'm/s', body: 'm', bat: 'm', 'bat:hand-axis': 'deg', flip: 'deg', spike: 'x cap', yaw: 'deg' };
-const unit = (k: string) => UNITS[k] ?? UNITS[k.split(':')[0]] ?? '';
+const unit = (k: string) => UNITS[k] ?? UNITS[k.replace(/-[LR]$/, '')] ?? UNITS[k.split(':')[0]] ?? '';
 
 export function familyTable(entries: Entry[], src: (s: string) => boolean) {
   const fam = new Map<string, { frames: number; score: number; max: number; clips: Map<string, number> }>();

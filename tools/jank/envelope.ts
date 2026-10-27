@@ -122,7 +122,7 @@ async function main() {
         const y = norm(sub(up0, x.map((v) => v * dot(up0, x))));
         const z = cross(x, y);
         const az = (Math.atan2(dot(d, x), dot(d, z)) * 180) / Math.PI, el = (Math.asin(Math.max(-1, Math.min(1, dot(d, y)))) * 180) / Math.PI;
-        lines.push(`| ${e.clip} / ${k} | ${wst.ctx.seed}, ${wst.ctx.t} | ${az.toFixed(0)} | ${el.toFixed(0)} | ${k === 'bat:hand-axis' ? sm.max.toFixed(0) + ' deg' : sm.max.toFixed(2) + ' m'} |`);
+        lines.push(`| ${e.clip} / ${k} | ${wst.ctx.seed}, ${wst.ctx.t} | ${az.toFixed(0)} | ${el.toFixed(0)} | ${k.startsWith('bat:hand-axis') ? sm.max.toFixed(0) + ' deg' : sm.max.toFixed(2) + ' m'} |`);
       }
     }
     lines.push('');
