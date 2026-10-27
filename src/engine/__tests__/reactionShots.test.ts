@@ -187,8 +187,11 @@ describe('reaction shots: the camera', () => {
   it('keeps the lens clear: nobody right beside the camera', () => {
     const h = head(pitcher);
     const cam = h.clone().add(new Vector3(0, 0, -7));
-    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 1, y: 0, z: cam.z } }])).toBe(false);
-    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 2, y: 0, z: cam.z } }])).toBe(true);
+    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 1.8, y: 0, z: cam.z } }])).toBe(false);
+    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 2.2, y: 0, z: cam.z } }])).toBe(true);
+    // a wider berth in the near part of the line (a big blurred head in the corner), the normal one near the face
+    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 0.8, y: 0, z: cam.z + 2.5 } }])).toBe(false);
+    expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: cam.x + 0.8, y: 0, z: cam.z + 5 } }])).toBe(true);
     // someone down in the dugout pit is below the line
     expect(sightClear(cam, h, 'P', [{ id: 'X', pos: { x: 0, y: -1, z: 15 } }])).toBe(true);
   });

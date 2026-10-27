@@ -161,9 +161,12 @@ export function reactionFov(dist: number, aspect: number): number {
   return (2 * Math.atan(h / 2 / Math.max(dist, 1)) * 180) / Math.PI;
 }
 /** nobody this close to the lens (they would fill the frame or be cut by the near plane) */
-const LENS_CLEAR = 1.4;
-/** nobody this close to the line of sight between the lens and the face */
+const LENS_CLEAR = 2;
+/** nobody this close to the line of sight between the lens and the face; in its first stretch (NEAR_PART) a wider berth: someone there is a big
+ * blurred head in the corner of the close-up */
 const SIGHT_CLEAR = 0.5;
+const NEAR_CLEAR = 1;
+const NEAR_PART = 0.45;
 /** a key light at the face: the direction toward it and how strong it is there (any unit: only the ratios matter) */
 export interface KeyLight {
   dir: P3;
@@ -237,7 +240,7 @@ export function sightClear(cam: P3, head: P3, subjectId: string, bodies: readonl
     const t = (px * dx + pz * dz) / (len * len);
     // up to just short of the face (someone right beside him is in the picture with him, not in front of the lens)
     if (t <= 0 || t >= 1 - 0.6 / len) continue;
-    if (Math.abs(px * dz - pz * dx) / len < SIGHT_CLEAR) return false;
+    if (Math.abs(px * dz - pz * dx) / len < (t < NEAR_PART ? NEAR_CLEAR : SIGHT_CLEAR)) return false;
   }
   return true;
 }
