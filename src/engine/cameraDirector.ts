@@ -19,7 +19,7 @@ import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, RETU
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { baseCamera, clearestCamera, hrWallCamera, type Box } from './sightLines';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
-import { MOMENT_TTL, MOMENT_WEIGHT, rankReactions, reactionCamera, REACT_WIDTH, type KeyLight, type Moment, type MomentKind, type ReactionNow, type RecentShot } from './reactionShots';
+import { MOMENT_TTL, MOMENT_WEIGHT, rankReactions, reactionCamera, reactionFov, type KeyLight, type Moment, type MomentKind, type ReactionNow, type RecentShot } from './reactionShots';
 import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
@@ -1320,7 +1320,7 @@ export class CameraDirector {
         d.pos.z += p.pos.z - r.body.z;
         d.tgt.copy(head);
         const dist = d.pos.distanceTo(head);
-        d.fov = this.tele(REACT_WIDTH, dist);
+        d.fov = reactionFov(dist, this.camera.aspect);
         d.focus = dist;
         d.aperture = 1;
         d.lp = 6; d.lt = 7; d.lf = 6;

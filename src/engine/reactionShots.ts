@@ -152,6 +152,14 @@ export function rankReactions(ctx: PickContext): Pick[] {
 /** the close-up: this far from the face, this wide a picture at the face (head about a quarter of the picture height in 16:9) */
 export const REACT_DIST = 7;
 export const REACT_WIDTH = 1.5;
+/** and never a taller picture than this (a phone held upright: a 1.5 m wide picture would be 3.3 m tall, the whole body) */
+export const REACT_HEIGHT_MAX = 1.1;
+
+/** the close-up's vertical field of view (deg) at `dist` metres for a picture of this aspect */
+export function reactionFov(dist: number, aspect: number): number {
+  const h = Math.min(REACT_WIDTH / aspect, REACT_HEIGHT_MAX);
+  return (2 * Math.atan(h / 2 / Math.max(dist, 1)) * 180) / Math.PI;
+}
 /** nobody this close to the lens (they would fill the frame or be cut by the near plane) */
 const LENS_CLEAR = 1.4;
 /** nobody this close to the line of sight between the lens and the face */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { inPark, litShare, LIT_MIN, MOMENT_TTL, MOMENT_WEIGHT, PACE, rankReactions, reactionCamera, roleClass, sightClear, type Moment, type PickContext, type ReactionNow } from '../reactionShots';
+import { inPark, litShare, LIT_MIN, MOMENT_TTL, REACT_HEIGHT_MAX, reactionFov, MOMENT_WEIGHT, PACE, rankReactions, reactionCamera, roleClass, sightClear, type Moment, type PickContext, type ReactionNow } from '../reactionShots';
 import { FaceState, personalityFor } from '../face/emotion';
 import type { PlayerSnap } from '../types';
 
@@ -173,6 +173,12 @@ describe('reaction shots: the camera', () => {
     expect(off!.x).toBeLessThan(0);
     // a weak light does not count against a strong one
     expect(litShare({ x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: -1 }, [{ dir: new Vector3(0, 0.5, -0.86), w: 0.1 }, { dir: new Vector3(0, 0.6, 0.8), w: 1 }])).toBeLessThan(LIT_MIN);
+  });
+
+  it('is a close-up on a wide screen and on a phone held upright: the head at least a fifth of the picture height', () => {
+    const headFrac = (dist: number, aspect: number) => 0.25 / (2 * dist * Math.tan((reactionFov(dist, aspect) * Math.PI) / 360));
+    for (const aspect of [16 / 9, 4 / 3, 412 / 915]) for (const dist of [7, 9.5]) expect(headFrac(dist, aspect)).toBeGreaterThan(0.2);
+    expect(2 * 7 * Math.tan((reactionFov(7, 0.45) * Math.PI) / 360)).toBeCloseTo(REACT_HEIGHT_MAX, 5);
   });
 
   it('keeps the lens clear: nobody right beside the camera', () => {
