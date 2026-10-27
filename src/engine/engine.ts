@@ -188,6 +188,18 @@ export class Engine {
       this.sim.emit({ type: 'broadcast', event: e });
     };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
+    this.director.reactionLookup = (id) => this.players.faceReaction(id);
+    // the key light on a face: the sun by day (the towers are off), the lit tower spots at dusk and night (stadiumLights.ts)
+    this.director.keyLights = (p) => {
+      const out = this.lights.lightsAt(p);
+      const sun = this.env.tod.sunIntensity;
+      if (sun > 1) {
+        // the sun's illuminance against the towers': at dusk both light the field, the towers' share is the larger near them
+        const towers = out.reduce((m, k) => Math.max(m, k.w), 0);
+        out.push({ dir: this.env.sunDir.clone(), w: towers > 0 ? towers * (sun / 3) : 1 });
+      }
+      return out;
+    };
     // the director's `shot` events drive the lower-third card of a person-shot (on deck, walk-up, face close-up, ...): shown with the shot, hidden at its end; no per-frame work
     this.broadcast.on((e) => {
       if (e.type !== 'shot') return;

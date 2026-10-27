@@ -165,6 +165,25 @@ export class StadiumLights {
     this.coneMat.uniforms.uTime.value = time;
   }
 
+  /**
+   * The tower spots that light point `p` now (inside their cone): the direction toward each and its illuminance there (intensity / distance²,
+   * fading over the cone's penumbra). For the director's reaction shots: a face is filmed from a side the lights reach.
+   */
+  lightsAt(p: Vector3): { dir: Vector3; w: number }[] {
+    const out: { dir: Vector3; w: number }[] = [];
+    for (const l of this.spots) {
+      if (!l.visible || l.intensity <= 0) continue;
+      const toP = p.clone().sub(l.position);
+      const d = toP.length();
+      const axis = l.target.position.clone().sub(l.position).normalize();
+      const ang = Math.acos(Math.min(1, toP.dot(axis) / Math.max(d, 1e-6)));
+      const inner = l.angle * (1 - l.penumbra);
+      const k = ang <= inner ? 1 : ang >= l.angle ? 0 : 1 - (ang - inner) / (l.angle - inner);
+      if (k > 0) out.push({ dir: toP.negate().divideScalar(Math.max(d, 1e-6)), w: (l.intensity * k) / (d * d) });
+    }
+    return out;
+  }
+
   private rebuild() {
     for (const l of [...this.spots, ...this.spill]) {
       l.shadow.map?.dispose();

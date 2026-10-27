@@ -7,21 +7,23 @@
  *  replay – last play from a second angle in slow motion (from recorded sim history)
  *  cutaway– crowd / dugout / wide stadium shots between half-innings
  *  action – high-home camera framing the ball, the fielder / throw target and every runner in motion
- *  hrwall / trot / homeplate – home-run sequence: ball leaving over the wall, crowd reaction, batter tracked leg by leg around
- *                the bases, celebration at the plate, then a slow-motion replay from a second angle
+ *  hrwall / trot / homeplate – home-run sequence: ball leaving over the wall, crowd reaction (or the pitcher's), batter tracked leg by leg
+ *                around the bases, celebration at the plate, then a slow-motion replay from a second angle
+ *  reaction – after a big moment, a close-up of the person reacting to it while his face still shows it (reactionShots.ts)
  */
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BASES, toScene } from './dims';
 import { isFielderRole } from './roles';
-import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
+import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, RETURN_MARGIN, type BrollKind, type BrollRig, type BrollShot, type Landmarks } from './broll';
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { baseCamera, clearestCamera, hrWallCamera, type Box } from './sightLines';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
+import { MOMENT_TTL, MOMENT_WEIGHT, rankReactions, reactionCamera, REACT_WIDTH, type KeyLight, type Moment, type MomentKind, type ReactionNow, type RecentShot } from './reactionShots';
 import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
-export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss' | 'broll';
+export type ShotName = 'pitch' | 'follow' | 'fielder' | 'base' | 'replay' | 'cutaway' | 'wide' | 'action' | 'hrwall' | 'trot' | 'homeplate' | 'umpire' | 'coach' | 'toss' | 'broll' | 'reaction';
 
 interface Desired {
   pos: Vector3;
@@ -52,6 +54,8 @@ interface Replay {
 }
 
 const HOME_HIGH = new Vector3(0, 17, -26);
+/** the shortest reaction shot worth cutting to (s) */
+const MIN_REACT = 2.2;
 const CF_CAM = new Vector3(-2.6, 10.5, 121);
 /** how far either batter's box reaches from the plate's centre line (m): the pitch shot frames the box, not a batter still walking up */
 const BOX_X = 1.6;
@@ -124,6 +128,20 @@ export class CameraDirector {
   occluders: Box[] = [];
   /** where a player's face is (the engine plugs in the puppets' head bones) */
   faceLookup: ((id: string, out: Vector3) => Vector3 | null) | null = null;
+  /** the key lights at a point (the sun, the lit tower spots): a reaction close-up is filmed from the lit side of the face */
+  keyLights: ((p: Vector3) => KeyLight[]) | null = null;
+  /** the reaction a person's face shows now (the engine plugs in the puppets' emotion model); without it there are no reaction shots */
+  reactionLookup: ((id: string) => ReactionNow | null) | null = null;
+  /** the game's recent big moments (strikeout, close play, home run, ...), waiting for a reaction shot */
+  private moments: Moment[] = [];
+  /** the reaction shot on screen: whose face, the camera's offset from it and his body when it began, and what follows it */
+  private react: { id: string; start: number; hold: number; off: Vector3; body: Vector3; head: Vector3; then: 'pitch' | 'endPlay' | 'hr' } | null = null;
+  private reactRecent: RecentShot[] = [];
+  private reactThisHalf = 0;
+  /** a pitch crossed the plate this frame (a brushback shows as the batter's flinch) */
+  private crossed = false;
+  /** reaction shots shown this game (tests, probes) */
+  reactionShots = 0;
   brollEnabled = true;
   /** hold the current B-roll shot (screenshots / tests) */
   brollLock = false;
@@ -159,7 +177,7 @@ export class CameraDirector {
   private legIdx = -1;
   private legSince = 0;
   /** home-run sequence state (null when there is none) */
-  private hr: { batterId: string; stage: 'wall' | 'crowd' | 'trot' | 'home' | 'replay'; t: number; contactSimT: number; simT: number; pos: Vector3; dir: Vector3; side: number; still: number; homeSince: number; robbed: boolean } | null = null;
+  private hr: { batterId: string; stage: 'wall' | 'react' | 'crowd' | 'trot' | 'home' | 'replay'; t: number; contactSimT: number; simT: number; pos: Vector3; dir: Vector3; side: number; still: number; homeSince: number; robbed: boolean } | null = null;
 
   constructor(
     private camera: PerspectiveCamera,
@@ -174,6 +192,7 @@ export class CameraDirector {
     this.orbit.maxDistance = 400;
     this.orbit.maxPolarAngle = Math.PI * 0.495;
     sim.on((e) => this.events.push(e));
+    sim.onPitchCross?.(() => (this.crossed = true));
     this.landmarks = { crowdShots: stadium.crowdShots, dugoutShots: this.dugoutShots, scoreboard: null, bullpens: DEFAULT_BULLPENS };
   }
 
@@ -199,6 +218,17 @@ export class CameraDirector {
       this.legSince = this.clock;
     }
     const from = this.shot;
+    if (s !== 'reaction' && this.react) {
+      // cut away before it was over (the next pitch, the half inning): the play it came before is not replayed now, but its bookkeeping is
+      // done (a big play is queued for a later lull, the close call forgotten) so the broadcast does not wait for it
+      if (this.react.then === 'endPlay') {
+        this.noteDeferred(false);
+        this.close = null;
+        this.pendingReplay = false;
+        this.inPlay = false;
+      }
+      this.react = null;
+    }
     this.endShotInfo();
     this.shot = s;
     this.sim.hold = s === 'replay'; // the live game waits while a replay plays
@@ -232,6 +262,7 @@ export class CameraDirector {
   private lastReplayVariant = 'infield';
 
   private announceShot(kind: import('./types').ShotLabel, subjectId: string | undefined, card: boolean, holdS: number, role?: string) {
+    if (subjectId) this.lastSubject = { id: subjectId, at: this.clock };
     this.shotInfo = { kind, subjectId, role, card, holdMs: Math.round(holdS * 1000) };
     const cb = this.onBroadcast;
     if (!cb) return;
@@ -249,8 +280,11 @@ export class CameraDirector {
   private handleEvent(te: TimedEvent, live: GameState) {
     const e = te.event;
     if (this.sim.skipping) return;
+    // the play is over (the ball goes back to the pitcher, dead): a reaction shot is not cut away from for that
+    if (this.shot === 'reaction' && live.phase === 'playOver' && (e.type === 'throw' || e.type === 'catch' || e.type === 'tag')) return;
     switch (e.type) {
       case 'pitch':
+        this.moments.length = 0;
         this.hr = null;
         this.replay = null;
         this.inPlay = false;
@@ -258,6 +292,7 @@ export class CameraDirector {
         this.cut('pitch');
         break;
       case 'contact':
+        this.moments.length = 0;
         this.fairJudged = false;
         this.coachPending = null;
         this.playScore = e.exitVelo >= 45 ? 1 : 0; // 100 mph and up
@@ -332,8 +367,29 @@ export class CameraDirector {
       case 'ball_tossed_to_fan':
         this.tossFan.copy(toScene(e.pos, new Vector3()));
         break;
+      case 'pa_end': {
+        const r = e.result;
+        const k: MomentKind | null = r.startsWith('strikeout') ? 'strikeout' : r === 'walk' ? 'walk' : r === 'hit by pitch' ? 'hitByPitch' : /double play|triple play/.test(r) ? 'doublePlay' : r === 'single' ? 'hit' : r === 'double' || r === 'triple' ? 'extraBase' : null;
+        const pitcher = live.pitcher?.id;
+        // who shows it most: the pitcher's yell or the batter's frustration on a strikeout, the batter on a hit or a hit batsman, the pitcher on a walk
+        if (k) this.addMoment(k, k === 'strikeout' ? [pitcher, e.batterId, live.players.find((p) => p.role === 'catcher')?.id] : k === 'walk' ? [pitcher, e.batterId] : [e.batterId, pitcher], live);
+        break;
+      }
+      case 'hbp':
+        this.addMoment('hitByPitch', [e.batterId], live);
+        break;
+      case 'error':
+        this.addMoment('error', [e.fielderId, live.pitcher?.id], live);
+        break;
+      case 'substitution':
+        if (/pitching/.test(e.reason)) this.addMoment('pitchingChange', [e.outId, e.inId], live);
+        break;
+      case 'challenge':
+        this.addMoment('challenge', [e.playerId], live);
+        break;
       case 'homerun': {
-        // the ball just cleared the fence: show it leaving, then the crowd, then the trot (see updateHr)
+        this.addMoment('homeRun', [live.pitcher?.id, e.batterId], live);
+        // the ball just cleared the fence: show it leaving, then the crowd (or the pitcher), then the trot (see updateHr)
         const b = live.ball.pos;
         const fence = e.pos ?? b;
         const pos = toScene(fence, new Vector3());
@@ -349,7 +405,8 @@ export class CameraDirector {
         break;
       }
       case 'robbed_hr': {
-        // a fielder took the home run away: him at the wall, the crowd's reaction, then the play again from a second angle
+        this.addMoment('robbedHomer', [e.batterId, e.playerId], live);
+        // a fielder took the home run away: him at the wall, the crowd's reaction (or the batter's), then the play again from a second angle
         const pos = toScene(e.pos ?? live.ball.pos, new Vector3());
         const dir = new Vector3(pos.x, 0, pos.z);
         if (dir.lengthSq() < 1) dir.set(0, 0, 1);
@@ -383,18 +440,23 @@ export class CameraDirector {
         break;
       case 'safe':
         if (!this.hr) this.noteClosePlay(e, te.simTime, live); // also plays with no batted ball (steals, pickoffs)
+        if (e.closePlay) this.addMoment('closeSafe', [e.playerId], live);
         break;
       case 'out':
       case 'run':
         if (e.type === 'run') this.playScore += 1;
         if (e.type === 'out' && ++this.playOuts >= 2) this.playScore += 2; // a double play
         if (e.type === 'run') this.reaction = { team: live.half === 'top' ? 0 : 1, at: this.clock };
+        if (e.type === 'run') this.addMoment('run', [e.playerId], live);
+        if (e.type === 'out' && e.closePlay) this.addMoment('closeOut', [e.playerId], live);
         if (e.type === 'out' && !this.hr) this.noteClosePlay(e, te.simTime, live);
         this.holdUntil = Math.max(this.holdUntil, this.clock + 2.2);
         this.playEnd = te.simTime;
         if (this.inPlay && !this.hr) this.pendingReplay = true;
         break;
       case 'half_inning':
+        this.moments.length = 0;
+        this.reactThisHalf = 0;
         this.hr = null;
         this.crowdPick = -1;
         this.inPlay = false;
@@ -421,12 +483,21 @@ export class CameraDirector {
   update(dt: number, live: GameState, ball: Vector3, players: Map<string, Vector3>): DirectorOutput {
     this.clock += dt;
     this.simNow = live.time;
+    this.bodies = players;
     this.lastLive = live;
     this.lastCutFrame = false;
     for (const te of this.events.splice(0)) {
       if (te.event.type === 'contact') this.thrown = false;
       this.handleEvent(te, live);
     }
+    if (this.crossed) {
+      // a pitch went by: a brushback is the batter's flinch (the faces judge the pitch, face/reactions.ts)
+      this.crossed = false;
+      const b = live.batter?.id;
+      const r = b ? this.reactionLookup?.(b) : null;
+      if (b && r?.name === 'flinch' && r.age < 0.5) this.addMoment('brushback', [b, live.pitcher?.id], live);
+    }
+    if (this.shot === 'reaction') this.updateReaction(live);
     // windup marks the start of the next pitch: leave hold / cutaway states
     const pit = live.players.find((p) => p.role === 'pitcher');
     if (pit?.anim === 'windup' && live.time - this.lastWindup > 2) {
@@ -442,7 +513,7 @@ export class CameraDirector {
     this.updateBroll(live, pit);
     // a ball kid starts to toss a foul ball to the stands while the game is waiting: show it (a pitch coming ends the shot at its windup)
     const kidToss = live.players.find((p) => p.role === 'ballkid' && p.anim === 'ballkid_toss');
-    if (kidToss && !this.kidTossing && !this.hr && !this.inPlay && this.shot !== 'replay' && this.shot !== 'cutaway' && !this.sim.skipping && pit?.anim !== 'windup' && pit?.anim !== 'pitch') {
+    if (kidToss && !this.kidTossing && !this.hr && !this.inPlay && this.shot !== 'replay' && this.shot !== 'cutaway' && this.shot !== 'reaction' && !this.sim.skipping && pit?.anim !== 'windup' && pit?.anim !== 'pitch') {
       this.crewId = kidToss.id;
       this.crewUntil = this.clock + 2.6;
       this.cut('toss');
@@ -608,6 +679,11 @@ export class CameraDirector {
     this.wantCapture = !!lull || this.shot === 'broll';
     if (!lull) this.shownThisLull = 0;
     const calm = !this.hr && !this.inPlay && !this.close && !this.replay && !this.sim.skipping && !live.over && pit?.anim !== 'windup' && pit?.anim !== 'pitch';
+    // a big moment just happened (a strikeout, a walk, a brushback, a pitching change): the reacting person first, then B-roll
+    if (calm && this.moments.length && (this.shot === 'pitch' && this.clock - this.shotStart >= 0.6 || this.shot === 'broll' && this.broll && this.clock - this.broll.start >= 1.5)) {
+      const room = lull ? lull.remaining - RETURN_MARGIN : this.noLullRoom(live);
+      if (room >= MIN_REACT && this.tryReaction(live, { then: 'pitch', room })) return;
+    }
     if (this.shot === 'broll') {
       if (!lull || !calm) return this.endBroll();
       const cur = this.broll!;
@@ -665,6 +741,101 @@ export class CameraDirector {
     return shot;
   }
 
+  // ---- reaction shots (reactionShots.ts) ----------------------------------------------------------------------------------------
+
+  /** a big moment and the people it is about (most likely reactor first); the same kind again within 2 s adds its people to it */
+  private addMoment(kind: MomentKind, ids: (string | undefined)[], live: GameState) {
+    const people = [...new Set(ids.filter((x): x is string => !!x))];
+    if (!people.length) return;
+    this.moments = this.moments.filter((m) => this.clock - m.at <= MOMENT_TTL);
+    const same = this.moments.find((m) => m.kind === kind && this.clock - m.at < 2);
+    if (same) {
+      for (const id of people) if (!same.people.includes(id)) same.people.push(id);
+      return;
+    }
+    // leverage: a late close game, runners in scoring position
+    const late = live.inning >= 7 && Math.abs(live.score.away - live.score.home) <= 2 ? 1 : 0;
+    const risp = live.runners[1] || live.runners[2] ? 0.5 : 0;
+    this.moments.push({ kind, at: this.clock, people, weight: Math.min(1.2, MOMENT_WEIGHT[kind] * (1 + 0.2 * (late + risp))) });
+  }
+
+  /**
+   * Seconds before the next pitch when the sim reports no lull: the play is over (the sim's `playOver`: the ball dead, the batter walking off, the
+   * next one still to come) leaves a few; otherwise what the pitch clock leaves, with room for the windup.
+   */
+  private noLullRoom(live: GameState): number {
+    if (live.phase === 'playOver' || live.paOver) return 3.2;
+    const pc = live.pitchClock;
+    return pc && pc.running ? pc.remainingSec - 6 : 0;
+  }
+
+  /**
+   * Cut to the best person to show reacting now, if any (rankReactions: what each face shows, the pace rules) and a clear close-up of him
+   * exists (reactionCamera). `then`: where the broadcast goes after it; `room`: seconds it may last; `quiet`: only when nobody runs (the end of a
+   * play); `kinds`: only these moments; `force`: inside a sequence that is not calm (the home run's).
+   */
+  private tryReaction(live: GameState, o: { then: 'pitch' | 'endPlay' | 'hr'; room: number; quiet?: boolean; kinds?: MomentKind[]; force?: boolean }): boolean {
+    const look = this.reactionLookup;
+    if (!look || !this.moments.length || !this.auto || this.bench || this.sim.skipping || this.sim.speed > 1.01 || live.over || o.room < MIN_REACT) return false;
+    // the end of a play only once the sim says it is over: a fielder holding the ball may still throw it
+    if (o.then === 'endPlay' && live.phase === 'inPlay') return false;
+    // never away from a live ball: a runner on the move (a steal, a play still going) keeps the camera on the game; a walk's forced runners trot
+    const running = live.players.some((p) => p.role === 'runner' && Math.hypot(p.vel.x, p.vel.z) > (o.quiet ? 1.5 : 4));
+    const b = live.ball;
+    const flying = live.phase === 'inPlay' && b.visible && Math.hypot(b.vel.x, b.vel.y, b.vel.z) > 3;
+    if ((running || flying) && !o.force) return false;
+    const picks = rankReactions({ now: this.clock, moments: this.moments, lookup: look, players: live.players, recent: this.reactRecent, shownThisHalf: this.reactThisHalf, pace: this.sim.tempo ?? 'broadcast', kinds: o.kinds, avoid: this.lastSubject && this.clock - this.lastSubject.at < 20 ? this.lastSubject.id : undefined });
+    const bodies = picks.length ? this.bodyList(live) : [];
+    for (const p of picks) {
+      const subj = live.players.find((q) => q.id === p.id);
+      // on the field (not down in the dugout pit, where the bench shots show him)
+      if (!subj || subj.pos.y < -0.3) continue;
+      const head = this.headOf(subj, new Vector3());
+      const off = reactionCamera(subj, head, bodies, this.occluders, new Vector3(), this.keyLights?.(head));
+      if (!off) continue;
+      const hold = Math.min(o.room, 2.4 + 0.5 * Math.min(1, p.moment.weight));
+      this.react = { id: p.id, start: this.clock, hold, off, body: new Vector3(subj.pos.x, 0, subj.pos.z), head, then: o.then };
+      this.reactRecent.push({ id: p.id, cls: p.cls, at: this.clock });
+      if (this.reactRecent.length > 8) this.reactRecent.shift();
+      // B-roll does not come back to the same face at once (its no-repeat window reads its own list)
+      this.brollRecent.push({ kind: subj.role === 'pitcher' ? 'pitcherFace' : 'batterFace', subject: p.id });
+      this.reactThisHalf++;
+      this.reactionShots++;
+      this.moments = this.moments.filter((m) => m !== p.moment);
+      this.cut('reaction');
+      this.announceShot('reaction', p.id, false, hold, subj.role);
+      return true;
+    }
+    return false;
+  }
+
+  /** everybody standing anywhere: the puppets (the side cast too) when the engine gives them, else the sim's players */
+  private bodyList(live: GameState): { id: string; pos: Vector3 | PlayerSnap['pos'] }[] {
+    const out: { id: string; pos: Vector3 | PlayerSnap['pos'] }[] = [];
+    for (const [id, pos] of this.bodies) out.push({ id, pos });
+    for (const p of live.players) if (!this.bodies.has(p.id)) out.push({ id: p.id, pos: p.pos });
+    return out;
+  }
+
+  /** where a person's face is: the puppet's head bone, else a standing estimate */
+  private headOf(p: PlayerSnap, out: Vector3): Vector3 {
+    return this.faceLookup?.(p.id, out) ?? out.set(p.pos.x, p.pos.y + (p.physique?.heightM ?? 1.85) * 0.93 - 0.05, p.pos.z);
+  }
+
+  /** the reaction shot is over (or its subject left the game): what was planned after it */
+  private updateReaction(live: GameState) {
+    const r = this.react;
+    if (!r) return this.cut('pitch');
+    const gone = !live.players.some((p) => p.id === r.id);
+    if (!gone && this.clock - r.start < r.hold) return;
+    if (r.then === 'endPlay') {
+      this.react = null;
+      this.endPlay(live, true);
+    }
+    else if (r.then === 'pitch') this.cut('pitch');
+    else if (gone) this.react = null; // the home run's sequence moves on (updateHr)
+  }
+
   private fireCoachCut(live: GameState) {
     const c = this.coachPending;
     this.coachPending = null;
@@ -682,6 +853,7 @@ export class CameraDirector {
     this.brollRecent.push({ kind: shot.kind, subject: shot.subject });
     if (this.brollRecent.length > 12) this.brollRecent.shift();
     this.shownThisLull++;
+    if (shot.kind === 'dugoutReaction') this.reactRecent.push({ id: `dugout${shot.team ?? ''}`, cls: 'dugout', at: this.clock });
     if (shot.transition === 'dissolve') this.dissolveReq = 0.6;
     this.cut('broll');
     const { kind, card } = shotLabel(shot);
@@ -690,6 +862,11 @@ export class CameraDirector {
   }
 
   private lastLive: GameState | null = null;
+  private reactHead = new Vector3();
+  /** every puppet's position (the side cast too), for the reaction shot's line of sight */
+  private bodies: Map<string, Vector3> = new Map();
+  /** the subject of the last person-shot (B-roll or reaction) and when it began */
+  private lastSubject: { id: string; at: number } | null = null;
 
   private endBroll() {
     const was = this.broll?.shot;
@@ -712,8 +889,11 @@ export class CameraDirector {
     this.cut('action');
   }
 
-  /** The play is over: replay it if that was wanted and possible, otherwise back to the pitcher. */
-  private endPlay(live: GameState) {
+  /** The play is over: the person it happened to (a reaction shot), then the replay if that was wanted and possible, otherwise back to the pitcher. */
+  private endPlay(live: GameState, reacted = false) {
+    // the close call's runner arguing, the batter at first after his hit, the fielder after his error: before the replay (the live game goes on
+    // while the reaction plays; the replay comes from the history right after it)
+    if (!reacted && this.tryReaction(live, { then: 'endPlay', room: 3.2, quiet: true })) return;
     this.noteDeferred(false);
     const okToReplay = this.replaysEnabled && this.sim.speed <= 1.01 && !this.sim.skipping;
     if (okToReplay && this.close && this.startCloseReplay(live)) {
@@ -744,6 +924,13 @@ export class CameraDirector {
     switch (h.stage) {
       case 'wall':
         if (st > (h.robbed ? 2.6 : 2.2)) {
+          // the pitcher watching it go (the batter robbed of his homer): his face instead of the crowd
+          // (a robbed homer is a live catch: only once nobody runs and no throw is in the air)
+          if (this.tryReaction(live, h.robbed ? { then: 'hr', room: 3.0, kinds: ['robbedHomer'], quiet: true } : { then: 'hr', room: 3.0, kinds: ['homeRun'], force: true })) {
+            h.stage = 'react';
+            h.t = this.clock;
+            break;
+          }
           const cs = this.stadium.crowdShots;
           if (cs.length) {
             // the crowd section nearest to where the ball left the park
@@ -757,6 +944,12 @@ export class CameraDirector {
             this.cutawayUntil = Infinity;
             next('crowd', 'cutaway');
           } else if (h.robbed) this.hrReplayOrEnd(live);
+          else next('trot', 'trot');
+        }
+        break;
+      case 'react':
+        if (this.shot !== 'reaction' || !this.react || this.clock - this.react.start >= this.react.hold) {
+          if (h.robbed) this.hrReplayOrEnd(live);
           else next('trot', 'trot');
         }
         break;
@@ -885,12 +1078,13 @@ export class CameraDirector {
     }
     const dist = Math.max(1, subj.distanceTo(this.pos));
     const focus = this.lastCutFrame ? (this.rack.snap(dist), dist) : this.rack.step(dist, dt);
-    const slab = this.shot === 'broll' && this.brollRig ? this.brollRig.slab : slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
+    const close = this.shot === 'broll' && this.brollRig ? this.brollRig.slab : this.shot === 'reaction' ? slabFor('reaction') : null;
+    const slab = close ?? slabFor(this.shot, { ballHeight: live.ball.pos.y, cutaway: this.cutaway });
     // a shot that asks for a shallower look than its slab allows (des.aperture) keeps its own, never deeper focus than the slab needs
     // B-roll rigs pick their own slab: a telephoto close-up (slab < 1 m) wants the background well out of focus, so the slab's aperture is opened
     // up 2.5x (the slab's edge then blurs ~1 px instead of 0.4 px) instead of being capped like the game shots
     const aperture =
-      slab === 0 ? 0 : this.shot === 'broll' && this.brollRig ? Math.min(1.2, apertureFor(focus, slab) * 2.5) : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
+      slab === 0 ? 0 : close !== null ? Math.min(1.2, apertureFor(focus, slab) * 2.5) : Math.min(apertureFor(focus, slab), Math.max(this.des.aperture, 0.0001) * 1.6 + 0.12);
     return { focus, aperture };
   }
 
@@ -1111,6 +1305,25 @@ export class CameraDirector {
         d.aperture = r.slab > 0 ? 1 : 0;
         d.lp = r.lp; d.lt = r.lt; d.lf = r.lf;
         this.focusTarget.copy(r.focus);
+        break;
+      }
+      case 'reaction': {
+        // the face, from the angle picked at the cut; the camera moves with his body (a walking subject is tracked, not swung round) and
+        // aims at the head, so it stays framed whatever he does
+        const r = this.react;
+        const p = r ? rs.players.find((q) => q.id === r.id) : null;
+        if (!r || !p) break;
+        const head = this.headOf(p, this.reactHead);
+        d.pos.copy(r.head).add(r.off);
+        d.pos.x += p.pos.x - r.body.x;
+        d.pos.z += p.pos.z - r.body.z;
+        d.tgt.copy(head);
+        const dist = d.pos.distanceTo(head);
+        d.fov = this.tele(REACT_WIDTH, dist);
+        d.focus = dist;
+        d.aperture = 1;
+        d.lp = 6; d.lt = 7; d.lf = 6;
+        this.focusTarget.copy(head);
         break;
       }
       case 'coach': {
@@ -1365,6 +1578,13 @@ export class CameraDirector {
     this.breakUntil = 0;
     this.reaction = null;
     this.beat = null;
+    this.moments = [];
+    this.react = null;
+    this.reactRecent = [];
+    this.reactThisHalf = 0;
+    this.crossed = false;
+    this.reactionShots = 0;
+    this.lastSubject = null;
     this.cutawayUntil = 0;
     this.actionQuiet = 0;
     this.lastEventText = '';

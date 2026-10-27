@@ -84,6 +84,8 @@ export class SimDriver {
   stepDt = SIM_DT;
   /** true while fast-forwarding to the next half inning; listeners should not cut cameras */
   skipping = false;
+  /** the pace of play of the loaded game (the director cuts away less at a quicker one) */
+  tempo: NonNullable<SimConfig['tempo']> = 'broadcast';
 
   private acc = 0;
   private prev!: GameState;
@@ -114,6 +116,7 @@ export class SimDriver {
     const src = createSimSource(seed, this.forceMock, cfg);
     this.game = src.game;
     this.kind = src.kind;
+    this.tempo = cfg.tempo ?? 'broadcast';
     this.curr = this.prev = this.game.getState();
     this.acc = 0;
     this.histAcc = 0;

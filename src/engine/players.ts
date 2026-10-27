@@ -410,6 +410,10 @@ export class PlayerManager {
     }
     return members.length;
   }
+  /** the reaction a person's face shows now (the director's reaction shots) */
+  faceReaction(id: string) {
+    return this.puppets.get(id)?.faceReaction?.() ?? null;
+  }
   /** the face of a person now (probes) */
   faceProbe(id: string) {
     return this.puppets.get(id)?.faceProbe?.() ?? null;
