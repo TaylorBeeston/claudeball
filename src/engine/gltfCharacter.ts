@@ -2571,13 +2571,19 @@ export class GltfPuppet implements PuppetLike {
     const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
     const focus = this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
     let t: LookTarget | null = null;
+    // what the neck's range keeps the head from (up / down): the eyes look the rest of the way
+    let neckShort = 0;
     if (focus) {
       const fp = this.rig.toRig(focus, _b);
       this.readPose();
       const li = lookInput(this.poseL, this.poseRest, [fp.x, fp.y, fp.z], this.lookIn);
       t = lookTarget(li.dx, li.dy, li.dz, li.clipYaw, li.clipPitch, this.lookT);
       // up / down within the neck's range from the chest (a crouched fielder's head is already tipped back to be level; the eyes do the rest)
-      if (t.valid) t.pitch = neckPitch(t.pitch, t.yaw, li);
+      if (t.valid) {
+        const p = neckPitch(t.pitch, t.yaw, li);
+        neckShort = t.pitch - p;
+        t.pitch = p;
+      }
       // running, the head stays near level and only glances at the ball (a sprinting runner turned his head 50 deg to a fly ball, which on his
       // leaning trunk threw it back); a fielder chasing a catch keeps his look (he tracks the ball over his shoulder)
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
@@ -2594,7 +2600,7 @@ export class GltfPuppet implements PuppetLike {
     // what the head has not turned yet, the eyes cover (they lead the head)
     if (this.lookGoal) {
       this.eyeYaw = this.lookGoal.yaw - hl.yaw;
-      this.eyePitch = this.lookGoal.pitch - hl.pitch;
+      this.eyePitch = this.lookGoal.pitch + neckShort - hl.pitch;
     } else this.eyeYaw = this.eyePitch = 0;
     this.lookStep = hl.lastStep;
     this.maxLookStep = Math.max(this.maxLookStep, hl.lastStep);
