@@ -99,6 +99,12 @@ describe('reaction shots: who to show', () => {
     expect(rankReactions(ctx({ recent: twoPitchers }))[0].id).toBe('B');
   });
 
+  it('not someone in the middle of a throw or a warm-up pitch (he turns away mid-shot)', () => {
+    const throwing = [{ ...pitcher, anim: 'warmup_pitch' as const }, batter, catcher, runner];
+    expect(rankReactions(ctx({ players: throwing })).map((x) => x.id)).toEqual(['B']);
+    expect(rankReactions(ctx({ players: [{ ...pitcher, anim: 'throw' }, batter] })).map((x) => x.id)).toEqual(['B']);
+  });
+
   it('a brushback is the batter flinching, not whatever else his face does', () => {
     const m = [moment('brushback', ['B', 'P'])];
     expect(rankReactions(ctx({ moments: m, lookup: (id) => (id === 'B' ? live('concentration') : null) }))).toEqual([]);

@@ -58,6 +58,9 @@ const NAMES: Partial<Record<MomentKind, string[]>> = {
   challenge: ['argue'],
 };
 
+/** clips that turn the body round mid-shot (a throw, a warm-up pitch, a swing, a dive): the face would be gone by the time it is seen */
+const BUSY = /^(windup|pitch|warmup_pitch|bullpen_throw|swing|throw|toss|roll_ball|field|catch|slide|dive|transfer)/;
+
 /** how well a reaction reads on camera (a calm nod or concentration is barely an expression) */
 const NAME_WEIGHT: Record<string, number> = { nod: 0.4, concentration: 0.35, relief: 0.8, concern: 0.8, grin: 0.9, smirk: 0.7 };
 
@@ -134,6 +137,7 @@ export function rankReactions(ctx: PickContext): Pick[] {
       const p = ctx.players.find((q) => q.id === id);
       // a masked face (the catcher and the plate umpire in their gear) shows nothing
       if (!p || p.role === 'catcher' || p.role === 'umpire') return;
+      if (BUSY.test(p.anim)) return;
       const cls = roleClass(p.role);
       let score = m.weight * Math.min(1.2, r.strength) * (NAME_WEIGHT[r.name] ?? 1) * (1 - 0.12 * rank);
       // variety: not the same kind of person as the last two reaction shots
