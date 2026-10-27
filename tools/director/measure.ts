@@ -24,6 +24,7 @@ const reactions = arg('reactions', 'on') !== 'off';
 const maxSeconds = +arg('maxSeconds', '20000');
 
 const results: GameResult[] = [];
+if (process.argv.includes('--merge') && !merge) throw new Error('--merge needs a comma-separated list of saved records');
 if (merge) for (const f of merge.split(',')) results.push(...(JSON.parse(readFileSync(f, 'utf8')) as GameResult[]));
 else {
   const server = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] } });

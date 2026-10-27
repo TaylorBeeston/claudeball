@@ -214,7 +214,8 @@ export function inPark(x: number, z: number): boolean {
  * not in a dugout or behind the batter's eye, nobody near the lens or across the line of sight, and (given the key lights: dusk, night) on the
  * lit side of his face (no light reaching him at all: no shot). Returns the camera's offset from the face (so a walking subject is followed at the same angle), or null when no placement works.
  */
-export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: readonly Body[], occluders: readonly Box[], out = new Vector3(), lights?: readonly KeyLight[]): Vector3 | null {
+export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: readonly Body[], occluders: readonly Box[], out = new Vector3(), lights?: readonly KeyLight[], why?: Record<string, number>): Vector3 | null {
+  const no = (k: string) => why && (why[k] = (why[k] ?? 0) + 1);
   const sp = Math.hypot(subject.vel.x, subject.vel.z);
   const yaw = sp > 0.6 ? Math.atan2(subject.vel.x, subject.vel.z) : subject.facing;
   const cam = new Vector3();
@@ -223,10 +224,10 @@ export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: reado
     for (const a of ANGLES) {
       const y = yaw + (a * Math.PI) / 180;
       cam.set(head.x + Math.sin(y) * dist, Math.max(1.2, head.y - 0.08), head.z + Math.cos(y) * dist);
-      if (!inPark(cam.x, cam.z)) continue;
-      if (blocker(cam, head, occluders)) continue;
-      if (!sightClear(cam, head, subject.id, bodies)) continue;
-      if (lights && litShare(look, { x: Math.sin(y), y: 0, z: Math.cos(y) }, lights) < LIT_MIN) continue;
+      if (!inPark(cam.x, cam.z)) { no('park'); continue; }
+      if (blocker(cam, head, occluders)) { no('wall'); continue; }
+      if (!sightClear(cam, head, subject.id, bodies)) { no('sight'); continue; }
+      if (lights && litShare(look, { x: Math.sin(y), y: 0, z: Math.cos(y) }, lights) < LIT_MIN) { no('dark'); continue; }
       return out.copy(cam).sub(head);
     }
   }

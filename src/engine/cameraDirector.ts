@@ -142,6 +142,8 @@ export class CameraDirector {
   private crossed = false;
   /** reaction shots shown this game (tests, probes) */
   reactionShots = 0;
+  /** the last person a reaction shot was wanted for but no camera placement worked, and why (placements rejected per check; probes) */
+  reactionMiss: { t: number; id: string; why: Record<string, number> } | null = null;
   brollEnabled = true;
   /** hold the current B-roll shot (screenshots / tests) */
   brollLock = false;
@@ -792,8 +794,12 @@ export class CameraDirector {
       // on the field (not down in the dugout pit, where the bench shots show him)
       if (!subj || subj.pos.y < -0.3) continue;
       const head = this.headOf(subj, new Vector3());
-      const off = reactionCamera(subj, head, [...bodies, ...bodiesAhead(subj, live.players)], this.occluders, new Vector3(), this.keyLights?.(head) ?? undefined);
-      if (!off) continue;
+      const why: Record<string, number> = {};
+      const off = reactionCamera(subj, head, [...bodies, ...bodiesAhead(subj, live.players)], this.occluders, new Vector3(), this.keyLights?.(head) ?? undefined, why);
+      if (!off) {
+        this.reactionMiss = { t: live.time, id: p.id, why };
+        continue;
+      }
       const hold = Math.min(o.room, 2.4 + 0.5 * Math.min(1, p.moment.weight));
       this.react = { id: p.id, start: this.clock, hold, off, body: new Vector3(subj.pos.x, 0, subj.pos.z), head, then: o.then };
       this.reactRecent.push({ id: p.id, cls: p.cls, at: this.clock });
