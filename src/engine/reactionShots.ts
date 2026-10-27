@@ -181,6 +181,7 @@ export function litShare(facing: P3, toCam: P3, lights: readonly KeyLight[]): nu
   const l = Math.hypot(nx, nz) || 1;
   nx /= l;
   nz /= l;
+  if (!lights.length) return 0;
   const top = Math.max(...lights.map((k) => k.w), 1e-9);
   let best = 0;
   for (const k of lights) best = Math.max(best, (k.w / top) * Math.max(0, nx * k.dir.x + nz * k.dir.z + 0.2 * k.dir.y));
@@ -203,8 +204,8 @@ export function inPark(x: number, z: number): boolean {
 
 /**
  * A clear camera position for a close-up of `subject`'s face at `head`: in front of where he looks (or walks), at eye level, inside the park,
- * not in a dugout or behind the batter's eye, nobody near the lens or across the line of sight, and (given the key lights) on the lit side of his
- * face. Returns the camera's offset from the face (so a walking subject is followed at the same angle), or null when no placement works.
+ * not in a dugout or behind the batter's eye, nobody near the lens or across the line of sight, and (given the key lights: dusk, night) on the
+ * lit side of his face (no light reaching him at all: no shot). Returns the camera's offset from the face (so a walking subject is followed at the same angle), or null when no placement works.
  */
 export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: readonly Body[], occluders: readonly Box[], out = new Vector3(), lights?: readonly KeyLight[]): Vector3 | null {
   const sp = Math.hypot(subject.vel.x, subject.vel.z);
@@ -218,7 +219,7 @@ export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: reado
       if (!inPark(cam.x, cam.z)) continue;
       if (blocker(cam, head, occluders)) continue;
       if (!sightClear(cam, head, subject.id, bodies)) continue;
-      if (lights?.length && litShare(look, { x: Math.sin(y), y: 0, z: Math.cos(y) }, lights) < LIT_MIN) continue;
+      if (lights && litShare(look, { x: Math.sin(y), y: 0, z: Math.cos(y) }, lights) < LIT_MIN) continue;
       return out.copy(cam).sub(head);
     }
   }

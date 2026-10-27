@@ -189,15 +189,14 @@ export class Engine {
     };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
     this.director.reactionLookup = (id) => this.players.faceReaction(id);
-    // the key light on a face: the sun by day (the towers are off), the lit tower spots at dusk and night (stadiumLights.ts)
+    // the key lights on a face once the towers are on (dusk, night: stadiumLights.ts), with the sun while it is still up; by day none (no check):
+    // the sky's fill lights a face turned away from the sun well enough (a pitcher facing home under a sun over third base reads fine)
     this.director.keyLights = (p) => {
+      if (this.env.todName === 'day') return null;
       const out = this.lights.lightsAt(p);
       const sun = this.env.tod.sunIntensity;
-      if (sun > 1) {
-        // the sun's illuminance against the towers': at dusk both light the field, the towers' share is the larger near them
-        const towers = out.reduce((m, k) => Math.max(m, k.w), 0);
-        out.push({ dir: this.env.sunDir.clone(), w: towers > 0 ? towers * (sun / 3) : 1 });
-      }
+      // the low dusk sun against the towers' illuminance there (both light the field; nearer a tower, the tower more)
+      if (sun > 1) out.push({ dir: this.env.sunDir.clone(), w: Math.max(...out.map((k) => k.w), 1e-3) * (sun / 3) });
       return out;
     };
     // the director's `shot` events drive the lower-third card of a person-shot (on deck, walk-up, face close-up, ...): shown with the shot, hidden at its end; no per-frame work

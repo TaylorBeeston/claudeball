@@ -146,9 +146,7 @@ export async function runGame(opts: { seed: number; tempo?: 'broadcast' | 'stand
   ];
   const stadium = { crowdShots } as unknown as Stadium;
   const director = new CameraDirector(camera, sim as unknown as SimDriver, dom, stadium);
-  // the day sun (environment.ts, preset `day`): reaction close-ups are taken from the lit side of the face, as in the page by day
-  const sun = new Vector3(0.7, 0.62, 0.22).normalize();
-  director.keyLights = () => [{ dir: sun, w: 1 }];
+  // by day the page gives the director no key lights (the sky fills a face turned from the sun; engine.ts): nothing to plug in here
   director.dugoutShots.push({ pos: new Vector3(23, 3.2, 10), target: new Vector3(26, -0.2, 0) }, { pos: new Vector3(-23, 3.2, 10), target: new Vector3(-26, -0.2, 0) });
 
   // ---- the faces, as players.ts / gltfCharacter.ts drive them ----

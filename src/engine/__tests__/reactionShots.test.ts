@@ -171,6 +171,9 @@ describe('reaction shots: the camera', () => {
     const off = reactionCamera(pitcher, head(pitcher), [pitcher], [], new Vector3(), side);
     expect(off).not.toBeNull();
     expect(off!.x).toBeLessThan(0);
+    // no tower reaches him: no shot; no lights given (by day): no check
+    expect(reactionCamera(pitcher, head(pitcher), [pitcher], [], new Vector3(), [])).toBeNull();
+    expect(reactionCamera(pitcher, head(pitcher), [pitcher], [], new Vector3())).not.toBeNull();
     // a weak light does not count against a strong one
     expect(litShare({ x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: -1 }, [{ dir: new Vector3(0, 0.5, -0.86), w: 0.1 }, { dir: new Vector3(0, 0.6, 0.8), w: 1 }])).toBeLessThan(LIT_MIN);
   });

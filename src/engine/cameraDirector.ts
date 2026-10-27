@@ -129,7 +129,7 @@ export class CameraDirector {
   /** where a player's face is (the engine plugs in the puppets' head bones) */
   faceLookup: ((id: string, out: Vector3) => Vector3 | null) | null = null;
   /** the key lights at a point (the sun, the lit tower spots): a reaction close-up is filmed from the lit side of the face */
-  keyLights: ((p: Vector3) => KeyLight[]) | null = null;
+  keyLights: ((p: Vector3) => KeyLight[] | null) | null = null;
   /** the reaction a person's face shows now (the engine plugs in the puppets' emotion model); without it there are no reaction shots */
   reactionLookup: ((id: string) => ReactionNow | null) | null = null;
   /** the game's recent big moments (strikeout, close play, home run, ...), waiting for a reaction shot */
@@ -792,7 +792,7 @@ export class CameraDirector {
       // on the field (not down in the dugout pit, where the bench shots show him)
       if (!subj || subj.pos.y < -0.3) continue;
       const head = this.headOf(subj, new Vector3());
-      const off = reactionCamera(subj, head, bodies, this.occluders, new Vector3(), this.keyLights?.(head));
+      const off = reactionCamera(subj, head, bodies, this.occluders, new Vector3(), this.keyLights?.(head) ?? undefined);
       if (!off) continue;
       const hold = Math.min(o.room, 2.4 + 0.5 * Math.min(1, p.moment.weight));
       this.react = { id: p.id, start: this.clock, hold, off, body: new Vector3(subj.pos.x, 0, subj.pos.z), head, then: o.then };
