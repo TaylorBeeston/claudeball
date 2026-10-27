@@ -229,6 +229,21 @@ export function reactionCamera(subject: PlayerSnap, head: Vector3, bodies: reado
   return null;
 }
 
+/**
+ * Where the people on the move will be in a second or two, seen from the camera that follows `subject` (it keeps its offset from him, so what
+ * counts is their motion relative to his): checked with the bodies as they are, so nobody walks into the lens during the shot.
+ */
+export function bodiesAhead(subject: PlayerSnap, players: readonly PlayerSnap[], seconds: readonly number[] = [1, 2]): Body[] {
+  const out: Body[] = [];
+  for (const p of players) {
+    if (p.id === subject.id) continue;
+    const vx = p.vel.x - subject.vel.x, vz = p.vel.z - subject.vel.z;
+    if (Math.hypot(vx, vz) < 0.4) continue;
+    for (const s of seconds) out.push({ id: `${p.id}@${s}`, pos: { x: p.pos.x + vx * s, y: p.pos.y, z: p.pos.z + vz * s } });
+  }
+  return out;
+}
+
 /** nobody but the subject near the lens or across the line of sight (XZ; everybody is taller than a camera at eye level) */
 export function sightClear(cam: P3, head: P3, subjectId: string, bodies: readonly Body[]): boolean {
   const dx = head.x - cam.x, dz = head.z - cam.z;

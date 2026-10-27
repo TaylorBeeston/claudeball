@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { inPark, litShare, LIT_MIN, MOMENT_TTL, REACT_HEIGHT_MAX, reactionFov, MOMENT_WEIGHT, PACE, rankReactions, reactionCamera, roleClass, sightClear, type Moment, type PickContext, type ReactionNow } from '../reactionShots';
+import { bodiesAhead, inPark, litShare, LIT_MIN, MOMENT_TTL, REACT_HEIGHT_MAX, reactionFov, MOMENT_WEIGHT, PACE, rankReactions, reactionCamera, roleClass, sightClear, type Moment, type PickContext, type ReactionNow } from '../reactionShots';
 import { FaceState, personalityFor } from '../face/emotion';
 import type { PlayerSnap } from '../types';
 
@@ -182,6 +182,19 @@ describe('reaction shots: the camera', () => {
     const headFrac = (dist: number, aspect: number) => 0.25 / (2 * dist * Math.tan((reactionFov(dist, aspect) * Math.PI) / 360));
     for (const aspect of [16 / 9, 4 / 3, 412 / 915]) for (const dist of [7, 9.5]) expect(headFrac(dist, aspect)).toBeGreaterThan(0.2);
     expect(2 * 7 * Math.tan((reactionFov(7, 0.45) * Math.PI) / 360)).toBeCloseTo(REACT_HEIGHT_MAX, 5);
+  });
+
+  it('sees people walking into the shot: where they will be, relative to the subject the camera follows', () => {
+    const walker = snap({ id: 'W', role: 'batter', pos: { x: 3, y: 0, z: 12 }, vel: { x: -1.5, y: 0, z: 0 } });
+    const ahead = bodiesAhead(pitcher, [pitcher, walker, catcher]);
+    expect(ahead.map((b) => b.id)).toEqual(['W@1', 'W@2']); // the catcher stands still, the pitcher is the subject
+    expect(ahead[1].pos.x).toBeCloseTo(0);
+    // he walks across in front of the pitcher: a camera straight in front is not clear then, so another angle is taken
+    const cam = head(pitcher).add(new Vector3(0, 0, -7));
+    expect(sightClear(cam, head(pitcher), 'P', ahead)).toBe(false);
+    // following a walking subject, a teammate walking alongside him does not move relative to the camera
+    const mate = snap({ id: 'M', role: 'runner', pos: { x: 2, y: 0, z: 18 }, vel: { x: -1.5, y: 0, z: 0 } });
+    expect(bodiesAhead(snap({ ...walker, id: 'S' }), [mate])).toEqual([]);
   });
 
   it('keeps the lens clear: nobody right beside the camera', () => {

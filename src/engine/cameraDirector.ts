@@ -19,7 +19,7 @@ import { shotLabel, availableKinds, computeRig, DEFAULT_BULLPENS, planNext, RETU
 import { apertureFor, RackFocus, slabFor } from './autofocus';
 import { baseCamera, clearestCamera, hrWallCamera, type Box } from './sightLines';
 import { interpolateState, type SimDriver, type TimedEvent } from './simAdapter';
-import { MOMENT_TTL, MOMENT_WEIGHT, rankReactions, reactionCamera, reactionFov, type KeyLight, type Moment, type MomentKind, type ReactionNow, type RecentShot } from './reactionShots';
+import { MOMENT_TTL, MOMENT_WEIGHT, bodiesAhead, rankReactions, reactionCamera, reactionFov, sightClear, type KeyLight, type Moment, type MomentKind, type ReactionNow, type RecentShot } from './reactionShots';
 import type { BroadcastEvent, GameEvent, GameState, PlayerSnap } from './types';
 import type { Stadium } from './stadium';
 
@@ -792,7 +792,7 @@ export class CameraDirector {
       // on the field (not down in the dugout pit, where the bench shots show him)
       if (!subj || subj.pos.y < -0.3) continue;
       const head = this.headOf(subj, new Vector3());
-      const off = reactionCamera(subj, head, bodies, this.occluders, new Vector3(), this.keyLights?.(head) ?? undefined);
+      const off = reactionCamera(subj, head, [...bodies, ...bodiesAhead(subj, live.players)], this.occluders, new Vector3(), this.keyLights?.(head) ?? undefined);
       if (!off) continue;
       const hold = Math.min(o.room, 2.4 + 0.5 * Math.min(1, p.moment.weight));
       this.react = { id: p.id, start: this.clock, hold, off, body: new Vector3(subj.pos.x, 0, subj.pos.z), head, then: o.then };
@@ -827,8 +827,12 @@ export class CameraDirector {
   private updateReaction(live: GameState) {
     const r = this.react;
     if (!r) return this.cut('pitch');
-    const gone = !live.players.some((p) => p.id === r.id);
-    if (!gone && this.clock - r.start < r.hold) return;
+    const subj = live.players.find((p) => p.id === r.id);
+    const gone = !subj;
+    const el = this.clock - r.start;
+    // somebody stepped in front of the lens after all: out once the reaction has been seen (the home run's sequence reads the shortened hold)
+    if (subj && el > 1.2 && el < r.hold && !sightClear(this.camera.position, this.headOf(subj, this.reactHead), r.id, this.bodyList(live))) r.hold = el;
+    if (!gone && el < r.hold) return;
     if (r.then === 'endPlay') {
       this.react = null;
       this.endPlay(live, true);
