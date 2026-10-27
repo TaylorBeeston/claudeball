@@ -17,6 +17,8 @@ npx tsx tools/jank/run.ts game --seeds 1,2 --pre "globalThis.__noElbowFix = true
 npx tsx tools/jank/compare.ts tools/jank/out/before tools/jank/out/after   # before / after tables of two game sweeps (incl. the bat per clip)
 npx tsx tools/jank/run.ts trace --seeds 1 --id batter --from 600 --to 900   # a role (whoever has it) instead of one player: many swings in one trace
 npx tsx tools/jank/run.ts fades --constrain --adaptive [--far 120]   # inertialize only the switches whose poses are far apart; --crossfade --continuous: pose/blend.ts
+npx tsx tools/jank/run.ts roll --out tools/jank/out/<sweep>   # the head roll table of a game sweep: |roll| off the horizon per role and clip (mean, p50, p95, max)
+JANK_OLD_LOOK=1 npm run jank:check                   # A/B: the look sweep with the look-at as it was before t-0028 (tools/jank/oldLook.ts); it must fail
 npx tsx tools/jank/envelope.ts [--game tools/jank/out/<sweep>]   # the bat directions two hands can hold (for a sim thread), the sim's own bat overlaid
 ```
 
@@ -24,8 +26,10 @@ In the game sweep the batter's swing clip is split by what it shows: `swing` (th
 bat still in his hands) and `swing:finish` (the clip held in its finish while the sim's bat is out), so swing counts stay comparable across versions.
 The runtime sections of `jank:check` run the foot lock (pose/footLock.ts) like the game.
 
-`jank:check` gates four sections: the raw clips (`static`), raw blends (`fades`), and both through the runtime passes (`staticRuntime`,
-`fadesRuntime`: pose/neck.ts and pose/constrain.ts as the game applies them).
+`jank:check` gates five sections: the raw clips (`static`), raw blends (`fades`), both through the runtime passes (`staticRuntime`,
+`fadesRuntime`: pose/neck.ts and pose/constrain.ts as the game applies them), and `lookRuntime`: every standing clip (no gait, nothing airborne) with
+the head looking at a target 20 m out at -90, -45, 0, 45 and 90 deg from the chest's heading and at a pop-up (6 m ahead, 25 m up), through the
+look-at (pose/look.ts) and the same passes.
 
 Output goes to `tools/jank/out/` (git-ignored): `static.json`, `fades.json`, `game.json`, `report.md` (the ranked tables), `sheets/`.
 
@@ -41,7 +45,7 @@ Output goes to `tools/jank/out/` (git-ignored): `static.json`, `fades.json`, `ga
 - **The rest of `validate.ts`**: limb length drift, sole below / above the ground (the sim's ground: mound, dugout floor), planted heel or ball
   sliding, hand / elbow in the trunk, arm in the head, the bat (each fist on the handle, the fist's grip axis along the bat, the knob-side hand,
   barrel through the body or the ground, a dropped bat lying flat), one-frame flips (a step or an out-and-back pop), angular speed over human caps,
-  running sideways. The game probe adds engine pops: the body mirrored between frames, the root jumping or spinning.
+  running sideways, the head rolled off the horizon (`head:roll`: over 20 deg, not while airborne). The game probe adds engine pops: the body mirrored between frames, the root jumping or spinning.
 - **Attribution** (game sweep): every violation of the final pose is compared with the pose the mixer alone produced that frame: `clip` (the clip
   already does it), `blend` (the mixer was cross-fading), `override` (only the runtime look-at / IK / lunge / elbow fixes produce it).
 - **Coverage**: joint angles are identical for every body build and for the mirror (rig space), so the static sweep runs each clip once per file;

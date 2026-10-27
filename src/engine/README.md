@@ -65,8 +65,11 @@ GPU-enabled headless Chrome flags: `--use-angle=vulkan --enable-features=Vulkan,
 Not measured on a mid-range GPU.
 
 ## Players: heads, stance, clips
-- **Head look-at** (`gltfCharacter.ts`, `headLook.ts`): the target is turned into a yaw/pitch *offset from the head pose the clip already has* (relative to Spine2), clamped
-  (neck+head ±70° yaw, ±35° pitch; the upper spine adds up to ±20° yaw), ignored when it is behind the player (>120°) or closer than 1 m, and followed by a critically
+- **Head look-at** (`gltfCharacter.ts`, `headLook.ts`, `pose/look.ts`): the target is turned into a yaw/pitch *offset from the head pose the clip already has*, in a
+  LEVEL frame (yaw about the vertical from the chest's heading on the ground, pitch off the horizon), clamped (neck+head ±95° yaw, ±35° pitch; the upper spine adds up
+  to ±20° yaw, twisting about its own axis). The neck takes 40 % of the turn and the head's rig rotation is set to the goal, so the head keeps the clip's level horizon
+  (plus a few degrees of tilt into the turn) whatever the trunk does: measured and turned in the upper spine's own frame, a crouched fielder's 40-70° forward lean
+  rolled the head onto a shoulder (t-0028; `head:roll` in tools/jank). ignored when it is behind the player (>120°) or closer than 1 m, and followed by a critically
   damped spring capped at 7 rad/s. Idle fielders with a dead ball look ahead; hitters / catchers / umpires look at the mound when there is no ball.
   All bone maths runs in "rig space" (`Rig`: the model node's mirror divided out), because lefties are the right-handed model with `scale.x = -1` and quaternions taken
   from mirrored world matrices are meaningless. In dev builds a per-frame assertion logs `[head-look]` if the look step ever exceeds the speed cap.
