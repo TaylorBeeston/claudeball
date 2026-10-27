@@ -22,6 +22,9 @@ import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
 import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
 import { limitNeck } from '../../src/engine/pose/neck';
+import { applyLook, lookFrame, lookInput, neckPitch } from '../../src/engine/pose/look';
+import { HeadLook, lookTarget } from '../../src/engine/headLook';
+import { oldApplyLook, oldLookInput } from './oldLook';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, batHandsBlend, clipFlags } from './clips';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
@@ -77,6 +80,64 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     validateFrame({ L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, info, tr, v);
     agg.add(src, file, clipName, v, 1 / FPS, () => ({ ...snap(L, model, { file, clip: clipName, t, mirrored }), bat: bat && { knob: bat.knob, tip: bat.tip } }));
   }
+}
+
+/** the targets the look sweep turns every clip's head toward: bearing (deg from the chest's heading, > 0 to the model's left), distance and height
+ *  over the head (m): across the field at head height, and a pop-up straight ahead */
+export const LOOK_TARGETS: [number, number, number][] = [[-90, 20, 0], [-45, 20, 0], [0, 20, 0], [45, 20, 0], [90, 20, 0], [0, 6, 25]];
+
+/**
+ * One clip with the head looking at a fixed bearing, through the game's passes after the mixer in the game's order: the look-at (pose/look.ts,
+ * its offset split between the chest and the neck + head like headLook.ts, clamped to its limits), the neck limiter, the constraint layer and
+ * the foot lock. The static sweeps never run the look-at: this is the gate on what it does to a pose (a head rolled onto a shoulder, PR t-0028).
+ */
+export function sweepLook(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, [bearing, dist, rise]: [number, number, number]) {
+  const clip = rig.clips.get(clipName)!;
+  const fl = clipFlags(clipName);
+  const tr = newTrack();
+  const v: Violation[] = [];
+  const L = newLocals();
+  const cst = newConstrainState();
+  const fls = newFootLock();
+  const hl = new HeadLook();
+  const n = Math.max(1, Math.round(clip.duration * FPS));
+  const tail = loop ? 3 : 0;
+  const c = Math.cos((bearing * Math.PI) / 180), s = Math.sin((bearing * Math.PI) / 180);
+  // A/B: the look-at as it was before t-0028 (oldLook.ts)
+  const old = !!process.env.JANK_OLD_LOOK;
+  for (let i = 0; i <= n + tail; i++) {
+    const t = i <= n ? i / FPS : (i - n) / FPS;
+    sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
+    const w = fk(L, undefined, info.R.rest);
+    const f = lookFrame(w);
+    const h = B.Head * 3;
+    const T = [w.wp[h] + dist * (f.fwd[0] * c + f.left[0] * s), w.wp[h + 1] + rise, w.wp[h + 2] + dist * (f.fwd[2] * c + f.left[2] * s)];
+    const li = old ? oldLookInput(L, info.R, T) : lookInput(L, info.R, T);
+    const lt = lookTarget(li.dx, li.dy, li.dz, li.clipYaw, li.clipPitch);
+    if (lt.valid && !old) lt.pitch = neckPitch(lt.pitch, lt.yaw, li);
+    hl.yaw = lt.valid ? lt.yaw : 0;
+    hl.pitch = lt.valid ? lt.pitch : 0;
+    const sp = hl.split();
+    if (old) oldApplyLook(L, info.R, sp.neckHeadYaw, hl.pitch, sp.spine);
+    else applyLook(L, info.R, sp.spine + sp.neckHeadYaw, hl.pitch, sp.spine);
+    limitNeck(L, info.R);
+    constrainPose(L, info.R, { ...constrainOptsFor(clipName), state: cst, dt: 1 / FPS });
+    footLock(L, info.R, IDENT, fls, 1 / FPS, FREE_FEET.test(clipName));
+    validateFrame({ L, model: IDENT, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl }, info, tr, v);
+    agg.add('look', file, `${clipName} @${bearing}${rise ? ' up' : ''}`, v, 1 / FPS, () => snap(L, IDENT, { file, clip: clipName, t, bearing, rise }));
+  }
+}
+
+/** every standing clip (not a gait, not airborne: the game clamps a runner's look, and a slide's head is not level) looking at each target */
+export async function runLook(files: string[], manifestLoops: Set<string>, agg = new Agg()): Promise<Agg> {
+  for (const { name, rig, info } of await loadFiles(files)) {
+    for (const c of rig.clips.keys()) {
+      const fl = clipFlags(c);
+      if (fl.locomotion || fl.airborne) continue;
+      for (const tg of LOOK_TARGETS) sweepLook(agg, name, rig, info, c, manifestLoops.has(c), tg);
+    }
+  }
+  return agg;
 }
 
 export function snap(L: PoseLocals, model: ArrayLike<number>, ctx: Record<string, unknown>): Snapshot {

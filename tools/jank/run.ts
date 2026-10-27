@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium, type Page } from 'playwright-core';
-import { Agg, family, type Entry, type Snapshot } from './agg';
+import { Agg, family, mergeRoll, type Entry, type RollStat, type Snapshot } from './agg';
 import { ROOT, loadFiles, manifestLoops, runStatic, shippedPlayers, sweepFade, type Transition } from './sweep';
 import { JOINT_LIMITS } from '../../src/engine/pose/limits';
 
@@ -126,6 +126,7 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
   const trans = new Map<string, Transition & { n: number }>();
   const stats: Record<string, number> = {};
   const per: Record<string, unknown>[] = [];
+  const roll: Record<string, RollStat> = {};
   let first = true;
   for (const seed of seeds) {
     const q = `autostart&seed=${seed}&tempo=${tempo}&innings=${innings}&quality=low&noaudio&tod=day&replays=0`;
@@ -147,8 +148,9 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
         let last = 0;
         for (;;) {
           const r = (await page.evaluate(() => (window as any).__jank.run(1200))) as { t: number; over: boolean; inning: number };
-          const d = (await page.evaluate(() => (window as any).__jank.drain())) as { entries: Entry[]; stats: any; transitions: (Transition & { n: number })[] };
+          const d = (await page.evaluate(() => (window as any).__jank.drain())) as { entries: Entry[]; stats: any; transitions: (Transition & { n: number })[]; roll: Record<string, RollStat> };
           agg.merge(d.entries);
+          mergeRoll(roll, d.roll);
           for (const tx of d.transitions) {
             const k = `${tx.file}|${tx.from}|${tx.to}`;
             const o = trans.get(k);
@@ -187,7 +189,29 @@ export async function doGame(seeds: number[], innings: number, tempo: string, ma
   if (flag('update-transitions')) fs.writeFileSync(TRANSITIONS, body);
   const added = list.length - known.length;
   if (added > 0) console.log(`[jank] ${added} clip switches not in tools/jank/transitions.json${flag('update-transitions') ? ' (added)' : ' (see out/transitions.json; --update-transitions adds them)'}`);
-  return { meta: { kind: 'game', seeds, innings, tempo, git: git() }, entries: agg.list(), stats: { ...stats, per } };
+  return { meta: { kind: 'game', seeds, innings, tempo, git: git() }, entries: agg.list(), stats: { ...stats, per, roll } };
+}
+
+/** the head roll table of a game sweep (stats.roll): per role and clip, |roll| off the horizon (deg) of the final pose, the clip's own, the chest's lean */
+export function rollTable(g: RunFile, minFrames = 30): string {
+  const roll = (g.stats?.roll ?? {}) as Record<string, RollStat>;
+  const pct = (h: number[], n: number, q: number) => {
+    let c = 0;
+    for (let i = 0; i < h.length; i++) if ((c += h[i]) >= q * n) return i;
+    return h.length - 1;
+  };
+  const rows = Object.entries(roll)
+    .filter(([, r]) => r.n >= minFrames)
+    .map(([k, r]) => {
+      const mean = r.hist.reduce((a, c, i) => a + c * (i + 0.5), 0) / r.n;
+      const over = r.hist.slice(20).reduce((a, c) => a + c, 0) / r.n;
+      const max = r.hist.reduce((a, c, i) => (c > 0 ? i : a), 0);
+      return { k, n: r.n, mean, p50: pct(r.hist, r.n, 0.5), p95: pct(r.hist, r.n, 0.95), max, over, clip: r.clipMax, lean: r.lean / r.n, yaw: r.lookYaw / r.n };
+    })
+    .sort((a, b) => b.p95 - a.p95 || b.n - a.n);
+  const out = ['| role / clip | frames | mean | p50 | p95 | max | > 20 deg | clip max | chest lean | look yaw |', '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|'];
+  for (const r of rows) out.push(`| ${r.k.replace('|', ' / ')} | ${r.n} | ${r.mean.toFixed(1)} | ${r.p50} | ${r.p95} | ${r.max}${r.max >= 90 ? '+' : ''} | ${(r.over * 100).toFixed(1)} % | ${r.clip.toFixed(1)} | ${r.lean.toFixed(0)} | ${r.yaw.toFixed(0)} |`);
+  return out.join('\n');
 }
 
 // ---- report ------------------------------------------------------------------------------------------------------------------------
@@ -450,6 +474,15 @@ async function main() {
     });
     save(`trace-${opt('id', '')}.json`, tr);
     console.log(`[jank] trace: ${(tr as unknown[]).length} frames -> ${path.join(OUT, `trace-${opt('id', '')}.json`)}`);
+    return;
+  }
+  if (mode === 'roll') {
+    // npx tsx tools/jank/run.ts roll [--out dir]: the head roll table of the last game sweep in that folder
+    const g = load<RunFile>('game.json');
+    if (!g) throw new Error(`no game.json in ${OUT}`);
+    const t = rollTable(g, +opt('min', '30'));
+    fs.writeFileSync(path.join(OUT, 'roll.md'), t + '\n');
+    console.log(t);
     return;
   }
   if (mode === 'static' || mode === 'all') save('static.json', await doStatic());

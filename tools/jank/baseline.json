@@ -603,5 +603,147 @@
    "frames": 1,
    "score": 0.031
   }
+ },
+ "lookRuntime": {
+  "joint:ankle.swing": {
+   "frames": 8052,
+   "score": 89.797
+  },
+  "joint:neck.pitch": {
+   "frames": 1472,
+   "score": 21.298
+  },
+  "spike:Arm": {
+   "frames": 282,
+   "score": 3.257
+  },
+  "spike:ForeArm": {
+   "frames": 210,
+   "score": 3.628
+  },
+  "joint:forearm.pron": {
+   "frames": 4860,
+   "score": 175.944
+  },
+  "spike:Hand": {
+   "frames": 246,
+   "score": 4.306
+  },
+  "body:hand-torso@heavy": {
+   "frames": 2076,
+   "score": 27.209
+  },
+  "body:hand-torso": {
+   "frames": 222,
+   "score": 1.332
+  },
+  "body:hand-torso@stocky": {
+   "frames": 846,
+   "score": 16.465
+  },
+  "body:hand-torso@muscular": {
+   "frames": 504,
+   "score": 6.884
+  },
+  "joint:wrist.swing": {
+   "frames": 84,
+   "score": 2.763
+  },
+  "foot:slide": {
+   "frames": 2280,
+   "score": 62.505
+  },
+  "joint:spine.yaw": {
+   "frames": 230,
+   "score": 1.065
+  },
+  "joint:hip.twist": {
+   "frames": 6108,
+   "score": 32.795
+  },
+  "joint:hip.flex": {
+   "frames": 1014,
+   "score": 8.612
+  },
+  "joint:shoulder.post": {
+   "frames": 246,
+   "score": 2.622
+  },
+  "joint:shoulder.behind": {
+   "frames": 330,
+   "score": 7.631
+  },
+  "joint:shoulder.twist": {
+   "frames": 1422,
+   "score": 25.851
+  },
+  "body:arm-head": {
+   "frames": 29,
+   "score": 0.434
+  },
+  "flip:ForeArm": {
+   "frames": 6,
+   "score": 0.234
+  },
+  "flip:Hand": {
+   "frames": 6,
+   "score": 0.235
+  },
+  "body:elbow-torso@stocky": {
+   "frames": 414,
+   "score": 8.073
+  },
+  "body:elbow-torso@heavy": {
+   "frames": 672,
+   "score": 10.993
+  },
+  "spike:UpLeg": {
+   "frames": 12,
+   "score": 0.005
+  },
+  "foot:float": {
+   "frames": 78,
+   "score": 2.46
+  },
+  "body:hand-torso@lean": {
+   "frames": 54,
+   "score": 0.364
+  },
+  "joint:ankle.twist": {
+   "frames": 2802,
+   "score": 104.741
+  },
+  "body:elbow-torso@muscular": {
+   "frames": 144,
+   "score": 5.577
+  },
+  "body:elbow-torso": {
+   "frames": 138,
+   "score": 4.745
+  },
+  "body:elbow-torso@lean": {
+   "frames": 114,
+   "score": 4.092
+  },
+  "joint:hip.abd": {
+   "frames": 534,
+   "score": 1.546
+  },
+  "joint:neck.roll": {
+   "frames": 68,
+   "score": 0.486
+  },
+  "spike:Neck": {
+   "frames": 11,
+   "score": 0.043
+  },
+  "joint:spine.roll": {
+   "frames": 108,
+   "score": 0.574
+  },
+  "spike:Leg": {
+   "frames": 6,
+   "score": 0.063
+  }
  }
 }

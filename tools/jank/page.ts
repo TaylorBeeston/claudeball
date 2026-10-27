@@ -13,8 +13,9 @@
  */
 import { B, BONES, NB, type PoseLocals, newLocals, fk } from '../../src/engine/pose/skeleton';
 import { groundHeight } from '../../src/sim/field';
-import { Agg, type Snapshot } from './agg';
+import { Agg, addRoll, type RollStat, type Snapshot } from './agg';
 import { BAT_CLIPS, batHandsBlend, clipFlags } from './clips';
+import { chestLean, headRoll } from '../../src/engine/pose/look';
 import { gripBat, newTrack, rigInfo, validateFrame, type BatIn, type RigInfo, type Track, type Violation } from './validate';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -89,6 +90,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
   const vF: Violation[] = [], vC: Violation[] = [];
   const tmpV = new V();
   const ringN = opts.ring ?? 0;
+  const rollStats: Record<string, RollStat> = {};
 
   const hookPuppet = (id: string, pu: any): PState | null => {
     if (!pu.bones?.Hips || !pu.mixer) return null;
@@ -207,6 +209,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       s.info.torso = pu.torso ?? s.info.torso;
       const frameIn = { model, ground: gnd, dt: animDt, cut, vel, ...fl, airborne: fl.airborne || p.anim === 'catch_jump' || /slide|dive/.test(p.anim) };
       const fw = validateFrame({ ...frameIn, L: s.L, bat }, s.info, s.trF, vF);
+      const roll = headRoll(fw), lean = chestLean(fw);
       vF.push(...pops);
       // integrity: the validator's pose must be the rendered one (the right hand from FK vs the bone's world matrix)
       {
@@ -216,8 +219,9 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
       if (w.__jank.traceId === p.id || w.__jank.traceId === p.role) w.__jank.trace.push({ pe: (() => { pu.rig.refresh(); const V = e.camera.position.constructor; return [pu.rig.pos(pu.bones.LeftForeArm, new V()).toArray().map((x: number) => +x.toFixed(3)), pu.rig.pos(pu.bones.Spine2, new V()).toArray().map((x: number) => +x.toFixed(3))]; })(), fe: [Array.from(fw.wp.subarray(B.LeftForeArm * 3, B.LeftForeArm * 3 + 3)).map((x) => +x.toFixed(3)), Array.from(fw.wp.subarray(B.Spine2 * 3, B.Spine2 * 3 + 3)).map((x) => +x.toFixed(3))], sw: JSON.parse(JSON.stringify(pu.swivelDbg)), ec: pu.elbowClear, fkErr: (() => { const fw = fk(s!.L); const h = B.RightHand * 3; const me = model; const x = fw.wp[h], y = fw.wp[h + 1], z = fw.wp[h + 2]; const wx = me[0] * x + me[4] * y + me[8] * z + me[12], wy = me[1] * x + me[5] * y + me[9] * z + me[13], wz = me[2] * x + me[6] * y + me[10] * z + me[14]; const hw = pu.bones.RightHand.matrixWorld.elements; return +Math.hypot(wx - hw[12], wy - hw[13], wz - hw[14]).toFixed(3); })(), hipsLp: [pu.bones.Hips.position.x, pu.bones.Hips.position.y, pu.bones.Hips.position.z].map((x: number) => +x.toFixed(3)), hipsParent: pu.bones.Hips.parent?.name, id: p.id, kh: bat ? +Math.hypot(bat.knob[0] - pu.bones.RightHand.matrixWorld.elements[12], bat.knob[1] - pu.bones.RightHand.matrixWorld.elements[13], bat.knob[2] - pu.bones.RightHand.matrixWorld.elements[14]).toFixed(3) : null, held: e.bat.held, batParent: e.bat.obj.parent?.name, gripW: pu.batGrip ? Array.from(pu.batGrip.matrixWorld.elements.slice(12, 15) as number[]).map((x: number) => +x.toFixed(3)) : null, knobW: bat?.knob.map((x: number) => +x.toFixed(3)), t: +st.time.toFixed(3), clip, hint: p.anim, pos: [p.pos.x, p.pos.y, p.pos.z].map((x: number) => +x.toFixed(3)), yaw: +pu.root.rotation.y.toFixed(3), hand: p.hand, mscale: pu.model.scale.x, mir: pu.mirrored, det: Math.sign(model[0] * (model[5] * model[10] - model[6] * model[9]) - model[4] * (model[1] * model[10] - model[2] * model[9]) + model[8] * (model[1] * model[6] - model[2] * model[5])), root: [pu.root.position.x, pu.root.position.y, pu.root.position.z].map((x: number) => +x.toFixed(3)), feet: s.trF.foot.map((c) => [+c.x.toFixed(3), +c.z.toFixed(3), c.planted]), cut, fading: mixerFading(pu.mixer), v: vF.map((x) => `${x.kind}:${x.excess.toFixed(2)}`) });
       // the mixer's pose with the bat where it would be: in the hand (on Bat_Grip) when the hand holds it, else where the sim has it
       const batC = bat && (bat.state === 'held' || bat.state === 'ondeck') ? { ...gripBat(s.C, s.info, Array.from(model), bat.hands), state: bat.state } : bat;
-      validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
+      const cw = validateFrame({ ...frameIn, L: s.C, bat: batC }, s.info, s.trC, vC);
       agg.add('frames', p.role, tag, [], animDt || dt);
+      addRoll(w.__jank.state.roll, `${p.role}|${tag}`, roll, headRoll(cw), lean, pu.headLook?.yaw ?? 0, frameIn.airborne);
       // visible: inside the camera's frustum
       const f = e.players.frustum;
       const vis = !f || f.intersectsSphere({ center: tmpV.set(p.pos.x, p.pos.y + 1, p.pos.z), radius: 1.3 });
@@ -263,7 +267,7 @@ export function install(opts: { ring?: number; seed?: number } = {}) {
     tick(dt, render);
     if (!e.sim.paused) probe(dt);
   };
-  w.__jank.state = { agg, stats, transitions, per };
+  w.__jank.state = { agg, stats, transitions, per, roll: rollStats };
   return true;
 }
 
@@ -290,8 +294,9 @@ export function run(frames: number) {
 /** take what has been collected (and reset it) */
 export function drain() {
   const s = w.__jank.state;
-  const out = { entries: s.agg.list(), stats: { ...s.stats }, transitions: [...s.transitions.values()] };
+  const out = { entries: s.agg.list(), stats: { ...s.stats }, transitions: [...s.transitions.values()], roll: s.roll };
   s.agg.entries.clear();
+  s.roll = {};
   return out;
 }
 

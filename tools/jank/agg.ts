@@ -94,3 +94,48 @@ export function family(kind: string): string {
   if (!k) return f;
   return `${f}:${k.replace(/^(Left|Right)/, '').replace(/([a-z])[LR]\./, '$1.').replace(/-[LR]$/, '')}`;
 }
+
+/**
+ * Head roll off the horizon per role and clip: a 1-degree histogram of |roll| of the final pose, the clip's own (mixer) roll, the chest's lean
+ * off the vertical and the look's yaw offset, and a few samples (roll, look yaw, lean, clip roll) to relate them. Airborne frames apart.
+ */
+export interface RollStat {
+  n: number;
+  air: number;
+  hist: number[];
+  clipMax: number;
+  lean: number;
+  lookYaw: number;
+  samples: number[][];
+}
+export function addRoll(m: Record<string, RollStat>, key: string, roll: number, clipRoll: number, lean: number, lookYaw: number, airborne: boolean) {
+  const r = (m[key] ??= { n: 0, air: 0, hist: new Array(91).fill(0), clipMax: 0, lean: 0, lookYaw: 0, samples: [] });
+  if (airborne) {
+    r.air++;
+    return;
+  }
+  r.n++;
+  r.hist[Math.min(90, Math.floor(Math.abs(roll)))]++;
+  r.clipMax = Math.max(r.clipMax, Math.abs(clipRoll));
+  r.lean += lean;
+  r.lookYaw += Math.abs(lookYaw) / (Math.PI / 180);
+  // a sample every ~30 frames, more of the worst
+  if (r.samples.length < 60 && (r.n % 30 === 0 || (Math.abs(roll) > 30 && r.n % 5 === 0))) r.samples.push([roll, lookYaw / (Math.PI / 180), lean, clipRoll].map((x) => +x.toFixed(1)));
+}
+export function mergeRoll(into: Record<string, RollStat>, from: Record<string, RollStat>) {
+  for (const [k, o] of Object.entries(from)) {
+    const r = into[k];
+    if (!r) {
+      into[k] = structuredClone(o);
+      continue;
+    }
+    r.n += o.n;
+    r.air += o.air;
+    for (let i = 0; i < r.hist.length; i++) r.hist[i] += o.hist[i];
+    r.clipMax = Math.max(r.clipMax, o.clipMax);
+    r.lean += o.lean;
+    r.lookYaw += o.lookYaw;
+    r.samples.push(...o.samples.slice(0, Math.max(0, 60 - r.samples.length)));
+  }
+  return into;
+}
