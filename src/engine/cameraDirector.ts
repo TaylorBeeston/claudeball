@@ -372,7 +372,8 @@ export class CameraDirector {
         const k: MomentKind | null = r.startsWith('strikeout') ? 'strikeout' : r === 'walk' ? 'walk' : r === 'hit by pitch' ? 'hitByPitch' : /double play|triple play/.test(r) ? 'doublePlay' : r === 'single' ? 'hit' : r === 'double' || r === 'triple' ? 'extraBase' : null;
         const pitcher = live.pitcher?.id;
         // who shows it most: the pitcher's yell or the batter's frustration on a strikeout, the batter on a hit or a hit batsman, the pitcher on a walk
-        if (k) this.addMoment(k, k === 'strikeout' ? [pitcher, e.batterId, live.players.find((p) => p.role === 'catcher')?.id] : k === 'walk' ? [pitcher, e.batterId] : [e.batterId, pitcher], live);
+        // (never the catcher: his face is behind the mask)
+        if (k) this.addMoment(k, k === 'strikeout' || k === 'walk' ? [pitcher, e.batterId] : [e.batterId, pitcher], live);
         break;
       }
       case 'hbp':

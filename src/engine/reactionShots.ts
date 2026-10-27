@@ -132,7 +132,8 @@ export function rankReactions(ctx: PickContext): Pick[] {
       const names = NAMES[m.kind];
       if (names && !names.includes(r.name)) return;
       const p = ctx.players.find((q) => q.id === id);
-      if (!p) return;
+      // a masked face (the catcher and the plate umpire in their gear) shows nothing
+      if (!p || p.role === 'catcher' || p.role === 'umpire') return;
       const cls = roleClass(p.role);
       let score = m.weight * Math.min(1.2, r.strength) * (NAME_WEIGHT[r.name] ?? 1) * (1 - 0.12 * rank);
       // variety: not the same kind of person as the last two reaction shots

@@ -27,13 +27,14 @@ const ctx = (over: Partial<PickContext> = {}): PickContext => ({
 describe('reaction shots: who to show', () => {
   it('picks the person whose face shows the moment, best first', () => {
     const r = rankReactions(ctx());
-    expect(r.map((x) => x.id)).toEqual(['P', 'B', 'C']);
+    // (not the catcher: his face is behind the mask)
+    expect(r.map((x) => x.id)).toEqual(['P', 'B']);
     expect(r[0].reaction).toBe('yell');
   });
 
   it('only shows a reaction that is still running (the face holds it through the shot) and strong enough to read', () => {
     expect(rankReactions(ctx({ lookup: () => live('yell', { left: -0.31 }) }))).toEqual([]);
-    expect(rankReactions(ctx({ lookup: () => live('yell', { left: -0.2 }) }))).toHaveLength(3);
+    expect(rankReactions(ctx({ lookup: () => live('yell', { left: -0.2 }) }))).toHaveLength(2);
     expect(rankReactions(ctx({ lookup: () => live('yell', { strength: 0.29 }) }))).toEqual([]);
     expect(rankReactions(ctx({ lookup: () => null }))).toEqual([]);
   });
@@ -91,7 +92,7 @@ describe('reaction shots: who to show', () => {
   });
 
   it('never shows the same person twice in a row, and varies the kind of person', () => {
-    expect(rankReactions(ctx({ recent: [{ id: 'P', cls: 'pitcher', at: -30 }] })).map((x) => x.id)).toEqual(['B', 'C']);
+    expect(rankReactions(ctx({ recent: [{ id: 'P', cls: 'pitcher', at: -30 }] })).map((x) => x.id)).toEqual(['B']);
     expect(rankReactions(ctx({ avoid: 'P' })).map((x) => x.id)).not.toContain('P');
     // a pitcher was the last two reaction shots: the batter comes first even though the pitcher's yell is as strong
     const twoPitchers = [{ id: 'P2', cls: 'pitcher' as const, at: -60 }, { id: 'P3', cls: 'pitcher' as const, at: -30 }];
