@@ -242,229 +242,229 @@ Thinnest pools (tags by uses per distinct shape, at least 10 uses):
 ## After (this branch)
 
 Same harness, same seeds, same games (the sim does not depend on the booth). With the booth's memory shared along each chain, as the app does
-(one memory per visit, kept in localStorage):
+(one memory per visit, kept in localStorage; measured at 7917935):
 
-30 games in 3 chains of 10, 107 min a game on average, 837 lines a game (435 not calls)
+30 games in 3 chains of 10, 107 min a game on average, 841 lines a game (438 not calls)
 
 | lines | per game | exact repeat within the game | shape repeat within the game | shape heard in an earlier game of the chain | ... in the second half of the chain |
 |---|---|---|---|---|---|
-| all | 837 | 6.1 % | 19.4 % | 68.4 % | 83.8 % |
-| everything but calls | 435 | 4.5 % | 15.3 % | 67.4 % | 84.5 % |
-| call | 402 | 7.9 % | 23.8 % | 69.4 % | 83.0 % |
-| reaction | 15 | 1.4 % | 1.4 % | 62.3 % | 82.7 % |
-| topic | 332 | 5.8 % | 16.4 % | 71.0 % | 88.2 % |
-| segment | 88 | 0.2 % | 13.7 % | 54.7 % | 71.4 % |
+| all | 841 | 6.2 % | 18.8 % | 68.2 % | 83.9 % |
+| everything but calls | 438 | 4.6 % | 14.3 % | 67.1 % | 84.3 % |
+| call | 404 | 8.0 % | 23.7 % | 69.5 % | 83.4 % |
+| reaction | 15 | 1.1 % | 1.1 % | 63.2 % | 88.8 % |
+| topic | 334 | 6.0 % | 16.0 % | 70.6 % | 87.6 % |
+| segment | 89 | 0.2 % | 10.3 % | 54.5 % | 71.1 % |
 
 Conversation topics: the booth looked for one 1327 times a game and had nothing 88.3 % of the time.
 
-Not-call lines from game 2 on: 43.9 % were said in the game just before; on average each had been said 3.6 times in the earlier games of the chain; 44.8 % three times or more.
+Not-call lines from game 2 on: 44.7 % were said in the game just before; on average each had been said 3.5 times in the earlier games of the chain; 44.2 % three times or more.
 
-Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 45.9 %, g3 60.7 %, g4 69.1 %, g5 77.4 %, g6 78.5 %, g7 82.8 %, g8 86.2 %, g9 86.3 %, g10 89.2 %
+Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 46.0 %, g3 60.7 %, g4 68.0 %, g5 76.7 %, g6 79.9 %, g7 81.2 %, g8 87.0 %, g9 86.2 %, g10 87.6 %
 
 Top repeaters (call): uses across all games, games it was heard in
 
 | uses | games | tag | line (shape) |
 |---|---|---|---|
-| 98 | 30/30 | ball | Ball #, just off the edge. |
-| 97 | 30/30 | ball | Out of the zone, ball #. |
-| 94 | 30/30 | ball | Misses the zone, ball #. |
-| 94 | 30/30 | ball | Ball #, and #N stays patient. |
+| 97 | 30/30 | ball | He takes it, ball #. |
 | 93 | 30/30 | ball | #N does not bite. Ball #. |
-| 93 | 30/30 | ball | Nothing doing there. Ball #. |
-| 92 | 30/30 | ball | That # is a ball, number #. |
-| 92 | 30/30 | ball | He takes it, ball #. |
-| 91 | 30/30 | ball | He lays off it, ball #. |
-| 89 | 30/30 | ball | Takes it for ball #. |
-| 89 | 30/30 | ball | He holds back, ball #. |
-| 86 | 30/30 | ball | A little too fine, ball #. |
-| 85 | 30/30 | ball | Ball #, and the count is # and #. |
-| 85 | 30/30 | ball | Off the plate, ball #. |
-| 83 | 30/30 | ball | He does not bite. Ball #. |
-| 58 | 30/30 | strikeout.looking | Strike #, looking. |
-| 87 | 29/30 | ball | Not quite, ball #. |
-| 86 | 29/30 | ball | He spits on it. Ball #. |
-| 64 | 29/30 | batter.up | #N to the plate. |
-| 61 | 29/30 | batter.up | #N is up. |
-| 58 | 29/30 | batter.up | #N now. |
-| 45 | 29/30 | ball | Ball #, and #N lets it go. |
-| 45 | 29/30 | strike.called | Gets the call, strike #. |
-| 45 | 29/30 | strike.called | Taken for strike #. |
-| 44 | 29/30 | strike.called | Taken, and that is strike #. |
-| 44 | 29/30 | ball | Not this time, ball #. |
-| 43 | 29/30 | batter.up | In the box, #N. |
-| 42 | 29/30 | strike.called | In there for strike #. |
-| 36 | 29/30 | strike.foul | That # is foul. Strike #. |
-| 63 | 28/30 | batter.up | Now it is #N. |
+| 92 | 30/30 | ball | Out of the zone, ball #. |
+| 92 | 30/30 | ball | He lays off it, ball #. |
+| 92 | 30/30 | ball | He does not bite. Ball #. |
+| 91 | 30/30 | ball | A little too fine, ball #. |
+| 91 | 30/30 | ball | Takes it for ball #. |
+| 90 | 30/30 | ball | Ball #, just off the edge. |
+| 90 | 30/30 | ball | Misses the zone, ball #. |
+| 89 | 30/30 | ball | Ball #, and #N stays patient. |
+| 89 | 30/30 | ball | Off the plate, ball #. |
+| 88 | 30/30 | ball | Not quite, ball #. |
+| 88 | 30/30 | ball | That # is a ball, number #. |
+| 87 | 30/30 | ball | He spits on it. Ball #. |
+| 85 | 30/30 | ball | Nothing doing there. Ball #. |
+| 84 | 30/30 | ball | He holds back, ball #. |
+| 47 | 30/30 | strike.called | The umpire rings it up, strike #. |
+| 43 | 30/30 | strike.called | Gets the call, strike #. |
+| 83 | 29/30 | ball | Ball #, and the count is # and #. |
+| 50 | 29/30 | fielded.clean | And #N grabs it. |
+| 44 | 29/30 | strike.called | He leaves the bat on his shoulder, strike #. |
+| 43 | 29/30 | strike.called | Locates it, strike #. |
+| 43 | 29/30 | strike.called | Taken for strike #. |
+| 41 | 29/30 | strike.foul | Foul ball, and a souvenir for somebody. |
+| 41 | 29/30 | strike.called | Taken, and that is strike #. |
+| 58 | 28/30 | batter.up | Now it is #N. |
+| 58 | 28/30 | batter.up | Now batting, #N. |
+| 58 | 28/30 | fielded.clean | Fielded by #N. |
+| 57 | 28/30 | batter.up | Here is #N. |
+| 56 | 28/30 | batter.up | #N steps in. |
 
 Top repeaters (reaction): uses across all games, games it was heard in
 
 | uses | games | tag | line (shape) |
 |---|---|---|---|
 | 15 | 15/30 | phrase.bis.k | That is biscuits and gravy right there. |
-| 15 | 15/30 | phrase.bis.k | Mm-hmm. Biscuits and gravy. |
-| 13 | 13/30 | react.k | Could not catch up to it. |
-| 12 | 12/30 | react.k | Well pitched. |
-| 12 | 12/30 | react.k | He had # answer for that. |
-| 12 | 12/30 | react.k | Ooh. |
+| 12 | 12/30 | react.k | Filthy. |
+| 12 | 12/30 | react.k | Put him away. |
+| 12 | 12/30 | phrase.bis.k | Mm-hmm. Biscuits and gravy. |
+| 11 | 11/30 | react.k | Well pitched. |
+| 11 | 11/30 | react.hit | Great approach. |
 | 11 | 11/30 | react.k | He set that up beautifully. |
-| 11 | 11/30 | react.k | Never had a chance. |
-| 11 | 11/30 | react.k | That is a pitcher pitching. |
 | 11 | 11/30 | react.k | Good pitch. |
+| 11 | 11/30 | react.k | That is a pitcher pitching. |
+| 11 | 11/30 | react.k | Great sequence there. |
+| 11 | 11/30 | react.k | Never had a chance. |
 | 11 | 11/30 | react.k | Wipeout pitch. |
-| 11 | 11/30 | react.k | Put him away. |
+| 11 | 11/30 | react.hit | Good swing. |
+| 11 | 11/30 | react.k | Could not catch up to it. |
+| 11 | 11/30 | react.hit | Went with the pitch. |
+| 11 | 11/30 | react.k | He had # answer for that. |
+| 11 | 11/30 | react.k | Got him. |
 | 11 | 11/30 | react.k | Nasty. |
-| 10 | 10/30 | react.k | Great sequence there. |
-| 10 | 10/30 | react.out | That is how you do it. |
-| 10 | 10/30 | react.k | Got him. |
+| 10 | 10/30 | react.hit | Stayed on it. |
+| 10 | 10/30 | react.hit | Good, solid contact. |
 | 10 | 9/30 | react.out | He was right there. |
-| 9 | 9/30 | react.hit | Good, solid contact. |
-| 9 | 9/30 | react.hit | Short and quick. |
-| 9 | 9/30 | react.hit | Squared it up. |
-| 9 | 9/30 | react.out | Good play. |
+| 9 | 9/30 | react.k | Ooh. |
+| 9 | 9/30 | react.out | Clean. |
+| 9 | 9/30 | react.hit | Nice piece of hitting. |
+| 9 | 9/30 | react.hit | He put a good swing on that. |
 | 9 | 9/30 | react.k | That is a tough at-bat. |
-| 9 | 9/30 | react.k | Filthy. |
-| 9 | 9/30 | react.hit | He was waiting on that #. |
-| 8 | 8/30 | react.hit | Good swing. |
-| 8 | 8/30 | react.hit | Nice piece of hitting. |
-| 8 | 8/30 | react.hit | Beautiful swing. |
-| 8 | 8/30 | phrase.bis.hr | That is a grown-man swing. |
-| 8 | 8/30 | react.hit | Stayed on it. |
-| 8 | 8/30 | react.out | Smooth. |
+| 9 | 8/30 | react.out | That is how you do it. |
+| 8 | 8/30 | react.hit | Squared it up. |
+| 8 | 8/30 | react.hit | That is a quality at-bat. |
+| 8 | 8/30 | react.hit | Right on the barrel. |
 
 Top repeaters (topic): uses across all games, games it was heard in
 
 | uses | games | tag | line (shape) |
 |---|---|---|---|
 | 97 | 30/30 | batterVsPitcher | #N is # for # against #N tonight. |
-| 83 | 30/30 | fastballStreak | That is # fastballs in a row from #N. |
-| 74 | 30/30 | pitchMix | About # percent fastballs from #N so far. |
-| 63 | 30/30 | n.outs | # out here in the #. |
-| 55 | 30/30 | n.outs | # down, # to go. |
-| 54 | 30/30 | rattled | #N has put a runner on in # of the last # batters. |
-| 50 | 30/30 | batterVsPitcher | This is the # look at #N for #N and so far # hits in # trips. |
-| 49 | 30/30 | batterVsPitcher | This is the # look at #N for #N with # hits in # trips. |
+| 82 | 30/30 | fastballStreak | That is # fastballs in a row from #N. |
+| 75 | 30/30 | pitchMix | About # percent fastballs from #N so far. |
+| 58 | 30/30 | n.outs | # out here in the #. |
+| 58 | 30/30 | coldBat | #N has struck out # tonight. |
+| 57 | 30/30 | coldBat | # strikeouts for #N so far. |
+| 54 | 30/30 | n.inning | We are rolling along in the #. |
+| 53 | 30/30 | rattled | #N has put a runner on in # of the last # batters. |
+| 50 | 30/30 | batterVsPitcher | This is the # look at #N for #N with # hits in # trips. |
+| 49 | 30/30 | twoOutRsp | A runner in scoring position with # away. |
+| 49 | 30/30 | batterVsPitcher | This is the # look at #N for #N and so far # hits in # trips. |
 | 48 | 30/30 | twoOutRsp | # out, runner in scoring position. |
-| 47 | 30/30 | n.inning | Long way to go. |
-| 40 | 30/30 | n.inning | Lots of baseball to play. |
-| 39 | 30/30 | pitchMix | #N has thrown the fastball # percent of the time tonight. |
-| 37 | 30/30 | pitchMix | #N has thrown the heater # percent of the time tonight. |
-| 60 | 29/30 | thirdTime | # look at #N for #N. |
+| 46 | 30/30 | n.inning | Lots of baseball to play. |
+| 45 | 30/30 | sequence | You will see that again tonight. |
+| 45 | 30/30 | twoOutRsp | # down, and a runner in scoring position. |
+| 40 | 30/30 | sameHand | Tougher look for #N. |
+| 38 | 30/30 | pitchMix | #N has thrown the heater # percent of the time tonight. |
+| 37 | 30/30 | pitchMix | #N has thrown the fastball # percent of the time tonight. |
+| 36 | 30/30 | clockLow | The clock is in single digits on #N. |
+| 61 | 29/30 | thirdTime | # look at #N for #N. |
 | 59 | 29/30 | thirdTime | The # time #N has seen #N tonight. |
-| 57 | 29/30 | coldBat | #N has struck out # tonight. |
-| 57 | 29/30 | coldBat | # strikeouts for #N so far. |
-| 48 | 29/30 | twoOutRsp | A runner in scoring position with # away. |
-| 47 | 29/30 | twoOutRsp | # down, and a runner in scoring position. |
-| 46 | 29/30 | firstPitchBreaking | And now the next pitch matters. |
-| 44 | 29/30 | n.inning | Plenty of baseball left. |
-| 44 | 29/30 | n.lead | #N are up #. |
+| 56 | 29/30 | n.outs | # down, # to go. |
+| 45 | 29/30 | n.inning | Long way to go. |
 | 43 | 29/30 | fastballStreak | #N has thrown # straight fastballs now. |
-| 43 | 29/30 | cruising | #N has retired # in a row. |
+| 43 | 29/30 | n.inning | Plenty of baseball left. |
+| 43 | 29/30 | cruising | # straight batters set down by #N. |
+| 42 | 29/30 | cruising | #N has retired # in a row. |
 | 42 | 29/30 | fastballStreak | #N has gone with # straight fastballs now. |
-| 40 | 29/30 | firstPitchBreaking | We will see what comes next. |
-| 39 | 29/30 | n.inning | Still a lot of game ahead. |
-| 35 | 29/30 | sameHand | The breaking ball moves away from the hitter here. |
-| 54 | 28/30 | zeroes | # scoreless innings in a row for #N. |
-| 52 | 28/30 | zeroes | #N pitching has put up # zeroes in a row. |
+| 36 | 29/30 | clockLow | Clock is winding down on #N. |
+| 36 | 29/30 | clockLow | He had better get going, the clock is ticking. |
 
 Top repeaters (segment): uses across all games, games it was heard in
 
 | uses | games | tag | line (shape) |
 |---|---|---|---|
-| 30 | 30/30 | break.back | Stay with us. We'll be right back from #N. |
-| 79 | 28/30 | break.due | For the #N in the bottom of the #, it will be #N. |
-| 69 | 28/30 | break.pitcher | The line on #N so far: # innings, # hits, # strikeouts, # pitches. |
-| 67 | 26/30 | break.back | A quick break, and we'll be right back with the top of the #. |
-| 61 | 26/30 | break.due | Due up for the #N in the bottom of the #: #N. |
-| 60 | 26/30 | break.due | Coming up for the #N in the bottom of the #: #N. |
-| 54 | 26/30 | break.pitcher | #N through # innings: # hits, # strikeouts, # pitches. |
-| 60 | 25/30 | break.due | #N are due up for the #N in the bottom of the #. |
-| 54 | 24/30 | break.pitcher | #N has gone # innings on # pitches: # hits and # strikeouts. |
-| 23 | 23/30 | break.pitcher | Efficient. Nothing wasted. |
-| 23 | 23/30 | break.pitcher | Hitters are not getting comfortable against him. |
-| 23 | 22/30 | break.pitcher | I would have loved catching that, Lyle. |
+| 66 | 30/30 | break.due | Coming up for the #N in the bottom of the #: #N. |
+| 66 | 30/30 | break.due | #N are due up for the #N in the bottom of the #. |
+| 65 | 30/30 | break.due | Due up for the #N in the bottom of the #: #N. |
+| 63 | 30/30 | break.due | For the #N in the bottom of the #, it will be #N. |
+| 60 | 30/30 | break.pitcher | The line on #N so far: # innings, # hits, # strikeouts, # pitches. |
+| 59 | 30/30 | break.pitcher | #N has gone # innings on # pitches: # hits and # strikeouts. |
+| 65 | 29/30 | break.pitcher | #N through # innings: # hits, # strikeouts, # pitches. |
+| 27 | 27/30 | break.back | Back with more in a moment. |
+| 27 | 27/30 | break.back | Stay right there. |
+| 27 | 27/30 | break.back | Time for a break. Back in a moment. |
+| 26 | 26/30 | break.back | We'll be right back. |
+| 26 | 26/30 | break.back | Stay with us. We'll be right back from #N. |
+| 24 | 24/30 | break.pitcher | Efficient. Nothing wasted. |
+| 29 | 22/30 | break.back | A quick break, and we'll be right back with the top of the #. |
+| 22 | 22/30 | break.pitcher | I would have loved catching that, Lyle. |
+| 22 | 21/30 | break.pitcher | He is ahead of everybody. That is the whole secret. |
+| 22 | 21/30 | break.pitcher | He is making it look easy. |
+| 21 | 21/30 | break.pitcher | Hitters are not getting comfortable against him. |
 | 21 | 21/30 | open.starter.home | On the mound for the #N the #-year-old right-hander. |
-| 21 | 19/30 | break.pitcher | That's a good night's work so far, Lyle. |
-| 20 | 19/30 | break.pitcher | He has been in command. Nothing has come easy against him. |
-| 20 | 19/30 | break.pitcher | He is making it look easy. |
-| 19 | 19/30 | break.back | Time for a break. Back in a moment. |
-| 17 | 17/30 | break.back | We'll be right back. |
-| 17 | 17/30 | break.back | Back with more in a moment. |
-| 17 | 17/30 | break.pitcher | Strike #, all night long. That is how you do it. |
-| 17 | 17/30 | break.back | Stay right there. |
-| 22 | 16/30 | break.clock | It's #-# here at #N # degrees. |
+| 20 | 19/30 | break.pitcher | Strike #, all night long. That is how you do it. |
+| 19 | 19/30 | break.pitcher | He has been in command. Nothing has come easy against him. |
+| 19 | 18/30 | break.clock | The clock at #N says #-#-#, and it is # degrees. |
+| 18 | 17/30 | break.pitcher | That's a good night's work so far, Lyle. |
+| 16 | 16/30 | break.clock | It's #-#-# here at #N # degrees. |
+| 16 | 16/30 | break.clock | It's #-# here at #N # degrees. |
 | 16 | 16/30 | break.back | Don't go anywhere. More baseball from #N after this. |
-| 20 | 15/30 | break.clock | It's #-#-# here at #N # degrees. |
-| 15 | 15/30 | break.promo | It is #-dollar hot dog night at #N and judging by the line, word got out. |
-| 15 | 15/30 | break.pitcher | He is ahead of everybody. That is the whole secret. |
-| 18 | 14/30 | break.due | For the #N in the top of the #, it will be #N. |
-| 18 | 14/30 | break.due | Coming up for the #N in the top of the #: #N. |
-| 16 | 14/30 | break.clock | The clock at #N says #-#, and it is # degrees. |
+| 16 | 14/30 | break.due | Coming up for the #N in the top of the #: #N. |
+| 14 | 14/30 | break.clock | The clock at #N says #-#, and it is # degrees. |
+| 14 | 14/30 | break.pitcher | He is grinding through it. |
 | 13 | 13/30 | close.bat | #N went # for # with # RBI and a home run. |
 
 Thinnest pools (tags by uses per distinct shape, at least 10 uses):
 
 | tag | category | uses | distinct shapes | uses per shape |
 |---|---|---|---|---|
-| batter.up | call | 1185 | 23 | 51.5 |
-| fielded.clean | call | 579 | 12 | 48.3 |
+| batter.up | call | 1163 | 23 | 50.6 |
+| fielded.clean | call | 568 | 12 | 47.3 |
 | n.outs | topic | 330 | 10 | 33.0 |
-| clockLow | topic | 205 | 7 | 29.3 |
-| advance | call | 249 | 9 | 27.7 |
+| clockLow | topic | 206 | 7 | 29.4 |
+| advance | call | 251 | 9 | 27.9 |
+| strike.foul | call | 593 | 23 | 25.8 |
 | n.inning | topic | 358 | 14 | 25.6 |
-| strike.foul | call | 603 | 24 | 25.1 |
-| contact.grounder | call | 505 | 23 | 22.0 |
-| ball | call | 2449 | 113 | 21.7 |
-| secondGuess | topic | 300 | 15 | 20.0 |
-| break.back | segment | 199 | 10 | 19.9 |
+| secondGuess | topic | 292 | 12 | 24.3 |
+| contact.grounder | call | 509 | 22 | 23.1 |
+| ball | call | 2440 | 116 | 21.0 |
+| break.back | segment | 193 | 10 | 19.3 |
 | safe | call | 361 | 21 | 17.2 |
-| sameHand | topic | 418 | 25 | 16.7 |
-| strike.swinging | call | 573 | 35 | 16.4 |
-| zeroes | topic | 211 | 13 | 16.2 |
-| n.lead | topic | 262 | 17 | 15.4 |
-| phrase.bis.k | reaction | 30 | 2 | 15.0 |
-| visitTangent | topic | 90 | 6 | 15.0 |
-| wall | call | 118 | 8 | 14.8 |
-| strike.foul.two | call | 290 | 20 | 14.5 |
-| strike.called | call | 1104 | 79 | 14.0 |
-| joke.infieldSingle | topic | 121 | 9 | 13.4 |
-| fastballStreak | topic | 496 | 37 | 13.4 |
+| strike.swinging | call | 588 | 35 | 16.8 |
+| sameHand | topic | 419 | 26 | 16.1 |
+| wall | call | 122 | 8 | 15.3 |
+| zeroes | topic | 212 | 14 | 15.1 |
+| strike.foul.two | call | 295 | 20 | 14.8 |
+| strike.called | call | 1119 | 76 | 14.7 |
+| loaded | topic | 200 | 14 | 14.3 |
+| n.score | topic | 178 | 13 | 13.7 |
+| phrase.bis.k | reaction | 27 | 2 | 13.5 |
+| twoOutRsp | topic | 376 | 28 | 13.4 |
 | run | call | 240 | 18 | 13.3 |
-| loaded | topic | 196 | 15 | 13.1 |
-| twoOutRsp | topic | 373 | 30 | 12.4 |
-| break.due | segment | 513 | 42 | 12.2 |
-| cruising | topic | 375 | 31 | 12.1 |
-| longAtBat | topic | 145 | 12 | 12.1 |
-| sequence | topic | 704 | 60 | 11.7 |
-| firstPitchBreaking | topic | 668 | 57 | 11.7 |
+| fastballStreak | topic | 493 | 37 | 13.3 |
+| joke.infieldSingle | topic | 119 | 9 | 13.2 |
+| n.lead | topic | 254 | 20 | 12.7 |
+| longAtBat | topic | 160 | 13 | 12.3 |
+| sequence | topic | 703 | 59 | 11.9 |
+| firstPitchBreaking | topic | 658 | 56 | 11.8 |
+| joke.nineHomers | topic | 117 | 10 | 11.7 |
+| break.due | segment | 513 | 44 | 11.7 |
 | strikeout.count | call | 128 | 11 | 11.6 |
 | hit.fc | call | 104 | 9 | 11.6 |
-| break.pitcher | segment | 503 | 44 | 11.4 |
-| n.score | topic | 168 | 15 | 11.2 |
-| react.k | reaction | 164 | 15 | 10.9 |
-| contact.pop | call | 184 | 17 | 10.8 |
-| batterVsPitcher | topic | 383 | 36 | 10.6 |
-| joke.nineHomers | topic | 123 | 12 | 10.3 |
-| clockRule | topic | 88 | 9 | 9.8 |
-| coldBat | topic | 244 | 25 | 9.8 |
-| thirdTime | topic | 243 | 25 | 9.7 |
+| contact.pop | call | 182 | 16 | 11.4 |
+| break.pitcher | segment | 522 | 46 | 11.3 |
+| visitTangent | topic | 87 | 8 | 10.9 |
+| react.k | reaction | 163 | 15 | 10.9 |
+| batterVsPitcher | topic | 379 | 35 | 10.8 |
+| cruising | topic | 384 | 36 | 10.7 |
 | pitch.change | call | 120 | 13 | 9.2 |
 | anecdote.lyle.lineupCard | topic | 18 | 2 | 9.0 |
-| powerGrade | topic | 132 | 15 | 8.8 |
-| break.clock | segment | 114 | 13 | 8.8 |
-| threeBreakers | topic | 127 | 15 | 8.5 |
-| pitchMix | topic | 298 | 36 | 8.3 |
-| callback | topic | 430 | 52 | 8.3 |
-| contact.grounder.hard | call | 111 | 14 | 7.9 |
-| hotBat | topic | 178 | 23 | 7.7 |
-| rattled | topic | 232 | 30 | 7.7 |
-| tightLate | topic | 170 | 22 | 7.7 |
-| react.hit | reaction | 112 | 15 | 7.5 |
-| countTendency | topic | 476 | 64 | 7.4 |
-| strikeout.swinging | call | 368 | 53 | 6.9 |
-| walk | call | 161 | 24 | 6.7 |
-| break.joke.aircon | segment | 52 | 8 | 6.5 |
-| strikeout.looking | call | 164 | 26 | 6.3 |
-| break.promo | segment | 94 | 15 | 6.3 |
+| coldBat | topic | 243 | 27 | 9.0 |
+| clockRule | topic | 89 | 10 | 8.9 |
+| threeBreakers | topic | 124 | 14 | 8.9 |
+| callback | topic | 444 | 51 | 8.7 |
+| react.hit | reaction | 127 | 15 | 8.5 |
+| powerGrade | topic | 131 | 16 | 8.2 |
+| strikeout.swinging | call | 368 | 45 | 8.2 |
+| contact.grounder.hard | call | 117 | 15 | 7.8 |
+| pitchMix | topic | 299 | 39 | 7.7 |
+| break.clock | segment | 114 | 15 | 7.6 |
+| thirdTime | topic | 241 | 32 | 7.5 |
+| countTendency | topic | 495 | 69 | 7.2 |
+| walk | call | 161 | 23 | 7.0 |
+| anecdote.game.lights | topic | 14 | 2 | 7.0 |
+| fold.count | call | 124 | 18 | 6.9 |
+| rattled | topic | 226 | 33 | 6.8 |
+| tightLate | topic | 169 | 25 | 6.8 |
+| ondeck | call | 101 | 15 | 6.7 |
+| hotBat | topic | 180 | 27 | 6.7 |
 
 With `--memory off` (a fresh booth memory every game: the wider pool and the caps alone):
 
@@ -489,19 +489,19 @@ Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 5
 
 | not-call lines (conversation, segments, reactions) | before | after, no memory | after, with memory |
 |---|---|---|---|
-| lines a game | 495 | 436 | 435 |
-| exact words repeated within the game | 16.7 % | 4.1 % | 4.5 % |
-| same line (names masked) repeated within the game | 38.8 % | 14.4 % | 15.3 % |
-| said in the game just before (games 2-10) | 65.9 % | 50.8 % | 43.9 % |
-| times each line had been said in the earlier games (mean) | 8.3 | 3.6 | 3.6 |
-| heard three times or more before | 66.6 % | 45.9 % | 44.8 % |
-| heard at least once in an earlier game | 77.8 % | 69.3 % | 67.4 % |
+| lines a game | 495 | 436 | 438 |
+| exact words repeated within the game | 16.7 % | 4.1 % | 4.6 % |
+| same line (names masked) repeated within the game | 38.8 % | 14.4 % | 14.3 % |
+| said in the game just before (games 2-10) | 65.9 % | 50.8 % | 44.7 % |
+| times each line had been said in the earlier games (mean) | 8.3 | 3.6 | 3.5 |
+| heard three times or more before | 66.6 % | 45.9 % | 44.2 % |
+| heard at least once in an earlier game | 77.8 % | 69.3 % | 67.1 % |
 
 How to read it: "heard at least once before" saturates once the pool has gone round (by game 10 most lines have been said once somewhere), so
 it moves least. What a listener memorizes is how *often* a line comes back: before this pass a conversation line had been heard eight times in
 the games before; now about three and a half, and the memory keeps the one from last game from coming straight back.
 
-The talk is about 12 % thinner (495 -> 435 not-call lines a game, conversation topics 395 -> 332): the stories that fired on almost every
+The talk is about 12 % thinner (495 -> 438 not-call lines a game, conversation lines 395 -> 334; measured at Broadcast tempo only): the stories that fired on almost every
 plate appearance (a first-pitch breaking ball, two fastballs and a change, righty on righty, "two down, one to go") are now capped per game
 (`STORY_CAPS` in `stories.ts`), and the booth's own anecdotes (about 7 a game, 18 lines) and the new running jokes fill part of that time.
 If the booth feels too quiet, raise the caps in `STORY_CAPS` or shorten `ANECDOTE_GAP` / raise `MAX_ANECDOTES` in `booth.ts`.
@@ -510,7 +510,9 @@ If the booth feels too quiet, raise the caps in `STORY_CAPS` or shorten `ANECDOT
 
 - **The memory** (`src/audio/broadcast/memory.ts`): every template, every `{a|b}` choice, every story, anecdote and running joke the booth
   picks is stamped; the next pick prefers the never-heard, then the longest-ago (the freshest third shuffled, so it is not a fixed rotation).
-  Keys are the template strings, so "Here comes Smith" and "Here comes Jones" count as one line. The app keeps one memory for the visit and
+  Keys are the line's shape: the template string, or a line written with tonight's names already in it, with the game's names, digits and
+  number words masked, so "Here comes Smith" and "Here comes Jones" count as one line, and so do "We'll be right back from Kestrel Park" and
+  "... from Cobalt Grounds" (the first version keyed the filled-in text, so such lines always looked new and won every time). The app keeps one memory for the visit and
   saves it in `localStorage` (`claudeball.booth.memory.v1`, about 5000 keys at most, a few tens of KB) every 150 picks, when the tab is hidden
   and when a game is torn down. Without a memory (tests calling the grammar directly) the old random choice is unchanged.
 - **The booth's own stories** (`anecdotes.ts`): about 85 exchanges between Lyle and Biscuit that are not about tonight's players (so they can
