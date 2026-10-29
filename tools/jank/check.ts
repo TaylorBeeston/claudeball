@@ -1,7 +1,8 @@
 /**
  * `npm run jank:check`: the animation ratchet. Runs the static sweep (every clip of every shipped player file) and the crossfade sweep (every clip
- * switch in tools/jank/transitions.json) in Node and fails when any kind of violation got worse than tools/jank/baseline.json: more frames
- * breaking a limit, or a higher severity score. Both sweeps are deterministic and independent of the sim, so the ratchet is exact (a small
+ * switch in tools/jank/transitions.json) in Node, and the standing clips with the head looking at fixed bearings through the look-at
+ * (`lookRuntime`, sweep.ts sweepLook: across the field and a pop-up), and fails when any kind of violation got worse than tools/jank/baseline.json: more frames breaking a limit,
+ * or a higher severity score. The sweeps are deterministic and independent of the sim, so the ratchet is exact (a small
  * tolerance absorbs floating-point noise between machines).
  *
  *   --update   write the measured numbers as the new baseline (do it when a change improved things, so they cannot come back)
@@ -12,7 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { family, type Entry } from './agg';
 import { doFades, doStatic } from './run';
-import { ROOT } from './sweep';
+import { ROOT, manifestLoops, runLook } from './sweep';
+import { Agg } from './agg';
 
 const FILE = path.join(ROOT, 'tools/jank/baseline.json');
 type Fam = Record<string, { frames: number; score: number }>;
@@ -36,6 +38,11 @@ async function main() {
   const st = await doStatic(false, true);
   const fd = await doFades(false, false);
   const fdR = await doFades(false, true);
+  // the standing clips with the look-at turning the head to fixed bearings (sweep.ts sweepLook), then the same runtime passes; one file: every
+  // shipped file carries the same clips and joint angles are the same in rig space for all of them
+  const lkAgg = new Agg();
+  lkAgg.snapshots = false;
+  const lk = (await runLook(['player_base'], manifestLoops(), lkAgg)).list();
   // self-test: the mirrored bat clips must measure exactly like the right-handed ones
   let mirrorBad = 0;
   const by = new Map(st.entries.map((e) => [`${e.src}|${e.file}|${e.clip}`, e]));
@@ -47,7 +54,7 @@ async function main() {
       console.log(`[jank:check] FAIL mirror: ${e.file} ${e.clip} ${o?.bad} vs mirrored ${e.bad} bad frames`);
     }
   }
-  const now = { static: summarize(st.entries, 'static'), fades: summarize(fd.entries), staticRuntime: summarize(st.entries, 'static-constrained'), fadesRuntime: summarize(fdR.entries) };
+  const now = { static: summarize(st.entries, 'static'), fades: summarize(fd.entries), staticRuntime: summarize(st.entries, 'static-constrained'), fadesRuntime: summarize(fdR.entries), lookRuntime: summarize(lk) };
   if (process.argv.includes('--update')) {
     fs.writeFileSync(FILE, JSON.stringify({ _: 'npm run jank:check baseline (tools/jank/check.ts): violation frames and severity score per kind; lower is better', ...now }, null, 1) + '\n');
     console.log(`[jank:check] baseline written: ${FILE}`);
@@ -57,9 +64,9 @@ async function main() {
     console.log('[jank:check] no baseline yet: run with --update');
     process.exit(1);
   }
-  const base = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<'static' | 'fades' | 'staticRuntime' | 'fadesRuntime', Fam>;
+  const base = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<'static' | 'fades' | 'staticRuntime' | 'fadesRuntime' | 'lookRuntime', Fam>;
   let bad = mirrorBad, better = 0;
-  for (const src of ['static', 'fades', 'staticRuntime', 'fadesRuntime'] as const) {
+  for (const src of ['static', 'fades', 'staticRuntime', 'fadesRuntime', 'lookRuntime'] as const) {
     const kinds = new Set([...Object.keys(base[src] ?? {}), ...Object.keys(now[src])]);
     for (const k of [...kinds].sort()) {
       const b = base[src]?.[k] ?? { frames: 0, score: 0 }, n = now[src][k] ?? { frames: 0, score: 0 };

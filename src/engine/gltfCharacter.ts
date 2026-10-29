@@ -45,6 +45,7 @@ import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
 import { constrainOptsFor, constrainPose, newConstrainState } from './pose/constrain';
 import { limitNeck } from './pose/neck';
+import { applyLook, lookInput, neckPitch } from './pose/look';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
 import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
@@ -2371,9 +2372,9 @@ export class GltfPuppet implements PuppetLike {
     for (const a of this.actions.values()) if (a.isRunning()) w += a.getEffectiveWeight();
     return w;
   }
-  /** run a pure pose pass (pose/*.ts) on this puppet's bones and write back the ones it changed */
-  private applyPose(pass: (L: PoseLocals, R: RestInfo) => number) {
-    if (!this.poseRest || (globalThis as { __noConstrain?: boolean }).__noConstrain) return;
+  /** run a pure pose pass (pose/*.ts) on this puppet's bones and write back the ones it changed (`always`: also with the harness's `__noConstrain`) */
+  private applyPose(pass: (L: PoseLocals, R: RestInfo) => number, always = false) {
+    if (!this.poseRest || (!always && (globalThis as { __noConstrain?: boolean }).__noConstrain)) return;
     this.readPose();
     const mask = pass(this.poseL, this.poseRest);
     if (!mask) return;
@@ -2561,38 +2562,37 @@ export class GltfPuppet implements PuppetLike {
   }
 
   /**
-   * Head look-at, done in rig space relative to the upper spine: the target's yaw/pitch is clamped to human limits, ignored when
-   * it is behind the player / too close / the player is idling with a dead ball, and eased with a speed-limited critically
-   * damped spring (see headLook.ts). The yaw is shared between the spine, neck and head.
+   * Head look-at, in a level frame (pose/look.ts): the target's yaw about the vertical from the chest's heading and its pitch off the horizon,
+   * clamped to human limits, ignored when it is behind the player / too close / the player is idling with a dead ball, and eased with a
+   * speed-limited critically damped spring (see headLook.ts). The yaw is shared between the spine, neck and head; the head keeps its clip's roll
+   * (level), so a crouched fielder's head no longer lies on a shoulder when it turns.
    */
   private lookAt(snap: PlayerSnap, dt: number, env: PuppetEnv) {
-    const head = this.bones.Head, neck = this.bones.Neck, spine = this.bones.Spine2 ?? this.bones.Spine1;
-    if (!head || !neck || !spine) return;
-    const rig = this.rig;
+    const head = this.bones.Head, neck = this.bones.Neck, spine = this.bones.Spine2;
+    if (!head || !neck || !spine || !this.poseRest) return;
     // idle players with nothing moving forget the ball and look ahead
     const still = (snap.anim === 'idle' || snap.anim === 'celebrate') && Math.hypot(snap.vel.x, snap.vel.z) < 0.3;
     const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
     const focus = this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
     let t: LookTarget | null = null;
+    // what the neck's range keeps the head from (up / down): the eyes look the rest of the way
+    let neckShort = 0;
     if (focus) {
-      const hp = rig.pos(head, _a);
-      const fp = rig.toRig(focus, _b);
-      const dv = fp.sub(hp);
-      // into the upper spine's frame (its clip pose, before any look rotation): lean / twist of the torso is respected
-      const sq = rig.quat(spine, _q).invert();
-      dv.applyQuaternion(sq);
-      // where the clip itself already points the head (relative to the same spine frame), so we only add the difference
-      const hq = rig.quat(head, _q2).premultiply(sq);
-      _c.set(0, 0, 1).applyQuaternion(hq);
-      const cy = Math.atan2(_c.x, _c.z), cp = Math.atan2(-_c.y, Math.hypot(_c.x, _c.z));
-      t = lookTarget(dv.x, dv.y, dv.z, cy, cp, this.lookT);
-      // running, the head stays near level and only glances at the ball (a sprinting runner turned his head 50 deg to a fly ball, which on his leaning
-      // trunk threw it back);
-      // a fielder chasing a catch keeps his look (he tracks the ball over his shoulder)
+      const fp = this.rig.toRig(focus, _b);
+      this.readPose();
+      const li = lookInput(this.poseL, this.poseRest, [fp.x, fp.y, fp.z], this.lookIn);
+      t = lookTarget(li.dx, li.dy, li.dz, li.clipYaw, li.clipPitch, this.lookT);
+      // up / down within the neck's range from the chest (a crouched fielder's head is already tipped back to be level; the eyes do the rest)
+      if (t.valid) {
+        const p = neckPitch(t.pitch, t.yaw, li);
+        neckShort = t.pitch - p;
+        t.pitch = p;
+      }
+      // running, the head stays near level and only glances at the ball (a sprinting runner turned his head 50 deg to a fly ball, which on his
+      // leaning trunk threw it back); a fielder chasing a catch keeps his look (he tracks the ball over his shoulder)
       const sp = Math.hypot(snap.vel.x, snap.vel.z);
       if (t.valid && sp > 2.5 && !snap.gloveTarget) {
         const k = Math.min(1, (sp - 2.5) / 2);
-        // (a yaw about the forward-leaning spine axis also tips the head back: at a sprint only ~20 deg each way)
         const upMax = 0.6 - 0.34 * k, yawMax = 1.0 - 0.65 * k;
         t.pitch = Math.max(t.pitch, -upMax);
         t.yaw = Math.max(-yawMax, Math.min(yawMax, t.yaw));
@@ -2604,7 +2604,7 @@ export class GltfPuppet implements PuppetLike {
     // what the head has not turned yet, the eyes cover (they lead the head)
     if (this.lookGoal) {
       this.eyeYaw = this.lookGoal.yaw - hl.yaw;
-      this.eyePitch = this.lookGoal.pitch - hl.pitch;
+      this.eyePitch = this.lookGoal.pitch + neckShort - hl.pitch;
     } else this.eyeYaw = this.eyePitch = 0;
     this.lookStep = hl.lastStep;
     this.maxLookStep = Math.max(this.maxLookStep, hl.lastStep);
@@ -2615,16 +2615,10 @@ export class GltfPuppet implements PuppetLike {
     }
     if (Math.abs(hl.yaw) < 1e-4 && Math.abs(hl.pitch) < 1e-4) return;
     const { spine: spineYaw, neckHeadYaw } = hl.split();
-    // yaw about the spine frame's up axis, pitch about its left/right axis; neck 40 %, head 60 %
-    const apply = (bone: Object3D, yaw: number, pitch: number) => {
-      const S = rig.quat(spine, new Quaternion()); // re-read: the spine twist above changes the frame the neck and head turn in
-      _q2.setFromAxisAngle(UP, yaw).multiply(_q.setFromAxisAngle(RIGHT, pitch));
-      rig.rotate(bone, S.clone().multiply(_q2).multiply(S.clone().invert()));
-    };
-    if (Math.abs(spineYaw) > 1e-4) apply(spine, spineYaw, 0);
-    apply(neck, neckHeadYaw * 0.4, hl.pitch * 0.4);
-    apply(head, neckHeadYaw * 0.6, hl.pitch * 0.6);
+    // the chest twists by its share, the neck and head turn the gaze the whole way (about the vertical: no roll)
+    this.applyPose((L, R) => applyLook(L, R, spineYaw + neckHeadYaw, hl.pitch, spineYaw), true);
   }
+  private lookIn = { dx: 0, dy: 0, dz: 0, clipYaw: 0, clipPitch: 0, chest: 0 };
 
   /**
    * A still picture of this person for an off-screen render (the crowd atlas, `crowdAtlas.ts`): plain clothes instead of the role's gear (no glove,

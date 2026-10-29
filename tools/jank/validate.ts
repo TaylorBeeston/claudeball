@@ -14,10 +14,12 @@
  *   flip:<bone>       a one-frame pop: a joint turns > 25 deg in one frame and > 3x its neighbouring frames
  *   spike:<bone>      a joint's angular speed over a human cap (rad/s)
  *   yaw:travel        running sideways / backwards: hips vs direction of travel (deg)
+ *   head:roll         the head tipped off the horizon onto a shoulder (deg; pose/look.ts headRoll): eyes stay level, a few degrees of tilt is natural
  */
 import { DEG, qdist, qrot, qrotInv } from '../../src/engine/pose/qmath';
 import { B, BONES, NB, PARENT, type PoseLocals, type PoseWorld, fk, jointRot, localPoint, newWorld, segLen } from '../../src/engine/pose/skeleton';
 import { JOINT_LIMITS, type RestInfo, excess, measureJoints, restInfo } from '../../src/engine/pose/limits';
+import { headRoll } from '../../src/engine/pose/look';
 import { armHeadClearance, headVolume, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from '../../src/engine/armClear';
 
 export type BatState = 'sim' | 'held' | 'ondeck' | 'dropped' | 'static';
@@ -60,8 +62,11 @@ export interface Violation {
 }
 
 /** what one unit of severity is per kind family */
-const UNIT: Record<string, number> = { joint: 15, len: 0.03, foot: 0.05, 'foot:slide': 0.5, body: 0.03, bat: 0.05, 'bat:hand-axis': 20, flip: 30, spike: 0.5, yaw: 30 };
+const UNIT: Record<string, number> = { joint: 15, head: 15, len: 0.03, foot: 0.05, 'foot:slide': 0.5, body: 0.03, bat: 0.05, 'bat:hand-axis': 20, flip: 30, spike: 0.5, yaw: 30 };
 const unitOf = (kind: string) => UNIT[kind] ?? UNIT[kind.split(':')[0]] ?? 1;
+
+/** how far the head may roll off the horizon (deg) before it reads as resting on a shoulder (not checked while airborne: slides, dives, sitting) */
+export const HEAD_ROLL_MAX = 20;
 
 /** human angular speed caps (rad/s) of each joint (relative to its parent): normal motion vs ballistic (throw, pitch, swing) */
 const SPEED_CAP: Partial<Record<(typeof BONES)[number], [number, number]>> = {
@@ -170,6 +175,7 @@ export function validateFrame(f: FrameIn, rig: RigInfo, tr: Track, out: Violatio
   // ---- joint ranges
   measureJoints(w, rig.R, angles);
   for (const l of JOINT_LIMITS) push(`joint:${l.key}`, excess(l, angles[l.key]));
+  if (!f.airborne) push('head:roll', Math.abs(headRoll(w)) - HEAD_ROLL_MAX);
   // ---- segment lengths
   for (const [a, b] of [[B.LeftArm, B.LeftForeArm], [B.LeftForeArm, B.LeftHand], [B.RightArm, B.RightForeArm], [B.RightForeArm, B.RightHand], [B.LeftUpLeg, B.LeftLeg], [B.LeftLeg, B.LeftFoot], [B.RightUpLeg, B.RightLeg], [B.RightLeg, B.RightFoot]]) {
     const r = segLen(w, a, b) / Math.max(1e-6, rig.R.len[a]);
