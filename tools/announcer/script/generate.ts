@@ -10,6 +10,7 @@ import { normalizeForSpeech, wordsOf } from '../../../src/audio/voice/normalize'
 import { CHATTER, SENTENCES } from './chatter';
 import { fill, Rand } from './slots';
 import { TEMPLATES } from './templates';
+import { boothLines } from './booth';
 import { LINE_PAD_S, STYLES, STYLE_SPEAKER, STYLE_WPS, type Kind, type ScriptLine, type Style, type Tier } from './types';
 import { INNING_WORDS, loadPools, type Pools } from './vocab';
 
@@ -119,6 +120,13 @@ function expandVocabulary(p: Pools): Raw[] {
   return out;
 }
 
+/** The booth's own written lines (anecdotes, running jokes, catchphrases, promos: `booth.ts`), all extended. */
+function expandBooth(): Raw[] {
+  return boothLines().filter((b) => !/[{}[\]$]/.test(b.text)).map((b) => ({ tier: 'extended' as Tier, ...b }));
+}
+
+const isBooth = (source: string) => source.startsWith('booth:');
+
 function pickTiers(raw: Raw[]): Raw[] {
   // exact duplicates (same text) keep their first and highest tier
   const seen = new Map<string, Raw>();
@@ -129,7 +137,7 @@ function pickTiers(raw: Raw[]): Raw[] {
 const STYLE_ORDER = new Map(STYLES.map((s, i) => [s, i]));
 
 /** Spread lines of one tier over sessions of ~SESSION_AUDIO_MIN minutes, each with a similar style mix, ordered calm -> peak inside a session. */
-function assignSessions(lines: Omit<ScriptLine, 'session'>[], tier: Tier, prefix: string, perSessionSec: number, minSessions = 1): Record<string, string> {
+function assignSessions(lines: Omit<ScriptLine, 'session'>[], tier: Tier, prefix: string, perSessionSec: number, minSessions = 1, first = 1): Record<string, string> {
   const mine = lines.filter((l) => l.tier === tier);
   const total = mine.reduce((a, l) => a + l.estSeconds, 0);
   const nSessions = Math.max(minSessions, Math.round(total / perSessionSec));
@@ -141,7 +149,7 @@ function assignSessions(lines: Omit<ScriptLine, 'session'>[], tier: Tier, prefix
     const per = total / nSessions;
     for (const l of order) {
       if (acc > per * s && s < nSessions) s++;
-      map[l.id] = `${prefix}${s}`;
+      map[l.id] = `${prefix}${s + first - 1}`;
       acc += l.estSeconds;
     }
     return map;
@@ -165,7 +173,7 @@ function assignSessions(lines: Omit<ScriptLine, 'session'>[], tier: Tier, prefix
 
 export function buildScript(): ScriptLine[] {
   const pools = loadPools();
-  const raw = pickTiers([...expandTemplates(pools), ...expandFree(pools), ...expandVocabulary(pools)]);
+  const raw = pickTiers([...expandTemplates(pools), ...expandFree(pools), ...expandVocabulary(pools), ...expandBooth()]);
   const base: Omit<ScriptLine, 'session'>[] = [];
   const tierOrder: Tier[] = ['pilot', 'core', 'extended'];
   const used = new Set<string>();
@@ -197,7 +205,10 @@ export function buildScript(): ScriptLine[] {
     }
   }
   const per = SESSION_AUDIO_MIN * 60;
-  const sess = { ...assignSessions(base, 'pilot', 'P', 6 * 60, 2), ...assignSessions(base, 'core', 'C', per), ...assignSessions(base, 'extended', 'E', per) };
+  // the booth's lines get extended sessions of their own after the others, so adding them (or more of them later) renumbers nothing already recorded
+  const ext = assignSessions(base.filter((l) => !isBooth(l.source)), 'extended', 'E', per);
+  const extN = new Set(Object.values(ext)).size;
+  const sess = { ...assignSessions(base, 'pilot', 'P', 6 * 60, 2), ...assignSessions(base, 'core', 'C', per), ...ext, ...assignSessions(base.filter((l) => isBooth(l.source)), 'extended', 'E', per, 1, extN + 1) };
   const lines: ScriptLine[] = base.map((l) => ({ ...l, session: sess[l.id] }));
   // order: tier, session number, style order inside the session, then source (so similar lines sit together), then id
   const sn = (s: string) => Number(s.slice(1));

@@ -102,7 +102,8 @@ describe('umpire and PA', () => {
   it('announces the batter and the pitcher only when it changes', () => {
     const mapper = new CueMapper();
     const first = says(mapper.map({ type: 'batterUp', batterId: 'b1', pitcherId: 'p1' }, ctx()));
-    expect(first.map((x) => x.text)).toEqual(['Now pitching, number 12, Sam Rook.', 'Now batting, number 23, Tyler Vance.']);
+    // the first time, the PA names the club (the home side is "your" club; a club's first hitter is "leading off")
+    expect(first.map((x) => x.text)).toEqual(['Now pitching for the Stars, number 12, Sam Rook.', 'Leading off for your Comets, number 23, Tyler Vance.']);
     const second = says(mapper.map({ type: 'batterUp', batterId: 'b1', pitcherId: 'p1' }, ctx()));
     expect(second.map((x) => x.text)).toEqual(['Now batting, number 23, Tyler Vance.']);
     expect(second[0].role).toBe('pa');

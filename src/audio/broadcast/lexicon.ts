@@ -331,6 +331,68 @@ const HE: Record<string, string[]> = {
 };
 for (const [k, v] of Object.entries(HE)) LEX[k] = [...(LEX[k] ?? []), ...v];
 
+/**
+ * More ways to say the calls heard most (2026-10-29 variety pass, `docs/announcer-variety.md`): every one of these comes up dozens of times a game,
+ * and the booth's memory (`memory.ts`) reaches for the wording heard longest ago, so a wider pool is heard as a fresher broadcast.
+ */
+const MORE: Record<string, string[]> = {
+  'ball': [
+    '$typeCap misses, ball $n.', 'Ball $n, just off the edge.', 'Nothing doing there. Ball $n.', 'A little too fine, ball $n.', 'Ball $n, and the count is $count.', 'He spits on it. Ball $n.', 'Out of the zone, ball $n.',
+    'Not quite, ball $n.', 'That one is a ball, number $n.', '$p misses with the $type. Ball $n.',
+  ],
+  'strike.called': [
+    'The umpire rings it up, strike $n.', 'Strike $n, and $b does not like the call.', 'He freezes, strike $n.', 'Strike $n, called.', 'That is strike $n, on a $type.', 'Taken, and that is strike $n.', 'The $type is there for strike $n.',
+    '$p gets the call, strike $n.',
+  ],
+  'strike.swinging': ['Swing and a miss, $count.', 'Big cut, and nothing. Strike $n.', 'He came out of his shoes on that one. Strike $n.', '$b offers, and misses. Strike $n.', 'Swung on and missed, strike $n.', 'Nothing but air. Strike $n.'],
+  'strike.foul': ['Foul ball, strike $n.', 'That one is foul. Strike $n.', 'Foul, and that is strike $n.', 'He fouls it away, $count.', 'Foul ball, and a souvenir for somebody.'],
+  'strike.foul.two': [
+    'Fights it off, foul.', 'Fouled off again. $b will not go away.', 'Another foul. Still $count.', 'Gets just enough of it to stay alive.', 'Foul ball. This at-bat keeps going.', '$b fends it off.',
+  ],
+  'walk': ['Ball four, and $b takes his base.', 'Ball four. A good eye from $b.', 'Four balls, and $b is aboard.', 'A walk to $b. That is a free pass.', 'Ball four, and $b drops the bat and jogs to first.'],
+  'hbp': ['That one got away from $p, and $b wears it.', 'Right on the elbow guard. $b takes first.'],
+  'contact.grounder': ['Two hopper to $pos...', 'Slow roller to $pos...', 'Ground ball toward $pos...', 'Rolled over to $pos...', 'Topped, toward $pos...', 'Hit on the ground, the $side side...', 'A bouncer up the middle...', 'Grounded to $pos...'],
+  'contact.grounder.hard': ['One-hopper, hard, to $pos!', 'A smash on the ground at $pos!', 'Scorched on the ground to the $side side!'],
+  'contact.liner': ['Line drive into $dir...', 'Hit on a line toward $dir...', 'A low liner to $dir...', 'Line drive, $dir...', 'Slices a liner to $dir...'],
+  'contact.fly': ['Lofted to $dir...', 'In the air toward $dir...', 'A fly ball, out toward $dir...', 'Lifted to $dir...', 'Flies one to $dir...'],
+  'contact.fly.shallow': ['A blooper toward $dir...', 'Soft fly, shallow $dir...', 'Dying quail into $dir...'],
+  'contact.pop': ['Straight up, near the $where...', 'Pop fly, in the infield...', 'A high one, near the $where...', 'Got under that one, popped up...', 'Popped up, on the infield...'],
+  'fielded.clean': ['Picked cleanly by $f...', '$f is there...', 'In the glove of $f...', '$f with it...', '$f takes it...', 'And $f grabs it...'],
+  'catch.fly': ['$f has a beat on it...', '$f, under it...', '$f gets there...'],
+  'out.ground.first': ['$f gathers, fires to first... out. $outs', 'Grounded out to $pos. $outs', '$f to first, and the throw is in time. $outs', 'Rolled over to $pos, and $f takes care of it. $outs', 'Ground ball, $f, the throw... got him. $outs'],
+  'out.fly': ['And $f puts it away. $outs', 'Routine fly ball, $f has it. $outs', 'Lifted to $dir, and $f makes the play. $outs', 'Not enough on it. $f has it. $outs'],
+  'out.pop': ['Pop-up, and $f puts it away. $outs', 'Way up, way down, into the glove of $f. $outs', 'Popped up, and $f takes care of it. $outs'],
+  'out.line': ['Lined right at $f. $outs', 'Hit hard, but $f snares it. $outs', '$f, right there for the line drive. $outs'],
+  'outs.1': ['One gone.', 'And that is the first out.', 'One out in the inning.'],
+  'outs.2': ['Two away.', 'Two gone.', 'And there is the second out.'],
+  'outs.3': ['And that is the inning.', 'Side retired.', 'And that will end the inning.'],
+  'hit.single': ['Base hit, $dir. $b is aboard.', 'A clean single into $dir.', 'That one finds the grass in $dir. Base hit.', 'Singled to $dir.'],
+  'hit.double': ['Two-base hit for $b!', 'Two bags for $b, a double to $dir.', 'A double for $b, into $dir.', 'And $b has himself a double.'],
+  'hit.fc': ["The fielder's choice: they take the out at $base.", "$b is on, but the runner is forced at $base. Fielder's choice.", 'They get the lead runner, and $b is safe at first.'],
+  'safe': ['Safe! $r is in there.', '$r makes it, safe at $base.', 'And $r is in safely.', '$r beats it, safe at $base.'],
+  'advance': ['$r moves up to $base.', 'And $r is on to $base.', '$r alertly takes $base.', 'That moves $r up to $base.'],
+  'run': ['In comes $r.', 'And $r touches home. $score.', 'That is a run, $r scores.', '$r is across, and it is $score.'],
+  'wall': ['Rattles around off the wall!', 'Right off the fence!', 'Hits the wall!', 'Off the fence!'],
+  'pitch.change': ['$in will come on to pitch.', 'They go to the bullpen for $in.', 'The call goes to $in.', 'In from the bullpen, $in.', 'That will be all for $out. $in is coming in.', '$out is done, and $in takes over.'],
+  'strikeout.count': ['Strikeout number $k for $p.', 'That is $k K\'s on the night for $p.', '$p is up to $k strikeouts.', '$k strikeouts and counting for $p.'],
+  'batter.up': [
+    'Next up, $b.', '$b to the plate.', 'Up comes $b.', '$b digs in at the plate.', 'Stepping in, $b.', '$b now.', 'In the box, $b.', 'Here is $b.', 'Now batting, $b.', '$b, settling in.', 'Up steps $b.',
+    'Next hitter, $b.', '$b, the next man up.', 'And here comes $b to hit.', '$b gets in the box.',
+  ],
+  'ondeck': ['$o waits in the on-deck circle.', '$o will follow.', 'After this, $o.', 'Waiting on deck, $o.', 'That brings $o on deck.', '$o, swinging the weighted bat on deck.'],
+  'half.start': ['The $half of the $ord, coming up.', 'On we go to the $half of the $ord.', 'The $half half of the $ord inning.', 'Now the $half of the $ord.'],
+  'react.k': ['Got him.', 'Filthy.', 'Could not catch up to it.', 'He set that up beautifully.', 'That is a pitcher pitching.', 'Never had a chance.', 'Put him away.', 'Wipeout pitch.'],
+  'react.hit': ['Stayed on it.', 'Right on the barrel.', 'Went with the pitch.', 'He was waiting on that one.', 'Squared it up.', 'Professional piece of hitting.', 'Short and quick.', 'Nice job staying back.'],
+  'react.out': ['Made it look easy.', 'Good hands.', 'Textbook.', 'Nothing fancy about it.', 'He was right there.', 'Good instincts.', 'Sure-handed.'],
+  'react.err': ['That one will sting.', 'He just missed it.', 'That is not the one you want.', 'Ugh.', 'You have to make that play.'],
+  'react.big': ['Oh, my goodness!', 'What a moment!', 'Look at that!', 'You have got to be kidding!', 'Unreal!', 'Oh, wow!'],
+  'react.hr': ['Wow!', 'Oh, that is gone!', 'Crushed!', 'No doubt about that one!', 'Oh my!', 'That is a bomb!', 'Long gone!', 'Look at that thing fly!'],
+  'react.rob': ['Oh!', 'No way!', 'He took it away!', 'Oh, what a grab!', 'Are you kidding me!', 'Robbery!'],
+  'replay.pxp': ['One more look.', 'Here it is from behind the plate.', 'Let us see that again.', 'From the other side now.', 'Look at this one again.'],
+  'end': ['That is the final out. $win win, $x to $y.', 'Ballgame! $win take it, $x to $y.', 'And that will end it. $win, $x to $y.'],
+};
+for (const [k, v] of Object.entries(MORE)) LEX[k] = [...(LEX[k] ?? []), ...v];
+
 /** which lexicon keys cover which sim event (for the coverage test and the report) */
 export const EVENT_KEYS: Record<string, string[]> = {
   gameStart: ['start'],
@@ -487,7 +549,7 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
         render: () => {
           const live = env.live();
           if (live.balls === 0 && live.strikes === 0) return null; // a new batter: the count is not news
-          return say(['That makes it $count.', 'The count is $count.', "And it's $count.", 'Now $count.'], { count: countPhrase(live.balls, live.strikes) }, rng);
+          return say(['That makes it $count.', 'The count is $count.', "And it's $count.", 'Now $count.', 'We are at $count.', 'Count goes to $count.', 'That brings it to $count.', '$countCap now.', 'So, $count.', 'Now it is $count.'], { count: countPhrase(live.balls, live.strikes), countCap: cap(countPhrase(live.balls, live.strikes)) }, rng);
         },
       });
       if (kind === 'ball') {
@@ -693,7 +755,7 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
       const walkoff = c.half === 'bottom' && c.inning >= 9 && c.score.home + runs > c.score.away && c.score.home <= c.score.away && c.score.away - c.score.home < runs;
       const slots: Slots = { dir: z?.dir, ft: ft > 0 ? ft : undefined };
       const key = walkoff ? 'hr.walkoff' : runs >= 4 ? 'hr.slam' : runs === 3 ? 'hr.three' : runs === 2 ? 'hr.two' : 'hr.solo';
-      push(key, 'must', { excited: true, slots, react: 'Wow!' });
+      push(key, 'must', { excited: true, slots, react: say(LEX['react.hr'], {}, rng) ?? 'Wow!' });
       if (ft >= 400 && !walkoff) push('hr.dist', 'could', { slots: { ft }, ttl: 10 });
       break;
     }
@@ -704,7 +766,7 @@ export function callsFor(ev: RawEvent, c: BoothCtx, log: GameLog, env: Env): Cal
       push('wallleap', 'should', { excited: true, ttl: 3, slots: { f: person(c, ev.fielderId) ? lastNameOf(person(c, ev.fielderId)!.name) : undefined } });
       break;
     case 'robbedHomeRun':
-      push('robbed', 'must', { excited: true, react: 'Oh!', slots: { f: person(c, ev.fielderId) ? lastNameOf(person(c, ev.fielderId)!.name) : undefined } });
+      push('robbed', 'must', { excited: true, react: say(LEX['react.rob'], {}, rng) ?? 'Oh!', slots: { f: person(c, ev.fielderId) ? lastNameOf(person(c, ev.fielderId)!.name) : undefined } });
       break;
     case 'tag':
       push('tag.hit', 'should', { ttl: 2 });

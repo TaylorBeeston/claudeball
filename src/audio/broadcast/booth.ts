@@ -19,6 +19,15 @@ import { lastNameOf } from './ctx';
 import { say } from './grammar';
 import type { BoothCtx } from './ctx';
 import { handoffLine, openingSegment, type OpeningFacts } from './pregame';
+import { BoothMemory, withMemory } from './memory';
+import { ANECDOTES, type Anecdote, type AnecdoteWhen } from './anecdotes';
+
+/** running jokes begun in one game (the stages of a begun joke still come back) */
+const MAX_JOKES = 4;
+const numW = (n: number) => ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][n] ?? String(n);
+/** the booth's own stories: at most this many a game, this many seconds apart */
+const MAX_ANECDOTES = 10;
+const ANECDOTE_GAP = 240;
 
 export interface BoothOpts {
   rng: () => number;
@@ -62,7 +71,13 @@ export class Booth {
   /** running jokes: the next stage and when the last one was told */
   private jokeState = new Map<string, { stage: number; at: number }>();
   /** things that happened that a joke or a story can pick up (a steal, a mound visit, a pitching change) */
-  private recent: { steal?: number; visitBy?: string; visitAt?: number; change?: { outId: string; inId: string; pitches: number; runs: number; side: 'home' | 'away'; at: number } } = {};
+  private recent: { steal?: number; visitBy?: string; visitAt?: number; error?: { inning: number; half: 'top' | 'bottom' }; change?: { outId: string; inId: string; pitches: number; runs: number; side: 'home' | 'away'; at: number } } = {};
+  /** the booth's own stories told this game, and when the last one was */
+  private told = { anecdotes: new Set<string>(), at: -1e9 };
+  /** errors this game: by whom and when (a callback when he comes to bat) */
+  private errors: { fielderId: string; inning: number }[] = [];
+  /** running jokes begun this game (a few a game: which ones is up to the memory) */
+  private jokesBegun = 0;
   /** the last 150 lines said (any voice, calls included): a new line with the same words is re-worded or skipped */
   private said: string[] = [];
   /** every break line said this game (a promo or a joke-free filler is not said twice in a game) */
@@ -76,6 +91,28 @@ export class Booth {
    */
   private trotting = false;
 
+  /**
+   * What the booth has said, this game and (when the app shares one memory between games, `sharedMemory()`) the games before: every template, story
+   * and joke it picks prefers the one heard longest ago. A fresh booth has its own memory.
+   */
+  private mem = new BoothMemory();
+  get memory(): BoothMemory {
+    return this.mem;
+  }
+  set memory(m: BoothMemory) {
+    this.mem = m;
+    m.beginGame();
+    this.nameFacts();
+  }
+  /** the names the memory masks out of its keys: the game's clubs, park, officials and lineups (players who come in later: as they appear) */
+  private nameFacts() {
+    const f = this.facts;
+    if (!f) return;
+    const club = (c: OpeningFacts['home']) => [c.name, c.city, c.nick, c.manager?.name, c.manager?.pitchingCoach, c.starter?.name, ...c.lineup.map((x) => x.name)];
+    this.mem.addNames([f.venue?.name, f.venue?.short, f.venue?.city, f.mascot, ...(f.umpires ?? []).map((u) => u.name), ...club(f.home), ...club(f.away)]);
+  }
+  private named = new Set<string>();
+
   constructor(o: BoothOpts) {
     this.rng = o.rng;
     this.picker = new TopicPicker(o.rng);
@@ -88,6 +125,7 @@ export class Booth {
   setFacts(f: OpeningFacts | null, lead = 0) {
     this.facts = f;
     this.lead = lead;
+    this.nameFacts();
   }
   get openingFacts() {
     return this.facts;
@@ -131,18 +169,64 @@ export class Booth {
     return topic && topic.turns.some((x) => this.said.includes(x.text)) ? null : topic;
   }
 
-  /** a running joke that fits now (its trigger, the gap since its last stage, a stage left) */
+  /**
+   * A running joke that fits now (its trigger, the gap since its last stage, a stage left). Of the jokes not yet begun, the one heard longest ago
+   * (the memory spans games) is offered, and only a few are begun in a game.
+   */
   private jokeFor(trigger: RunningJoke['trigger'], t: number): { joke: RunningJoke; stage: number } | null {
-    for (const j of RUNNING_JOKES) {
-      if (j.trigger !== trigger) continue;
+    const fits = RUNNING_JOKES.filter((j) => {
+      if (j.trigger !== trigger) return false;
       const st = this.jokeState.get(j.id) ?? { stage: 0, at: -1e9 };
-      if (st.stage >= j.stages.length || t - st.at < j.gap) continue;
-      return { joke: j, stage: st.stage };
-    }
-    return null;
+      return st.stage < j.stages.length && t - st.at >= j.gap && (st.stage > 0 || this.jokesBegun < MAX_JOKES);
+    });
+    // a joke under way goes on before a new one starts
+    const going = fits.find((j) => (this.jokeState.get(j.id)?.stage ?? 0) > 0);
+    const j = going ?? fits[this.mem.order(fits.map((x) => `joke:${x.id}`), this.rng)[0]];
+    return j ? { joke: j, stage: this.jokeState.get(j.id)?.stage ?? 0 } : null;
   }
-  private told(j: { joke: RunningJoke; stage: number }, t: number) {
+  private toldJoke(j: { joke: RunningJoke; stage: number }, t: number) {
+    if (j.stage === 0) {
+      this.jokesBegun++;
+      this.mem.use(`joke:${j.joke.id}`);
+    }
     this.jokeState.set(j.joke.id, { stage: j.stage + 1, at: t });
+  }
+
+  /** what kind of moment this is, for the booth's own stories (`anecdotes.ts`) */
+  private momentKinds(c: BoothCtx): Set<AnecdoteWhen> {
+    const t = this.now;
+    const k = new Set<AnecdoteWhen>();
+    const diff = Math.abs(c.score.home - c.score.away);
+    const inHalf = (m: { inning: number; half: 'top' | 'bottom' }) => m.inning === c.inning && m.half === c.half;
+    if (c.inning >= 2) k.add('lull');
+    if (c.inning <= 3) k.add('early');
+    if ((c.batter && c.person?.(c.batter.id)?.role === 'catcher') || (this.recent.visitBy === 'catcher' && t - (this.recent.visitAt ?? -99) < 30)) k.add('catcher');
+    if (t - (this.recent.visitAt ?? -99) < 30) k.add('visit');
+    if (this.recent.change && t - this.recent.change.at < 90) k.add('change');
+    if (this.facts?.tod === 'day') k.add('day');
+    if (this.facts?.tod === 'night') k.add('night');
+    if (diff >= 6 && c.inning >= 5) k.add('blowout');
+    if (c.score.home + c.score.away === 0 && c.inning >= 4) k.add('scoreless');
+    if (this.recent.steal !== undefined && t - this.recent.steal < 40) k.add('steal');
+    if (this.log.moments.some((m) => m.kind === 'hr' && inHalf(m))) k.add('homer');
+    if (this.log.moments.some((m) => m.kind === 'doublePlay' && inHalf(m))) k.add('dp');
+    if (this.recent.error && inHalf(this.recent.error)) k.add('error');
+    if (c.inning >= 10) k.add('extra');
+    if ((c.pitcher?.pit?.so ?? 0) >= 6) k.add('strikeouts');
+    return k;
+  }
+
+  /** a booth story for this moment: one that fits it (one made for the moment first), heard longest ago, not told yet this game */
+  private anecdote(c: BoothCtx): Anecdote | null {
+    const kinds = this.momentKinds(c);
+    const ok = (a: Anecdote) => kinds.has(a.when) && !this.told.anecdotes.has(a.id) && (!a.lines.some((l) => l.t.some((x) => x.includes('$mascot'))) || !!this.facts?.mascot);
+    const key = (a: Anecdote) => `anecdote:${a.id}`;
+    const special = ANECDOTES.filter((a) => a.when !== 'lull' && ok(a));
+    const any = ANECDOTES.filter(ok);
+    const sp = special[this.mem.order(special.map(key), this.rng)[0]];
+    // (a story made for the moment, unless the listener heard it lately and a general one is fresher)
+    if (sp && this.mem.age(key(sp)) >= 5000) return sp;
+    return any[this.mem.order(any.map(key), this.rng)[0]] ?? sp ?? null;
   }
 
   /**
@@ -165,7 +249,14 @@ export class Booth {
         // (a home-run callback and "he already has a homer tonight" are the same fact: one key)
         out.push({ id: 'callback', key: /homered/.test(cb) && bat.bat?.hr ? `hr:${bat.id}:${bat.bat.hr}` : `cb:${bat.id}:${this.log.batterPas(bat.id).length}`, salience: 0.62, relevance: 1, opener: 'pxp', build: (rng, o) => script([
           { who: 'A', t: [cb] },
-          { who: 'B', t: /struck out/.test(cb) ? ['He will want this one back.', '$p has had his number so far.', 'He has to shorten up with two strikes.'] : ['He will be looking for more of the same.', '$p will remember that one.', "Let's see if he can do it again."], opt: true },
+          { who: 'B', t: /struck out/.test(cb) ? ['He will want this one back.', '$p has had his number so far.', 'He has to shorten up with two strikes.', 'He will be looking to put this one in play.', 'He is due.'] : /double play/.test(cb) ? ['He would like a different result this time.', 'Anything in the air would do this time.', 'He will want to stay off the ground ball.'] : /error/.test(cb) ? ['A little gift last time.', 'He will take it, but he would rather earn one.'] : /walked/.test(cb) ? ['$p has not given him much to hit.', 'A good eye tonight.', 'He has been patient up there.'] : ['He will be looking for more of the same.', '$p will remember that one.', "Let's see if he can do it again.", 'He has been seeing it well.', 'The pitcher has to make an adjustment.', 'Pitch him carefully.'], opt: true },
+        ], S, rng, o) });
+      // the fielder who made an error comes to bat
+      const err = this.errors.find((e) => e.fielderId === bat.id);
+      if (err)
+        out.push({ id: 'callbackError', key: `cbe:${bat.id}:${err.inning}`, salience: 0.58, relevance: 1, opener: 'pxp', build: (rng, o) => script([
+          { who: 'A', t: [`${lastNameOf(bat.name)} was charged with the error in the ${['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'][err.inning - 1] ?? 'early innings'}.`, `Here is ${lastNameOf(bat.name)}, who made the error in the field.`] },
+          { who: 'B', t: ['A chance to make up for it at the plate.', 'Nothing erases an error like a base hit.', 'He will want to get that one back.'], opt: true },
         ], S, rng, o) });
       // the man who robbed a home run comes to bat
       const robbed = this.log.moments.find((m) => m.kind === 'robbed' && m.fielderId === bat.id);
@@ -178,13 +269,30 @@ export class Booth {
     // running jokes
     const jokeStory = (j: { joke: RunningJoke; stage: number } | null, sal: number): Story | null =>
       j ? { id: `joke.${j.joke.id}`, key: `joke:${j.joke.id}:${j.stage}`, salience: sal, relevance: 0.8, opener: j.joke.a === 'pbp' ? 'pxp' : 'color', build: (rng) => {
-        this.told(j, t);
+        this.toldJoke(j, t);
         return jokeTurns(j.joke, j.stage, rng);
       } } : null;
     const isCatcher = bat ? c.person?.(bat.id)?.role === 'catcher' : false;
     if (isCatcher && c.inning >= 2) out.push(jokeStory(this.jokeFor('catcherBats', t), 0.68)!);
     if (this.recent.steal !== undefined && t - this.recent.steal < 40) out.push(jokeStory(this.jokeFor('stolenBase', t), 0.66)!);
     if (lull >= 12 && c.inning >= 3) out.push(jokeStory(this.jokeFor('foodLull', t), 0.7)!, jokeStory(this.jokeFor('lull', t), 0.65)!);
+    if (t - (this.recent.visitAt ?? -99) < 30 && lull >= 10) out.push(jokeStory(this.jokeFor('moundVisit', t), 0.62)!);
+    if (this.recent.change && t - this.recent.change.at < 90 && lull >= 12) out.push(jokeStory(this.jokeFor('pitchingChange', t), 0.6)!);
+    // the booth's own stories: in a long lull, now and then (one every few innings, a handful a game)
+    const tense = (c.inning >= 7 && Math.abs(c.score.home - c.score.away) <= 2) || ((c.runners[1] || c.runners[2]) && c.outs === 2);
+    if (lull >= 10 && !tense && t - this.told.at >= ANECDOTE_GAP && this.told.anecdotes.size < MAX_ANECDOTES) {
+      const a = this.anecdote(c);
+      if (a)
+        out.push({ id: `anecdote.${a.id}`, key: `anecdote:${a.id}`, salience: a.when === 'lull' || a.when === 'early' || a.when === 'day' || a.when === 'night' ? 0.5 : 0.6, relevance: 0.6, opener: a.a, build: (rng, o) => {
+          const turns = script(a.lines, { ...S, mascot: this.facts?.mascot }, rng, o);
+          if (turns) {
+            this.told.anecdotes.add(a.id);
+            this.told.at = t;
+            this.mem.use(`anecdote:${a.id}`);
+          }
+          return turns;
+        } });
+    }
     // a catcher's tangent on a catcher's mound visit
     if (this.recent.visitBy === 'catcher' && t - (this.recent.visitAt ?? -99) < 30)
       out.push({ id: 'visitTangent', key: `vt:${Math.floor((this.recent.visitAt ?? 0) / 60)}`, salience: 0.6, relevance: 0.9, opener: 'pxp', build: (rng, o) => script([
@@ -232,6 +340,22 @@ export class Booth {
             { who: 'A', t: [`The ${club.nick} came in ${rec.streak.kind === 'W' ? `winners of ${rec.streak.n} straight` : `having lost ${rec.streak.n} in a row`}.`] },
             { who: 'B', t: [rec.streak.kind === 'W' ? 'A winning clubhouse is a loose clubhouse. You can see it in the dugout.' : 'You can feel a losing streak in the dugout. Everybody is pressing.'] },
           ], S, rng, o) });
+      }
+      // the season so far: the clubs' records coming in, against what tonight looks like
+      const hr = this.facts.home.record;
+      const ar = this.facts.away.record;
+      if (hr && ar && c.inning >= 3) {
+        const H = this.facts.home.nick;
+        const A = this.facts.away.nick;
+        const better = hr.w - hr.l > ar.w - ar.l + 2 ? 'home' : ar.w - ar.l > hr.w - hr.l + 2 ? 'away' : null;
+        const lead = c.score.home > c.score.away ? 'home' : c.score.away > c.score.home ? 'away' : null;
+        const nick = (x: 'home' | 'away') => (x === 'home' ? H : A);
+        const w10 = (r: typeof hr) => r.last10.filter((x) => x === 'W').length;
+        out.push({ id: 'records', key: 'records', salience: 0.42, relevance: 0.4, opener: 'pxp', build: (rng, o) => script([
+          { who: 'A', t: [`The ${H} came into tonight at ${hr.w} and ${hr.l}, the ${A} at ${ar.w} and ${ar.l}.`, `Coming in, it was ${ar.w} and ${ar.l} for the ${A}, ${hr.w} and ${hr.l} for the ${H}.`] },
+          { who: 'B', t: better && lead && better !== lead ? [`The ${nick(better)} have been the better club this year. You would not know it tonight.`, 'Records do not mean much once the game starts. Tonight is proving it.'] : better && lead === better ? [`About what you would expect from the better club, $other.`, `The ${nick(better)} are playing like their record tonight.`] : ['Two clubs that are about even, and it shows.', 'Not much between them in the standings, or tonight.'] },
+          { who: 'A', t: [`The ${H} have won ${numW(w10(hr))} of their last ten.`, `The ${A} have won ${numW(w10(ar))} of their last ten.`], opt: true },
+        ], S, rng, o) });
       }
       if (this.facts.venue && c.inning >= 4)
         out.push({ id: 'promo', key: `promo:${c.inning}`, salience: 0.35, relevance: 0.3, opener: 'pxp', build: (rng, o) => {
@@ -285,12 +409,21 @@ export class Booth {
     });
     this.director.runSegment(seg, t, t + sec - 1.5);
     // (also when it waits at the end as an extra: once offered, a stage is not offered again)
-    if (joke && seg.turns.some((x) => x.block.startsWith(`joke.${joke.joke.id}`))) this.told(joke, t);
+    if (joke && seg.turns.some((x) => x.block.startsWith(`joke.${joke.joke.id}`))) this.toldJoke(joke, t);
   }
 
   /** feed every sim event (before `tick`) */
   observe(ev: RawEvent, c: BoothCtx, t: number) {
+    withMemory(this.mem, () => this.observeNow(ev, c, t));
+  }
+
+  private observeNow(ev: RawEvent, c: BoothCtx, t: number) {
     this.ctx = c;
+    for (const n of [c.batter?.name, c.pitcher?.name, ...(c.runnerNames ?? [])])
+      if (n && !this.named.has(n)) {
+        this.named.add(n);
+        this.mem.addNames([n]);
+      }
     this.live = { balls: c.balls, strikes: c.strikes, outs: this.log.outs, batterId: c.batter?.id };
     if (ev.type === 'pitchReleased' || ev.type === 'batterUp') this.epoch++;
     if (ev.type === 'homeRun') this.trotting = true;
@@ -313,6 +446,10 @@ export class Booth {
     if (ev.type === 'breakStart' && ev.pregame) this.pregameSec = Number(ev.sec) || 0;
     if (ev.type === 'halfInningEnd') this.lastHalfPitcher = this.log.cur?.pitcherId;
     if (ev.type === 'safe' && this.log.stealing && Number(ev.time ?? c.time ?? 0) - this.log.stealing.time < 8) this.recent.steal = t;
+    if (ev.type === 'error') {
+      this.recent.error = { inning: c.inning, half: c.half };
+      if (ev.fielderId) this.errors.push({ fielderId: String(ev.fielderId), inning: c.inning });
+    }
     if (ev.type === 'moundVisit') {
       this.recent.visitBy = String(ev.by ?? '');
       this.recent.visitAt = t;
@@ -398,11 +535,20 @@ export class Booth {
 
   /** the broadcast cut to a replay */
   replay(c: BoothCtx, t: number) {
+    withMemory(this.mem, () => this.replayNow(c, t));
+  }
+
+  private replayNow(c: BoothCtx, t: number) {
+    void c;
     const text = say(LEX['replay.pxp'], {}, this.rng);
     if (text) this.director.submit({ importance: 'should', speaker: 'pxp', text, ttl: 6, tag: 'replay' }, t);
   }
 
   tick(t: number, c: BoothCtx, opts: { suppressed: boolean; fieldHold?: boolean }): Action[] {
+    return withMemory(this.mem, () => this.tickNow(t, c, opts));
+  }
+
+  private tickNow(t: number, c: BoothCtx, opts: { suppressed: boolean; fieldHold?: boolean }): Action[] {
     this.ctx = c;
     this.director.holdForField = !!opts.fieldHold;
     const out: Action[] = this.director.setSuppressed(opts.suppressed, t);
