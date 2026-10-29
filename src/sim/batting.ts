@@ -65,7 +65,7 @@ export const SWING = {
   rh: 0.12,
   ramp: 1.6,
   via: { dKnob: { x: -0.12, y: -0.12, z: 0.09 }, dAz: 30, dEl: 2, at: 0.45 },
-  inStart: 0.1,
+  inStart: 0.2,
   turnStart: 0.3,
   blendIn: 0.8,
   outStart: 1.3,
