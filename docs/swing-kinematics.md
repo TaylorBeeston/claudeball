@@ -290,14 +290,14 @@ Against the brief's targets (p95, 60 Hz, in swings):
 
 The game's top hand (armIK, tracked) runs out of range wherever the bat's direction leaves what it can hold, and there the IK rolls it on
 the handle (flip / spike:RightHand). The proxy per frame (`tools/swing/perframe.ts`, the engine as it is since t-0026; top fist past its
-range, p50 / p90 deg):
+range, p50 / p90 deg; the first 150 swings of the 762):
 
 | | k 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|
-| main | 10/10 | 0/0 | 0/0 | 0/0 | 16/28 | 36/51 | 10/17 |
+| main | 10/10 | 0/0 | 0/0 | 0/0 | 12/21 | 36/52 | 10/18 |
 | knob 0.10, turn 0.30 (first try) | 15/16 | 12/19 | 0/2 | 8/37 | 32/57 | 37/52 | 10/20 |
-| knob 0.20, turn 0.30 (shipped) | 10/10 | 0/1 | 0/0 | 0/5 | 26/45 | 32/50 | 7/20 |
-| knob 0.20, turn 0.40 | 10/10 | 0/1 | 0/0 | 0/0 | 34/50 | 48/63 | 20/31 |
+| knob 0.20, turn 0.30 (shipped) | 10/10 | 0/1 | 0/0 | 0/4 | 26/45 | 32/49 | 7/22 |
+| knob 0.20, turn 0.40 | 10/10 | 0/1 | 0/0 | 0/0 | 35/50 | 49/64 | 20/32 |
 
 Leaving the clip's path at 0.10 smoothed the knob most (speed step 6.2 cm p95) but pushed the top hand out of range at frames 3-5: in the
 game its flips and spikes moved to s+3..s+5 and rose (hand / forearm flips 196 -> 155, but arm flips 60 -> 125, spikes 587 -> 725). A
@@ -344,8 +344,8 @@ batters); t-0029 compared it with 5-inning runs.
 R/G 4.28 -> 4.28, AVG / OBP / SLG .243 / .320 / .416 -> .243 / .320 / .415, K 23.3 -> 23.3 %, BB 8.9 -> 8.9 %, HR/PA 3.16 -> 3.14 %
 (482 -> 479 HR in 15276 PA), HR/FB 19.9 -> 19.8 %, BABIP .293 -> .293, whiff / foul per swing 28.2 / 30.9 -> 28.3 / 30.8 %. EV mean
 80.80 -> 80.82 (p10 / p50 / p90 59.7 / 82.4 / 100.1 both), LA mean 8.6 -> 8.6 (p10 / p50 / p90 -45.4 / 10.1 / 60.6 -> 60.7), GB / LD /
-FB / PU 49.9 / 12.7 / 20.2 / 17.2 % both. The first 60 games of the set play out identically for every variant tried; the rest drift only where a
-late swing's contact (u < 0.80) changed. At the planned contact instant everything is identical: attack angle 7.0 / 15.0 / 23.2, bat elevation -28.9 / -16.5
+FB / PU 49.9 / 12.7 / 20.2 / 17.2 % both. The games drift apart only where a late swing's contact (u < 0.80) changed (the first 60 games played out
+identically for the variants measured at 60 games). At the planned contact instant everything is identical: attack angle 7.0 / 15.0 / 23.2, bat elevation -28.9 / -16.5
 / -4.4, plane tilt 13.3 / 23.4 / 34.7, hands 4.3 / 4.7 / 5.1 m/s. No calibration knob needed a nudge. No seed-pinned test moved.
 
 ### Seeing it
