@@ -1,0 +1,73 @@
+{
+  "source": "the game's own text at main 17016c2: cast.ts catchphrases and running jokes, hd.ts WARM_UMP and preview, cues.ts PA forms, docs/booth-openings.md seed 11, the announcer script's pilot lines (kept exactly as the game writes them, digits included)",
+  "lines": [
+    { "id": "pa-welcome", "role": "pa", "cat": "PA fixed", "text": "Good afternoon, ladies and gentlemen, welcome to Heritage Field! Today, the Richmond Falcons visit your Madison Kings." },
+    { "id": "pa-batting", "role": "pa", "cat": "PA names+numbers", "text": "Now batting, number 23, Tyler Vance." },
+    { "id": "pa-pitching", "role": "pa", "cat": "PA names+numbers", "text": "Now pitching, number 41, Leo Brooks." },
+    { "id": "pa-promo", "role": "pa", "cat": "PA fixed", "text": "Fireworks after the game tonight, weather permitting." },
+
+    { "id": "ump-k", "role": "ump", "cat": "umpire", "text": "Strike three!" },
+    { "id": "ump-bb", "role": "ump", "cat": "umpire", "text": "Ball four!" },
+    { "id": "ump-play", "role": "ump", "cat": "umpire", "text": "Play ball!" },
+    { "id": "ump-safe", "role": "ump", "cat": "umpire", "text": "Safe!" },
+    { "id": "ump-foul", "role": "ump", "cat": "umpire", "text": "Foul ball!" },
+
+    { "id": "pbp-foul", "role": "pbp", "cat": "calm pitch call", "text": "Fouled back, four-seam fastball, off the plate." },
+    { "id": "pbp-cutter", "role": "pbp", "cat": "calm pitch call", "text": "Swung on and missed, cutter, 88." },
+    { "id": "pbp-curve", "role": "pbp", "cat": "calm pitch call", "text": "Curveball, 78, down and in." },
+    { "id": "pbp-30", "role": "pbp", "cat": "calm pitch call", "text": "The three and oh pitch... slider, high." },
+    { "id": "pbp-53", "role": "pbp", "cat": "names+numbers", "text": "Riley Perez grounds out, 5-3." },
+    { "id": "pbp-bunt", "role": "pbp", "cat": "names+numbers", "text": "Mario Sanders lays down a sacrifice bunt, 5-4-3." },
+    { "id": "pbp-score", "role": "pbp", "cat": "names+numbers", "text": "After four, it's Eugene Giants 4, Albany Owls 3." },
+    { "id": "pbp-wall", "role": "pbp", "cat": "calm pitch call", "text": "Fly ball to left field, he drifts back, back, to the track, and he makes the catch at the wall." },
+    { "id": "pbp-record", "role": "pbp", "cat": "names+numbers", "text": "The Falcons: 55 and 53 on the year, seven and three over their last ten." },
+    { "id": "pbp-open", "role": "pbp", "cat": "opening (names)", "text": "Good afternoon, everybody, and welcome to Heritage Field, where the Kings host the Richmond Falcons on a Tuesday afternoon in late July. Lyle Pemberton here, next to Hollis Dupree." },
+
+    { "id": "pbp-hr", "role": "pbp", "cat": "big call", "excited": true, "text": "Deep drive to left... gone! Home run!" },
+    { "id": "pbp-walkoff", "role": "pbp", "cat": "big call", "excited": true, "text": "Gone! And the game is over, a walk-off homer!" },
+    { "id": "pbp-lunch", "role": "pbp", "cat": "big call", "excited": true, "text": "Pack a lunch, that one is going a long way!" },
+    { "id": "pbp-dp", "role": "pbp", "cat": "big call", "excited": true, "text": "Two for one. Everything must go!" },
+    { "id": "pbp-sitdown", "role": "pbp", "cat": "catchphrase", "text": "Sit down, son." },
+    { "id": "pbp-books", "role": "pbp", "cat": "catchphrase", "text": "Put this one in the books." },
+
+    { "id": "col-towel", "role": "color", "cat": "deadpan colour", "text": "Hot. Somebody bring the catchers a towel." },
+    { "id": "col-gravy", "role": "color", "cat": "deadpan colour", "text": "Mm-hmm. Biscuits and gravy." },
+    { "id": "col-grownman", "role": "color", "cat": "deadpan colour", "text": "That is a grown-man swing." },
+    { "id": "col-thrown", "role": "color", "cat": "deadpan colour", "text": "I would not have thrown him out either. Ask any pitcher I ever caught." },
+    { "id": "col-scout", "role": "color", "cat": "names+numbers", "text": "He sits around 91 with the fastball. The curveball is his best pitch, a 65 on the scouting scale, and he throws it every so often." },
+    { "id": "col-hello", "role": "color", "cat": "deadpan colour", "text": "Biscuit to everybody but my mother, Lyle. Good to be here." },
+
+    { "id": "ban1-pbp", "role": "pbp", "cat": "banter", "text": "We have a question from a young fan, Biscuit: why do they call you Biscuit?" },
+    { "id": "ban2-col", "role": "color", "cat": "banter", "text": "Double-A, a Sunday doubleheader, and a basket of buttermilk biscuits. I ate eleven between games, Lyle. Went oh for eight." },
+    { "id": "ban3-pbp", "role": "pbp", "cat": "banter", "text": "Oh for eight. And they still remember the biscuits." },
+    { "id": "ban4-col", "role": "color", "cat": "banter", "text": "Number six was a grand slam, Lyle. In my defense, the wind was blowing out." },
+    { "id": "ban5-pbp", "role": "pbp", "cat": "banter", "text": "The wind was blowing out. Of course it was." }
+  ],
+  "spelled": {
+    "pa-batting": "Now batting, number twenty-three, Tyler Vance.",
+    "pbp-cutter": "Swung on and missed, cutter, eighty-eight.",
+    "pbp-53": "Riley Perez grounds out, five-three.",
+    "pbp-bunt": "Mario Sanders lays down a sacrifice bunt, five-four-three.",
+    "pbp-record": "The Falcons: fifty-five and fifty-three on the year, seven and three over their last ten.",
+    "col-scout": "He sits around ninety-one with the fastball. The curveball is his best pitch, a sixty-five on the scouting scale, and he throws it every so often."
+  },
+  "emotion": {
+    "base": "Deep drive to left... gone! Home run!",
+    "variants": {
+      "flat": "Deep drive to left, gone, home run.",
+      "punct": "Deep drive to left... gone! Home run!",
+      "caps": "Deep drive to left... GONE! HOME RUN!",
+      "stretch": "Deep drive to left... it is gooone! Home run!!!",
+      "tag-excited": "[excited] Deep drive to left... gone! Home run!",
+      "tag-shouting": "[shouting] Deep drive to left... gone! Home run!",
+      "paren": "(very excited, shouting) Deep drive to left... gone! Home run!"
+    }
+  },
+  "refs": {
+    "pbp": { "kokoro": "am_michael", "speed": 1.04, "text": "Twenty-six seasons in this booth, and I still keep the scorebook in pencil. Here is the next pitch, and it is fouled back out of play." },
+    "color": { "kokoro": "bm_george", "speed": 1.0, "text": "I caught for eleven seasons, and I can tell you, he is setting him up for the curveball. Watch where the catcher sets up his glove." },
+    "pa": { "kokoro": "am_onyx", "speed": 0.92, "text": "Ladies and gentlemen, boys and girls, welcome to the ballpark. Please rise and remove your caps for our national anthem." },
+    "ump": { "kokoro": "am_adam", "speed": 1.0, "text": "Strike! That is ball two. Batter, take your base. Play ball! He is out!" }
+  },
+  "calibration": "Welcome back to the ballpark. Here is the pitch, and it is a called strike on the outside corner. The count runs to one and one."
+}
