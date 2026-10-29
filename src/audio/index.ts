@@ -23,6 +23,7 @@ import { ParkMusic, WebAudioMusic } from './park/player';
 import { TRIGGERS, TRIGGER_IDS, type Trigger } from './park/manifest';
 import { BroadcastFx, FX_EVENT_TYPES, type CameraEvent, type FxPlan } from './broadcastfx';
 import { Booth } from './broadcast/booth';
+import { sharedMemory } from './broadcast/memory';
 import { BoothSink } from './broadcast/channels';
 import { SpeechGate } from './broadcast/gate';
 import type { SpeechEvent } from './captions';
@@ -223,6 +224,8 @@ export class AudioController {
     // browser voices have no PA bus: scale the utterance volume instead (the default slider is about 4-5 dB under the old fixed level)
     this.speech.paScale = () => (this.sw.usingNeural ? 1 : Math.pow(this.settings.paVolume / 0.55, 2) * 0.6);
     this.booth = new Booth({ rng: Math.random, level: this.settings.chatter });
+    // what the booth said in the games before this one (kept between visits): it reaches for the lines heard longest ago
+    this.booth.memory = sharedMemory();
     // EXPERIMENT (off by default, URL flag only): a tiny in-browser language model for colour lines, validated; see src/audio/README.md
     if (new URLSearchParams(location.search).get('lm') === '1' && hdSupported()) void import('./broadcast/lmClient').then((m) => m.startLm()).then((lm) => (this.booth.lm = lm)).catch(() => {});
     this.sink = new BoothSink(this.gate.view('booth'), { now: () => performance.now() / 1000, voiceEnded: (v, t) => this.booth.director.voiceEnded(v, t), volume: () => this.speech.volume });
@@ -860,6 +863,7 @@ export class AudioController {
   }
 
   dispose() {
+    this.booth.memory.save();
     hdManager.onEngine = null;
     hdManager.bindMixer(null);
     voiceManager.onEngine = null;

@@ -170,6 +170,9 @@ export class CueMapper {
   }
 
   private lastPitcherId = '';
+  /** players the PA has introduced this game (the first time, with the club: "Now batting for the Falcons, ...") */
+  private introduced = new Set<string>();
+  private teamBatters = { home: 0, away: 0 };
   private lastExit = 0;
   private lastLaunch = 0;
   private lastPitchMph = 0;
@@ -186,8 +189,23 @@ export class CueMapper {
   private plays = 0;
   private lastCall = { kind: '', t: -9 };
 
+  /**
+   * The PA's introduction: the first time a player is announced this game it names his club ("Now batting for the Falcons, number 7, ...", "for your
+   * Kings" for the home side, "Leading off for ..." for a club's first hitter); after that, the short form ("Now batting, number 7, ...").
+   */
+  private paIntro(kind: 'batting' | 'leading' | 'pitching', id: string, p: { name: string; number?: number }, side: 'home' | 'away', c: MapCtx): string {
+    const num = p.number !== undefined ? `number ${p.number}, ` : '';
+    const first = !!id && !this.introduced.has(id);
+    if (id) this.introduced.add(id);
+    const club = `${side === 'home' ? 'your' : 'the'} ${teamSay(c.teams[side])}`;
+    if (kind === 'leading') return `Leading off for ${club}, ${num}${trimName(p.name)}.`;
+    return first ? `Now ${kind} for ${club}, ${num}${trimName(p.name)}.` : `Now ${kind}, ${num}${trimName(p.name)}.`;
+  }
+
   reset() {
     this.lastPitcherId = '';
+    this.introduced.clear();
+    this.teamBatters = { home: 0, away: 0 };
     this.spokenPlay = false;
     this.scoreAtPlayEnd = { home: 0, away: 0 };
     this.plays = 0;
@@ -232,12 +250,13 @@ export class CueMapper {
         this.spokenPlay = false;
         if (pid && pid !== this.lastPitcherId) {
           const p = c.person(pid);
-          if (p) out.push(cue.speak('pa', `Now pitching, number ${p.number ?? ''}, ${trimName(p.name)}.`.replace('number , ', ''), PRI.pa, 15, 0, 1));
+          if (p) out.push(cue.speak('pa', this.paIntro('pitching', pid, p, c.half === 'top' ? 'home' : 'away', c), PRI.pa, 15, 0, 1));
           this.lastPitcherId = pid;
         }
         if (b) {
           out.push({ kind: 'sfx', id: 'pa_click', imp: 1, delay: 0, gain: 0.22 }); // a tiny PA mic click, not melodic
-          out.push(cue.speak('pa', `Now batting, number ${b.number ?? ''}, ${trimName(b.name)}.`.replace('number , ', ''), PRI.pa, 15, 0.1, 1));
+          const side = c.half === 'top' ? 'away' : 'home';
+          out.push(cue.speak('pa', this.paIntro(this.teamBatters[side]++ === 0 ? 'leading' : 'batting', str(ev.batterId), b, side, c), PRI.pa, 15, 0.1, 1));
         }
         if (c.runners[1] || c.runners[2]) out.push(cue.excite(0.15, 6, 1));
         // the walk-up rituals, heard only by the dish behind home: batting gloves, a knock on the helmet, the bat against the spikes;
@@ -543,7 +562,7 @@ export class CueMapper {
       case 'pitchingChange': {
         const p = c.person(ev.inId);
         this.lastPitcherId = str(ev.inId);
-        if (p) out.push(cue.speak('pa', `Now pitching, number ${p.number ?? ''}, ${trimName(p.name)}.`.replace('number , ', ''), PRI.pa, 20, 1, 1));
+        if (p) out.push(cue.speak('pa', this.paIntro('pitching', str(ev.inId), p, c.half === 'top' ? 'home' : 'away', c), PRI.pa, 20, 1, 1));
         break;
       }
       case 'halfInningEnd': {

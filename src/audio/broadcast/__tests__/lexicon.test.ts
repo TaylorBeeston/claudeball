@@ -158,9 +158,9 @@ describe('calls', () => {
     expect(sw[0].importance).toBe('must');
     expect(sw[0].excited).toBe(true);
     expect(sw[0].text).toMatch(/swing|Swing|fanned|Fanned|down swinging|strike three/i);
-    expect(lk[0].text).toMatch(/look|called|Rung|Frozen|Called/);
+    expect(lk[0].text).toMatch(/look|called|Rung|Frozen|Called|never moves the bat/);
     expect(sw[1]).toMatchObject({ importance: 'could' });
-    expect(sw[1].text).toMatch(/six/);
+    expect(sw[1].text).toMatch(/six/i);
   });
 
   it('home runs: solo / two-run / three-run / grand slam / walk-off, with the real distance', () => {

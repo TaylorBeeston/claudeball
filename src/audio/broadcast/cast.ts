@@ -183,6 +183,127 @@ export const RUNNING_JOKES: RunningJoke[] = [
       ],
     ],
   },
+  {
+    id: 'pencils',
+    trigger: 'lull',
+    gap: 1200,
+    a: 'color',
+    stages: [
+      [
+        { who: 'A', t: ['How many pencils did you bring tonight, $pbp?', 'I count three pencils on your side of the booth, $pbp.'] },
+        { who: 'B', t: ['Three, sharpened. A pencil for each third of the game.', 'Three. Sharpened twice. I am prepared for anything.'] },
+      ],
+      [
+        { who: 'A', t: ['Pencil update, folks: $pbp is down to two.', 'I see we are down to two pencils, $pbp.'] },
+        { who: 'B', t: ['That last rally was hard on the first one.', 'A pencil gives its life for the scorebook. It is an honour.'] },
+      ],
+      [
+        { who: 'A', t: ['One pencil left, $pbp. Should I call down to the clubhouse?', 'Last pencil, folks. We are in uncharted territory.'] },
+        { who: 'B', t: ['Do not panic. I have a pen in my jacket for emergencies.', 'I have been here before. I will finish this game with a golf pencil if I have to.'] },
+        { who: 'A', t: ['A pen. In this booth.', 'Twenty-six seasons, and the man has a plan.'] },
+      ],
+    ],
+  },
+  {
+    id: 'diet',
+    trigger: 'foodLull',
+    gap: 1200,
+    a: 'color',
+    stages: [
+      [
+        { who: 'A', t: ['I want everybody to know I am on a new diet, starting tonight. No press-box food.', 'New rule for me tonight, $pbp: nothing from the press-box buffet.'] },
+        { who: 'B', t: ['I will put that in the scorebook, with the time.', 'Noted. I will check back in the fifth.'] },
+      ],
+      [
+        { who: 'A', t: ['Small update on the diet, $pbp.', 'About that diet, $pbp.'] },
+        { who: 'B', t: ['There is mustard on your scorecard, $color.', 'I saw the nachos go by.'] },
+        { who: 'A', t: ['That is research. The diet resumes tomorrow.', 'Those were for the crew. I was carrying them.'] },
+      ],
+    ],
+  },
+  {
+    id: 'dotRace',
+    trigger: 'lull',
+    gap: 1500,
+    a: 'pbp',
+    stages: [
+      [
+        { who: 'A', t: ['The dot race is coming up on the big board later. Who do you like tonight, $color?', 'Dot race in a couple of innings. Got a pick, $color?'] },
+        { who: 'B', t: ['Green. Always green. Green has never let me down.', 'Green. Steady, smart, saves something for the stretch.'] },
+      ],
+      [
+        { who: 'A', t: ['I have to report that green finished last in the dot race.', 'The dot race is in, folks. Green, dead last.'] },
+        { who: 'B', t: ['Green was boxed in on the turn, $pbp. I want a replay.', 'Green got a bad jump. It happens to the best of us.'] },
+        { who: 'A', t: ['There is no replay in the dot race.', 'Green will be back.'] },
+      ],
+    ],
+  },
+  {
+    id: 'aircon',
+    trigger: 'lull',
+    gap: 1200,
+    a: 'color',
+    stages: [
+      [
+        { who: 'A', t: ['Is the air conditioning in this booth set to winter, $pbp?', 'Somebody turned the booth air conditioning all the way up, $pbp.'] },
+        { who: 'B', t: ['You say that every night.', 'It is the same temperature it is every night, $color.'] },
+      ],
+      [
+        { who: 'A', t: ['I can see my breath in here, $pbp.', 'I have put on my jacket, folks. The booth is a refrigerator.'] },
+        { who: 'B', t: ['That is steam from your hot dog.', 'That jacket has been on since the anthem.'] },
+      ],
+    ],
+  },
+  {
+    id: 'infieldSingle',
+    trigger: 'catcherBats',
+    gap: 900,
+    a: 'color',
+    stages: [
+      [
+        { who: 'A', t: ['A catcher at the plate. If he hits one in the gap, get comfortable, folks. This could take a while.', 'Catcher up. If this one goes in the gap, we will have time for a commercial while he runs.'] },
+        { who: 'B', t: ['Speaking from experience.', 'Says the voice of experience.'] },
+      ],
+      [
+        { who: 'A', t: ['I want you to know I beat out an infield single once, $pbp.', 'Another catcher. I had an infield single in my career, you know.'] },
+        { who: 'B', t: ['Once.', 'One.'] },
+        { who: 'A', t: ['It was a very slow infielder. And a very long hop.', 'The shortstop slipped. Nobody remembers that part.'] },
+      ],
+    ],
+  },
+  {
+    id: 'visitWords',
+    trigger: 'moundVisit',
+    gap: 900,
+    a: 'pbp',
+    stages: [
+      [
+        { who: 'A', t: ['What would you say to him out there, $color?', 'If you were the catcher going out there right now, $color, what do you say?'] },
+        { who: 'B', t: ['Nothing. I would stand there and let him breathe. Then I would ask about dinner.', 'Slow down, breathe, and do not look at the scoreboard.'] },
+      ],
+      [
+        { who: 'A', t: ['Another trip to the mound, $color.', 'And another visit.'] },
+        { who: 'B', t: ['This time I would bring snacks.', 'I hope somebody brought a sandwich this time.'] },
+        { who: 'A', t: ['You always hope that.', 'You would.'] },
+      ],
+    ],
+  },
+  {
+    id: 'phone',
+    trigger: 'pitchingChange',
+    gap: 900,
+    a: 'color',
+    stages: [
+      [
+        { who: 'A', t: ['When that bullpen phone rings, every reliever out there sits up straighter, $pbp.', 'Every time the bullpen phone rings, the whole bullpen holds its breath.'] },
+        { who: 'B', t: ['Even the ones who know it is not for them.', 'Even the guy who pitched last night.'] },
+      ],
+      [
+        { who: 'A', t: ['Another call to the bullpen. Half of them still think it might be about the pizza.', 'The phone rang again out there, $pbp. My money is on a sandwich order.'] },
+        { who: 'B', t: ['You have a theory about everything.', 'Your theory has not been right once tonight.'] },
+      ],
+    ],
+  },
 ];
 
 /** fictional park promotions and features the booth may mention in long lulls (the park and the mascot are the game's own) */
@@ -193,4 +314,13 @@ export const PROMOS: string[] = [
   'The dot race is coming up on the big board in a couple of innings, and $color has a favourite.',
   'Fireworks after the game tonight, weather permitting.',
   'Somebody proposed on the big board last inning. The crowd is taking credit for the yes.',
+  'It is bark at the park night, so if you hear a few extra voices in the bleachers, those are the dogs.',
+  'Stick around after the final out: the kids can play catch in the outfield tonight.',
+  'The new ice cream stand behind section one-twelve has a line that goes all the way back to the concourse.',
+  'The fan of the game gets a signed bat, and $color is lobbying to be considered.',
+  'Season tickets for next year go on sale this week, and the good seats along the baselines go fast.',
+  'Tonight is a salute to the little leagues around town. About two hundred players took the field before the game.',
+  'The crowd is in the running for a stadium record for the wave tonight. $color is not participating.',
+  'Free cap to the first ten thousand through the gates tonight, and it looks like most of them made it.',
+  'The local high school band played the anthem tonight, and they will be back for the stretch.',
 ];

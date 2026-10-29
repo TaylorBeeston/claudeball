@@ -12,6 +12,7 @@ import { CAST } from './cast';
 import { pitchName } from '../commentary';
 import type { Level, Segment, SegmentTurn, VoiceId } from './director';
 import { estimateDuration } from './text';
+import { pickFresh } from './memory';
 import { mulberry32 } from '../dsp';
 
 export type Tod = 'day' | 'dusk' | 'night';
@@ -240,16 +241,24 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
     turns: short
       ? [{ speaker: 'pxp', text: `${evening ? 'Good evening' : 'Good afternoon'} from ${venue ? venue.name : H.city}, where the ${H.nick} host the ${A.nick}. ${P.first} ${P.last} with ${C.first} ${C.last}.` }]
       : [
-          { speaker: 'pxp', text: `${evening ? 'Good evening' : 'Good afternoon'}, everybody, and welcome to ${where}, where the ${H.nick} host the ${A.city} ${A.nick}${date ? ' ' + date : ''}. ${P.first} ${P.last} here, ${pick(r, ['alongside', 'with', 'next to'])} ${C.first} ${C.last}.` },
+          {
+            speaker: 'pxp',
+            text: pick(r, [
+              `${evening ? 'Good evening' : 'Good afternoon'}, everybody, and welcome to ${where}, where the ${H.nick} host the ${A.city} ${A.nick}${date ? ' ' + date : ''}. ${P.first} ${P.last} here, ${pick(r, ['alongside', 'with', 'next to'])} ${C.first} ${C.last}.`,
+              `${evening ? 'Good evening' : 'Good afternoon'}, everybody, from ${where}. The ${A.city} ${A.nick} are in town to play the ${H.nick}${date ? ' ' + date : ''}. I'm ${P.first} ${P.last}, ${pick(r, ['alongside', 'with', 'next to'])} ${C.first} ${C.last}.`,
+              `${evening ? 'Good evening' : 'Good afternoon'}, and welcome to ${where}. It's the ${A.city} ${A.nick} and the ${H.nick}${date ? ' ' + date : ''}, and I'm ${P.first} ${P.last} with ${C.first} ${C.last}.`,
+              `${evening ? 'Good evening' : 'Good afternoon'}, everybody. Baseball at ${where}${date ? ' ' + date : ''}: the ${H.nick} and the ${A.city} ${A.nick}. ${P.first} ${P.last} here with my partner, ${C.first} ${C.last}.`,
+            ]),
+          },
         ],
   });
-  if (!short) add({ id: 'hello', pri: 3, turns: [{ speaker: 'color', text: pick(r, [`${C.nickname} to everybody but my mother, ${P.first}. Good to be here.`, `Good to be here, ${P.first}. And it's ${C.nickname}, folks. Nobody calls me ${C.first}.`, `${P.first}, good to see you. Hello, everybody.`]) }] });
+  if (!short) add({ id: 'hello', pri: 3, turns: [{ speaker: 'color', text: pick(r, [`${C.nickname} to everybody but my mother, ${P.first}. Good to be here.`, `Good to be here, ${P.first}. And it's ${C.nickname}, folks. Nobody calls me ${C.first}.`, `${P.first}, good to see you. Hello, everybody.`, `Hello, everybody. ${P.first} has his pencils sharpened, and I have had my dinner. We are ready.`, `Thank you, ${P.first}. Hello to everybody at home, and to everybody in the cheap seats. I sat there once.`, `Good to be with you, ${P.first}. I have been looking forward to this one all day.`, `Hello, everybody. It's ${C.nickname}, and I am already hungry.`, `${P.first}, folks, a pleasure. Let's have some baseball.`]) }] });
   r = R('field');
   add({
     id: 'field',
     pri: 6,
     turns: [
-      { speaker: 'pxp', text: say([`The anthem is done, and here come the ${H.nick}${H.colors ? `, in ${H.colors},` : ''} to take the field.`, `The ${H.nick} are running out to their positions${H.colors ? `, in ${H.colors}` : ''}, and the crowd is on its feet.`], {}, r) },
+      { speaker: 'pxp', text: say([`The anthem is done, and here come the ${H.nick}${H.colors ? `, in ${H.colors},` : ''} to take the field.`, `The ${H.nick} are running out to their positions${H.colors ? `, in ${H.colors}` : ''}, and the crowd is on its feet.`, `And here come the ${H.nick}${H.colors ? `, in ${H.colors},` : ''} out of the dugout to a big hand from the home crowd.`, `The ${H.nick} take the field${H.colors ? `, the ${H.colors} spread out across the diamond` : ''}.`], {}, r) },
     ],
   });
   r = R('weather');
@@ -258,16 +267,16 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
     id: 'weather',
     pri: 4,
     turns: [
-      { speaker: 'pxp', text: say([`It is ${tempW} at first pitch, ${wx.sky}, and ${wx.breeze}.`, `${cap(wx.sky)}, ${tempW}, ${wx.breeze}. First pitch at ${clockWords(wx.firstPitch.h, wx.firstPitch.m)}.`], {}, r) },
+      { speaker: 'pxp', text: say([`It is ${tempW} at first pitch, ${wx.sky}, and ${wx.breeze}.`, `${cap(wx.sky)}, ${tempW}, ${wx.breeze}. First pitch at ${clockWords(wx.firstPitch.h, wx.firstPitch.m)}.`, `The weather: ${wx.sky}, ${tempW}, and ${wx.breeze}.`, `First pitch is set for ${clockWords(wx.firstPitch.h, wx.firstPitch.m)}, with ${wx.sky} and ${tempW}.`], {}, r) },
       {
         speaker: 'color',
         text: wx.realWind
-          ? say(['Keep an eye on that wind, it will matter on fly balls.', 'That wind is going to have a say tonight.'], {}, r)
+          ? say(['Keep an eye on that wind, it will matter on fly balls.', 'That wind is going to have a say tonight.', 'Outfielders will be checking the flags all night.'], {}, r)
           : wx.tempF >= 85
-            ? say([`Hot one. Catchers lose about five pounds on a day like this, ${P.first}. I never did, but that is what they tell me.`, 'Hot. Somebody bring the catchers a towel.'], {}, r)
+            ? say([`Hot one. Catchers lose about five pounds on a day like this, ${P.first}. I never did, but that is what they tell me.`, 'Hot. Somebody bring the catchers a towel.', 'You can smell the hot dogs from here in this heat.', `Under all that gear, ${P.first}, the catcher is in a sauna tonight.`], {}, r)
             : wx.tempF <= 60
-              ? say(['A little chilly. The bats sting on a night like this, ask anybody who ever hit off the end of one.', 'Cool one. Hitters hate it, pitchers do not mind a bit.'], {}, r)
-              : say(['Perfect weather for baseball.', `You could not order it up any better, ${P.first}.`, 'Nice night for it.'], {}, r),
+              ? say(['A little chilly. The bats sting on a night like this, ask anybody who ever hit off the end of one.', 'Cool one. Hitters hate it, pitchers do not mind a bit.', `Bring a jacket, folks. ${P.first} brought two.`], {}, r)
+              : say(['Perfect weather for baseball.', `You could not order it up any better, ${P.first}.`, 'Nice night for it.', 'Shirt-sleeve weather. My favourite kind.', 'Just right. No excuses for anybody.'], {}, r),
       },
     ],
   });
@@ -283,7 +292,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
         { speaker: 'pxp', text: [ra, rh].filter(Boolean).join(' ') },
         {
           speaker: 'color',
-          text: Math.abs(better) <= 3 ? say(['Two clubs right on top of each other, so this one matters.', 'Not much between these two clubs.'], {}, r) : say([`The ${better > 0 ? A.nick : H.nick} have the better record, but that does not hit or pitch tonight.`, 'Records are nice. Tonight starts at zero to zero.'], {}, r),
+          text: Math.abs(better) <= 3 ? say(['Two clubs right on top of each other, so this one matters.', 'Not much between these two clubs.', 'Evenly matched, on paper anyway.', 'You could not split these two with a knife.'], {}, r) : say([`The ${better > 0 ? A.nick : H.nick} have the better record, but that does not hit or pitch tonight.`, 'Records are nice. Tonight starts at zero to zero.', 'The standings do not play the game, though.', 'Anybody can win one game. That is baseball.'], {}, r),
         },
       ],
     });
@@ -314,7 +323,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
       pri,
       turns: [
         { speaker: 'pxp', text: `For the ${club.nick}, ${l.leadoff}${l.cleanup ? `, and ${l.cleanup}` : ''}.` },
-        { speaker: 'color', text: l.best ? `${cap(l.best)}. ${say(['That is the one I would pitch around.', 'I would not give him much to hit.'], {}, r)}` : club.lineup[0]?.speed >= 60 ? say([`If ${club.lineup[0].last} gets on, watch him on the bases.`, `${club.lineup[0].last} on first base is a problem for any pitcher.`], {}, r) : null },
+        { speaker: 'color', text: l.best ? `${cap(l.best)}. ${say(['That is the one I would pitch around.', 'I would not give him much to hit.', 'Nothing over the middle for him.', 'If I am catching, he sees a lot of pitches off the plate.'], {}, r)}` : club.lineup[0]?.speed >= 60 ? say([`If ${club.lineup[0].last} gets on, watch him on the bases.`, `${club.lineup[0].last} on first base is a problem for any pitcher.`, `Keep ${club.lineup[0].last} off the bases and you have a chance.`], {}, r) : null },
       ],
     });
   }
@@ -328,7 +337,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
       pri: 7,
       turns: [
         { speaker: 'pxp', text: chief && chief !== plate ? `${plate.name} is behind the plate tonight, and the crew chief, ${chief.name}, has ${chief.key === 'second' ? 'second base' : chief.key === 'first' ? 'first base' : 'third base'}.` : `${plate.name} has the plate tonight${plate.chief ? ', and he is the crew chief' : ''}.` },
-        { speaker: 'color', text: say([`${plate.years} years in the big leagues for ${plate.name.split(' ')[1]}. I will be watching the corners the first time through.`, `Every umpire has his own zone, ${P.first}. We will learn this one fast.`, `I spent eleven years arguing with umpires, and I won about twice.`], {}, r) },
+        { speaker: 'color', text: say([`${plate.years} years in the big leagues for ${plate.name.split(' ')[1]}. I will be watching the corners the first time through.`, `Every umpire has his own zone, ${P.first}. We will learn this one fast.`, `I spent eleven years arguing with umpires, and I won about twice.`, 'A good plate umpire is the one you never notice. That is a compliment.', `I used to ask the plate umpire about the family in the first inning, ${P.first}. You need friends back there.`], {}, r) },
       ],
     });
   }
@@ -350,17 +359,17 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
       id: 'park',
       pri: 10,
       turns: [
-        { speaker: 'pxp', text: say([`${venue.name} opened in ${venue.opened}, about ${Math.round(venue.capacity / 1000)} thousand seats, and my favourite thing here is ${venue.feature}.`, `If you have never been to ${venue.short}, look for ${venue.feature}. One of my favourite spots in the league.`], {}, r) },
-        { speaker: 'color', text: `${venue.lf} down the lines, ${venue.cf} to center. ${say(['A fair park. I never hit one out of here, but I blame the park anyway.', 'Fair for hitters, fair for pitchers.'], {}, r)}` },
+        { speaker: 'pxp', text: say([`${venue.name} opened in ${venue.opened}, about ${Math.round(venue.capacity / 1000)} thousand seats, and my favourite thing here is ${venue.feature}.`, `If you have never been to ${venue.short}, look for ${venue.feature}. One of my favourite spots in the league.`, `${venue.short} has been home since ${venue.opened}, and I still walk out to see ${venue.feature} every time I am here.`], {}, r) },
+        { speaker: 'color', text: `${venue.lf} down the lines, ${venue.cf} to center. ${say(['A fair park. I never hit one out of here, but I blame the park anyway.', 'Fair for hitters, fair for pitchers.', 'Plenty of room out there for the outfielders to run.', 'I hit a ball to the warning track here once. I still think about it.'], {}, r)}` },
       ],
     });
   }
   if (f.mascot) {
     r = R('mascot');
-    add({ id: 'crowd', pri: 11, turns: [{ speaker: 'pxp', text: say([`${f.mascot} is already up on the dugout roof getting the crowd going.`, `A good crowd here, and ${f.mascot} is working the first-base side.`], {}, r) }, { speaker: 'color', text: say(['Best athlete in the building.', 'Better footwork than half the infielders I played with.'], {}, r) }] });
+    add({ id: 'crowd', pri: 11, turns: [{ speaker: 'pxp', text: say([`${f.mascot} is already up on the dugout roof getting the crowd going.`, `A good crowd here, and ${f.mascot} is working the first-base side.`, `${f.mascot} is out there high-fiving the front row.`], {}, r) }, { speaker: 'color', text: say(['Best athlete in the building.', 'Better footwork than half the infielders I played with.', 'Never had a slump in its life.', 'Works harder than anybody in the park, and never gets a day off.'], {}, r) }] });
   }
   r = R('pa');
-  add({ id: 'pa', pri: 12, turns: [{ speaker: 'color', text: say([`And ${CAST.pa.name} on the public address, the best voice in the ballpark, ${P.first}. Present company included.`, `Love hearing ${CAST.pa.first} ${CAST.pa.last} on the PA. That voice was made for this.`], {}, r) }, { speaker: 'pxp', text: say(['No argument from me.', 'I will take that personally.'], {}, r) }] });
+  add({ id: 'pa', pri: 12, turns: [{ speaker: 'color', text: say([`And ${CAST.pa.name} on the public address, the best voice in the ballpark, ${P.first}. Present company included.`, `Love hearing ${CAST.pa.first} ${CAST.pa.last} on the PA. That voice was made for this.`, `${CAST.pa.first} ${CAST.pa.last} on the microphone downstairs. When he says your name, you feel like a star.`, `I always loved hearing my name from ${CAST.pa.first} ${CAST.pa.last}. Made a two nineteen hitter sound like a slugger.`], {}, r) }, { speaker: 'pxp', text: say(['No argument from me.', 'I will take that personally.', 'He makes all of us sound good.', 'Present company agrees.'], {}, r) }] });
 
   return fitBlocks('open', blocks, o.budget, o.level === 'low', dur);
 }
@@ -415,9 +424,10 @@ export function handoffLine(f: Pick<OpeningFacts, 'seed' | 'away' | 'home'>, bat
   const r = rngFor(f.seed, 'handoff');
   const b = batter ?? f.away.lineup[0]?.last;
   const p = pitcher ?? f.home.starter?.last;
-  const face = b && p ? say([`${b} steps in against ${p}`, `${b} to lead off against ${p}`, `${p} to face ${b}`], {}, r) : null;
-  return `${say(['And there is the call to play ball.', 'Play ball, says the umpire.', 'And we have the call: play ball.'], {}, r)} ${face ? `${cap(face)}, and it's the top of the first.` : "And it's the top of the first."}`;
+  const face = b && p ? say([`${b} steps in against ${p}`, `${b} to lead off against ${p}`, `${p} to face ${b}`, `${p} looks in at ${b}`, `${b} leads off against ${p}`], {}, r) : null;
+  return `${say(['And there is the call to play ball.', 'Play ball, says the umpire.', 'And we have the call: play ball.', "Play ball! Here we go.", "And we're underway.", 'There it is: play ball.'], {}, r)} ${face ? `${cap(face)}, and it's the top of the first.` : "And it's the top of the first."}`;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const pick = <T,>(r: () => number, a: T[]): T => a[Math.floor(r() * a.length)];
+/** one of `a` (strings: the least recently heard when the booth's memory is active) */
+const pick = <T,>(r: () => number, a: T[]): T => (typeof a[0] === 'string' ? (pickFresh(r, a as unknown as string[]) as unknown as T) : a[Math.floor(r() * a.length)]);
