@@ -8,7 +8,7 @@
  *   foot:below        a foot's sole under the ground (m); foot:float both feet off the ground while the clip is not airborne (m)
  *   foot:slide        a planted foot moving over the ground (m/s) (game sweep and non-locomotion clips only)
  *   body:hand-torso, body:elbow-torso, body:arm-head   a hand / elbow inside the trunk, an elbow or forearm in the head (m)
- *   bat:grip-L, bat:grip-R  a hand that should hold the bat is off its handle (m); bat:hand-axis its fist turned against the bat (deg)
+ *   bat:grip-L, bat:grip-R  a hand that should hold the bat is off its handle (m); bat:hand-axis-L / -R its fist turned against the bat (deg)
  *   bat:order         the hand nearest the knob is the wrong one; bat:body / bat:ground the barrel through the body / the ground (m)
  *   bat:lying         a dropped bat floating or sunk (m)
  *   flip:<bone>       a one-frame pop: a joint turns > 25 deg in one frame and > 3x its neighbouring frames
@@ -63,7 +63,7 @@ export interface Violation {
 
 /** what one unit of severity is per kind family */
 const UNIT: Record<string, number> = { joint: 15, head: 15, len: 0.03, foot: 0.05, 'foot:slide': 0.5, body: 0.03, bat: 0.05, 'bat:hand-axis': 20, flip: 30, spike: 0.5, yaw: 30 };
-const unitOf = (kind: string) => UNIT[kind] ?? UNIT[kind.split(':')[0]] ?? 1;
+const unitOf = (kind: string) => UNIT[kind] ?? UNIT[kind.replace(/-[LR]$/, '')] ?? UNIT[kind.split(':')[0]] ?? 1;
 
 /** how far the head may roll off the horizon (deg) before it reads as resting on a shoulder (not checked while airborne: slides, dives, sitting) */
 export const HEAD_ROLL_MAX = 20;
@@ -328,7 +328,7 @@ function checkBat(bat: BatIn, w: PoseWorld, rig: RigInfo, m: ArrayLike<number>, 
     const gx = m[0] * dir[0] + m[4] * dir[1] + m[8] * dir[2], gy = m[1] * dir[0] + m[5] * dir[1] + m[9] * dir[2], gz = m[2] * dir[0] + m[6] * dir[1] + m[10] * dir[2];
     const gl = Math.hypot(gx, gy, gz) || 1;
     const c = (gx * ax + gy * ay + gz * az) / gl;
-    push('bat:hand-axis', Math.acos(Math.max(-1, Math.min(1, c))) / DEG - 25);
+    push(`bat:hand-axis-${s}`, Math.acos(Math.max(-1, Math.min(1, c))) / DEG - 25);
   }
   // the hand nearer the knob is the model's left one for both batting sides (lefties are mirrored)
   if (bat.hands.L && bat.hands.R) push('bat:order', along.L - along.R);

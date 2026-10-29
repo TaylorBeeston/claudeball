@@ -197,3 +197,59 @@ What is left:
 - **The top hand's 70-90 deg turn ~6 frames in** (present before: the bat turns ~30 deg a frame there and the top fist runs out of
   range, then rolls on the handle): flip:RightHand 145 -> 202.
 - The sim's first swing frames run ~2 frames behind the clip's hands (a sim thread could start CLIP_SWING where the engine shows it).
+
+## Re-measured after t-0024 / t-0026 / t-0025 (thread t-0029)
+
+Real-game sweep (tools/jank game sweep, seeds 1-3, **5 innings**, on main 35f7db0 + the per-hand fist-axis kind), each condition swept twice
+from detached worktrees. Share of the sim swing's frames (`swing` clip), both hands counted for the grip:
+
+| | main, run a | main, run b | bottom hand 130, run a | bottom hand 130, run b | t-0026 after (9 inn.) |
+|---|---|---|---|---|---|
+| swing frames | 2506 | 2501 | 2504 | 2501 | 4708 |
+| fists off the handle (L / R) | 8.9 % (8.6 / 0.3) | 8.7 % (8.4 / 0.2) | 9.3 % (9.1 / 0.3) | 9.3 % (9.1 / 0.2) | 9.0 % |
+| fist turned against the bat, frames (bottom L / top R) | 639 (401 / 238) | 602 (384 / 218) | 279 (60 / 219) | 277 (57 / 220) | |
+| fist turned against the bat | 25.5 % | 24.1 % | 11.1 % | 11.1 % | 29.5 % |
+| wrong hand at the knob | 0.0 % | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| top forearm past +-100 | 2333 (93.1 %) | 2343 (93.7 %) | 2334 (93.2 %) | 2344 (93.7 %) | 4351 (92.4 %) |
+| bottom forearm past +-100 | 219 (8.7 %) | 218 (8.7 %) | 2223 (88.8 %) | 2215 (88.6 %) | 404 (8.6 %) |
+| hand / forearm flips (LH / RH / LF / RF) | 183 (0/123/26/34) | 200 (0/138/26/36) | 238 (1/122/75/40) | 258 (2/137/83/36) | 338 (3/202/53/80) |
+| speed spikes | 606 | 641 | 630 | 653 | 1032 |
+| wrist split | 1 | 0 | 0 | 0 | 0 |
+| elbow in the trunk | 27 | 26 | 25 | 21 | 55 |
+
+Noise (same code twice): about +-0.7 points on the fist axis, +-0.1 on the grip, +-10 % on flips and spikes. Against t-0026 the fist axis
+went 29.5 -> 24.8 % (the t-0025 stance re-key), flips 7.2 -> 7.7 % of frames (within noise), everything else flat.
+
+**Bottom hand to 130 deg supination: not shipped.** It cuts the bottom fist's axis misses 390 -> 59 (the total 24.8 -> 11.1 %), but only by
+over-twisting the forearm: bottom forearm past +-100 deg goes 8.7 -> 88.7 % of swing frames and its flips 26 -> 79. The lead forearm would
+be past anatomy on nearly every swing frame; the miss belongs to the swing clip's bottom-hand pose (an asset fix), not the arm's range.
+Whole game otherwise unchanged (severity 19320 -> 19323).
+
+### What needs a sim change: the knob jump ~6 frames in
+
+The top hand's 70-90 deg turn ~6 frames into the swing (flip:RightHand, spike:RightHand at s+5..s+8, top hand local turn p50 67 deg at s+6)
+is the IK following the drawn bat, and the drawn bat follows the sim: the swing clip's own arm turns are <= 14 deg a frame there.
+Measured on the sim alone (762 swings, `npm run sim` seed 7, games 0-5, 60 Hz frames), knob travel per frame, p50 at frames 1-11:
+6, 12, 13, 8.5, 10, **23.5** (p90 28), 11, 5.6, 7, 7.5, 6.7 cm; bat turn 7, 15, 16, 11, 14, **37** (p90 41), 21, 27, 33, 37, 33 deg.
+Frame 6 is u = tau / tauC ~ 0.65 (tauC p50 155 ms).
+
+Cause: `BatSwing.at` blends the knob from `early(u)` (the clip path turned by `SWING.via`) to the plane path with a smoothstep over
+u = `SWING.inStart` 0.45 -> `blendIn` 0.75, ~2.8 frames, and the two paths are 49 cm apart there (p50; 35-58). The blend's own speed
+lands on top of the swing's. Widening the window (tried in memory, src/sim untouched):
+
+| inStart / blendIn | knob p50 per frame, frames 1-11 (cm) | knob peak p90 | bat turn peak p90 |
+|---|---|---|---|
+| 0.45 / 0.75 (now) | 6 12 13 9 10 24 11 6 7 8 7 | 28 cm | 42 deg |
+| 0.30 / 0.80 | 6 12 13 11 14 14 8 5 7 8 7 | 17 cm | 39 deg (frame 6: 22) |
+| 0.35 / 0.85 | | 18 cm | |
+| 0.20 / 0.85 | | 15 cm | |
+
+A sim thread should take 0.30 / 0.80 (or bring the two paths closer before u 0.45), then re-check the league line and the contact plane:
+blendIn > 0.75 eats into the pure-plane stretch before contact. The sim's first swing frames also run ~2 frames behind the clip's hands
+(the engine eases the bat over 70 ms to hide it); starting CLIP_SWING where the engine shows it would remove that ease.
+
+### The swing -> stance blend
+
+The +2 frame regressions (elbow in the trunk, fist axis) are the game's crossfade from the swing finish to the stance (`jank:check`
+fades --constrain: crossfade fist axis 15 / elbow 26 frames across bodies; forced inertialization 14 / 20 but foot slide 6 -> 13 and grip 2 -> 5).
+Neither is a clear win; left as is (a per-transition switch for two frames is not worth it).
