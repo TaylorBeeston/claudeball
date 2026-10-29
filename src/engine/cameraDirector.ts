@@ -149,7 +149,7 @@ export class CameraDirector {
   brollLock = false;
   private broll: { shot: BrollShot; start: number } | null = null;
   private brollRig: BrollRig | null = null;
-  private brollRecent: { kind: BrollKind; subject?: string }[] = [];
+  private brollRecent: { kind?: BrollKind; subject?: string }[] = [];
   private brollSeq = 0;
   private shownThisLull = 0;
   private brollRestUntil = 0;
@@ -804,8 +804,8 @@ export class CameraDirector {
       this.react = { id: p.id, start: this.clock, hold, off, body: new Vector3(subj.pos.x, 0, subj.pos.z), head, then: o.then };
       this.reactRecent.push({ id: p.id, cls: p.cls, at: this.clock });
       if (this.reactRecent.length > 8) this.reactRecent.shift();
-      // B-roll does not come back to the same face at once (its no-repeat window reads its own list)
-      this.brollRecent.push({ kind: subj.role === 'pitcher' ? 'pitcherFace' : 'batterFace', subject: p.id });
+      // B-roll does not come back to the same face at once (the subject only: no shot kind is blocked by it)
+      this.brollRecent.push({ subject: p.id });
       this.reactThisHalf++;
       this.reactionShots++;
       this.moments = this.moments.filter((m) => m !== p.moment);

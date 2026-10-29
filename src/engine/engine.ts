@@ -206,7 +206,7 @@ export class Engine {
       if (e.phase === 'start' && e.subjectId) this.players.faceShot(e.subjectId, e.holdMs / 1000);
       // its group shots of a moment: the faces in them are shown (and the moment shown again)
       if (e.phase === 'start' && (e.kind === 'dugoutReaction' || e.kind === 'moundHuddle')) this.players.faceGroupShot(e.kind, this.sim.state, e.holdMs / 1000);
-      const card = e.phase === 'start' && e.card && e.subjectId;
+      const card = e.phase === 'start' && (e.card || e.kind === 'reaction') && e.subjectId;
       this.hud?.subjectShot(card ? { kind: e.kind, subject: e.subjectId, hold: e.holdMs / 1000 } : null, this.sim.state);
     });
 
