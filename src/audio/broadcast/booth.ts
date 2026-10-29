@@ -102,7 +102,16 @@ export class Booth {
   set memory(m: BoothMemory) {
     this.mem = m;
     m.beginGame();
+    this.nameFacts();
   }
+  /** the names the memory masks out of its keys: the game's clubs, park, officials and lineups (players who come in later: as they appear) */
+  private nameFacts() {
+    const f = this.facts;
+    if (!f) return;
+    const club = (c: OpeningFacts['home']) => [c.name, c.city, c.nick, c.manager?.name, c.manager?.pitchingCoach, c.starter?.name, ...c.lineup.map((x) => x.name)];
+    this.mem.addNames([f.venue?.name, f.venue?.short, f.venue?.city, f.mascot, ...(f.umpires ?? []).map((u) => u.name), ...club(f.home), ...club(f.away)]);
+  }
+  private named = new Set<string>();
 
   constructor(o: BoothOpts) {
     this.rng = o.rng;
@@ -116,6 +125,7 @@ export class Booth {
   setFacts(f: OpeningFacts | null, lead = 0) {
     this.facts = f;
     this.lead = lead;
+    this.nameFacts();
   }
   get openingFacts() {
     return this.facts;
@@ -409,6 +419,11 @@ export class Booth {
 
   private observeNow(ev: RawEvent, c: BoothCtx, t: number) {
     this.ctx = c;
+    for (const n of [c.batter?.name, c.pitcher?.name, ...(c.runnerNames ?? [])])
+      if (n && !this.named.has(n)) {
+        this.named.add(n);
+        this.mem.addNames([n]);
+      }
     this.live = { balls: c.balls, strikes: c.strikes, outs: this.log.outs, batterId: c.batter?.id };
     if (ev.type === 'pitchReleased' || ev.type === 'batterUp') this.epoch++;
     if (ev.type === 'homeRun') this.trotting = true;

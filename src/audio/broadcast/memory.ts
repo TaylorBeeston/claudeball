@@ -1,8 +1,9 @@
 /**
  * The booth's memory of what it has said, across games: every template, story, anecdote and joke it picks is stamped, and the next pick prefers the
  * ones heard longest ago (never-heard first), so a listener who watches game after game hears the whole pool before the same words come round again.
- * Keys are the template strings themselves (before the names are filled in), hashed: "Here comes Smith" and "Here comes Jones" are the same line to
- * the ear, and a template keeps its key when other lines are added around it.
+ * Keys are the template strings themselves, with the game's names and the numbers masked (`shapeOf`), hashed: "Here comes Smith" and "Here comes
+ * Jones" are the same line to the ear, a line written with the names already filled in ("Stay with us. We'll be right back from Kestrel Park.")
+ * is the same line in every park, and a template keeps its key when other lines are added around it.
  *
  * The app keeps one memory for the whole visit and saves it in localStorage (`sharedMemory()`), because every game gets a fresh booth; tests and
  * tools use a plain `new BoothMemory()`. Without a memory the grammar picks at random, as it always did (seeded tests stay deterministic).
@@ -18,7 +19,36 @@ const fnv = (s: string) => {
   return h.toString(36);
 };
 
+const NUMW = /\b(no|zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|once|twice)\b/gi;
+
+/**
+ * A line as the ear remembers it: the names (`names`: players, clubs, the park, the officials), digits and number words masked, so "Brooks sets
+ * them down in order." and "Silva sets them down in order." are one line. The memory keys on this (and so does scripts/booth-variety.ts).
+ */
+export function shapeOf(text: string, names: ReadonlySet<string>): string {
+  return text
+    .split(/(\s+)/)
+    .map((w) => {
+      const core = w.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '').replace(/'s$/, '');
+      return core && names.has(core) ? w.replace(core, '#N') : w;
+    })
+    .join('')
+    .replace(/\d+(\.\d+)?/g, '#')
+    .replace(NUMW, '#')
+    .replace(/(#N[\s,]*)+(and #N)?/g, '#N ')
+    .replace(/\s+/g, ' ')
+    .replace(/ ([.,!?;:])/g, '$1')
+    .trim();
+}
+
+/** a key's part after this mark is an index (a choice within a template), not words: it is not masked */
+export const KEY_SEP = '\u0000';
+
 export class BoothMemory {
+  /** this game's names, masked out of the keys (a line filled with tonight's names is the same line as last night's) */
+  private names = new Set<string>();
+  /** key -> hash for the names as they are now (cleared when they change) */
+  private hashes = new Map<string, string>();
   /** key hash -> the use counter when it was last picked */
   private last = new Map<string, number>();
   private tick = 0;
@@ -43,17 +73,37 @@ export class BoothMemory {
   /** a new game starts (the booth calls it when it is given the memory) */
   beginGame() {
     this.games++;
+    this.names.clear();
+    this.hashes.clear();
     this.save();
+  }
+
+  /** words that are names in this game (players, clubs, the park, the officials): each capitalized word of each string */
+  addNames(strings: Iterable<string | undefined>) {
+    const n = this.names.size;
+    for (const s of strings) for (const w of (s ?? '').split(/[\s,."]+/)) if (/^[A-Z]/.test(w)) this.names.add(w.replace(/'s$/, ''));
+    if (this.names.size !== n) this.hashes.clear();
+  }
+
+  private hash(key: string): string {
+    let h = this.hashes.get(key);
+    if (h === undefined) {
+      const i = key.indexOf(KEY_SEP);
+      h = i < 0 ? fnv(shapeOf(key, this.names)) : fnv(shapeOf(key.slice(0, i), this.names) + key.slice(i));
+      if (this.hashes.size > 20000) this.hashes.clear();
+      this.hashes.set(key, h);
+    }
+    return h;
   }
 
   /** uses since the key was last picked (Infinity: never) */
   age(key: string): number {
-    const v = this.last.get(fnv(key));
+    const v = this.last.get(this.hash(key));
     return v === undefined ? Infinity : this.tick - v;
   }
 
   use(key: string) {
-    const h = fnv(key);
+    const h = this.hash(key);
     this.last.delete(h); // (re-inserted last: the map stays in use order, so the cap drops the oldest)
     this.last.set(h, ++this.tick);
     if (this.last.size > this.cap) this.last.delete(this.last.keys().next().value!);

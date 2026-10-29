@@ -7,7 +7,7 @@
  *
  * Deterministic for a given rng. `expand` also tidies the result (spacing, a capital first letter).
  */
-import { activeMemory } from './memory';
+import { KEY_SEP, activeMemory } from './memory';
 
 export type Slots = Record<string, string | number | undefined | null>;
 
@@ -70,7 +70,7 @@ export function expand(template: string, slots: Slots, rng: () => number): strin
   const picked: string[] = [];
   const choose = (n: { v: Node[][]; id: number }) => {
     if (!mem) return n.v[Math.floor(rng() * n.v.length)];
-    const keys = n.v.map((_, k) => `${template}#${n.id}.${k}`);
+    const keys = n.v.map((_, k) => `${template}${KEY_SEP}${n.id}.${k}`);
     const k = mem.order(keys, rng)[0];
     picked.push(keys[k]);
     return n.v[k];

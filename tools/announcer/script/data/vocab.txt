@@ -39,6 +39,7 @@ aged
 aggressive
 ago
 agree
+agreed
 agrees
 ahead
 ain't
@@ -1050,6 +1051,7 @@ file
 files
 fill
 filled
+filthy
 final
 finally
 find
@@ -2025,6 +2027,7 @@ nachos
 nailed
 name
 named
+nasty
 nate
 nate's
 national
@@ -2613,6 +2616,7 @@ roared
 rob
 rob's
 robbed
+robbery
 roberts
 roberts's
 robinson
@@ -3047,6 +3051,7 @@ smith
 smith's
 smoked
 smokes
+smooth
 snacks
 snagged
 snags
@@ -3339,6 +3344,7 @@ territory
 terry
 terry's
 tested
+textbook
 than
 thank
 thanked
@@ -3732,6 +3738,7 @@ tyler
 tyler's
 typical
 u
+ugh
 um
 umpire
 umpire's
@@ -3751,6 +3758,7 @@ uniform
 uniforms
 unless
 unofficially
+unreal
 until
 unusual
 unwritten

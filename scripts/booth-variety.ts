@@ -20,6 +20,7 @@ import { factsFromGame } from '../src/audio/broadcast/facts';
 import { estimateDuration } from '../src/audio/broadcast/text';
 import { LEX } from '../src/audio/broadcast/lexicon';
 import { paWelcome } from '../src/audio/cues';
+import { shapeOf } from '../src/audio/broadcast/memory';
 import { teamInfo } from '../src/engine/realSimAdapter';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -123,23 +124,7 @@ function playGame(seed: number, innings: number, tempo: 'quick' | 'standard' | '
 
 // ---- analysis ----------------------------------------------------------------------------------------------------------------------
 
-const NUMW = /\b(no|zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|once|twice)\b/gi;
-
-export function shapeOf(text: string, names: Set<string>): string {
-  return text
-    .split(/(\s+)/)
-    .map((w) => {
-      const core = w.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '').replace(/'s$/, '');
-      return core && names.has(core) ? w.replace(core, '#N') : w;
-    })
-    .join('')
-    .replace(/\d+(\.\d+)?/g, '#')
-    .replace(NUMW, '#')
-    .replace(/(#N[\s,]*)+(and #N)?/g, '#N ')
-    .replace(/\s+/g, ' ')
-    .replace(/ ([.,!?;:])/g, '$1')
-    .trim();
-}
+export { shapeOf };
 
 const LEX_KEYS = new Set(Object.keys(LEX));
 export function category(tag: string, imp: string): 'call' | 'reaction' | 'topic' | 'segment' {

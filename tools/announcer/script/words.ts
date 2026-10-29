@@ -98,7 +98,7 @@ export function audioSourceWords(): Set<string> {
       const part = raw.replace(/\$[A-Za-z0-9_]+/g, ' ').replace(/[{}|[\]]/g, ' ');
       if (/[_()=<>/\\]/.test(part) || !/[A-Za-z]{2,}/.test(part)) continue;
       if (!booth && !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(part)) continue;
-      if (booth && !/\s/.test(part.trim()) && !/^[A-Z][a-z]+$|^[A-Za-z]+'[a-z]+$/.test(part.trim())) continue;
+      if (booth && !/\s/.test(part.trim()) && !/^[A-Z][a-z]+$|^[A-Za-z]+'[a-z]+$/.test(part.trim().replace(/[.!?,]+$/, ''))) continue;
       for (const w of wordsOf(normalizeForSpeech(part))) out.add(w);
     }
   }

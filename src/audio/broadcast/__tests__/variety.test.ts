@@ -8,6 +8,9 @@ import { CATCHPHRASES, PROMOS, RUNNING_JOKES } from '../cast';
 import { BoothMemory, pickFresh, withMemory } from '../memory';
 import { say } from '../grammar';
 import { openingSegment, type OpeningFacts } from '../pregame';
+import { breakSegment } from '../segments';
+import { GameLog } from '../gamelog';
+import { shapeOf } from '../memory';
 import { STORY_CAPS } from '../stories';
 import { Booth } from '../booth';
 import { ctxFromRaw } from '../ctx';
@@ -107,7 +110,7 @@ describe('the booth memory', () => {
 
   it('say() cycles through a whole pool before it repeats a template', () => {
     const m = new BoothMemory();
-    const pool = ['One.', 'Two.', 'Three.', 'Four.', 'Five.', 'Six.'];
+    const pool = ['Alpha.', 'Bravo.', 'Charlie.', 'Delta.', 'Echo.', 'Foxtrot.'];
     const r = mulberry32(9);
     const got = withMemory(m, () => pool.map(() => say(pool, {}, r)));
     expect(new Set(got).size).toBe(pool.length);
@@ -139,6 +142,28 @@ describe('the booth memory', () => {
     for (const k of ['a', 'b', 'c', 'd']) m.use(k);
     expect(m.age('a')).toBe(Infinity);
     expect(m.age('d')).toBeLessThan(Infinity);
+  });
+
+  it('a line filled with one game\'s names is the same line in the next game: the breaks rotate their wording across clubs and parks', () => {
+    const mem = new BoothMemory();
+    const backs: string[] = [];
+    const dues: string[] = [];
+    for (let seed = 1; seed <= 7; seed++) {
+      const g: any = createGame({ seed });
+      const f = factsFromGame(g, String(seed), 'night', false)!;
+      mem.beginGame();
+      const names = [f.venue?.name, f.venue?.short, f.home.name, f.away.name, ...f.home.lineup.map((x) => x.name), ...f.away.lineup.map((x) => x.name)];
+      mem.addNames(names);
+      const seg = withMemory(mem, () =>
+        breakSegment({ facts: f, log: new GameLog(), inning: 3, half: 'top', score: { home: 1, away: 2 }, sec: 60, dueUp: f.home.lineup.slice(0, 3).map((x) => ({ id: x.name, name: x.name })), name: () => undefined, n: 2 }),
+      );
+      const masked = new Set(names.flatMap((n) => (n ?? '').split(/\s+/)));
+      backs.push(shapeOf(seg.turns.find((t) => t.block === 'back')!.text, masked));
+      dues.push(shapeOf(seg.turns.find((t) => t.block === 'due')!.text, masked));
+    }
+    // seven "be right back" forms, seven games: every one once (the names in "from Kestrel Park" do not make it a new line)
+    expect(new Set(backs).size).toBe(7);
+    expect(new Set(dues).size).toBeGreaterThanOrEqual(6);
   });
 
   it('with one memory across games, the opening does not repeat its wording until the pool is used up', () => {
