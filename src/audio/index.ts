@@ -263,7 +263,10 @@ export class AudioController {
     // a hidden tab (another app on a phone, a background tab) renders no sound: the park graph would otherwise keep a share of a CPU core
     // busy (and the paused game's crowd murmur would go on playing in the background); it resumes when the page is shown again
     if (typeof document !== 'undefined') {
-      const vis = () => void this.mixer.setHidden(document.hidden);
+      const vis = () => {
+        void this.mixer.setHidden(document.hidden);
+        if (document.hidden) this.booth.memory.save(); // (a tab closed on a phone may never see dispose)
+      };
       document.addEventListener('visibilitychange', vis);
       this.offs.push(() => document.removeEventListener('visibilitychange', vis));
     }

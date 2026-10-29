@@ -172,9 +172,13 @@ function analyse(chains: GameOut[][], top: number) {
   let games = 0;
   let minutes = 0;
   const perGameIndex: { lines: number; heard: number }[] = [];
+  /** not-call lines from game 2 on: heard in the game just before, and how many times each was heard in the earlier games (mean) */
+  const recur = { lines: 0, prevGame: 0, priorUses: 0, heard3: 0 };
   chains.forEach((chain, ci) => {
     const heardShape = new Set<string>();
     const heardExact = new Set<string>();
+    const shapeUses = new Map<string, number>();
+    let prevShapes = new Set<string>();
     chain.forEach((g, gi) => {
       games++;
       minutes += g.minutes;
@@ -203,6 +207,13 @@ function analyse(chains: GameOut[][], top: number) {
         if (cat !== 'call') {
           pg.lines++;
           if (heardShape.has(shape)) pg.heard++;
+          if (gi > 0) {
+            recur.lines++;
+            if (prevShapes.has(shape)) recur.prevGame++;
+            const u = shapeUses.get(shape) ?? 0;
+            recur.priorUses += u;
+            if (u >= 3) recur.heard3++;
+          }
         }
         inExact.add(l.text);
         inShape.add(shape);
@@ -218,6 +229,8 @@ function analyse(chains: GameOut[][], top: number) {
         tagUse.set(l.tag, tu);
       }
       for (const s of gameShapes) heardShape.add(s);
+      prevShapes = new Set(g.lines.filter((l) => category(l.tag, l.imp) !== 'call').map((l) => shapeOf(l.text, names)));
+      for (const l of g.lines) if (category(l.tag, l.imp) !== 'call') { const sh = shapeOf(l.text, names); shapeUses.set(sh, (shapeUses.get(sh) ?? 0) + 1); }
       for (const l of g.lines) heardExact.add(l.text);
     });
   });
@@ -233,6 +246,8 @@ function analyse(chains: GameOut[][], top: number) {
   }
   out.push('');
   out.push(`Conversation topics: the booth looked for one ${(asks / games).toFixed(0)} times a game and had nothing ${pctf(none, asks)} % of the time.`);
+  out.push('');
+  out.push(`Not-call lines from game 2 on: ${pctf(recur.prevGame, recur.lines)} % were said in the game just before; on average each had been said ${(recur.priorUses / Math.max(1, recur.lines)).toFixed(1)} times in the earlier games of the chain; ${pctf(recur.heard3, recur.lines)} % three times or more.`);
   out.push('');
   out.push('Not-call lines heard before, by game number in the chain (shape): ' + perGameIndex.map((p, i) => `g${i + 1} ${pctf(p.heard, p.lines)} %`).join(', '));
   out.push('');

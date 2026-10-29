@@ -18,7 +18,7 @@ share the booth's memory between games when it has one, as a person watching gam
 
 ## Before (main at 17016c2)
 
-30 games in 3 chains of 10, 107 min a game on average, 893 lines a game (495 not calls)
+30 games in 3 chains of 10, NaN min a game on average, 893 lines a game (495 not calls)
 
 | lines | per game | exact repeat within the game | shape repeat within the game | shape heard in an earlier game of the chain | ... in the second half of the chain |
 |---|---|---|---|---|---|
@@ -29,7 +29,9 @@ share the booth's memory between games when it has one, as a person watching gam
 | topic | 395 | 18.3 % | 40.2 % | 78.8 % | 93.1 % |
 | segment | 86 | 7.7 % | 34.3 % | 74.0 % | 87.3 % |
 
-Conversation topics: the booth looked for one (it asks again every 1.5 s while it has nothing, so this is a relative number) 1166 times a game and had nothing 83.8 % of the time.
+Conversation topics: the booth looked for one NaN times a game and had nothing 0.0 % of the time.
+
+Not-call lines from game 2 on: 65.9 % were said in the game just before; on average each had been said 8.3 times in the earlier games of the chain; 66.6 % three times or more.
 
 Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 67.4 %, g3 78.4 %, g4 84.3 %, g5 88.2 %, g6 89.6 %, g7 90.7 %, g8 93.7 %, g9 92.9 %, g10 93.8 %
 
@@ -237,3 +239,304 @@ Thinnest pools (tags by uses per distinct shape, at least 10 uses):
 | open.hello | segment | 29 | 3 | 9.7 |
 | tightLate | topic | 168 | 19 | 8.8 |
 
+## After (this branch)
+
+Same harness, same seeds, same games (the sim does not depend on the booth). With the booth's memory shared along each chain, as the app does
+(one memory per visit, kept in localStorage):
+
+30 games in 3 chains of 10, 107 min a game on average, 837 lines a game (435 not calls)
+
+| lines | per game | exact repeat within the game | shape repeat within the game | shape heard in an earlier game of the chain | ... in the second half of the chain |
+|---|---|---|---|---|---|
+| all | 837 | 6.1 % | 19.4 % | 68.4 % | 83.8 % |
+| everything but calls | 435 | 4.5 % | 15.3 % | 67.4 % | 84.5 % |
+| call | 402 | 7.9 % | 23.8 % | 69.4 % | 83.0 % |
+| reaction | 15 | 1.4 % | 1.4 % | 62.3 % | 82.7 % |
+| topic | 332 | 5.8 % | 16.4 % | 71.0 % | 88.2 % |
+| segment | 88 | 0.2 % | 13.7 % | 54.7 % | 71.4 % |
+
+Conversation topics: the booth looked for one 1327 times a game and had nothing 88.3 % of the time.
+
+Not-call lines from game 2 on: 43.9 % were said in the game just before; on average each had been said 3.6 times in the earlier games of the chain; 44.8 % three times or more.
+
+Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 45.9 %, g3 60.7 %, g4 69.1 %, g5 77.4 %, g6 78.5 %, g7 82.8 %, g8 86.2 %, g9 86.3 %, g10 89.2 %
+
+Top repeaters (call): uses across all games, games it was heard in
+
+| uses | games | tag | line (shape) |
+|---|---|---|---|
+| 98 | 30/30 | ball | Ball #, just off the edge. |
+| 97 | 30/30 | ball | Out of the zone, ball #. |
+| 94 | 30/30 | ball | Misses the zone, ball #. |
+| 94 | 30/30 | ball | Ball #, and #N stays patient. |
+| 93 | 30/30 | ball | #N does not bite. Ball #. |
+| 93 | 30/30 | ball | Nothing doing there. Ball #. |
+| 92 | 30/30 | ball | That # is a ball, number #. |
+| 92 | 30/30 | ball | He takes it, ball #. |
+| 91 | 30/30 | ball | He lays off it, ball #. |
+| 89 | 30/30 | ball | Takes it for ball #. |
+| 89 | 30/30 | ball | He holds back, ball #. |
+| 86 | 30/30 | ball | A little too fine, ball #. |
+| 85 | 30/30 | ball | Ball #, and the count is # and #. |
+| 85 | 30/30 | ball | Off the plate, ball #. |
+| 83 | 30/30 | ball | He does not bite. Ball #. |
+| 58 | 30/30 | strikeout.looking | Strike #, looking. |
+| 87 | 29/30 | ball | Not quite, ball #. |
+| 86 | 29/30 | ball | He spits on it. Ball #. |
+| 64 | 29/30 | batter.up | #N to the plate. |
+| 61 | 29/30 | batter.up | #N is up. |
+| 58 | 29/30 | batter.up | #N now. |
+| 45 | 29/30 | ball | Ball #, and #N lets it go. |
+| 45 | 29/30 | strike.called | Gets the call, strike #. |
+| 45 | 29/30 | strike.called | Taken for strike #. |
+| 44 | 29/30 | strike.called | Taken, and that is strike #. |
+| 44 | 29/30 | ball | Not this time, ball #. |
+| 43 | 29/30 | batter.up | In the box, #N. |
+| 42 | 29/30 | strike.called | In there for strike #. |
+| 36 | 29/30 | strike.foul | That # is foul. Strike #. |
+| 63 | 28/30 | batter.up | Now it is #N. |
+
+Top repeaters (reaction): uses across all games, games it was heard in
+
+| uses | games | tag | line (shape) |
+|---|---|---|---|
+| 15 | 15/30 | phrase.bis.k | That is biscuits and gravy right there. |
+| 15 | 15/30 | phrase.bis.k | Mm-hmm. Biscuits and gravy. |
+| 13 | 13/30 | react.k | Could not catch up to it. |
+| 12 | 12/30 | react.k | Well pitched. |
+| 12 | 12/30 | react.k | He had # answer for that. |
+| 12 | 12/30 | react.k | Ooh. |
+| 11 | 11/30 | react.k | He set that up beautifully. |
+| 11 | 11/30 | react.k | Never had a chance. |
+| 11 | 11/30 | react.k | That is a pitcher pitching. |
+| 11 | 11/30 | react.k | Good pitch. |
+| 11 | 11/30 | react.k | Wipeout pitch. |
+| 11 | 11/30 | react.k | Put him away. |
+| 11 | 11/30 | react.k | Nasty. |
+| 10 | 10/30 | react.k | Great sequence there. |
+| 10 | 10/30 | react.out | That is how you do it. |
+| 10 | 10/30 | react.k | Got him. |
+| 10 | 9/30 | react.out | He was right there. |
+| 9 | 9/30 | react.hit | Good, solid contact. |
+| 9 | 9/30 | react.hit | Short and quick. |
+| 9 | 9/30 | react.hit | Squared it up. |
+| 9 | 9/30 | react.out | Good play. |
+| 9 | 9/30 | react.k | That is a tough at-bat. |
+| 9 | 9/30 | react.k | Filthy. |
+| 9 | 9/30 | react.hit | He was waiting on that #. |
+| 8 | 8/30 | react.hit | Good swing. |
+| 8 | 8/30 | react.hit | Nice piece of hitting. |
+| 8 | 8/30 | react.hit | Beautiful swing. |
+| 8 | 8/30 | phrase.bis.hr | That is a grown-man swing. |
+| 8 | 8/30 | react.hit | Stayed on it. |
+| 8 | 8/30 | react.out | Smooth. |
+
+Top repeaters (topic): uses across all games, games it was heard in
+
+| uses | games | tag | line (shape) |
+|---|---|---|---|
+| 97 | 30/30 | batterVsPitcher | #N is # for # against #N tonight. |
+| 83 | 30/30 | fastballStreak | That is # fastballs in a row from #N. |
+| 74 | 30/30 | pitchMix | About # percent fastballs from #N so far. |
+| 63 | 30/30 | n.outs | # out here in the #. |
+| 55 | 30/30 | n.outs | # down, # to go. |
+| 54 | 30/30 | rattled | #N has put a runner on in # of the last # batters. |
+| 50 | 30/30 | batterVsPitcher | This is the # look at #N for #N and so far # hits in # trips. |
+| 49 | 30/30 | batterVsPitcher | This is the # look at #N for #N with # hits in # trips. |
+| 48 | 30/30 | twoOutRsp | # out, runner in scoring position. |
+| 47 | 30/30 | n.inning | Long way to go. |
+| 40 | 30/30 | n.inning | Lots of baseball to play. |
+| 39 | 30/30 | pitchMix | #N has thrown the fastball # percent of the time tonight. |
+| 37 | 30/30 | pitchMix | #N has thrown the heater # percent of the time tonight. |
+| 60 | 29/30 | thirdTime | # look at #N for #N. |
+| 59 | 29/30 | thirdTime | The # time #N has seen #N tonight. |
+| 57 | 29/30 | coldBat | #N has struck out # tonight. |
+| 57 | 29/30 | coldBat | # strikeouts for #N so far. |
+| 48 | 29/30 | twoOutRsp | A runner in scoring position with # away. |
+| 47 | 29/30 | twoOutRsp | # down, and a runner in scoring position. |
+| 46 | 29/30 | firstPitchBreaking | And now the next pitch matters. |
+| 44 | 29/30 | n.inning | Plenty of baseball left. |
+| 44 | 29/30 | n.lead | #N are up #. |
+| 43 | 29/30 | fastballStreak | #N has thrown # straight fastballs now. |
+| 43 | 29/30 | cruising | #N has retired # in a row. |
+| 42 | 29/30 | fastballStreak | #N has gone with # straight fastballs now. |
+| 40 | 29/30 | firstPitchBreaking | We will see what comes next. |
+| 39 | 29/30 | n.inning | Still a lot of game ahead. |
+| 35 | 29/30 | sameHand | The breaking ball moves away from the hitter here. |
+| 54 | 28/30 | zeroes | # scoreless innings in a row for #N. |
+| 52 | 28/30 | zeroes | #N pitching has put up # zeroes in a row. |
+
+Top repeaters (segment): uses across all games, games it was heard in
+
+| uses | games | tag | line (shape) |
+|---|---|---|---|
+| 30 | 30/30 | break.back | Stay with us. We'll be right back from #N. |
+| 79 | 28/30 | break.due | For the #N in the bottom of the #, it will be #N. |
+| 69 | 28/30 | break.pitcher | The line on #N so far: # innings, # hits, # strikeouts, # pitches. |
+| 67 | 26/30 | break.back | A quick break, and we'll be right back with the top of the #. |
+| 61 | 26/30 | break.due | Due up for the #N in the bottom of the #: #N. |
+| 60 | 26/30 | break.due | Coming up for the #N in the bottom of the #: #N. |
+| 54 | 26/30 | break.pitcher | #N through # innings: # hits, # strikeouts, # pitches. |
+| 60 | 25/30 | break.due | #N are due up for the #N in the bottom of the #. |
+| 54 | 24/30 | break.pitcher | #N has gone # innings on # pitches: # hits and # strikeouts. |
+| 23 | 23/30 | break.pitcher | Efficient. Nothing wasted. |
+| 23 | 23/30 | break.pitcher | Hitters are not getting comfortable against him. |
+| 23 | 22/30 | break.pitcher | I would have loved catching that, Lyle. |
+| 21 | 21/30 | open.starter.home | On the mound for the #N the #-year-old right-hander. |
+| 21 | 19/30 | break.pitcher | That's a good night's work so far, Lyle. |
+| 20 | 19/30 | break.pitcher | He has been in command. Nothing has come easy against him. |
+| 20 | 19/30 | break.pitcher | He is making it look easy. |
+| 19 | 19/30 | break.back | Time for a break. Back in a moment. |
+| 17 | 17/30 | break.back | We'll be right back. |
+| 17 | 17/30 | break.back | Back with more in a moment. |
+| 17 | 17/30 | break.pitcher | Strike #, all night long. That is how you do it. |
+| 17 | 17/30 | break.back | Stay right there. |
+| 22 | 16/30 | break.clock | It's #-# here at #N # degrees. |
+| 16 | 16/30 | break.back | Don't go anywhere. More baseball from #N after this. |
+| 20 | 15/30 | break.clock | It's #-#-# here at #N # degrees. |
+| 15 | 15/30 | break.promo | It is #-dollar hot dog night at #N and judging by the line, word got out. |
+| 15 | 15/30 | break.pitcher | He is ahead of everybody. That is the whole secret. |
+| 18 | 14/30 | break.due | For the #N in the top of the #, it will be #N. |
+| 18 | 14/30 | break.due | Coming up for the #N in the top of the #: #N. |
+| 16 | 14/30 | break.clock | The clock at #N says #-#, and it is # degrees. |
+| 13 | 13/30 | close.bat | #N went # for # with # RBI and a home run. |
+
+Thinnest pools (tags by uses per distinct shape, at least 10 uses):
+
+| tag | category | uses | distinct shapes | uses per shape |
+|---|---|---|---|---|
+| batter.up | call | 1185 | 23 | 51.5 |
+| fielded.clean | call | 579 | 12 | 48.3 |
+| n.outs | topic | 330 | 10 | 33.0 |
+| clockLow | topic | 205 | 7 | 29.3 |
+| advance | call | 249 | 9 | 27.7 |
+| n.inning | topic | 358 | 14 | 25.6 |
+| strike.foul | call | 603 | 24 | 25.1 |
+| contact.grounder | call | 505 | 23 | 22.0 |
+| ball | call | 2449 | 113 | 21.7 |
+| secondGuess | topic | 300 | 15 | 20.0 |
+| break.back | segment | 199 | 10 | 19.9 |
+| safe | call | 361 | 21 | 17.2 |
+| sameHand | topic | 418 | 25 | 16.7 |
+| strike.swinging | call | 573 | 35 | 16.4 |
+| zeroes | topic | 211 | 13 | 16.2 |
+| n.lead | topic | 262 | 17 | 15.4 |
+| phrase.bis.k | reaction | 30 | 2 | 15.0 |
+| visitTangent | topic | 90 | 6 | 15.0 |
+| wall | call | 118 | 8 | 14.8 |
+| strike.foul.two | call | 290 | 20 | 14.5 |
+| strike.called | call | 1104 | 79 | 14.0 |
+| joke.infieldSingle | topic | 121 | 9 | 13.4 |
+| fastballStreak | topic | 496 | 37 | 13.4 |
+| run | call | 240 | 18 | 13.3 |
+| loaded | topic | 196 | 15 | 13.1 |
+| twoOutRsp | topic | 373 | 30 | 12.4 |
+| break.due | segment | 513 | 42 | 12.2 |
+| cruising | topic | 375 | 31 | 12.1 |
+| longAtBat | topic | 145 | 12 | 12.1 |
+| sequence | topic | 704 | 60 | 11.7 |
+| firstPitchBreaking | topic | 668 | 57 | 11.7 |
+| strikeout.count | call | 128 | 11 | 11.6 |
+| hit.fc | call | 104 | 9 | 11.6 |
+| break.pitcher | segment | 503 | 44 | 11.4 |
+| n.score | topic | 168 | 15 | 11.2 |
+| react.k | reaction | 164 | 15 | 10.9 |
+| contact.pop | call | 184 | 17 | 10.8 |
+| batterVsPitcher | topic | 383 | 36 | 10.6 |
+| joke.nineHomers | topic | 123 | 12 | 10.3 |
+| clockRule | topic | 88 | 9 | 9.8 |
+| coldBat | topic | 244 | 25 | 9.8 |
+| thirdTime | topic | 243 | 25 | 9.7 |
+| pitch.change | call | 120 | 13 | 9.2 |
+| anecdote.lyle.lineupCard | topic | 18 | 2 | 9.0 |
+| powerGrade | topic | 132 | 15 | 8.8 |
+| break.clock | segment | 114 | 13 | 8.8 |
+| threeBreakers | topic | 127 | 15 | 8.5 |
+| pitchMix | topic | 298 | 36 | 8.3 |
+| callback | topic | 430 | 52 | 8.3 |
+| contact.grounder.hard | call | 111 | 14 | 7.9 |
+| hotBat | topic | 178 | 23 | 7.7 |
+| rattled | topic | 232 | 30 | 7.7 |
+| tightLate | topic | 170 | 22 | 7.7 |
+| react.hit | reaction | 112 | 15 | 7.5 |
+| countTendency | topic | 476 | 64 | 7.4 |
+| strikeout.swinging | call | 368 | 53 | 6.9 |
+| walk | call | 161 | 24 | 6.7 |
+| break.joke.aircon | segment | 52 | 8 | 6.5 |
+| strikeout.looking | call | 164 | 26 | 6.3 |
+| break.promo | segment | 94 | 15 | 6.3 |
+
+With `--memory off` (a fresh booth memory every game: the wider pool and the caps alone):
+
+30 games in 3 chains of 10, 107 min a game on average, 839 lines a game (436 not calls)
+
+| lines | per game | exact repeat within the game | shape repeat within the game | shape heard in an earlier game of the chain | ... in the second half of the chain |
+|---|---|---|---|---|---|
+| all | 839 | 5.6 % | 18.5 % | 69.7 % | 84.4 % |
+| everything but calls | 436 | 4.1 % | 14.4 % | 69.3 % | 84.9 % |
+| call | 404 | 7.2 % | 22.9 % | 70.2 % | 83.9 % |
+| reaction | 15 | 0.7 % | 0.7 % | 63.6 % | 84.4 % |
+| topic | 332 | 5.3 % | 15.5 % | 72.7 % | 88.0 % |
+| segment | 89 | 0.2 % | 12.7 % | 57.2 % | 73.1 % |
+
+Conversation topics: the booth looked for one 1328 times a game and had nothing 88.3 % of the time.
+
+Not-call lines from game 2 on: 50.8 % were said in the game just before; on average each had been said 3.6 times in the earlier games of the chain; 45.9 % three times or more.
+
+Not-call lines heard before, by game number in the chain (shape): g1 0.0 %, g2 53.9 %, g3 66.1 %, g4 72.4 %, g5 78.1 %, g6 79.8 %, g7 83.6 %, g8 86.2 %, g9 86.7 %, g10 88.3 %
+
+## Before and after, in short
+
+| not-call lines (conversation, segments, reactions) | before | after, no memory | after, with memory |
+|---|---|---|---|
+| lines a game | 495 | 436 | 435 |
+| exact words repeated within the game | 16.7 % | 4.1 % | 4.5 % |
+| same line (names masked) repeated within the game | 38.8 % | 14.4 % | 15.3 % |
+| said in the game just before (games 2-10) | 65.9 % | 50.8 % | 43.9 % |
+| times each line had been said in the earlier games (mean) | 8.3 | 3.6 | 3.6 |
+| heard three times or more before | 66.6 % | 45.9 % | 44.8 % |
+| heard at least once in an earlier game | 77.8 % | 69.3 % | 67.4 % |
+
+How to read it: "heard at least once before" saturates once the pool has gone round (by game 10 most lines have been said once somewhere), so
+it moves least. What a listener memorizes is how *often* a line comes back: before this pass a conversation line had been heard eight times in
+the games before; now about three and a half, and the memory keeps the one from last game from coming straight back.
+
+The talk is about 12 % thinner (495 -> 435 not-call lines a game, conversation topics 395 -> 332): the stories that fired on almost every
+plate appearance (a first-pitch breaking ball, two fastballs and a change, righty on righty, "two down, one to go") are now capped per game
+(`STORY_CAPS` in `stories.ts`), and the booth's own anecdotes (about 7 a game, 18 lines) and the new running jokes fill part of that time.
+If the booth feels too quiet, raise the caps in `STORY_CAPS` or shorten `ANECDOTE_GAP` / raise `MAX_ANECDOTES` in `booth.ts`.
+
+## What changed
+
+- **The memory** (`src/audio/broadcast/memory.ts`): every template, every `{a|b}` choice, every story, anecdote and running joke the booth
+  picks is stamped; the next pick prefers the never-heard, then the longest-ago (the freshest third shuffled, so it is not a fixed rotation).
+  Keys are the template strings, so "Here comes Smith" and "Here comes Jones" count as one line. The app keeps one memory for the visit and
+  saves it in `localStorage` (`claudeball.booth.memory.v1`, about 5000 keys at most, a few tens of KB) every 150 picks, when the tab is hidden
+  and when a game is torn down. Without a memory (tests calling the grammar directly) the old random choice is unchanged.
+- **The booth's own stories** (`anecdotes.ts`): about 85 exchanges between Lyle and Biscuit that are not about tonight's players (so they can
+  never be wrong about them): Biscuit's eleven years behind the plate, his nine home runs, the bullpen phone, Lyle's pencils and scorebooks,
+  press boxes, the park. Each fits a kind of moment (the catcher batting, a mound visit, a pitching change, a blowout, a scoreless game,
+  extra innings, a day or a night game, after a steal, a home run, an error, a double play, a big strikeout night, or any long lull).
+- **Running jokes** (`cast.ts`): seven new ones with stages that build through a game (Lyle's pencils running out, Biscuit's diet, the dot
+  race, the booth air conditioning, the catcher's infield single, what to say on a mound visit, the bullpen phone). Four begin per game at most,
+  the ones heard longest ago. Nine more park promos.
+- **Wider pools** for the most-heard lines: batter intros (8 -> 23 forms heard in the 30 games), fielded balls, balls and strikes, fouls, grounders, runner advances, the
+  folded count, the analyst's quick reactions and pools for the home-run and robbed-homer reactions (were a fixed "Wow!" / "Oh!"); the
+  answers of the busiest stories; break recaps, pitcher lines, "be right back" / "we're back" and the due-up line; the closing's final,
+  records, game ball and sign-off; the opening's welcome, hello, weather, records, park, mascot, PA and handoff.
+- **Callbacks**: a hitter's last trip now also recalls a double play, a sacrifice fly, reaching on an error or two walks; a fielder who made an
+  error is reminded of it when he bats; the clubs' records coming in are set against tonight's score.
+- **The PA** names the club the first time a player is announced ("Now batting for the Falcons, number 7, ...", "Now pitching for your
+  Kings, ...", "Leading off for ..."), then the usual short form.
+- **The custom voice's word list** (`tools/announcer/script/data/vocab.txt`, `npm run announcer:vocab`) now reads the booth's folder (it read
+  only `src/audio/*.ts`), the generated parks, officials and managers, and the forms the booth builds (possessives, ages, clock times):
+  1,627 -> 3,975 words. A test fails when a line the booth can say has a word missing (the custom voice drops a whole line on an unknown word).
+- **The recording script** (`npm run announcer:script`) takes the booth's written lines (anecdotes, running jokes, catchphrases, promos;
+  469 lines, about 45 minutes of audio) into new extended sessions E7-E10; no existing line changed id or session.
+
+## Not changed
+
+- The umpire's calls ("Ball!", "Strike three!") and the PA's short forms: formulaic on purpose, as in a real park.
+- The catchphrases (rationed, and they are the characters' signatures).
+- Calls are still the most repeated lines (a ball is a ball): 23 % of call shapes repeat within a game. Their pools are wider, and the memory
+  rotates them.

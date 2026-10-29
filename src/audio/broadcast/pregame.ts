@@ -276,7 +276,7 @@ export function openingSegment(f: OpeningFacts, o: OpeningOpts): Segment {
             ? say([`Hot one. Catchers lose about five pounds on a day like this, ${P.first}. I never did, but that is what they tell me.`, 'Hot. Somebody bring the catchers a towel.', 'You can smell the hot dogs from here in this heat.', `Under all that gear, ${P.first}, the catcher is in a sauna tonight.`], {}, r)
             : wx.tempF <= 60
               ? say(['A little chilly. The bats sting on a night like this, ask anybody who ever hit off the end of one.', 'Cool one. Hitters hate it, pitchers do not mind a bit.', `Bring a jacket, folks. ${P.first} brought two.`], {}, r)
-              : say(['Perfect weather for baseball.', `You could not order it up any better, ${P.first}.`, 'Nice night for it.', 'Shirt-sleeve weather. My favourite kind.', 'Just right. No excuses for anybody.'], {}, r),
+              : say(['Perfect weather for baseball.', `You could not order it up any better, ${P.first}.`, evening ? 'Nice night for it.' : 'Nice day for it.', 'Shirt-sleeve weather. My favourite kind.', 'Just right. No excuses for anybody.'], {}, r),
       },
     ],
   });
