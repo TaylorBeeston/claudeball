@@ -262,6 +262,10 @@ Sources: `assets/src/face_style.py` (the tables: FACE_STYLE, the 20 FACE_KEYS, w
 - **Close-ups hold**: every director person-shot (`broadcast` `shot` start with a subject) calls `Players.faceShot`: the subject's reaction
   (running, or ended within 0.5 s) holds through the shot. Person-shots are rare (4 in 2400 game seconds of seed 24 at broadcast tempo; the one
   that met a reaction, a ball kid's delight, held). The director does not yet cut to the reacting player; that is a director change.
+  **Done in t-0027**: the director's reaction shot (`src/engine/reactionShots.ts`, shot `reaction`) cuts after a big moment to the person
+  whose face shows it, while it runs: it asks the face (`FaceState.reactionInfo()`, through `Players.faceReaction`) and only cuts to a reaction
+  the close-up will hold. Measured over whole games with `npx tsx tools/director/measure.ts` (the sim, the director and this emotion model in
+  Node).
 - **Eyes lead the head**: the look-at's head spring lags, the eyes cover the rest of the angle (existing), plus the saccade, now kept inside 70 %
   of the eyes' range (no parked side-eye).
 - **Left-handers**: checked on REN-away-b9 (seed 24, ~237 s) against a right-hander from the pitcher's eye point: both look at the pitcher. The eye

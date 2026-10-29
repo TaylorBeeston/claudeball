@@ -207,6 +207,8 @@ export class Hud {
   /** the lower-third for B-roll shots about a person (on deck, pitcher's face, ...) */
   private subj = el('div', 'cb-card subj');
   private subjTimer = 0;
+  /** seconds the regular name card stays out of a reaction close-up */
+  private quietTimer = 0;
   private subjOn = false;
   private hit = el('div', 'cb-hit');
   private tick = el('div', 'cb-tick');
@@ -657,6 +659,12 @@ export class Hud {
     const card = shot ? cardFor(shot, state) : null;
     if (!card) {
       if (this.subjOn) this.hideSubject();
+      // a reaction close-up: no card over the face, the regular name card included (at a pitching change it names the pitcher coming in, over
+      // the face of the one going out)
+      if (shot?.kind === 'reaction') {
+        this.card.classList.add('suppressed');
+        this.quietTimer = (shot.hold ?? 3) + 0.2;
+      }
       return;
     }
     this.fillSubject(card);
@@ -724,6 +732,7 @@ export class Hud {
     if (!this.active) return;
     this.lastState = s;
     if (this.subjOn && (this.subjTimer -= dt) < 0) this.hideSubject();
+    if (this.quietTimer > 0 && (this.quietTimer -= dt) <= 0 && !this.subjOn) this.card.classList.remove('suppressed');
     for (let i = this.pendingCaps.length - 1; i >= 0; i--) {
       const c = this.pendingCaps[i];
       if ((c.delay -= dt) <= 0) {

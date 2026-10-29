@@ -188,6 +188,17 @@ export class Engine {
       this.sim.emit({ type: 'broadcast', event: e });
     };
     this.director.faceLookup = (id, out) => this.players.faceOf(id, out);
+    this.director.reactionLookup = (id) => this.players.faceReaction(id);
+    // the key lights on a face once the towers are on (dusk, night: stadiumLights.ts), with the sun while it is still up; by day none (no check):
+    // the sky's fill lights a face turned away from the sun well enough (a pitcher facing home under a sun over third base reads fine)
+    this.director.keyLights = (p) => {
+      if (this.env.todName === 'day') return null;
+      const out = this.lights.lightsAt(p);
+      const sun = this.env.tod.sunIntensity;
+      // the low dusk sun against the towers' illuminance there (both light the field; nearer a tower, the tower more)
+      if (sun > 1) out.push({ dir: this.env.sunDir.clone(), w: Math.max(...out.map((k) => k.w), 1e-3) * (sun / 3) });
+      return out;
+    };
     // the director's `shot` events drive the lower-third card of a person-shot (on deck, walk-up, face close-up, ...): shown with the shot, hidden at its end; no per-frame work
     this.broadcast.on((e) => {
       if (e.type !== 'shot') return;
@@ -195,7 +206,7 @@ export class Engine {
       if (e.phase === 'start' && e.subjectId) this.players.faceShot(e.subjectId, e.holdMs / 1000);
       // its group shots of a moment: the faces in them are shown (and the moment shown again)
       if (e.phase === 'start' && (e.kind === 'dugoutReaction' || e.kind === 'moundHuddle')) this.players.faceGroupShot(e.kind, this.sim.state, e.holdMs / 1000);
-      const card = e.phase === 'start' && e.card && e.subjectId;
+      const card = e.phase === 'start' && (e.card || e.kind === 'reaction') && e.subjectId;
       this.hud?.subjectShot(card ? { kind: e.kind, subject: e.subjectId, hold: e.holdMs / 1000 } : null, this.sim.state);
     });
 

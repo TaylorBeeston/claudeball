@@ -176,6 +176,15 @@ interface Running {
 /** keep this many non-zero keys at most (three's morph cost is per active target); the smallest are dropped */
 export const MAX_ACTIVE = 10;
 
+/** the running reaction, for the broadcast director (FaceState.reactionInfo) */
+export interface ReactionInfo {
+  name: ReactionName;
+  strength: number;
+  age: number;
+  left: number;
+  pendingIn: number | null;
+}
+
 export class FaceState {
   readonly pers: Personality;
   /** mood now and its goal (valence -1..1, arousal 0..1) */
@@ -238,6 +247,17 @@ export class FaceState {
       this.cur = run;
       if (p.mood) this.moodShift(p.mood[0] * Math.min(1, intensity), p.mood[1] * Math.min(1, intensity));
     } else if (!this.next || p.priority >= this.next.p.priority) this.next = run;
+  }
+
+  /**
+   * The running reaction for the broadcast director (a cut to the reacting person): its name, strength (the amplitude after the personality), seconds
+   * since it began and seconds of its hold left (< 0: releasing); `pendingIn`: seconds until a delayed one starts (a chain: grin, then shout), else null.
+   */
+  reactionInfo(): ReactionInfo | null {
+    const c = this.cur;
+    if (!c) return null;
+    const pendingIn = this.delayed.length ? Math.min(...this.delayed.map((d) => d.at)) - this.clock : null;
+    return { name: c.name, strength: c.amp, age: c.t, left: c.p.attack + c.hold - c.t, pendingIn };
   }
 
   /** Keep the running reaction at full for at least `sec` more (a close-up of this person): it started within `within` s, or is still rising / held. */

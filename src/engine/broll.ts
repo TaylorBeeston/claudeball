@@ -86,7 +86,8 @@ export interface PlanContext {
   lull: { kind: LullKind; remaining: number };
   available: Set<BrollKind>;
   /** the last shots shown, newest last */
-  recent: { kind: BrollKind; subject?: string }[];
+  /** (an entry without a kind: a shot about that person that was not B-roll, a reaction shot: it keeps the subject from coming back at once) */
+  recent: { kind?: BrollKind; subject?: string }[];
   /** deterministic randomness: any number that changes per planning step */
   seed: number;
   /** a run / home run / big play just happened: open with the dugout that is celebrating */

@@ -386,7 +386,7 @@ export interface GameLike {
 export type ShotLabel =
   | 'walkup' | 'ondeck' | 'faceCloseup' | 'shakeOff' | 'catcherSigns' | 'leadOff' | 'coachSigns' | 'managerWalk' | 'relieverJog' | 'relieverFace'
   | 'dugout' | 'dugoutReaction' | 'bullpen' | 'bullpenDoor' | 'crowd' | 'scoreboard' | 'aerial' | 'sky' | 'moundWide' | 'moundHuddle' | 'umpires' | 'infieldDrill' | 'outfieldCatch'
-  | 'coachSend' | 'kidToss';
+  | 'coachSend' | 'kidToss' | 'reaction';
 
 export type BroadcastEvent =
   | { type: 'cameraCut'; kind: 'cut' | 'dissolve' | 'wipe' | 'replay' | 'broll'; from: string; to: string; durationMs: number; toBroll: boolean; simTime: number }

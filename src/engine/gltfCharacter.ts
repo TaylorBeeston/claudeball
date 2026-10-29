@@ -1757,6 +1757,10 @@ export class GltfPuppet implements PuppetLike {
   faceHold(sec: number) {
     return this.faceSt?.holdFor(sec) ?? false;
   }
+  /** the reaction the face shows now (the director's reaction shots) */
+  faceReaction() {
+    return this.faceSt?.reactionInfo() ?? null;
+  }
   /** the face now, for probes: reaction, mood and the non-zero keys */
   faceProbe() {
     const st = this.faceSt;

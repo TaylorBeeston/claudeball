@@ -340,6 +340,8 @@ export interface PuppetLike {
   /** animate the face for `sec` s from a smaller head size (a director group shot of a moment) */
   faceBoost?(sec: number): void;
   faceProbe?(): unknown;
+  /** the reaction the face shows now, for the director's reaction shots (FaceState.reactionInfo) */
+  faceReaction?(): import('./face/emotion').ReactionInfo | null;
   /** the catcher's sign sequence for the coming pitch (shown on his fingers; glTF characters only) */
   setSigns?(seq: number[]): void;
   /** true while the puppet carries its own ball (glove / hand / transfer): the world ball is then hidden */

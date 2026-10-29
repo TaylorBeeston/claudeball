@@ -142,4 +142,14 @@ describe('break warm-up shots', () => {
     expect(Math.abs(r.tgt.x - 12)).toBeLessThan(0.01);
     expect(r.pos.distanceTo(r.tgt)).toBeGreaterThan(8);
   });
+  it('a person-shot from outside B-roll (a reaction shot) keeps its subject out, but blocks no kind', () => {
+    const subjects = { pitcherFace: 'P1', batterFace: 'B1' };
+    const avail = new Set<BrollKind>(['pitcherFace', 'batterFace']);
+    for (let seed = 0; seed < 40; seed++) {
+      const s = planNext(ctx({ seed, lull: { kind: 'betweenPitches', remaining: 10 }, available: avail, subjects, recent: [{ subject: 'P1' }], shownThisLull: 1 }));
+      expect(s?.kind).toBe('batterFace');
+    }
+    const s = planNext(ctx({ lull: { kind: 'betweenPitches', remaining: 10 }, available: avail, subjects: { pitcherFace: 'P2', batterFace: 'B1' }, recent: [{ subject: 'P1' }, { subject: 'B1' }], shownThisLull: 1 }));
+    expect(s?.kind).toBe('pitcherFace');
+  });
 });
