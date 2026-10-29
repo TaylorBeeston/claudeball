@@ -76,10 +76,11 @@ whiff 28.9 % and foul 30.8 % per swing.
   spring, ~0.1 s) and eases the bat out of the hands (70 ms), the fists and the bat agree. The bat is then turned off the clip's path
   (`via`) toward where this body's top hand can hold it: the clip's own top-hand grip needs 60-150 deg more supination than the solver
   allows on every frame.
-- **Then a real swing plane.** Between 0.45 and 0.75 tauC the bat drops into a plane that holds the bat at contact and the sweet spot's
+- **Then a real swing plane.** Between 0.45 and 0.75 tauC (since t-0030: the knob from 0.20, the bat's direction from 0.30, both in the
+  plane at 0.80; see the last section) the bat drops into a plane that holds the bat at contact and the sweet spot's
   heading (rising at the attack angle). On it the barrel lies back toward the catcher a little below the hands, comes round under them
   through the zone and rises into the follow-through, which wraps toward the clip's finish over the lead shoulder. The hitting zone
-  (0.75-1.3 tauC) is pure plane.
+  (0.75-1.3 tauC; since t-0030 0.80-1.3) is pure plane.
 - **The hands come to the pitch.** The bat's elevation at contact follows the pitch height (-13 deg mid-zone, -26 low, -3 high); the knob
   is S_AIM back along the bat from the aim point, horizontally toward the hands' reference (reaching out up to 15 cm for a pitch off the
   plate), within reach (0.64 m) of each fist's own shoulder on the drawn body at contact. Every body length scales with the batter's
@@ -253,3 +254,103 @@ blendIn > 0.75 eats into the pure-plane stretch before contact. The sim's first 
 The +2 frame regressions (elbow in the trunk, fist axis) are the game's crossfade from the swing finish to the stance (`jank:check`
 fades --constrain: crossfade fist axis 15 / elbow 26 frames across bodies; forced inertialization 14 / 20 but foot slide 6 -> 13 and grip 2 -> 5).
 Neither is a clear win; left as is (a per-transition switch for two frames is not worth it).
+
+## The knob's blend into the plane, smoothed (thread t-0030)
+
+The jump t-0029 found ~6 frames in is gone. `BatSwing.at` no longer lerps the knob from the early path to the plane path over a 2.8-frame
+smoothstep. The knob now leaves the early path at u = `SWING.inStart` **0.20** on a cubic (Hermite) that starts at the early path's knob
+with its velocity and ends at the plane's knob at `blendIn` **0.80** with the plane's velocity. Its speed has no step at either end and the
+~50 cm between the two paths is spread over ~5.6 frames at an even pace. The bat's direction keeps its slerp but from `turnStart`
+**0.30** to 0.80. The plan is untouched (`buildSwing` draws the same random numbers in the same order), the pose's velocity is still its
+central difference (contact is the collision of the bat as drawn), and the hitting zone is pure plane from 0.80 (0.06 % of contacts come
+before u 0.80, 0.34 % before 0.85). `tools/swing/steps.ts` measures it; `batbody.test.ts` holds it (knob speed step < 12 cm, travel
+< 20 cm, turn over the plane's own < 15 deg per frame before contact, worst of 60 swings; main's windows fail it: a 20 cm speed step).
+
+### Frame to frame (the sim alone, 762 swings, seed 7 games 0-5, 60 Hz; p50 / p95)
+
+| frame (u) | knob speed step cm, main | after | knob travel cm, main | after | bat turn deg, main | after | turn over the plane's own, main | after |
+|---|---|---|---|---|---|---|---|---|
+| 4 (0.43) | 4.7 / 5.1 | 6.7 / 8.0 | 8.5 / 9.1 | 11.5 / 14.0 | 10.8 / 10.8 | 9.1 / 11.5 | 2.8 / 3.5 | 1.1 / 3.9 |
+| 5 (0.54) | 12.0 / 14.3 | 3.2 / 3.7 | 10.2 / 12.7 | 12.3 / 15.5 | 13.9 / 15.9 | 21.6 / 25.0 | 2.0 / 4.1 | 9.8 / 12.9 |
+| **6 (0.65)** | **14.0 / 17.9** | **1.7 / 2.0** | **23.5 / 29.9** | **10.7 / 13.6** | **36.8 / 42.9** | **22.3 / 26.7** | **20.4 / 26.3** | **5.8 / 9.9** |
+| 7 (0.75) | 12.7 / 15.7 | 4.7 / 6.0 | 11.0 / 14.6 | 6.6 / 8.4 | 20.6 / 25.2 | 18.4 / 22.1 | -0.8 / 3.5 | -2.9 / 0.5 |
+| 8 (0.86) | 13.4 / 17.1 | 6.6 / 8.4 | 5.6 / 6.0 | 5.3 / 5.8 | 26.9 / 29.2 | 25.5 / 27.6 | 0 / 0 | -1.5 / -0.8 |
+| peak before contact, per swing | 14.0 / 17.9 | 6.9 / 8.4 | 23.5 / 29.9 | 12.6 / 15.5 | 36.8 / 42.9 | 25.6 / 28.0 | 20.4 / 26.3 | 12.7 / 13.0 |
+
+Against the brief's targets (p95, 60 Hz, in swings):
+- **Knob: no jump** (its speed step 17.9 -> 8.4 cm). Its travel per frame is 15.5 cm at most, above the ~12 asked: that is the hands
+  moving steadily at up to ~9 m/s over frames 3-6, not a jump. The two paths are ~50 cm apart and contact needs the knob on the plane by
+  0.80; a slower pace would need the knob to leave the clip's path earlier, and earlier than 0.20 costs the top hand its range at
+  frames 2-3 (below).
+- **Bat turn: 26.7 deg** at frame 6 (was 42.9), at the ~25 asked. From frame 8 on the bat turns 27-40 deg a frame on any path: that is
+  the pure plane at the planned bat speed (omegaC ~38 rad/s at contact), the bat's real speed, not a jump. Its turn on top of the plane's
+  own peaks at 13 deg (frames 2-3 and 5: the clip's own turn early, then the slerp).
+
+### Which window: the top hand's range
+
+The game's top hand (armIK, tracked) runs out of range wherever the bat's direction leaves what it can hold, and there the IK rolls it on
+the handle (flip / spike:RightHand). The proxy per frame (`tools/swing/perframe.ts`, the engine as it is since t-0026; top fist past its
+range, p50 / p90 deg; the first 150 swings of the 762):
+
+| | k 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|
+| main | 10/10 | 0/0 | 0/0 | 0/0 | 12/21 | 36/52 | 10/18 |
+| knob 0.10, turn 0.30 (first try) | 15/16 | 12/19 | 0/2 | 8/37 | 32/57 | 37/52 | 10/20 |
+| knob 0.20, turn 0.30 (shipped) | 10/10 | 0/1 | 0/0 | 0/4 | 26/45 | 32/49 | 7/22 |
+| knob 0.20, turn 0.40 | 10/10 | 0/1 | 0/0 | 0/0 | 35/50 | 49/64 | 20/32 |
+
+Leaving the clip's path at 0.10 smoothed the knob most (speed step 6.2 cm p95) but pushed the top hand out of range at frames 3-5: in the
+game its flips and spikes moved to s+3..s+5 and rose (hand / forearm flips 196 -> 155, but arm flips 60 -> 125, spikes 587 -> 725). A
+later turn (0.40, 0.45) brings the frame-6 turn back (32-35 deg p95). Frames 6-7 are out of the top hand's range on every path tried,
+main included: that is this body's arm on these bat directions (an engine / asset limit), not something the blend can remove.
+
+### The real game (tools/jank game sweep, seeds 1-3, 5 innings, two runs each from detached worktrees; share of the sim swing's frames)
+
+| | main a | main b | after a | after b | first try (knob 0.10) a | t-0026 merge f81cc42 |
+|---|---|---|---|---|---|---|
+| swing frames | 2489 | 2492 | 2506 | 2504 | 2501 | 2506 |
+| fists off the handle (L / R) | 8.5 % (8.3 / 0.2) | 8.5 % (8.3 / 0.2) | 8.7 % (8.4 / 0.3) | 8.6 % (8.3 / 0.4) | 9.7 % (8.4 / 1.3) | 9.6 % |
+| fist turned against the bat, frames (bottom L / top R) | 611 (392 / 219) | 623 (405 / 218) | 309 (131 / 178) | 312 (142 / 170) | 346 (115 / 231) | |
+| fist turned against the bat | 24.5 % | 25.0 % | **12.3 %** | **12.5 %** | 13.8 % | |
+| wrong hand at the knob | 0.0 % | 0.0 % | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| top forearm past +-100 | 93.4 % | 92.9 % | 92.6 % | 92.9 % | 93.2 % | 92.8 % |
+| bottom forearm past +-100 | 8.8 % | 8.8 % | 9.7 % | 9.7 % | 10.2 % | 8.4 % |
+| hand / forearm flips (LH / RH / LF / RF) | 206 (0/131/35/40) | 187 (0/114/29/44) | **89 (0/82/3/4)** | **89 (0/79/4/6)** | 155 (1/150/1/3) | 170 (1/107/22/40) |
+| upper-arm flips | 61 | 60 | **32** | **26** | 127 | 47 |
+| speed spikes | 598 | 576 | 601 | 611 | 725 | 587 |
+| wrist split | 1 | 1 | 7 | 5 | 8 | 0 |
+| elbow in the trunk | 26 | 29 | 25 | 28 | 31 | 33 |
+| barrel in the body | 42 | 39 | 41 | 38 | 42 | 39 |
+
+Whole game: severity 19235 -> 19269 (0 %); no other role or clip moved. Where the top hand's trouble sits (a batter trace, seed 1,
+100-1300 s, 35 swings each; frames from the swing hint's first):
+
+| | flip:RightHand | flip:RightArm | flip:Fore (L+R) | spike:RightHand | spike:RightArm |
+|---|---|---|---|---|---|
+| main | 23 (s+5..s+8) | 10 | 12 | 91 (s+4..s+8) | 12 |
+| first try | 31 (s+4..s+5) | 27 (s+4, s+5) | 6 | 86 (s+3..s+8) | 31 (s+3, s+4) |
+| shipped | 13 (s+4..s+7) | 5 | 3 | 89 (s+3..s+8) | 11 |
+
+The flips at s+5..s+8 halve; the top hand's speed spikes stay (~90 in 35 swings, s+3..s+8): through those frames the bat turns ~20-30 deg a
+frame against the drawn body's shoulders and the hand follows it, faster than the validator's cap for a wrist, on every path. Wrist split (a forearm /
+hand twist not shared) rose 1 -> 6 frames, bottom forearm range frames 8.8 -> 9.7 %: small, left.
+
+**The speed spikes since t-0026 (21.9 -> 24.9 %): game length, not a regression.** The t-0026 merge swept like main (5 innings) reads
+587 spikes in 2506 swing frames, 23.4 %; main reads 24.0 and 23.1 %. t-0026's 21.9 % was a 9-inning sweep (other innings, other
+batters); t-0029 compared it with 5-inning runs.
+
+### The league line (200 games, seed 7; tools/swing/run.ts)
+
+R/G 4.28 -> 4.28, AVG / OBP / SLG .243 / .320 / .416 -> .243 / .320 / .415, K 23.3 -> 23.3 %, BB 8.9 -> 8.9 %, HR/PA 3.16 -> 3.14 %
+(482 -> 479 HR in 15276 PA), HR/FB 19.9 -> 19.8 %, BABIP .293 -> .293, whiff / foul per swing 28.2 / 30.9 -> 28.3 / 30.8 %. EV mean
+80.80 -> 80.82 (p10 / p50 / p90 59.7 / 82.4 / 100.1 both), LA mean 8.6 -> 8.6 (p10 / p50 / p90 -45.4 / 10.1 / 60.6 -> 60.7), GB / LD /
+FB / PU 49.9 / 12.7 / 20.2 / 17.2 % both. The games drift apart only where a late swing's contact (u < 0.80) changed (the first 60 games played out
+identically for the variants measured at 60 games). At the planned contact instant everything is identical: attack angle 7.0 / 15.0 / 23.2, bat elevation -28.9 / -16.5
+/ -4.4, plane tilt 13.3 / 23.4 / 34.7, hands 4.3 / 4.7 / 5.1 m/s. No calibration knob needed a nudge. No seed-pinned test moved.
+
+### Seeing it
+
+`tools/swing/film.ts` films a swing in the real build: seed 24, broadcast tempo, fixed 1/480 s steps (16x slow at 30 fps), a fixed bench
+camera, replays off (harness knobs). One engine frame per picture and one view per run: the engine's per-frame logic (the arms' tracked
+solve, the grip's three-frame turn) counts frames, so a second render of the same instant is not a still. Before / after frames are
+matched by the drawn instant (the sim's last step plus the driver's accumulator).

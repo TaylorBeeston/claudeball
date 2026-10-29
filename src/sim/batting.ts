@@ -48,7 +48,10 @@ export const ARM_REACH = 0.64; // shoulder -> fist on the handle (the model's ar
  * - ramp: the turn rate rises as (tau / tauC)^ramp to contact, then dies over 0.9 tauC;
  * - via: on its way from the clip's launch the bat is turned off the clip's own path (by dAz / dEl, the knob moved by dKnob, all in full at
  *   the share `at` of tauC) to where both fists can hold it on the drawn body (its top hand cannot hold the clip's own bat in range);
- * - inStart, blendIn: between these shares of tauC the bat leaves that path for the swing plane (the hands drop, the barrel lays back);
+ * - inStart, turnStart, blendIn: the bat leaves that path for the swing plane, reached at blendIn: the knob from inStart on a cubic that leaves
+ *   the early path and meets the plane's knob each at its own velocity (the hands drop and come forward at an even pace, no step in their
+ *   speed), the bat's direction from turnStart (the barrel lays back; turned later than the hands move so the top hand keeps the bat in
+ *   range, and over enough frames that it does not jump: tools/swing/steps.ts, docs/swing-kinematics.md);
  * - outStart: tau / tauC at which the follow-through starts to wrap toward the clip's finish (reached at 2.1 tauC);
  * - extMax: how far the hands reach out toward a pitch the bat cannot meet from the nominal hands;
  * - timeErr: scale of his timing error: a bat on plane forgives a timing error in height (the barrel stays on the ball's line), so the error
@@ -62,8 +65,9 @@ export const SWING = {
   rh: 0.12,
   ramp: 1.6,
   via: { dKnob: { x: -0.12, y: -0.12, z: 0.09 }, dAz: 30, dEl: 2, at: 0.45 },
-  inStart: 0.45,
-  blendIn: 0.75,
+  inStart: 0.2,
+  turnStart: 0.3,
+  blendIn: 0.8,
   outStart: 1.3,
   extMax: 0.15,
   timeErr: 1.15,
@@ -441,6 +445,7 @@ export class BatSwing {
   contacted = false;
   private readonly st: Stance;
   private readonly fin: { knob: Vec3; dir: Vec3 } | null;
+  private ends?: { A: Vec3; VA: Vec3; B: Vec3; VB: Vec3 };
 
   constructor(readonly plan: SwingPlan) {
     this.st = plan.sgn < 0 ? 'L' : 'R';
@@ -493,20 +498,43 @@ export class BatSwing {
     };
   }
 
-  /** The bat at time tau of the swing: knob and unit direction. */
-  at(tau: number): { knob: Vec3; dir: Vec3 } {
+  /** The bat on the swing plane at time tau (turned phi from the bat at contact about the pivot). */
+  plane(tau: number): { knob: Vec3; dir: Vec3 } {
     const p = this.plan;
     const f = this.phi(tau);
     const c = Math.cos(f), s = Math.sin(f);
-    let d = { x: c * p.dirC.x + s * p.planeC.x, y: c * p.dirC.y + s * p.planeC.y, z: c * p.dirC.z + s * p.planeC.z };
+    const d = { x: c * p.dirC.x + s * p.planeC.x, y: c * p.dirC.y + s * p.planeC.y, z: c * p.dirC.z + s * p.planeC.z };
     const pv = p.pivot;
-    let k = { x: pv.x + p.rh * d.x, y: pv.y + p.rh * d.y, z: pv.z + p.rh * d.z };
+    return { knob: { x: pv.x + p.rh * d.x, y: pv.y + p.rh * d.y, z: pv.z + p.rh * d.z }, dir: d };
+  }
+
+  /** The knob's blend into the plane: where it leaves the early path (u = inStart) and meets the plane (blendIn), with each path's velocity there
+   * (per unit of the blend's share, so the cubic's tangents). */
+  private blendEnds(): { A: Vec3; VA: Vec3; B: Vec3; VB: Vec3 } {
+    const p = this.plan, e = 0.0005, tA = SWING.inStart * p.tauC, tB = SWING.blendIn * p.tauC, m = (tB - tA) / (2 * e);
+    const v = (a: Vec3, b: Vec3) => ({ x: (b.x - a.x) * m, y: (b.y - a.y) * m, z: (b.z - a.z) * m });
+    const early = (t: number) => this.early(t / p.tauC).knob, plane = (t: number) => this.plane(t).knob;
+    return { A: early(tA), VA: v(early(tA - e), early(tA + e)), B: plane(tB), VB: v(plane(tB - e), plane(tB + e)) };
+  }
+
+  /** The bat at time tau of the swing: knob and unit direction. */
+  at(tau: number): { knob: Vec3; dir: Vec3 } {
+    const p = this.plan;
+    let { knob: k, dir: d } = this.plane(tau);
     // the clip's own swing first, then into the plane (the hands drop and come forward, the barrel lays back)
-    const g = smooth((tau / p.tauC - SWING.inStart) / (SWING.blendIn - SWING.inStart));
-    if (g < 1) {
-      const L = this.early(tau / p.tauC);
-      d = slerpDir(L.dir, d, g);
-      k = { x: L.knob.x + (k.x - L.knob.x) * g, y: L.knob.y + (k.y - L.knob.y) * g, z: L.knob.z + (k.z - L.knob.z) * g };
+    const u = tau / p.tauC, u0 = SWING.inStart, t0 = SWING.turnStart, u1 = SWING.blendIn;
+    if (u < u1) {
+      const L = this.early(u);
+      d = slerpDir(L.dir, d, smooth((u - t0) / (u1 - t0)));
+      if (u <= u0) k = L.knob;
+      else {
+        // the knob on a cubic (Hermite) from the early path's at u0 to the plane's at u1, each end at its own path's velocity
+        const { A, VA, B, VB } = (this.ends ??= this.blendEnds());
+        const s = (u - u0) / (u1 - u0), s2 = s * s, s3 = s2 * s;
+        const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = 3 * s2 - 2 * s3, h11 = s3 - s2;
+        const H = (a: number, va: number, b: number, vb: number) => h00 * a + h10 * va + h01 * b + h11 * vb;
+        k = { x: H(A.x, VA.x, B.x, VB.x), y: H(A.y, VA.y, B.y, VB.y), z: H(A.z, VA.z, B.z, VB.z) };
+      }
     }
     // the follow-through wraps toward the finish over the lead shoulder
     const h = smooth((tau / p.tauC - SWING.outStart) / (2.1 - SWING.outStart));

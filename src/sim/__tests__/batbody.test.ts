@@ -114,4 +114,24 @@ describe('bat vs batter body', () => {
       expect(Math.hypot(vk.x, vk.y, vk.z)).toBeLessThan(11);
     }
   });
+
+  it('does not jump frame to frame on its way into the plane (the arms\' IK follows the drawn bat: 60 Hz frames, before contact)', () => {
+    let step = 0, travel = 0, turn = 0;
+    const ang = (a: { dir: { x: number; y: number; z: number } }, b: typeof a) => Math.acos(Math.min(1, a.dir.x * b.dir.x + a.dir.y * b.dir.y + a.dir.z * b.dir.z)) * DEG;
+    for (const p of ps) {
+      const sw = new BatSwing(p);
+      const P = Array.from({ length: 10 }, (_, k) => sw.at(k / 60)), Q = P.map((_, k) => sw.plane(k / 60));
+      for (let k = 1; k < P.length && k / 60 < 0.95 * p.tauC; k++) {
+        const d = (i: number) => ({ x: P[i].knob.x - P[i - 1].knob.x, y: P[i].knob.y - P[i - 1].knob.y, z: P[i].knob.z - P[i - 1].knob.z });
+        travel = Math.max(travel, d3(P[k].knob, P[k - 1].knob));
+        if (k >= 2) step = Math.max(step, d3(d(k), d(k - 1)));
+        // the turn on top of the plane's own (near contact the bat turns ~35 deg a frame: that is its speed, not a jump)
+        turn = Math.max(turn, ang(P[k - 1], P[k]) - ang(Q[k - 1], Q[k]));
+      }
+    }
+    // before the cubic blend (t-0030) the knob jumped by up to 30 cm in one frame six frames in, its speed by up to 20 cm, the bat 26 deg over the plane's
+    expect(step).toBeLessThan(0.12);
+    expect(travel).toBeLessThan(0.2);
+    expect(turn).toBeLessThan(15);
+  });
 });

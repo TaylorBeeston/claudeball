@@ -19,6 +19,7 @@ const HERE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../.
 // the free parameters: [getter path, lo, hi, initial step]
 const PARAMS: [string, number, number, number][] = [
   ['inStart', 0, 0.6, 0.06],
+  ['turnStart', 0, 0.6, 0.06],
   ['blendIn', 0.5, 0.95, 0.06],
   ['rh', 0.1, 0.35, 0.04],
   ['outStart', 1.15, 1.8, 0.1],
