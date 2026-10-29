@@ -263,8 +263,8 @@ with its velocity and ends at the plane's knob at `blendIn` **0.80** with the pl
 ~50 cm between the two paths is spread over ~5.6 frames at an even pace. The bat's direction keeps its slerp but from `turnStart`
 **0.30** to 0.80. The plan is untouched (`buildSwing` draws the same random numbers in the same order), the pose's velocity is still its
 central difference (contact is the collision of the bat as drawn), and the hitting zone is pure plane from 0.80 (0.06 % of contacts come
-before u 0.80, 0.34 % before 0.85). `tools/swing/steps.ts` measures it; `batbody.test.ts` holds it (knob speed step < 8 cm, travel
-< 16 cm, turn over the plane's own < 15 deg per frame before contact; main's windows fail it: a 20 cm speed step).
+before u 0.80, 0.34 % before 0.85). `tools/swing/steps.ts` measures it; `batbody.test.ts` holds it (knob speed step < 12 cm, travel
+< 20 cm, turn over the plane's own < 15 deg per frame before contact, worst of 60 swings; main's windows fail it: a 20 cm speed step).
 
 ### Frame to frame (the sim alone, 762 swings, seed 7 games 0-5, 60 Hz; p50 / p95)
 
