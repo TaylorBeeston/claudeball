@@ -370,6 +370,10 @@ export interface PlayState {
   settleTicks: number;
   primary: PlayerRT | null;
   catchMargin: number | null;
+  /** the fielder who called for the fly ball and when (fielding.ts `callForBall`; observed only, nothing in the play reads it) */
+  called?: { F: PlayerRT; tick: number } | null;
+  /** the man taking charge of the ball and since when (the call waits until he has been the one for a moment) */
+  callCand?: { F: PlayerRT; since: number } | null;
   est: number[];
   estTick: number;
   aiNext: number;

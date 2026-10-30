@@ -68,3 +68,6 @@ dist-verify/
 verify-evidence/
 tools/jank/out/
 tools/swing/out/
+
+# fly-ball films (tools/fly/film.ts)
+tools/fly/out/

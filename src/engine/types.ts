@@ -174,6 +174,8 @@ export interface PlayerSnap {
   gloveTarget?: Vec3;
   /** seconds until the catch (the hint starts the clip's catch-frame time before it, so the catch frame lands on the arrival) */
   catchIn?: number;
+  /** seconds since he called for the fly ball he is taking ("I got it!"), during that play */
+  calling?: number;
   /** seconds until the ball leaves his hand while a throwing motion is under way: the clip is laid so its release frame lands then */
   releaseIn?: number;
   /** umpires: HP, 1B-U, 2B-U, 3B-U */
