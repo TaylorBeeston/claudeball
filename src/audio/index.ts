@@ -360,11 +360,13 @@ export class AudioController {
     const now = performance.now();
     const heard = !this.locked && !this.settings.muted && speed <= 1.01 && this.speech.enabled.pa && this.speech.available();
     const line = this.speech.speaking?.text;
+    // the PA is still on another line (the pitcher's introduction goes first) or has lines waiting: his turn is coming
+    const busy = !!line || this.speech.pending > 0;
     this.fanArms = this.fanArms.filter((a) => {
       let delay: number | null = null;
       if (a.text && heard && line === a.text) delay = a.nameAt;
       else if (!heard || !a.text) delay = Math.max(0, 1.5 - (now - a.armedAt) / 1000);
-      else if (now - a.armedAt > 5000) delay = 0; // the line never started (dropped, or a long queue): react anyway
+      else if (now - a.armedAt > (busy ? 12000 : 5000)) delay = 0; // the line never started (dropped, or a long queue): react anyway
       if (delay === null) return true;
       if (speed <= 2.01) this.crowd.fan(a.m, delay);
       if (!a.m.pitcher || !this.fanNow) this.fanNow = { m: a.m, pitches: 0 };
