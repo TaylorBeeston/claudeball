@@ -20,6 +20,8 @@ import { restInfo, measureJoints } from '../../src/engine/pose/limits';
 import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
 import type { Snapshot } from './agg';
 import { armFrame } from './arms';
+import { computeLook } from '../../src/engine/playerLook';
+import { torsoVolume } from '../../src/engine/armClear';
 
 const argv = process.argv.slice(2);
 const opt = (k: string, d: string) => (argv.includes(`--${k}`) ? argv[argv.indexOf(`--${k}`) + 1] : d);
@@ -60,7 +62,9 @@ async function main() {
   const grip = rig.attach.get('Bat_Grip')!;
   const info = rigInfo(rig.rest, grip);
   /** a clip's pose at t through the runtime passes (the clip played from 0 to t, so the passes' time-continuous state is warm) */
-  const pose = (clip: string, t: number) => {
+  const pose = (clip: string, t: number, build = 'athletic') => {
+    // the build's own trunk for the running-arm pass, as the game passes each puppet's (the look's morphs from the same physique)
+    const torso = torsoVolume(computeLook(PHYSIQUE[build] as Parameters<typeof computeLook>[0], undefined).morphs);
     const c = rig.clips.get(clip);
     if (!c) throw new Error(`no clip ${clip}`);
     const st = newConstrainState();
@@ -68,7 +72,9 @@ async function main() {
     let L = sampleClip(c, 0, rig.rest);
     for (let k = 0, n = Math.max(1, Math.round(t / dt)); k <= n; k++) {
       L = sampleClip(c, Math.min(t, k * dt), rig.rest);
-      constrainPose(L, R, { ...constrainOptsFor(clip), state: st, dt });
+      const o = constrainOptsFor(clip);
+      if (o.gait) o.gait = { ...o.gait, torso };
+      constrainPose(L, R, { ...o, state: st, dt });
     }
     const w = fk(L, undefined, R.rest);
     const j = measureJoints(w, R);
@@ -106,8 +112,8 @@ async function main() {
               const tiles: string[] = [];
               for (let k = 0; k < PHASES; k++) {
                 const t = (c.duration * k) / PHASES;
-                const { sn, nums } = pose(clip, t);
-                record[`run/${clip}/${k}`] = nums;
+                const { sn, nums } = pose(clip, t, build);
+                record[`run/${clip}/${build}/${k}`] = nums;
                 const f = path.join(OUTD, `_t${k}.jpg`);
                 await shoot(sn, view, role, { physique, anim: clip, cam: { dir: view === 'front' ? [0, 0, 1] : view === 'back' ? [0, 0, -1] : [1, 0, 0], span: 2.1, at: [0, 1.05, 0] } }, f, 220);
                 tiles.push(f);
@@ -124,8 +130,8 @@ async function main() {
           }
       if (WHAT.includes('wrists'))
         for (const wp of WRISTS) {
-          const { sn, nums } = pose(wp.clip, wp.t);
-          record[`wrist/${wp.name}`] = nums;
+          const { sn, nums } = pose(wp.clip, wp.t, build);
+          record[`wrist/${wp.name}/${build}`] = nums;
           const tiles: string[] = [];
           for (const side of ['Right', 'Left'] as const) {
             // around the wrist joint, a hand's length up the forearm: front / back / outside / inside of the body
