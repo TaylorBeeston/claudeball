@@ -292,8 +292,8 @@ export function constrainOptsFor(clip: string, holdsBat = BAT_HELD.test(clip)): 
   const gait = isGaitClip(clip) ? { w: 1, torso: TORSO } : undefined;
   return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat }, ankles, gait };
 }
-/** the clips whose arms the running-arm pass (gaitArms.ts) corrects */
-export const isGaitClip = (clip: string) => GAIT_ANKLES.test(clip) || clip === 'manager_walk';
+/** the clips whose arms the running-arm pass (gaitArms.ts) corrects: the running gaits (a walk's arms swing low and loose, left to the clip) */
+export const isGaitClip = (clip: string) => /^(trot|jog|run|run_sprint|run_turn|run_turn_sprint)$/.test(clip);
 /** the average build's trunk (the game passes each player's own) */
 const TORSO = torsoVolume(undefined);
 /** the gait clips (their ankles clamped) */

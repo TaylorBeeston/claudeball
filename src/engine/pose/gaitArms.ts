@@ -51,7 +51,7 @@ export const GAIT_ARMS = {
   rate: 600,
   /** the weight follows the gait clips' share of the pose on a critically damped spring (rad/s): an inertialized switch moves the mixer's
    *  weight at once, and a first-order lag still started the arms moving with a jolt (the validator's spikes) */
-  ease: 22,
+  ease: 14,
 };
 
 /** the pass's weight and its speed, carried from frame to frame */
@@ -83,6 +83,8 @@ export interface GaitArmsOpts {
 export interface GaitArmsState {
   Left?: number[];
   Right?: number[];
+  /** last frame's weight */
+  w?: number;
 }
 
 const W = newWorld();
@@ -116,6 +118,28 @@ function trunkClear(x: number, y: number, z: number, T: TorsoVolume): number {
   return Math.max(ell, T.yMin - y, y - T.yMax);
 }
 
+/** how much an arm hangs from the shoulder like a running arm (1), or is raised toward the horizontal and past it (0) */
+function hanging(w: PoseWorld, arm: number, fore: number): number {
+  const ud = qrotInv(w.wq, w.wp[fore * 3] - w.wp[arm * 3], w.wp[fore * 3 + 1] - w.wp[arm * 3 + 1], w.wp[fore * 3 + 2] - w.wp[arm * 3 + 2], [0, 0, 0], B.Spine2 * 4) as number[];
+  return 1 - smooth(GAIT_ARMS.hang[0], GAIT_ARMS.hang[1], ud[1] / (Math.hypot(ud[0], ud[1], ud[2]) || 1));
+}
+
+/** the fist's clearance from the trunk (m) in a posed world */
+function fistClear(L: PoseLocals, w: PoseWorld, T: TorsoVolume, hand: number): number {
+  const qc = Array.from(w.wq.subarray(B.Spine2 * 4, B.Spine2 * 4 + 4)), C = pos(w, B.Spine2), sc = L.base[7] || 1;
+  const F = localPoint(w, hand, 0, GAIT_ARMS.fist, 0, sc);
+  const p = qrotInv(qc, (F[0] - C[0]) / sc, (F[1] - C[1]) / sc, (F[2] - C[2]) / sc, [0, 0, 0]) as number[];
+  return trunkClear(p[0], p[1], p[2], T);
+}
+
+/** a rotation's angle scaled by k (about the same axis) */
+function scaleQ(q: number[], k: number): number[] {
+  const sg = q[3] < 0 ? -1 : 1;
+  const ang = 2 * Math.acos(Math.min(1, Math.abs(q[3])));
+  const sn = Math.sqrt(Math.max(0, 1 - q[3] * q[3]));
+  return sn < 1e-9 ? [0, 0, 0, 1] : (qaxisAngle((sg * q[0]) / sn, (sg * q[1]) / sn, (sg * q[2]) / sn, ang * k) as number[]);
+}
+
 /** v turned by `a` (rad) about the unit axis u (Rodrigues) */
 function rotAbout(v: number[], u: number[], a: number): number[] {
   const c = Math.cos(a), sn = Math.sin(a), d = dot(u, v) * (1 - c), x = cross(u, v);
@@ -137,6 +161,47 @@ export function gaitArms(L: PoseLocals, R: RestInfo, o: GaitArmsOpts): number {
   if (!(o.w > 1e-3) && !st?.Left && !st?.Right) return 0;
   const w = fk(L, W, R.rest);
   let mask = 0;
+  // fading out (a switch to a clip that is not a gait): last frame's correction decays with the weight as an offset, like the game's
+  // inertialized switches, instead of being solved again on the new clip's arms (solving on a slide's or a throw's arms while it fades
+  // added its own swing to theirs: the validator's speed spikes)
+  if (st && st.w !== undefined && o.w < st.w - 1e-6) {
+    const k = st.w > 1e-6 ? Math.max(0, o.w) / st.w : 0;
+    for (const side of ['Left', 'Right'] as const) {
+      const c = st[side];
+      if (!c) continue;
+      const arm = B[`${side}Arm`], fore = B[`${side}ForeArm`], hand = B[`${side}Hand`];
+      const base = [...L.lq.subarray(arm * 4, arm * 4 + 4), ...L.lq.subarray(fore * 4, fore * 4 + 4)];
+      let next: number[] = [];
+      const put = (kk: number) => {
+        next = [];
+        [arm, fore].forEach((b, j) => {
+          const q = scaleQ(c.slice(j * 4, j * 4 + 4), kk);
+          next.push(...q);
+          L.lq.set(qmul(base.slice(j * 4, j * 4 + 4), q), b * 4);
+        });
+        fk(L, w, R.rest);
+        return fistClear(L, w, o.torso, hand);
+      };
+      // the fist stays clear of the trunk as in the solve: no more of the offset than keeps it so
+      const c0 = put(0);
+      let kk = k;
+      if (put(kk) < Math.min(GAIT_ARMS.fistClear, c0)) {
+        let lo = 0, hi = kk;
+        for (let n = 0; n < 6; n++) {
+          const m = (lo + hi) / 2;
+          if (put(m) >= Math.min(GAIT_ARMS.fistClear, c0)) lo = m;
+          else hi = m;
+        }
+        kk = lo;
+        put(kk);
+      }
+      mask |= (1 << arm) | (1 << fore);
+      st[side] = kk > 1e-4 ? next : undefined;
+    }
+    st.w = o.w > 1e-4 ? o.w : undefined;
+    return mask;
+  }
+  if (st) st.w = o.w;
   for (const side of ['Left', 'Right'] as const) {
     const s = side === 'Left' ? 1 : -1;
     const arm = B[`${side}Arm`], fore = B[`${side}ForeArm`], hand = B[`${side}Hand`];
@@ -152,22 +217,24 @@ export function gaitArms(L: PoseLocals, R: RestInfo, o: GaitArmsOpts): number {
  * it moved further, the locals are set to last frame's correction turned toward the new one by the most allowed.
  */
 function limitRate(L: PoseLocals, w: PoseWorld, R: RestInfo, st: GaitArmsState, side: 'Left' | 'Right', arm: number, fore: number, orig: number[], dt: number): number {
-  const cur = [arm, fore].flatMap((b, k) => qmul(Array.from(L.lq.subarray(b * 4, b * 4 + 4)), qinv(orig.slice(k * 4, k * 4 + 4))) as number[]);
+  // (in each bone's own frame: orig^-1 * new, so the decaying offset of a fade-out turns the bone about its own axes, as the game's
+  // inertialization offsets do)
+  const cur = [arm, fore].flatMap((b, k) => qmul(qinv(orig.slice(k * 4, k * 4 + 4)), Array.from(L.lq.subarray(b * 4, b * 4 + 4))) as number[]);
   const last = st[side] ?? [0, 0, 0, 1, 0, 0, 0, 1];
   const max = GAIT_ARMS.rate * DEG * Math.max(1e-3, dt);
   let changed = 0;
   for (const k of [0, 1]) {
     const c = cur.slice(k * 4, k * 4 + 4), p = last.slice(k * 4, k * 4 + 4);
     // the turn from last frame's correction to this one's
-    const d = qmul(c, qinv(p)) as number[];
+    const d = qmul(qinv(p), c) as number[];
     if (d[3] < 0) d.forEach((_, i) => (d[i] = -d[i]));
     const ang = 2 * Math.acos(Math.min(1, d[3]));
     if (ang > max) {
       const sn = Math.sqrt(Math.max(1e-12, 1 - d[3] * d[3]));
-      const lim = qmul(qaxisAngle(d[0] / sn, d[1] / sn, d[2] / sn, max), p) as number[];
+      const lim = qmul(p, qaxisAngle(d[0] / sn, d[1] / sn, d[2] / sn, max)) as number[];
       cur.splice(k * 4, 4, ...lim);
       const b = k ? fore : arm;
-      L.lq.set(qmul(lim, orig.slice(k * 4, k * 4 + 4)), b * 4);
+      L.lq.set(qmul(orig.slice(k * 4, k * 4 + 4), lim), b * 4);
       changed |= 1 << b;
     }
   }
@@ -183,8 +250,7 @@ function correct(L: PoseLocals, w: PoseWorld, R: RestInfo, o: GaitArmsOpts, side
   let mask = 0;
   {
     // a running arm hangs from the shoulder: an arm raised toward the horizontal (a throw, a reach, a blend into one) is left to its clip
-    const ud = qrotInv(w.wq, w.wp[fore * 3] - w.wp[arm * 3], w.wp[fore * 3 + 1] - w.wp[arm * 3 + 1], w.wp[fore * 3 + 2] - w.wp[arm * 3 + 2], [0, 0, 0], B.Spine2 * 4) as number[];
-    const hang = 1 - smooth(G.hang[0], G.hang[1], ud[1] / (Math.hypot(ud[0], ud[1], ud[2]) || 1));
+    const hang = hanging(w, arm, fore);
     const wa = o.w * hang * Math.max(0, Math.min(1, o.free?.[side] ?? 1));
     if (wa < 1e-3) return 0;
     // 1. the elbow's fold: the forearm turns about the hinge (the hand goes with it)
