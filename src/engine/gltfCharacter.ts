@@ -1883,7 +1883,7 @@ export class GltfPuppet implements PuppetLike {
       if (fist) fist.visible = r === 'fist';
       if (claw) claw.visible = r === 'ball';
       if (relaxed) relaxed.visible = r === 'relaxed';
-      if (bg.R) this.showBattingGlove('R', r);
+      if (bg.R && this.showBattingGlove('R', r)) for (const h of [fist, claw, relaxed]) if (h) h.visible = false;
     }
     if (fist) this.driveSignFingers(fist as Mesh, signs);
     const lFist = this.nodes.get('Hand_L'), lRelaxed = this.nodes.get('Hand_L_Relaxed');
@@ -1894,15 +1894,17 @@ export class GltfPuppet implements PuppetLike {
       this.handShown.L = l;
       if (lFist) lFist.visible = l === 'fist';
       if (lRelaxed) lRelaxed.visible = l === 'relaxed';
-      if (bg.L) this.showBattingGlove('L', l);
+      if (bg.L && this.showBattingGlove('L', l)) for (const h of [lFist, lRelaxed]) if (h) h.visible = false;
     }
   }
   /** which hands wear batting gloves (the role's gear: batters, runners, base coaches) */
   private battingGloves = { L: false, R: false };
-  private showBattingGlove(side: 'L' | 'R', pose: string) {
+  /** shows the batting glove made for the hand's pose; true when it covers the hand (the hand inside is never seen: hidden, no skin poking through) */
+  private showBattingGlove(side: 'L' | 'R', pose: string): boolean {
     const fist = this.nodes.get(`Gear_BattingGlove_${side}`), relaxed = this.nodes.get(`Gear_BattingGlove_${side}_Relaxed`);
     if (fist) fist.visible = pose === 'fist' || !relaxed;
     if (relaxed) relaxed.visible = pose === 'relaxed';
+    return (pose === 'fist' && !!fist) || (pose === 'relaxed' && !!relaxed);
   }
   /** the catcher's signs: the clip's flash windows (manifest `finger_keys`: [frame, n]) show the sim's sequence, n fingers extended (`fingers_n`), else a fist */
   private driveSignFingers(hand: Mesh, signs: boolean) {
