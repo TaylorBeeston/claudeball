@@ -52,6 +52,7 @@ import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { computeLook, hashString, type PlayerLook } from './playerLook';
+import { WARPS, warpProgress } from './clipWarp';
 import { FACE_KEYS, FaceState, personalityFor } from './face/emotion';
 import type { FaceAction } from './face/reactions';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -142,6 +143,7 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'coach_stop': return ['coach_stop', 'ump_time', 'idle'];
     case 'coach_go': case 'coach_advance': case 'coach_go_loop': return [hint, 'celebrate', 'idle'];
     case 'bench_cheer': case 'bench_stand_up': return [hint, 'bench_sit', 'idle'];
+    case 'bench_sit_down': return ['bench_stand_up', 'bench_sit', 'idle']; // played backwards (clipWarp.ts)
     case 'catch_ready': return ['catch_ready', ...idleFor(role)];
     case 'pitcher_catch_toss': return ['pitcher_catch_toss', 'catch_throw', 'field_catch'];
     case 'ballkid_idle': return ['ballkid_idle', 'idle']; // standing: never a seated clip (that sat the bat boy on thin air)
@@ -153,6 +155,7 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'batter_practice_swing': return ['batter_practice_swing', 'ondeck_swing', 'swing'];
     case 'batter_adjust': return ['batter_adjust', ...idleFor('batter')];
     case 'batter_step_out': return ['batter_step_out', ...idleFor('batter')];
+    case 'batter_wait': return ['ondeck_ready', ...idleFor('batter')]; // outside the box: leaning on the bat, not in his stance
     case 'catcher_signs': case 'catcher_signal_infield': return [hint, 'catcher_crouch'];
     case 'pitcher_shake_off': case 'pitcher_nod': case 'pitcher_step_off': case 'pitcher_rosin': case 'pitcher_adjust': case 'pitcher_look_runner': return [hint, 'pitcher_set', 'idle'];
     case 'mound_talk': case 'mound_talk_listen': return [hint, 'idle'];
@@ -1017,6 +1020,7 @@ export class GltfPuppet implements PuppetLike {
   }
 
   private play(name: string, snap: PlayerSnap) {
+    this.warpJumped = false;
     const a = this.actions.get(name) ?? this.actions.get('idle');
     if (!a || a === this.current) return;
     // a clip coming back while it still fades out keeps its time and its weight (reset() dropped its share of the pose to nothing in one frame,
@@ -1577,7 +1581,17 @@ export class GltfPuppet implements PuppetLike {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
-      this.current.time = Math.min(dur - 0.001, Math.max(0, snap.animProgress * dur));
+      // a warped hint (clipWarp.ts) is laid on its curve; its jump hands the pose shown now to the inertialization, which carries it to the new key
+      const warp = WARPS[snap.anim];
+      if (snap.animProgress < this.warpLastU - 0.3) this.warpJumped = false; // the same hint again (a second practice swing)
+      this.warpLastU = snap.animProgress;
+      if (warp?.jump && !this.warpJumped && snap.animProgress >= warp.jump.at && this.poseRest && !(globalThis as { __noClipWarp?: boolean }).__noClipWarp) {
+        this.warpJumped = true;
+        this.readClipPose();
+        this.inertia.start(this.poseL.lq, this.poseL.lp, warp.jump.sec);
+      }
+      const v = warp && !(globalThis as { __noClipWarp?: boolean }).__noClipWarp ? warpProgress(warp, snap.animProgress) : snap.animProgress;
+      this.current.time = Math.min(dur - 0.001, Math.max(0, v * dur));
     }
     // ROOT CAUSE of the spinning heads: three's mixer only writes a bone when the clip value changed since last frame, so on a held
     // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
@@ -1944,6 +1958,9 @@ export class GltfPuppet implements PuppetLike {
   private lastMoveHint: AnimHint | '' = '';
   /** a gait chosen by speed is overriding a stationary hint (hysteresis for `wantsGait`) */
   private gaitOn = false;
+  /** the current warped hint (clipWarp.ts) has made its jump */
+  private warpJumped = false;
+  private warpLastU = 0;
   private ikFade = 1;
   private warnedLook = false;
   /** bones modified after the mixer (look-at, arm IK) → their pose as the clip left them this frame */

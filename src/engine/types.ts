@@ -84,6 +84,7 @@ export type AnimHint =
   | 'coach_go_loop'
   | 'bench_cheer'
   | 'bench_stand_up'
+  | 'bench_sit_down'
   | 'coach_advance'
   | 'coach_slide'
   | 'coach_signs'
@@ -97,6 +98,8 @@ export type AnimHint =
   | 'batter_practice_swing'
   | 'batter_adjust'
   | 'batter_step_out'
+  /** waiting at the edge of the box before stepping in (the bat resting in front of him) */
+  | 'batter_wait'
   | 'catcher_signs'
   | 'catcher_signal_infield'
   | 'pitcher_shake_off'

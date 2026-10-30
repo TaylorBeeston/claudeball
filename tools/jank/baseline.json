@@ -745,5 +745,125 @@
    "frames": 6,
    "score": 0.063
   }
+ },
+ "played": {
+  "joint:forearm.pron": {
+   "frames": 321,
+   "score": 10.33
+  },
+  "foot:slide": {
+   "frames": 174,
+   "score": 2.604
+  },
+  "bat:grip": {
+   "frames": 75,
+   "score": 1.687
+  },
+  "joint:neck.yaw": {
+   "frames": 71,
+   "score": 1.55
+  },
+  "joint:hip.twist": {
+   "frames": 148,
+   "score": 3.103
+  },
+  "joint:hip.flex": {
+   "frames": 50,
+   "score": 0.288
+  },
+  "joint:shoulder.post": {
+   "frames": 2,
+   "score": 0.011
+  },
+  "joint:shoulder.behind": {
+   "frames": 54,
+   "score": 1.274
+  },
+  "joint:shoulder.twist": {
+   "frames": 57,
+   "score": 1.799
+  },
+  "spike:Hand": {
+   "frames": 4,
+   "score": 0.029
+  },
+  "joint:wrist.swing": {
+   "frames": 55,
+   "score": 2.265
+  },
+  "joint:wrist.split": {
+   "frames": 13,
+   "score": 0.222
+  },
+  "body:arm-head": {
+   "frames": 12,
+   "score": 0.217
+  },
+  "bat:hand-axis": {
+   "frames": 29,
+   "score": 0.711
+  },
+  "joint:neck.pitch": {
+   "frames": 14,
+   "score": 0.085
+  }
+ },
+ "playedRuntime": {
+  "joint:forearm.pron": {
+   "frames": 321,
+   "score": 10.33
+  },
+  "bat:grip": {
+   "frames": 75,
+   "score": 1.663
+  },
+  "foot:slide": {
+   "frames": 29,
+   "score": 0.313
+  },
+  "joint:hip.twist": {
+   "frames": 148,
+   "score": 3.195
+  },
+  "joint:shoulder.post": {
+   "frames": 2,
+   "score": 0.011
+  },
+  "joint:shoulder.behind": {
+   "frames": 54,
+   "score": 1.274
+  },
+  "joint:shoulder.twist": {
+   "frames": 57,
+   "score": 1.799
+  },
+  "spike:Hand": {
+   "frames": 4,
+   "score": 0.029
+  },
+  "joint:wrist.swing": {
+   "frames": 55,
+   "score": 2.265
+  },
+  "joint:wrist.split": {
+   "frames": 13,
+   "score": 0.222
+  },
+  "body:arm-head": {
+   "frames": 12,
+   "score": 0.217
+  },
+  "bat:hand-axis": {
+   "frames": 29,
+   "score": 0.714
+  },
+  "joint:hip.flex": {
+   "frames": 31,
+   "score": 0.23
+  },
+  "joint:neck.pitch": {
+   "frames": 14,
+   "score": 0.085
+  }
  }
 }

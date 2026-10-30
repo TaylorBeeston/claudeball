@@ -26,6 +26,7 @@ import { applyLook, lookFrame, lookInput, neckPitch } from '../../src/engine/pos
 import { HeadLook, lookTarget } from '../../src/engine/headLook';
 import { oldApplyLook, oldLookInput } from './oldLook';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, batHandsBlend, clipFlags } from './clips';
+import { warpProgress, type Warp } from '../../src/engine/clipWarp';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
 export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
@@ -54,7 +55,7 @@ export function shippedPlayers(): string[] {
 }
 
 /** sweep one clip (looping clips get a wrap-around tail so a pop at the loop point counts) */
-export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false, constrain = false) {
+export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false, constrain = false, warp?: Warp) {
   const clip = rig.clips.get(clipName)!;
   const fl = clipFlags(clipName);
   const tr = newTrack();
@@ -63,12 +64,21 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const cst = newConstrainState();
   const fls = newFootLock();
   const model = mirrored ? MIRROR : IDENT;
-  const n = Math.max(1, Math.round(clip.duration * FPS));
+  // a warped clip (clipWarp.ts) is swept as the game draws it: over its hint's seconds, laid on the warp
+  const n = Math.max(1, Math.round((warp ? warp.sec : clip.duration) * FPS));
   const tail = loop ? 3 : 0;
-  const src = constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
+  const src = warp ? (constrain ? 'played-constrained' : 'played') : constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
+  const inert = new Inertia();
+  let jumped = false;
   for (let i = 0; i <= n + tail; i++) {
-    const t = i <= n ? i / FPS : (i - n) / FPS;
+    const t = warp ? warpProgress(warp, i / n) * clip.duration : i <= n ? i / FPS : (i - n) / FPS;
+    // the warp's jump to the last frame: the pose shown the frame before decays onto it (the game: gltfCharacter inertialization)
+    if (warp?.jump && !jumped && i / n >= warp.jump.at) {
+      jumped = true;
+      inert.start(L.lq, L.lp, warp.jump.sec);
+    }
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
+    if (jumped) inert.apply(L, 1 / FPS);
     // what the runtime constraint layer makes of the clip (the game applies it every frame)
     if (constrain) {
       limitNeck(L, info.R);

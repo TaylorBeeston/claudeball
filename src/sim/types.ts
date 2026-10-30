@@ -105,6 +105,8 @@ export type AnimHint =
   | 'batter_practice_swing'
   | 'batter_adjust'
   | 'batter_step_out'
+  /** waiting at the edge of the box before stepping in (the bat resting in front of him) */
+  | 'batter_wait'
   /** Catcher and pitcher between pitches. */
   | 'catcher_signs'
   | 'catcher_signal_infield'
@@ -127,6 +129,8 @@ export type AnimHint =
   /** Dugout reactions and the pre-inning catch. */
   | 'bench_cheer'
   | 'bench_stand_up'
+  /** back down onto the seat (the stand-up clip backwards) */
+  | 'bench_sit_down'
   | 'catch_toss';
 
 /** What the person is doing on the field right now. */
