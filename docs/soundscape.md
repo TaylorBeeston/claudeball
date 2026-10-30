@@ -35,7 +35,7 @@ never sounds identical. Each one is heard by the mics near where it happens, so 
 
 | sound | what it is | when |
 |---|---|---|
-| catcher's mitt pop | the iconic pop: a leather crack, a tiny paper-like snap of the laces, the pocket slapping shut, a low thump that grows with the pitch's speed; four speeds (under 80, 80-88, 88-95, 95+ mph) | every pitch caught; deader when caught off the edge of the mitt |
+| catcher's mitt pop | the iconic pop: a leather crack, a tiny paper-like snap of the laces, the pocket slapping shut (a short pop, gone in a few milliseconds: no hiss after the snap), the mitt's dead body (a thud, not a ring), a low thump that grows with the pitch's speed; four speeds (under 80, 80-88, 88-95, 95+ mph) | every pitch caught; deader when caught off the edge of the mitt |
 | block | a thud on the chest protector, a dull mitt, a puff of dirt | a pitch in the dirt |
 | framing creak | the mitt's leather creaking as he holds it still | a pitch on the corner, caught clean |
 | fielder's glove | soft (a return), firm (a throw), hard (a line drive, a pickoff), the outfield "thwup", the grounder scoop, the webbing / edge | every catch, by what was caught and how; backhands thinner, a juggle grabs twice |
