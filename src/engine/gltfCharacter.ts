@@ -265,6 +265,8 @@ function decalMaterial(tpl: Material | undefined, tex: import('three').Texture):
   return m;
 }
 
+/** crew in the coach's file who wear a cap, not the base coaches' batting helmet (managers and pitching coaches were in helmets in the dugout) */
+const CAPPED_CREW = new Set<PlayerRole>(['batboy', 'manager', 'pitchcoach']);
 /** the stitched cap / helmet logo patches: a left-hander's mirrored model would show the letter reversed (a backwards C reads as one upside down) */
 const LOGO_NODES = ['Gear_CapLogo', 'Gear_HelmetLogo'];
 const logoMats = new WeakMap<Material, Material>();
@@ -730,7 +732,7 @@ export class GltfPuppet implements PuppetLike {
       this.rebuildProxy();
     } else {
       // fixed-look files (umpires, coaches, ball kids): show exactly the nodes the file marks as its default look (glTF has no visibility flag,
-      // so optional caps / helmets / lineup cards would all be on), the bat boy wears the coach's file with a cap instead of the helmet
+      // so optional caps / helmets / lineup cards would all be on), the bat boy, managers and pitching coaches wear the coach's file with a cap
       if (tpl.defaults.size) {
         for (const [name, o] of this.nodes) {
           const grp = o.userData?.cb_group;
@@ -738,10 +740,9 @@ export class GltfPuppet implements PuppetLike {
           o.visible = tpl.defaults.has(name);
         }
       }
-      if (snap.role === 'batboy') {
-        const helmet = this.nodes.get('Gear_Helmet'), cap = this.nodes.get('Gear_Cap');
-        if (helmet) helmet.visible = false;
-        if (cap) cap.visible = true;
+      if (CAPPED_CREW.has(snap.role)) {
+        for (const n of ['Gear_Helmet', 'Gear_HelmetLogo']) { const o = this.nodes.get(n); if (o) o.visible = false; }
+        for (const n of ['Gear_Cap', 'Gear_CapLogo']) { const o = this.nodes.get(n); if (o) o.visible = true; }
       }
       // umpires, managers and coaches are not athletes: ordinary builds, many of them heavy (the files bake one body, so it is set here per person)
       // (keyed by the generated name: the ids are the same every game, `ump-hp`, the people are not)
@@ -934,10 +935,12 @@ export class GltfPuppet implements PuppetLike {
       const o = this.nodes.get(name);
       if (o) o.visible = on;
     };
-    // the bat boy: the coach's uniform with a cap instead of the helmet
-    if (role === 'batboy') {
+    // the bat boy, managers and pitching coaches: the coach's uniform with a cap instead of the base coaches' helmet
+    if (CAPPED_CREW.has(role)) {
       show('Gear_Helmet', false);
+      show('Gear_HelmetLogo', false);
       show('Gear_Cap', true);
+      show('Gear_CapLogo', true);
     }
     // clothes variants
     if (!own && (this.nodes.get('Jersey')?.visible || this.nodes.get('Jersey_ShortSleeve')?.visible || this.nodes.get('Jersey_Sleeveless')?.visible)) {
