@@ -187,6 +187,27 @@ async function main() {
         const mom = loudnessSeries(chs, r.sr, 'momentary');
         a.momentaryEvery500ms = mom.filter((_, i) => i % 5 === 0).map((v) => +v.toFixed(1));
       }
+      if (scene === 'fans') {
+        // the crowd alone (the PA left out): its short-term loudness through the three walk-ups, and per walk-up the bed before the name,
+        // while he walks up, and after the first pitch (dB, and two bands: the body of a crowd 200-800 Hz, the cheer / boo edge 1-4 kHz)
+        const only = await run({ scene, voice, settings, lowPower, sr: rate, debug, parts: { organ: false, crowd: true, sfx: false, pa: false, booth: false } });
+        const c2 = only.channels.map(fromB64);
+        writeWav(path.join(out, `${tag}-fans-crowd.wav`), c2, only.sr);
+        const st = loudnessSeries(c2, only.sr, 'short');
+        a.crowdShortTermEvery500ms = st.filter((_, i) => i % 5 === 0).map((v) => +v.toFixed(1));
+        const m = mono(c2);
+        const win = (t0: number, t1: number) => {
+          const seg = m.subarray(Math.floor(t0 * only.sr), Math.floor(t1 * only.sr));
+          const psd = powerSpectrum(seg, 8192);
+          let e = 0;
+          for (const v of seg) e += v * v;
+          return { rmsDb: +db(Math.sqrt(e / Math.max(1, seg.length))).toFixed(1), body: +(10 * Math.log10(bandPower(psd, only.sr, 200, 800) + 1e-20)).toFixed(1), edge: +(10 * Math.log10(bandPower(psd, only.sr, 1000, 4000) + 1e-20)).toFixed(1) };
+        };
+        const ev = (only.info.events as string[]).map((x) => x.split(' '));
+        const names = ev.filter((x) => x[1] === 'batterUp').map((x) => ({ who: x[2], name: Number(x[0]) + Number(x[5].replace(/[+s]/g, '')) }));
+        const pitches = ev.filter((x) => x[1] === 'first').map((x) => Number(x[0]));
+        a.walkups = names.map((n, i) => ({ who: n.who, nameAt: +n.name.toFixed(2), before: win(n.name - 3, n.name - 0.5), walkUp: win(n.name + 1, n.name + 8), afterPitch: win(pitches[i] + 3, pitches[i] + 6) }));
+      }
       if (scene === 'impulse') {
         // the click at 0.5 s and the venue's answer: decay of the rendered tail (the bat crack itself is ~0.1 s long)
         const m = mono(chs);

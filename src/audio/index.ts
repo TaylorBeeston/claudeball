@@ -1,7 +1,8 @@
 /**
  * Audio layer entry point. `attachAudio(engine, root)` is the only thing `main.ts` calls: it listens to the game's events,
  * turns them into cues (`cues.ts`) and plays them (`mixer.ts`, `ambience.ts`, `organ.ts`, `speech.ts`). It reads the engine
- * through a small structural interface and never writes to it, so the sim and engine are unaffected.
+ * through a small structural interface and never writes to it (except to stand the stands up for a crowd favourite), so the sim and engine
+ * are unaffected.
  *
  * Event source: the raw sim event bus when it can be reached (richer: swing/look calls, error kinds, wall contacts, robbed
  * home runs ...), else the engine's reduced GameEvent stream (`?mock`). Never both, or every cue would play twice.
@@ -18,6 +19,7 @@ import { loadVoiceSettings } from './voice/controller';
 export type { HdStatus };
 import { AudioUi, loadSettings, saveSettings } from './ui';
 import { CrowdModel, type CrowdCtx, type CrowdShot } from './crowd';
+import { FanBook, type FanMoment } from './fans';
 import { isLowPower } from './perf';
 import { ParkMusic, WebAudioMusic } from './park/player';
 import { TRIGGERS, TRIGGER_IDS, type Trigger } from './park/manifest';
@@ -74,6 +76,8 @@ export interface AudioHost {
     on(cb: (te: { simTime: number; event: { type: string } & Record<string, unknown> }) => void): unknown;
   };
   director?: { shot: string };
+  /** the stands' fans (the renderer's crowd): `lift` stands them up at least this much (0..1); they sit back down by themselves */
+  stadium?: { crowd: { lift?(v: number): void } };
   /** the sky the renderer shows (the opening's weather follows it) */
   env?: { todName?: string; hdriActive?: boolean };
 }
@@ -138,6 +142,12 @@ export class AudioController {
   /** phone-class device: lighter everywhere (slower tick, fewer crowd voices and incidental sounds, no footsteps) */
   readonly lowPower = isLowPower();
   private crowdAcc = 0;
+  /** who the home crowd cheers and boos when the PA announces him (`fans.ts`), from the sim's game info; `?fans=all` / `?fans=off` */
+  readonly fans: FanBook;
+  /** reactions waiting for the PA's line to reach the name (`text`: the PA line, `nameAt`: seconds into it) */
+  private fanArms: { m: FanMoment; text: string | null; nameAt: number; armedAt: number }[] = [];
+  /** the reaction that played for the batter now up, and the pitches since (the booth may remark on it before the second pitch) */
+  private fanNow: { m: FanMoment; pitches: number } | null = null;
   /** park music: optional tracks from `public/audio/music/`, the organ stingers otherwise */
   readonly music: ParkMusic;
   private musicTestList: string[] = [];
@@ -214,6 +224,7 @@ export class AudioController {
       /* no location */
     }
     this.crowd = new CrowdModel({ rng: Math.random, lowPower: this.lowPower });
+    this.fans = this.makeFans();
     this.ambience = new Ambience(this.mixer);
     if (audioDebug) void import('./debugPanel').then((d) => (this.debugPanel = new d.AudioDebugPanel(this.mixer, this.ambience, root)));
     this.organ = new Organ(this.mixer);
@@ -305,6 +316,60 @@ export class AudioController {
     this.ui?.setHd(hdManager.status().state === 'unavailable' ? { state: 'off' } : (hdManager.status() as Parameters<AudioUi['setHd']>[0]));
     this.ui?.voicePanel?.set(voiceManager.status());
     this.interval = setInterval(() => this.tick(), this.lowPower ? 1000 / 15 : 1000 / 30);
+  }
+
+  /** the home crowd's favourites and villains (`game.info.fans`), its decisions on the game's own seed */
+  private makeFans(): FanBook {
+    let mode: string | null = null;
+    try {
+      mode = new URLSearchParams(location.search).get('fans');
+    } catch {
+      /* no location */
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const game = (this.host.sim.game as any)?.game ?? null;
+    const seed = String(game?._world?.cfg?.seed ?? 'game');
+    return new FanBook(mode === 'off' ? null : game?.info?.fans, { seed, force: mode === 'all' });
+  }
+
+  /**
+   * A new batter: does the crowd make something of him (or of the pitcher the PA introduces first)? The reaction waits for the PA's line
+   * (`cues`: what the mapper made of the event) to get to the name; `ev` comes back marked so the crowd skips its usual polite hand.
+   */
+  private fanUp(ev: RawEvent, ctx: MapCtx, cues: Cue[], live: boolean): RawEvent {
+    const bid = String(ev.batterId ?? '');
+    const pid = String(ev.pitcherId ?? '');
+    const r = this.fans.batterUp(bid, ctx.person(bid)?.name ?? '', pid, ctx.person(pid)?.name ?? '', { inning: ctx.inning, half: ctx.half, score: ctx.score, runners: ctx.runners });
+    this.fanArms = [];
+    this.fanNow = null;
+    if (!live) return ev; // (skipped ahead, or no sound yet: the book still counts his time up)
+    const pa = cues.filter((c): c is Extract<Cue, { kind: 'speak' }> => c.kind === 'speak' && c.role === 'pa').map((c) => c.text);
+    const arm = (m: FanMoment, text: string | undefined) => {
+      const name = m.name.replace(/\s+/g, ' ').trim();
+      const at = text && name ? text.lastIndexOf(name) : -1;
+      this.fanArms.push({ m, text: text ?? null, nameAt: at > 0 ? estimateDuration(text!.slice(0, at), 0.92) : 0, armedAt: performance.now() });
+    };
+    if (r.pitcher) arm(r.pitcher, pa.find((t) => t.startsWith('Now pitching')));
+    if (r.batter) arm(r.batter, pa.find((t) => !t.startsWith('Now pitching')));
+    return r.batter && r.batter.side === 'favourite' ? { ...ev, fan: r.batter.side } : ev;
+  }
+
+  /** start a waiting reaction when the PA's line starts (or at once, a beat after the event, when the PA will not be heard) */
+  private fanTick(speed: number) {
+    if (!this.fanArms.length) return;
+    const now = performance.now();
+    const heard = !this.locked && !this.settings.muted && speed <= 1.01 && this.speech.enabled.pa && this.speech.available();
+    const line = this.speech.speaking?.text;
+    this.fanArms = this.fanArms.filter((a) => {
+      let delay: number | null = null;
+      if (a.text && heard && line === a.text) delay = a.nameAt;
+      else if (!heard || !a.text) delay = Math.max(0, 1.5 - (now - a.armedAt) / 1000);
+      else if (now - a.armedAt > 5000) delay = 0; // the line never started (dropped, or a long queue): react anyway
+      if (delay === null) return true;
+      if (speed <= 2.01) this.crowd.fan(a.m, delay);
+      if (!a.m.pitcher || !this.fanNow) this.fanNow = { m: a.m, pitches: 0 };
+      return false;
+    });
   }
 
   /** the game's who-and-where for the booth's opening and the PA's welcome (from the sim's teams and `game.info`, and the renderer's sky) */
@@ -592,6 +657,8 @@ export class AudioController {
     if (!rs) return null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.bctx = ctxFromRaw(rs, { crowd: this.excitement.level, lastPlay: this.lastPlayText, game: (this.host.sim.game as any)?.game });
+    // the crowd's reaction to the man just announced, until the second pitch (the booth may remark on it)
+    if (this.fanNow && this.fanNow.pitches < 2) this.bctx.fan = this.fanNow.m;
     this.bctxAt = now;
     return this.bctx;
   }
@@ -733,8 +800,13 @@ export class AudioController {
             this.pending.push({ ev, at });
             continue;
           }
-          for (const c of this.mapper.map(ev, ctx)) this.dispatch(c, st, sim.speed);
-          if (!this.locked && (sim.speed <= 2.01 || MAJOR.has(ev.type))) this.crowd.observe(ev, crowdCtx(st));
+          const cues = this.mapper.map(ev, ctx);
+          for (const c of cues) this.dispatch(c, st, sim.speed);
+          let cev = ev;
+          if (ev.type === 'batterUp') cev = this.fanUp(ev, ctx, cues, !this.locked && !sim.skipping);
+          else this.fans.observe(ev);
+          if (ev.type === 'pitchReleased' && this.fanNow) this.fanNow.pitches++;
+          if (!this.locked && (sim.speed <= 2.01 || MAJOR.has(ev.type))) this.crowd.observe(cev, crowdCtx(st));
           if (!this.locked && sim.speed <= 1.01 && !sim.skipping) this.music.observe(ev, { inning: st.inning, half: st.half, score: st.score }, now / 1000);
           if (cc && !sim.skipping) this.booth.observe(ev, cc, performance.now() / 1000);
         }
@@ -750,7 +822,11 @@ export class AudioController {
           const step = this.crowdAcc;
           this.crowdAcc = 0;
           this.crowd.setContext(crowdCtx(st));
+          this.fanTick(sim.speed);
           const bed = this.crowd.update(step, !sim.paused && sim.speed <= 1.51 && !this.settings.muted);
+          // the stands get up for a favourite while the cheer lasts (they sit back down by themselves)
+          const up = this.crowd.standing;
+          if (up > 0.02 && !sim.paused) this.host.stadium?.crowd.lift?.(0.12 + 0.45 * up);
           this.ambience.apply(sim.paused ? { ...bed, murmur: bed.murmur * 0.6, roar: bed.roar * 0.6, clap: bed.clap * 0.5 } : bed);
           this.mixer.setCrowdEnergy(this.crowd.energy);
           // park music: silent while paused / skipping / fast / muted / off / the stretch; under the booth and the PA, and under big crowd moments
@@ -897,7 +973,7 @@ export function attachAudio(host: AudioHost, root: HTMLElement, opts: AudioOptio
       get perHalf() { return a.debug.perHalf; },
       get energy() { return a.debug.energy; },
       get events() { return a.debug.events; },
-      get state() { return { music: { playing: a.music.playingNow, tracks: a.music.manifest.tracks.length, stats: a.music.stats, log: a.music.director.log.slice(-8) }, fx: a.fx.played.slice(-5), tickMs: +a.debug.tickMs.toFixed(3), ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
+      get state() { return { music: { playing: a.music.playingNow, tracks: a.music.manifest.tracks.length, stats: a.music.stats, log: a.music.director.log.slice(-8) }, fx: a.fx.played.slice(-5), tickMs: +a.debug.tickMs.toFixed(3), ctx: a.mixer.state, ready: a.mixer.ready, prepared: `${a.mixer.prepared}/${a.mixer.totalToPrepare}`, muted: a.settings.muted, voices: a.mixer.voiceCount, dropped: a.mixer.droppedVoices, level: a.excitement.level, fans: a.fans.state, ambience: a.ambience.gains, speech: { ...a.speech.stats, available: a.speech.available(), pending: a.speech.pending, hd: a.hd.state, hdStats: a.hd.engine?.stats, voice: voiceManager.state, voiceStats: (voiceManager.controller.engine as { stats?: unknown } | null)?.stats }, chat: a.debug.chat, booth: { director: a.booth.director.stats, transcript: a.booth.transcript.slice(-12), field: a.gate.busy, gate: a.gate.stats, concurrent: a.gate.concurrent }, phase: a.phaseNow, idleMs: Math.round(a.speech.idleMs()), organ: a.organ.started, samples: a.mixer.samples, sfxPlayed: a.mixer.played }; },
       get speechLog() { return a.speech.log; },
       level: () => a.mixer.level(),
       controller: a,

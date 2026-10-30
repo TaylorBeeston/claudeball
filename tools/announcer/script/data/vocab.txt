@@ -3,6 +3,7 @@ aaron
 aaron's
 abbott
 abbott's
+abbottldteam
 abe
 abe's
 abernathy
@@ -14,6 +15,7 @@ above
 above's
 absolutely
 accurate
+ace
 acoustics
 across
 action
@@ -273,9 +275,11 @@ boise's
 bold
 bomb
 bonus
+boo
 book
 books
 booming
+boos
 booted
 booth
 boots
@@ -450,6 +454,7 @@ checking
 checks
 cheer
 cheered
+cheering
 cheers
 chess
 chewing
@@ -567,6 +572,7 @@ crew
 crossed
 crosses
 crowd
+crowds
 cruising
 crushed
 crushes
@@ -997,6 +1003,7 @@ faster
 fastest
 fatigue
 favor
+favorite
 favors
 favourite
 february
@@ -1051,6 +1058,7 @@ file
 files
 fill
 filled
+fills
 filthy
 final
 finally
@@ -1381,6 +1389,7 @@ great
 green
 green's
 greener
+grew
 griffin
 griffin's
 grin
@@ -1396,6 +1405,7 @@ grounded
 grounder
 grounds
 grounds's
+grow
 grown-man
 guard
 guards
@@ -1469,6 +1479,7 @@ headset
 hear
 heard
 hearing
+hears
 heart
 heat
 heater
@@ -1520,6 +1531,7 @@ home's
 home-run
 homer
 homers
+hometown
 honest
 honestly
 honour
@@ -1782,6 +1794,7 @@ let
 let's
 lets
 letter
+letting
 level
 lewis
 lewis's
@@ -1793,6 +1806,7 @@ light
 light's
 lights
 like
+likes
 limit
 lincoln
 lincoln's
@@ -2344,6 +2358,7 @@ patterns
 pause
 pay
 payroll
+peace
 peak
 peek
 pellegrino
@@ -2449,6 +2464,7 @@ pretty
 preview
 price
 price's
+principle
 probably
 problem
 professional
@@ -2605,6 +2621,7 @@ rise
 rises
 rising
 ritual
+rivalry
 river
 river's
 rivera
@@ -2871,6 +2888,7 @@ seventy-two
 shade
 shading
 shake
+shakes
 shaking
 shallow
 shame
@@ -3121,6 +3139,7 @@ squeezes
 stacked
 stacked's
 stadium
+staff
 stake
 stallions
 stallions's

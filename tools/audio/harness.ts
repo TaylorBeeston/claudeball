@@ -11,6 +11,7 @@ import { Mixer, DEFAULT_SETTINGS, type Settings } from '../../src/audio/mixer';
 import { Ambience } from '../../src/audio/ambience';
 import { Organ } from '../../src/audio/organ';
 import { CrowdModel, type CrowdCtx, type CrowdShot } from '../../src/audio/crowd';
+import { estimateDuration } from '../../src/audio/broadcast/text';
 import { NeuralSpeechEngine, type Synth } from '../../src/audio/neural';
 import { mulberry32 } from '../../src/audio/dsp';
 import type { Cue, RawEvent } from '../../src/audio/types';
@@ -32,7 +33,7 @@ export interface RenderOpts {
   /** extra hooks (the IR / mic stems) */
   probe?: 'ir' | null;
   /** the scene: 'game' (default), 'impulse' (one click at the plate, for the venue response), 'duck' (steady bed + booth line) */
-  scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise' | 'montage';
+  scene?: 'game' | 'impulse' | 'duck' | 'organ' | 'pa-noise' | 'montage' | 'fans';
   lowPower?: boolean;
   /** profiling: build without parts of the graph */
   debug?: { noConvolver?: boolean; noOversample?: boolean; noWorklet?: boolean; noBeds?: boolean; noShots?: boolean; linearShapers?: boolean };
@@ -116,11 +117,12 @@ class FakeSynth implements Synth {
 }
 
 const crowdCtx = (half: 'top' | 'bottom' = 'bottom'): CrowdCtx => ({ inning: 7, half, outs: 1, balls: 1, strikes: 1, score: { home: 3, away: 3 }, runners: [true, false, false] });
+const quietCtx = (half: 'top' | 'bottom' = 'bottom'): CrowdCtx => ({ inning: 5, half, outs: 0, balls: 0, strikes: 0, score: { home: 2, away: 2 }, runners: [false, false, false] });
 
 export async function render(o: RenderOpts = {}): Promise<RenderOut> {
   const sr = o.sr ?? 48000;
   const scene = o.scene ?? 'game';
-  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : scene === 'pa-noise' ? 6 : scene === 'montage' ? 46 : 34);
+  const seconds = o.seconds ?? (scene === 'impulse' ? 5 : scene === 'duck' ? 14 : scene === 'organ' ? 9 : scene === 'pa-noise' ? 6 : scene === 'montage' ? 46 : scene === 'fans' ? 66 : 34);
   const parts = { organ: true, crowd: true, sfx: true, pa: true, booth: true, ...(o.parts ?? {}) };
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(sr * seconds), sampleRate: sr });
   // the production code only plays into a running context; an offline one is 'suspended' between steps
@@ -196,8 +198,10 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
         onerror: () => res(),
       });
     });
+  const sceneCtx = scene === 'fans' ? quietCtx : crowdCtx;
+  if (scene === 'fans') crowd.setContext(quietCtx());
   const observe = (ev: RawEvent, half: 'top' | 'bottom' = 'bottom') => {
-    if (parts.crowd) crowd.observe(ev, crowdCtx(half));
+    if (parts.crowd) crowd.observe(ev, sceneCtx(half));
   };
 
   // the script: [time, action]
@@ -217,6 +221,22 @@ export async function render(o: RenderOpts = {}): Promise<RenderOut> {
       [25.0, () => sfx({ id: 'glove_pop', bucket: 1, pos: { x: -19, y: 1.2, z: 19 }, gain: 0.6 })],
       [27.5, () => parts.booth && say('color', 'What a swing that was.')],
     );
+  } else if (scene === 'fans') {
+    // three walk-ups, 20 s apart: an ordinary home batter, a crowd favourite, a visitor the crowd boos. The PA says the line, the reaction
+    // starts on the name (as the controller times it), the first pitch comes 12 s after the name. The crowd bed stays a quiet 5th inning.
+    const ups: [number, 'plain' | 'favourite' | 'villain', string][] = [[2, 'plain', 'Now batting, number nine, Joe Plain.'], [22, 'favourite', 'Now batting, number seven, Tom Ace.'], [42, 'villain', 'Now batting for the Falcons, number thirty, Vic Boo.']];
+    for (const [t, who, line] of ups) {
+      const half = who === 'villain' ? 'top' : 'bottom';
+      const name = line.slice(line.lastIndexOf(',') + 2, -1);
+      const nameAt = estimateDuration(line.slice(0, line.lastIndexOf(name)), 0.92);
+      script.push([t, () => {
+        observe({ type: 'batterUp', batterId: who, ...(who === 'favourite' ? { fan: 'favourite' } : {}) }, half);
+        if (who !== 'plain') crowd.fan({ id: who, name, side: who, kind: who === 'favourite' ? 'star' : 'former', size: who === 'favourite' ? 1 : 0.9, pa: 1, pitcher: false, years: 4 }, nameAt);
+        log(`batterUp ${who} (name at +${nameAt.toFixed(2)} s)`);
+      }]);
+      script.push([t + 0.1, () => parts.pa && say('pa', line)]);
+      script.push([t + nameAt + 12, () => (observe({ type: 'windup' }, half), log('first pitch (windup)'))]);
+    }
   } else if (scene === 'impulse') {
     script.push([0.5, () => sfx({ id: 'bat_crack', bucket: 2, pos: plate, gain: 1 })]);
     parts.crowd = false;

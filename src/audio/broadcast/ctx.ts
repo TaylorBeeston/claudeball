@@ -1,3 +1,5 @@
+import type { FanMoment } from '../fans';
+
 export interface ChatPerson {
   id: string;
   name: string;
@@ -47,6 +49,8 @@ export interface BoothCtx extends ChatCtx {
   clock?: { running: boolean; remaining: number; limit: number; kind: string; disengagementsLeft: number } | null;
   /** the pitcher's working pace (his `delivery.tempo`: 0.75 slow ... 1.25 quick) */
   pitcherTempo?: number;
+  /** the crowd just made something of the man the PA announced (a favourite cheered, a villain booed: `fans.ts`), until the second pitch */
+  fan?: FanMoment;
 }
 
 export const lastNameOf = (full: string) => {
