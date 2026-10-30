@@ -265,6 +265,29 @@ function decalMaterial(tpl: Material | undefined, tex: import('three').Texture):
   return m;
 }
 
+/** the stitched cap / helmet logo patches: a left-hander's mirrored model would show the letter reversed (a backwards C reads as one upside down) */
+const LOGO_NODES = ['Gear_CapLogo', 'Gear_HelmetLogo'];
+const logoMats = new WeakMap<Material, Material>();
+/** the logo material with its textures flipped left-right (u -> 1 - u: the patch UVs span 0..1), shared by every mirrored puppet */
+export function mirroredLogoMaterial(src: Material): Material {
+  let m = logoMats.get(src);
+  if (!m) {
+    const c = src.clone() as MeshStandardMaterial;
+    for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap'] as const) {
+      const t = c[k];
+      if (!t) continue;
+      const f = t.clone();
+      f.repeat.x = -t.repeat.x;
+      f.offset.x = t.offset.x + t.repeat.x;
+      f.needsUpdate = true;
+      c[k] = f;
+    }
+    reg(c);
+    logoMats.set(src, (m = c));
+  }
+  return m;
+}
+
 const eyeBlackMats = new WeakMap<Material, Material>();
 function eyeBlackMaterial(src: Material): Material {
   let m = eyeBlackMats.get(src);
@@ -963,6 +986,7 @@ export class GltfPuppet implements PuppetLike {
     }
     if (this.nodes.get('Hand_L_Relaxed')) show('Hand_L_Relaxed', !gk && kind !== 'batter');
     if (!gk && kind !== 'batter' && this.nodes.get('Hand_L_Relaxed')) show('Hand_L', false);
+    this.battingGloves = { L: !!this.nodes.get('Gear_BattingGlove_L')?.visible, R: !!this.nodes.get('Gear_BattingGlove_R')?.visible };
     this.handShown = { R: '', L: '' };
     this.materialsDirty = true;
   }
@@ -1064,6 +1088,8 @@ export class GltfPuppet implements PuppetLike {
    */
   private mirrored = false;
   private mirrorSet = false;
+  /** each logo patch's own (unflipped) material */
+  private logoOwn = new Map<Mesh, Material>();
   private setMirrored(m: boolean) {
     if (this.mirrorSet && m === this.mirrored) return;
     const changed = m !== this.mirrored;
@@ -1072,6 +1098,13 @@ export class GltfPuppet implements PuppetLike {
     // uniform scale from the player's height, mirrored across X for left-handers
     this.model.scale.set(m ? -this.bodyScale : this.bodyScale, this.bodyScale, this.bodyScale);
     if (this.proxy) this.proxy.scale.x = m ? -1 : 1;
+    for (const n of LOGO_NODES) {
+      const logo = this.nodes.get(n) as Mesh | undefined;
+      if (!logo?.isMesh || Array.isArray(logo.material)) continue;
+      let own = this.logoOwn.get(logo);
+      if (!own) this.logoOwn.set(logo, (own = logo.material));
+      logo.material = m ? mirroredLogoMaterial(own) : own;
+    }
     if (changed) {
       this.numberSet = -1;
       this.setNumber(this.numberValue);
@@ -1840,22 +1873,36 @@ export class GltfPuppet implements PuppetLike {
     const bat = snap.role === 'batter' || snap.role === 'ondeck';
     const signs = this.currentName === 'catcher_signs' || this.currentName === 'catcher_signs_runner_on';
     const ball = this.ballPlace === 'hand' || this.ballPlace === 'transfer';
-    const r = ball && claw ? 'ball' : bat || signs || !relaxed ? 'fist' : 'relaxed';
+    // batting gloves are shaped on a hand pose: a runner's relaxed fingers stuck out through the fist-shaped glove. A gloved hand shows the glove made for
+    // its pose (`Gear_BattingGlove_*_Relaxed` in the newer files), else it stays the fist the glove fits
+    const bg = this.battingGloves;
+    let r = ball && claw ? 'ball' : bat || signs || !relaxed ? 'fist' : 'relaxed';
+    if (bg.R && r === 'relaxed' && !this.nodes.get('Gear_BattingGlove_R_Relaxed')) r = 'fist';
     if (r !== this.handShown.R) {
       this.handShown.R = r;
       if (fist) fist.visible = r === 'fist';
       if (claw) claw.visible = r === 'ball';
       if (relaxed) relaxed.visible = r === 'relaxed';
+      if (bg.R) this.showBattingGlove('R', r);
     }
     if (fist) this.driveSignFingers(fist as Mesh, signs);
     const lFist = this.nodes.get('Hand_L'), lRelaxed = this.nodes.get('Hand_L_Relaxed');
     const gloved = this.gloveNodes.length > 0 && !!this.gloveNodes[0].visible;
-    const l = gloved ? 'glove' : bat || !lRelaxed ? 'fist' : 'relaxed';
+    let l = gloved ? 'glove' : bat || !lRelaxed ? 'fist' : 'relaxed';
+    if (bg.L && l === 'relaxed' && !this.nodes.get('Gear_BattingGlove_L_Relaxed')) l = 'fist';
     if (l !== this.handShown.L) {
       this.handShown.L = l;
       if (lFist) lFist.visible = l === 'fist';
       if (lRelaxed) lRelaxed.visible = l === 'relaxed';
+      if (bg.L) this.showBattingGlove('L', l);
     }
+  }
+  /** which hands wear batting gloves (the role's gear: batters, runners, base coaches) */
+  private battingGloves = { L: false, R: false };
+  private showBattingGlove(side: 'L' | 'R', pose: string) {
+    const fist = this.nodes.get(`Gear_BattingGlove_${side}`), relaxed = this.nodes.get(`Gear_BattingGlove_${side}_Relaxed`);
+    if (fist) fist.visible = pose === 'fist' || !relaxed;
+    if (relaxed) relaxed.visible = pose === 'relaxed';
   }
   /** the catcher's signs: the clip's flash windows (manifest `finger_keys`: [frame, n]) show the sim's sequence, n fingers extended (`fingers_n`), else a fist */
   private driveSignFingers(hand: Mesh, signs: boolean) {
