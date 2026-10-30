@@ -20,7 +20,7 @@ function run(m: CrowdModel, secs: number, life = false) {
   return { shots, energy, bed };
 }
 const at = (e: number[], sec: number) => e[Math.round(sec * 10) - 1];
-const first = (s: CrowdShot[], id: string) => s.find((x) => x.id === id);
+const first = <T extends CrowdShot>(s: T[], id: string) => s.find((x) => x.id === id);
 const ids = (s: CrowdShot[]) => s.map((x) => x.id);
 
 describe('crowd reaction model', () => {
@@ -291,5 +291,79 @@ describe('crowd reaction model', () => {
     // the visitors' cheer comes from their sections, not the whole bowl
     const cheer = r.shots.find((s) => s.id === 'cheer_short');
     expect(['line_1b', 'rf_bleachers']).toContain(cheer?.zone);
+  });
+});
+
+describe('crowd reaction to who the PA announces', () => {
+  const fav = { id: 'h3', name: 'Tom Ace', side: 'favourite' as const, kind: 'star' as const, size: 1, pa: 1, pitcher: false, years: 4 };
+  const vil = { id: 'a4', name: 'Vic Boo', side: 'villain' as const, kind: 'former' as const, size: 0.9, pa: 1, pitcher: false, years: 2 };
+  const zoneMax = (r: ReturnType<typeof run>, z: 'home_side' | 'line_1b', from: number, to: number) => Math.max(...r.bed.slice(from * 10, to * 10).map((b) => b.zones[z]));
+
+  it('a favourite: the cheer swells on the name, applause and clapping carry him in, bigger than an ordinary batter, below a hit', () => {
+    const plain = mk(3);
+    plain.setContext(ctx());
+    plain.observe({ type: 'batterUp', batterId: 'h1' }, ctx());
+    const rp = run(plain, 8);
+    const m = mk(3);
+    m.setContext(ctx());
+    m.observe({ type: 'batterUp', batterId: 'h3', fan: 'favourite' }, ctx());
+    m.fan(fav, 2);
+    const rf = run(m, 8);
+    // the usual polite hand is replaced, not stacked
+    expect(ids(rf.shots).filter((x) => x === 'applause_small')).toHaveLength(0);
+    expect(ids(rf.shots)).toEqual(expect.arrayContaining(['swell', 'cheer_short', 'applause', 'whoop']));
+    const cheer = first(rf.shots, 'cheer_short')!;
+    expect(cheer.t).toBeGreaterThanOrEqual(2);
+    expect(first(rf.shots, 'swell')!.t).toBeLessThan(cheer.t);
+    // nothing before the name, then it rises and holds through the walk to the plate
+    expect(at(rf.energy, 1.5)).toBeLessThan(0.01);
+    expect(at(rf.energy, 5)).toBeGreaterThan(0.15);
+    expect(at(rf.energy, 7.5)).toBeGreaterThan(0.15);
+    expect(Math.max(...rf.energy)).toBeGreaterThan(Math.max(...rp.energy) + 0.15);
+    expect(m.standing).toBeGreaterThan(0.6);
+    // a single for the home team is bigger
+    const hit = mk(3);
+    hit.observe({ type: 'plateAppearanceEnd', result: 'single' }, ctx());
+    const rh = run(hit, 4);
+    expect(Math.max(...rf.bed.map((b) => b.level))).toBeLessThan(Math.max(...rh.bed.map((b) => b.level)) + 0.05);
+  });
+
+  it('the first pitch settles it: the energy fades within a couple of seconds and the clapping not yet played is dropped', () => {
+    const m = mk(4);
+    m.observe({ type: 'batterUp', batterId: 'h3', fan: 'favourite' }, ctx());
+    m.fan(fav, 0.5);
+    run(m, 3.6);
+    m.observe({ type: 'windup' }, ctx());
+    const r = run(m, 4);
+    expect(at(r.energy, 2.5)).toBeLessThan(0.02);
+    expect(m.standing).toBeLessThan(0.02);
+    expect(r.shots.filter((s) => s.id === 'clap_burst' && s.t > m.t - 4 + 0.2)).toHaveLength(0);
+  });
+
+  it('a villain: boos and heckles from the home sections, his own fans cheer in their corner; nobody stands', () => {
+    const m = mk(5);
+    m.setContext(ctx({ half: 'top' }));
+    m.observe({ type: 'batterUp', batterId: 'a4' }, ctx({ half: 'top' }));
+    m.fan(vil, 1);
+    const r = run(m, 8);
+    const boo = r.shots.filter((s) => s.id === 'boo' || s.id === 'boo_few');
+    expect(boo.length).toBeGreaterThanOrEqual(2);
+    for (const s of boo) expect(['home_side', 'backstop']).toContain(s.zone);
+    const pocket = first(r.shots, 'applause_small')!;
+    expect(['line_1b', 'rf_bleachers']).toContain(pocket.zone);
+    expect(m.standing).toBe(0);
+    expect(ids(r.shots)).not.toContain('cheer_short');
+    // the visitors' section lifts more than the home side
+    expect(zoneMax(r, 'line_1b', 2, 8)).toBeGreaterThan(zoneMax(r, 'home_side', 2, 8));
+  });
+
+  it('the next batter ends the last man\'s reaction', () => {
+    const m = mk(6);
+    m.fan(fav, 3);
+    run(m, 0.5);
+    m.observe({ type: 'batterUp', batterId: 'h4' }, ctx());
+    const r = run(m, 6);
+    expect(ids(r.shots)).not.toContain('cheer_short');
+    expect(Math.max(...r.energy)).toBeLessThan(0.02);
   });
 });

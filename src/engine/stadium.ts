@@ -309,7 +309,7 @@ export interface Stadium {
   gbufferHidden: Object3D[];
   /** show / hide every spectator and seat mesh (the GTAO depth/normal prepass skips the crowd: hundreds of draw calls for no visible occlusion) */
   crowdVisible(v: boolean): void;
-  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; setSectors(n: number): void; excite(v: number): void; update(t: number, dt: number): void; startWave(): void };
+  crowd: { setDensity(d: number): void; setAnimate(a: boolean): void; setSectors(n: number): void; excite(v: number): void; lift(v: number): void; update(t: number, dt: number): void; startWave(): void };
   /** switch the stands to billboard spectators rendered from the player model (see `crowdImpostors.ts`); the old figures stay as the fallback */
   useCrowdAtlas(atlas: CrowdAtlas, msaa: boolean): void;
   /** the billboard crowd once an atlas is in use (null before) */
@@ -864,6 +864,7 @@ export function buildStadium(env: Environment): Stadium {
       setAnimate: (a) => (crowd.uniforms.uAnimate.value = a ? 1 : 0),
       setSectors: (n) => setSectors(n),
       excite: (v) => (crowd.uniforms.uExcite.value = v),
+      lift: (v) => (crowd.uniforms.uExcite.value = Math.max(crowd.uniforms.uExcite.value, v)),
       update: (t, dt) => {
         crowd.uniforms.uTime.value = t;
         crowd.uniforms.uExcite.value = Math.max(crowd.baseExcite, crowd.uniforms.uExcite.value - dt * 0.18);

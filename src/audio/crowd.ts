@@ -16,12 +16,16 @@
  *   others           strikeouts, two-strike clap-claps for the home pitcher, walks, steals, close plays, double plays, runs, walk-offs,
  *                    pitching changes, mound visits, between-innings chants, a ball tossed to a fan ...
  *   tension          on two strikes / full counts the murmur leans in (hush), more so right before the pitch in tense moments
+ *   who is up        a crowd favourite announced by the PA (`fans.ts` decides who and how much): a swelling cheer, whoops, rhythmic clapping
+ *                    that carries him to the plate; a villain: boos, a groan, a few heckles, a pocket of his own fans; both fade at the first
+ *                    pitch, and both ride the same energy envelopes as everything else (`fan(m, delay)`)
  *
  * `observe(ev, ctx)` feeds events; `update(dt)` advances time and returns the bed; `take()` drains the one-shots that are due.
  */
 import type { CrowdId, RawEvent } from './types';
 import { baseline } from './excitement';
 import { ZONES, type ZoneId } from './venue/mics';
+import type { FanMoment } from './fans';
 
 export type ShotId = CrowdId | 'seat_thump';
 
@@ -40,6 +44,8 @@ export interface CrowdShot {
   zone?: ZoneId;
   /** the whole bowl at once (a big roar): no single section */
   diffuse?: boolean;
+  /** what it belongs to (a reaction that is cut short drops the shots it has not played yet) */
+  tag?: string;
 }
 
 /** what the bed loops should do right now */
@@ -239,16 +245,62 @@ export class CrowdModel {
   }
 
   /** the clap-clap, clap-clap-clap rhythm of the home crowd on two strikes */
-  private clapPattern(strength: number) {
-    if (this.t < this.clapUntil) return;
+  private clapPattern(strength: number, delay = 0, tag = 'rhythm') {
+    if (this.t + delay < this.clapUntil) return;
     const beat = 0.27;
     const pat = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12];
     const g = (0.3 + 0.35 * strength) * (this.lowPower ? 0.9 : 1);
     // the whole home crowd claps together: the bowl, not one section
-    pat.forEach((b) => this.shot('clap_burst', g * (0.85 + 0.15 * this.rng()), 0.1 + b * beat, { rate: 0.97 + this.rng() * 0.06, diffuse: true }));
-    this.add('clap', 'rhythm', 0.35 * strength, 0.4, 2.2, 1.2, 0.1);
-    this.clapUntil = this.t + 12 * beat + 0.6;
+    pat.forEach((b) => this.shot('clap_burst', g * (0.85 + 0.15 * this.rng()), delay + 0.1 + b * beat, { rate: 0.97 + this.rng() * 0.06, diffuse: true, tag }));
+    this.add('clap', tag, 0.35 * strength, 0.4, 2.2, 1.2, delay + 0.1);
+    this.clapUntil = this.t + delay + 12 * beat + 0.6;
     this.note('clap pattern');
+  }
+
+  /**
+   * The PA has just said the name of someone the crowd cares about (`delay`: seconds from now to the name). A favourite: the cheer swells on
+   * the name, whoops and whistles, applause, and on a big one the rhythmic clapping carries him to the plate; a villain: boos from the home
+   * sections, a groan, a heckle or two, his own fans cheering in their corner. Held until the first pitch (`windup` fades it), below a hit's
+   * reaction. A favourite pitcher gets the favourite's cheer.
+   */
+  fan(m: FanMoment, delay = 0) {
+    const L = this.lev;
+    const s = clamp(m.size, 0, 1);
+    this.cut('fan', 0.6);
+    this.shots = this.shots.filter((x) => x.tag !== 'fan');
+    const o = { tag: 'fan' };
+    if (m.side === 'favourite') {
+      // they know who it is as the name starts: a rising "ohh" turning into the cheer
+      this.shot('swell', 0.22 * s, Math.max(0, delay - 0.7), { rate: 0.85, ...o });
+      this.shot('cheer_short', (0.4 + 0.25 * s) * L, delay, { diffuse: s > 0.8, ...o });
+      this.shot('applause', 0.3 + 0.3 * s, delay + 0.5, o);
+      this.shot('whoop', 0.2 + 0.15 * s, delay + 0.9, { pan: (this.rng() - 0.5) * 1.4, ...o });
+      if (s > 0.7) this.shot('whistle', 0.22, delay + 1.5, { pan: this.rng() < 0.5 ? -0.6 : 0.6, rate: 0.95 + 0.1 * this.rng(), ...o });
+      this.add('energy', 'fan', 0.3 * s * L, 1.4, 12, 3, delay, 'home');
+      this.add('clap', 'fan', 0.3 * s, 1.2, 10, 2.5, delay + 0.4);
+      // the big one: the bowl claps him in (a chant now and then instead)
+      if (s > 0.8 && !m.pitcher) {
+        if (this.rng() < 0.7) this.clapPattern(0.55 * s, delay + 3.2, 'fan');
+        else this.shot('chant', 0.4, delay + 3.2, o);
+      }
+    } else {
+      const z = (): ZoneId => (this.rng() < 0.5 ? 'home_side' : 'backstop');
+      if (m.kind === 'burned') this.shot('groan', 0.3 * s, delay, o);
+      this.shot('boo', (0.35 + 0.25 * s) * L, delay + 0.1, { zone: z(), ...o });
+      this.shot('boo_few', 0.3 * s, delay + 0.9, { zone: z(), ...o });
+      if (s > 0.7) this.shot(this.rng() < 0.5 ? 'shout' : 'shout2', 0.28, delay + 2.2, { zone: z(), rate: 0.9 + 0.2 * this.rng(), ...o });
+      this.shot('applause_small', 0.25 * s, delay + 0.5, { zone: this.awayZone(), ...o });
+      this.add('energy', 'fan', 0.1 * s * L, 0.8, 8, 2, delay);
+      this.add('energy', 'fan-away', 0.25 * s, 0.6, 6, 2, delay, 'away');
+    }
+    this.note(`fan ${m.side} ${m.kind} ${m.name} size=${s.toFixed(2)}`);
+  }
+
+  /** 0..1: how much of the home crowd is on its feet for a favourite right now (the visible stands follow it) */
+  get standing(): number {
+    let v = 0;
+    for (const e of this.envs) if (e.tag === 'fan' && e.ch === 'energy' && e.side === 'home') v = Math.max(v, envValue(e, this.t) / 0.3);
+    return clamp(v, 0, 1);
   }
 
   private dp(c: CrowdCtx, fielding: 'home' | 'visitor') {
@@ -272,13 +324,20 @@ export class CrowdModel {
       case 'batterUp':
         this.air = null;
         this.stealing = false;
-        if (hb) {
+        // the last man's reaction is over; one for this man (`fan()`) replaces the usual polite hand
+        this.cut('fan', 0.8);
+        this.shots = this.shots.filter((x) => x.tag !== 'fan');
+        if (hb && !ev.fan) {
           this.shot('applause_small', 0.25 + 0.2 * L, 0.6);
           if (this.rng() < 0.18) this.shot('chant', 0.3, 1.2);
         }
         break;
       case 'windup':
         this.prePitch = true;
+        // the first pitch: whatever they were doing for the man announced settles down
+        this.cut('fan', 1.6);
+        this.cut('fan-away', 1.6);
+        this.shots = this.shots.filter((x) => x.tag !== 'fan');
         break;
       case 'pitchReleased':
       case 'pitchCrossed':
@@ -419,6 +478,7 @@ export class CrowdModel {
         this.shot('whoop', 0.25, 0.4);
         break;
       case 'halfInningEnd':
+        this.cut('fan', 0.8);
         this.air = null;
         this.halfRuns = 0;
         this.outsRecent.length = 0;

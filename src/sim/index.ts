@@ -8,4 +8,5 @@ export { simulateSeason } from './season';
 export type { SeasonOptions, SeasonResult, SeasonPlayer, Standing } from './season';
 export { batterStats, pitcherStats } from './stats';
 export { buildGameInfo, parkFor, teamStrength } from './gameinfo';
+export { crowdFans, rivalsOf, type CrowdFans, type FanKind, type FanPick } from './fans';
 export type { GameInfo, Venue, Official, Skipper, TeamRecord } from './gameinfo';
