@@ -17,4 +17,6 @@ export const FLAGS = {
   noskip: q.has('noskip'),
   /** the old crowd (the asset's box figures + placeholder capsules) instead of the billboard spectators (A/B) */
   oldcrowd: q.has('oldcrowd'),
+  /** the players' build morphs as the files have them: the forearm's skin runs on into the hand on heavier builds (armMorphs.ts; A/B) */
+  noarmmorphs: q.has('noarmmorphs'),
 };

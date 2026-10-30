@@ -15,6 +15,8 @@ import { DEG, qaxisAngle, qinv, qmul, twistAngle, type Q } from './qmath';
 import { B, NB, PARENT, type PoseLocals, type PoseWorld, fk, newWorld } from './skeleton';
 import type { RestInfo } from './limits';
 import { armRest, solveArm, type ArmRest } from './armIK';
+import { gaitArms, type GaitArmsOpts, type GaitArmsState } from './gaitArms';
+import { torsoVolume } from '../armClear';
 
 /**
  * Soft limit: x unchanged inside [lo, hi] (a valid pose is never touched); past a limit it eases into an overshoot band of width m, approaching
@@ -238,6 +240,8 @@ export interface ConstrainOpts {
   /** the ankle's bend and twist (off by default: on a planted foot either moves the toes into / off the ground; correcting it needs the leg IK
    *  of phase B2, which can move the twist up to the hip) */
   ankles?: boolean;
+  /** the running arms' carriage (gaitArms.ts), first: its weight is the gait clips' share of the pose */
+  gait?: GaitArmsOpts;
   /** what the last frame's constraint did (pass the same object every frame of one character for time-continuous twists); `dt` its step (s) */
   state?: ConstrainState;
   dt?: number;
@@ -247,17 +251,19 @@ export interface ConstrainOpts {
 export interface ConstrainState {
   /** the forearm pronation (deg from neutral) last frame's pose ended with, per side */
   pron: { Left?: number; Right?: number };
+  /** the running-arm pass's last correction (gaitArms.ts) */
+  gait?: GaitArmsState;
 }
-export const newConstrainState = (): ConstrainState => ({ pron: {} });
+export const newConstrainState = (): ConstrainState => ({ pron: {}, gait: {} });
 
 /**
  * Put the pose's elbows, knees, forearms, wrists and ankles back inside their ranges (in place). Returns a bit mask of the bones it changed
  * (bit i = bone i) so the caller writes back only those.
  */
 export function constrainPose(L: PoseLocals, R: RestInfo, o: ConstrainOpts = {}): number {
+  let mask = o.gait && o.arms !== false && !(globalThis as { __noGaitArms?: boolean }).__noGaitArms ? gaitArms(L, R, { ...o.gait, state: o.state?.gait, dt: o.dt }) : 0;
   const w = fk(L, W, R.rest);
   const m = CONSTRAINT.margin;
-  let mask = 0;
   for (const side of ['Left', 'Right'] as const) {
     if (o.arms !== false) {
       if (hinge(L, w, R, B[`${side}Arm`], B[`${side}ForeArm`], 1, CONSTRAINT.elbow, m)) mask |= 1 << B[`${side}ForeArm`];
@@ -283,7 +289,12 @@ const LEGS_FREE = /^(slide|dive|pop_up|coach_slide)/;
 export function constrainOptsFor(clip: string, holdsBat = BAT_HELD.test(clip)): ConstrainOpts {
   // the gait clips' ankles bent past their range (B2 game A/B: ankle swing -62 %, total -7 %, no cost: the foot lock re-plants the feet after)
   const ankles = GAIT_ANKLES.test(clip) && !(globalThis as { __noGaitAnkles?: boolean }).__noGaitAnkles;
-  return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat }, ankles };
+  const gait = isGaitClip(clip) ? { w: 1, torso: TORSO } : undefined;
+  return { arms: true, legs: !LEGS_FREE.test(clip), pron: { Left: !holdsBat, Right: !holdsBat }, ankles, gait };
 }
+/** the clips whose arms the running-arm pass (gaitArms.ts) corrects */
+export const isGaitClip = (clip: string) => GAIT_ANKLES.test(clip) || clip === 'manager_walk';
+/** the average build's trunk (the game passes each player's own) */
+const TORSO = torsoVolume(undefined);
 /** the gait clips (their ankles clamped) */
 const GAIT_ANKLES = /^(walk|trot|jog|run|run_sprint|run_turn|run_turn_sprint)$/;

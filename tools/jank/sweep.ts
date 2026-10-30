@@ -20,7 +20,8 @@ import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation
 export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
-import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
+import { constrainPose, constrainOptsFor, isGaitClip, newConstrainState } from '../../src/engine/pose/constrain';
+import { gaitWeightStep } from '../../src/engine/pose/gaitArms';
 import { limitNeck } from '../../src/engine/pose/neck';
 import { applyLook, lookFrame, lookInput, neckPitch } from '../../src/engine/pose/look';
 import { HeadLook, lookTarget } from '../../src/engine/headLook';
@@ -66,6 +67,9 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const n = Math.max(1, Math.round(clip.duration * FPS));
   const tail = loop ? 3 : 0;
   const src = constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
+  // a gait clip through the runtime passes: the running-arm pass carries the arms clear of the player's OWN trunk (the game passes each
+  // puppet's build), so each extra build's trunk checks (body:*@<build>) are measured on the pose made for that build, not the average one's
+  const perBuild = constrain && isGaitClip(clipName) ? (info.builds ?? []).map((b) => ({ b, L: newLocals(), cst: newConstrainState(), fls: newFootLock(), tr: newTrack(), v: [] as Violation[], info: { ...info, builds: [b] } })) : [];
   for (let i = 0; i <= n + tail; i++) {
     const t = i <= n ? i / FPS : (i - n) / FPS;
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
@@ -78,6 +82,19 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
     validateFrame({ L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, info, tr, v);
+    if (perBuild.length) {
+      const own = v.filter((x) => !x.kind.includes('@'));
+      for (const p of perBuild) {
+        sampleClip(clip, Math.min(t, clip.duration), rig.rest, p.L);
+        limitNeck(p.L, info.R);
+        constrainPose(p.L, info.R, { ...constrainOptsFor(clipName), gait: { w: 1, torso: p.b.torso }, state: p.cst, dt: 1 / FPS });
+        footLock(p.L, info.R, IDENT, p.fls, 1 / FPS, FREE_FEET.test(clipName));
+        validateFrame({ L: p.L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, p.info, p.tr, p.v);
+        for (const x of p.v) if (x.kind.endsWith(`@${p.b.name}`)) own.push(x);
+      }
+      v.length = 0;
+      v.push(...own);
+    }
     agg.add(src, file, clipName, v, 1 / FPS, () => ({ ...snap(L, model, { file, clip: clipName, t, mirrored }), bat: bat && { knob: bat.knob, tip: bat.tip } }));
   }
 }
@@ -181,6 +198,9 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   const cb = new ContinuousBlend();
   const continuous = (globalThis as { __continuousBlend?: boolean }).__continuousBlend ?? false;
   const cs = [newConstrainState(), newConstrainState(), newConstrainState()];
+  // the running-arm pass on the blend: its weight follows the gait clips' share of the pose as in the game (gltfCharacter.constrain)
+  const gA = isGaitClip(tx.from) ? 1 : 0, gB = isGaitClip(tx.to) ? 1 : 0;
+  const gw = { w: gA, v: 0 };
   const fls3 = [newFootLock(), newFootLock(), newFootLock()];
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
@@ -206,9 +226,13 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     }
     // the game's passes after the mixer (pose/neck.ts, pose/constrain.ts), on the blend and on both clips alike
     if (constrain) {
+      const k = i < 0 ? 0 : crossfade ? Math.min(1, t / Math.max(1e-6, tx.fade)) : 1;
+      if (i > -2) gaitWeightStep(gw, gA + (gB - gA) * k, 1 / FPS);
       for (const [P, c, st, fs] of [[L, tx.to, cs[0], fls3[0]], [LA, tx.from, cs[1], fls3[1]], [LB, tx.to, cs[2], fls3[2]]] as const) {
         limitNeck(P, info.R);
-        constrainPose(P, info.R, { ...constrainOptsFor(c), state: st, dt: 1 / FPS });
+        const o = constrainOptsFor(c);
+        if (P === L) o.gait = { w: gw.w, torso: constrainOptsFor('run').gait!.torso };
+        constrainPose(P, info.R, { ...o, state: st, dt: 1 / FPS });
         footLock(P, info.R, IDENT, fs, 1 / FPS, FREE_FEET.test(c));
       }
     }
