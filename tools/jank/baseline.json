@@ -756,68 +756,64 @@
  },
  "played": {
   "joint:forearm.pron": {
-   "frames": 343,
-   "score": 12.186
+   "frames": 378,
+   "score": 13.425
   },
   "foot:slide": {
-   "frames": 162,
-   "score": 3.304
+   "frames": 188,
+   "score": 3.113
   },
   "bat:grip": {
-   "frames": 32,
-   "score": 0.246
+   "frames": 37,
+   "score": 0.267
   },
   "joint:neck.yaw": {
-   "frames": 112,
-   "score": 1.813
+   "frames": 130,
+   "score": 1.915
   },
   "joint:hip.twist": {
-   "frames": 94,
-   "score": 1.996
+   "frames": 102,
+   "score": 2.127
   },
   "joint:hip.flex": {
-   "frames": 35,
-   "score": 0.208
+   "frames": 38,
+   "score": 0.216
   },
   "joint:shoulder.post": {
    "frames": 2,
    "score": 0.012
   },
   "joint:shoulder.behind": {
-   "frames": 32,
-   "score": 0.751
+   "frames": 38,
+   "score": 0.857
   },
   "joint:shoulder.twist": {
-   "frames": 47,
-   "score": 1.367
+   "frames": 58,
+   "score": 1.67
   },
   "spike:Hand": {
-   "frames": 16,
-   "score": 0.185
+   "frames": 20,
+   "score": 0.078
   },
   "joint:wrist.swing": {
-   "frames": 19,
-   "score": 0.712
+   "frames": 22,
+   "score": 0.877
   },
   "joint:wrist.split": {
-   "frames": 2,
-   "score": 0.095
+   "frames": 4,
+   "score": 0.132
   },
   "bat:hand-axis": {
-   "frames": 3,
-   "score": 0.019
+   "frames": 5,
+   "score": 0.025
   },
   "body:arm-head": {
-   "frames": 3,
-   "score": 0.073
+   "frames": 5,
+   "score": 0.132
   },
   "body:hand-torso@heavy": {
-   "frames": 2,
-   "score": 0.006
-  },
-  "spike:ForeArm": {
-   "frames": 4,
-   "score": 0.019
+   "frames": 1,
+   "score": 0.005
   },
   "body:elbow-torso@stocky": {
    "frames": 29,
@@ -834,64 +830,60 @@
  },
  "playedRuntime": {
   "joint:forearm.pron": {
-   "frames": 343,
-   "score": 12.186
+   "frames": 378,
+   "score": 13.425
   },
   "bat:grip": {
-   "frames": 32,
-   "score": 0.244
+   "frames": 37,
+   "score": 0.265
   },
   "foot:slide": {
-   "frames": 30,
-   "score": 0.57
+   "frames": 36,
+   "score": 0.451
   },
   "joint:hip.twist": {
-   "frames": 95,
-   "score": 2.058
+   "frames": 103,
+   "score": 2.191
   },
   "joint:shoulder.post": {
    "frames": 2,
    "score": 0.012
   },
   "joint:shoulder.behind": {
-   "frames": 32,
-   "score": 0.751
+   "frames": 38,
+   "score": 0.857
   },
   "joint:shoulder.twist": {
-   "frames": 47,
-   "score": 1.367
+   "frames": 58,
+   "score": 1.67
   },
   "spike:Hand": {
-   "frames": 16,
-   "score": 0.185
+   "frames": 20,
+   "score": 0.078
   },
   "joint:wrist.swing": {
-   "frames": 19,
-   "score": 0.712
+   "frames": 22,
+   "score": 0.877
   },
   "joint:wrist.split": {
-   "frames": 2,
-   "score": 0.095
+   "frames": 4,
+   "score": 0.132
   },
   "bat:hand-axis": {
-   "frames": 3,
-   "score": 0.018
+   "frames": 5,
+   "score": 0.025
   },
   "body:arm-head": {
-   "frames": 3,
-   "score": 0.073
+   "frames": 5,
+   "score": 0.132
   },
   "body:hand-torso@heavy": {
-   "frames": 2,
-   "score": 0.006
+   "frames": 1,
+   "score": 0.005
   },
   "joint:hip.flex": {
-   "frames": 21,
-   "score": 0.156
-  },
-  "spike:ForeArm": {
-   "frames": 4,
-   "score": 0.019
+   "frames": 22,
+   "score": 0.163
   },
   "body:elbow-torso@stocky": {
    "frames": 29,

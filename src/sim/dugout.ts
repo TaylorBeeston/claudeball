@@ -264,7 +264,7 @@ function tickOne(w: World, p: PlayerRT): void {
     stepPlayer(p, w);
     if (w.tick >= p.animUntil) {
       if (w.tick >= p.nextSwing) {
-        setAnim(w, p, 'ondeck_swing', 2.0);
+        setAnim(w, p, 'ondeck_swing', 2.2);
         p.nextSwing = w.tick + secToTicks(6 + 4 * w.propRng.next());
       } else setAnim(w, p, 'ondeck_ready', clamp((p.nextSwing - w.tick) / 240, 0.2, 1.5));
     }
