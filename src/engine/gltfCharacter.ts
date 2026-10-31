@@ -1254,7 +1254,7 @@ export class GltfPuppet implements PuppetLike {
   private reachShift = new Vector3();
   /** longest lunge (m): a tag is a dive at a runner, a catch a step */
   private lungeMax = 0.8;
-  private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number, hop = true) {
+  private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number, hop = true, lunge = true) {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (target && this.gloveW > 0.02 && sh && fore && hand) {
@@ -1269,7 +1269,7 @@ export class GltfPuppet implements PuppetLike {
       const hx = goal.x - S.x, hz = goal.z - S.z;
       const hd = Math.hypot(hx, hz);
       const allowed = Math.sqrt(Math.max(0, reach * reach - dy * dy));
-      const excess = hd - allowed;
+      const excess = lunge ? hd - allowed : 0;
       // above reach: a hop (the feet leave the ground a little); beyond it sideways: a lunge of up to ~0.8 m
       const lift = hop && dy > reach ? Math.min(0.45, dy - reach) : 0;
       if ((excess > 0 && hd > 1e-4) || lift > 0) want.set(hd > 1e-4 && excess > 0 ? (hx / hd) * Math.min(this.lungeMax, excess) : 0, lift, hd > 1e-4 && excess > 0 ? (hz / hd) * Math.min(this.lungeMax, excess) : 0).multiplyScalar(this.gloveW);
@@ -2013,7 +2013,14 @@ export class GltfPuppet implements PuppetLike {
       // reach out through the first half of the catch, then hold the pocket on the ball
       w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : Math.max(settle, p < 0.15 ? p / 0.15 : 1);
     } else if (settle > 0 && gt) {
-      target = new Vector3(gt.x, gt.y, gt.z);
+      // in front of him toward the catch point (he is still drifting under it: the glove does not reach out for where he will be)
+      // (a ball coming down behind him, his body still facing the plate: up in front of his face, not reaching back over his shoulder)
+      const fx = Math.sin(snap.facing), fz = Math.cos(snap.facing);
+      let dx = gt.x - snap.pos.x, dz = gt.z - snap.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.05 || (dx * fx + dz * fz) / d < 0.3) ((dx = fx * 0.35), (dz = fz * 0.35));
+      const k = Math.hypot(dx, dz) > 0.45 ? 0.45 / Math.hypot(dx, dz) : 1;
+      target = new Vector3(snap.pos.x + dx * k, gt.y, snap.pos.z + dz * k);
       w = settle * (1 - callWave(snap.calling!, snap.catchIn).w);
     } else if (this.readyW > 0.02 && this.readyGlovePos) {
       // glove out for a throw that has not left the thrower's hand yet
@@ -2057,9 +2064,11 @@ export class GltfPuppet implements PuppetLike {
     this.gloveW += ((target ? w : 0) - this.gloveW) * (1 - Math.exp(-dt * 40));
     // a target beyond arm's reach: a lunge (the body steps / leans toward it, at most ~0.45 m) before the trunk lean and the arm finish the reach
     this.lungeMax = tagging ? 1.05 : 0.8;
-    // a fly ball he takes in front of his face is not a hop: he leaves the ground only for one still well over his head (a high liner)
+    // a fly ball he takes in front of his face is not a hop: he leaves the ground only for one still well over his head (a high liner),
     const fly = GltfPuppet.FLY_HINTS.has(snap.anim) || settle > 0;
-    this.reachStep(target, side, dt, !fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25);
+    // and once the ball is in the glove a leap comes down (the body lands in ~0.15 s; the ball rides in the pocket), it does not hang there
+    // (the glove coming up while he settles is the arm alone: no step, no hop, his feet stay where they are)
+    this.reachStep(target, side, dt, !(fly && held) && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching));
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;

@@ -33,7 +33,7 @@ async function main() {
   if (!id) throw new Error('no cbv session');
   const s = JSON.parse(fs.readFileSync(path.join(process.env.CBV_RUN_DIR ?? path.join(os.tmpdir(), 'cbv'), id, 'session.json'), 'utf8'));
   try {
-    cbv('ff', `s.time >= ${AT - PRE - 6}`, '--turbo', '--pause', '--session', id);
+    cbv('ff', `s.time >= ${AT - PRE - 6}`, '--turbo', '--pause', '--timeout', '1200', '--session', id);
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${s.cdpPort}`);
     const page = browser.contexts()[0].pages().find((p) => p.url().startsWith(s.base)) ?? browser.contexts()[0].pages()[0];
     await page.evaluate('window.__name = (f) => f');
