@@ -461,7 +461,9 @@ The baked numbers (`Gear_Number_Tens/Ones`, material `jersey_number`) stay in th
 - **Build keys at the wrist** (`player_morph.arm_fade`, t-0037's request): the forearm's build deltas lose their share along the forearm (elbow ->
   wrist) and fade out over the last 20 % before the wrist (heavy slid the skin 52 mm into the hand, lean pulled it 26 mm away); the same rule as
   the engine's `src/engine/armMorphs.ts`, so that runtime patch now finds (almost) nothing to do.
-- **Clips**: `ondeck_swing` 32 -> 44 frames and `batter_practice_swing` 31 -> 40 frames: after the finish the hands come forward in front of the
-  left shoulder with the bat upright and the barrel comes down across the front (~.5 s; it snapped through the body in 2-3 frames).
+- **Clips**: `ondeck_swing` 32 -> 44 frames and `batter_practice_swing` 31 -> 40 frames: after the finish the barrel drops behind the left
+  shoulder while the hands come down in front, then hangs in front (~.5 s, on the left side; it snapped through the body in 2-3 frames).
+  `jank:check`: the two clips have the same share of over-limit forearm pronation as before (the carry pose), more frames because they are longer,
+  and one frame of right-wrist split just after the finish.
 - Audit renders: `tools/visual/model_audit.py` (one plain GLB; gloves, batting gloves, facial hair x cap / helmet, logo, lower body at every build
   and in stance / run / slide / crouch / lunge).
