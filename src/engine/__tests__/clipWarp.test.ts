@@ -15,15 +15,18 @@ describe('clip time warps', () => {
       }
     }
   });
-  it('play the practice swings to their finish at the clip speed, hold it, then take the rest of the hint for the way back', () => {
-    // on deck: the clip's finish (1.0 s of 1.333) is reached at 1.0 s of the 2.0 s hint (its own speed), held 0.2 s, then 0.8 s for the 8 frames back
-    const od = WARPS.ondeck_swing;
-    expect(warpProgress(od, 0.5) * 1.333).toBeCloseTo(1.0, 2);
-    expect(warpProgress(od, 0.6)).toBeLessThan(0.77);
-    // the way back (finish -> ready, 8 frames = 0.33 s of clip) takes at least 0.8 s of the hint (laid linearly: 0.5 s)
-    const fin = 24 / 32;
-    const back = [...Array(201).keys()].map((i) => i / 200).filter((u) => warpProgress(od, u) > fin + 0.005);
-    expect((1 - back[0]) * 2.0).toBeGreaterThan(0.8);
+  it('play the practice swings at the clip speed (never faster), then ease the last frames out to rest', () => {
+    // on deck: 2.0 s hint, 1.833 s clip; in the box: 1.75-1.95 s hint, 1.667 s clip (the re-keyed clips of t-0038 bring the bat back in ~0.5 s)
+    for (const [name, len] of [['ondeck_swing', 44 / 24], ['batter_practice_swing', 40 / 24]] as const) {
+      const w = WARPS[name];
+      for (let i = 1; i <= 100; i++) {
+        const u0 = (i - 1) / 100, u1 = i / 100;
+        const speed = ((warpProgress(w, u1) - warpProgress(w, u0)) * len) / ((u1 - u0) * w.sec);
+        expect(speed, `${name} at ${u1}`).toBeLessThanOrEqual(1.001);
+      }
+      expect(warpProgress(w, (len / w.sec) * 0.5)).toBeCloseTo(0.5, 2);
+      expect(warpProgress(w, 0.995)).toBeGreaterThan(0.999);
+    }
   });
   it('sit-down is the stand-up clip backwards', () => {
     const w = WARPS.bench_sit_down;

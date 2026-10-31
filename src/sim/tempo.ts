@@ -240,7 +240,7 @@ function startRoutine(w: World): Routine {
     const mound = { x: 0, z: MOUND_DIST };
     const swings: Item[] = [];
     const n = Math.max(1, Math.round(ticCount(B) * (0.5 + 0.5 * show)));
-    if (w.propRng.next() < show) for (let i = 0; i < n; i++) swings.push(item(w, B, 'batter_practice_swing', 2.0, 2.2, { goal: null, look: mound }));
+    if (w.propRng.next() < show) for (let i = 0; i < n; i++) swings.push(item(w, B, 'batter_practice_swing', 1.75, 1.95, { goal: null, look: mound }));
     const adjust = tic === 'adjust_helmet' || tic === 'stretch' || w.propRng.next() < 0.5 ? [item(w, B, 'batter_adjust', 1.5, 1.8)] : [];
     // (a quicker game shows less of it: the tempo's share of the real game's ritual)
     const extra = style.extra < TEMPO_RITUAL[w.cfg.tempo];

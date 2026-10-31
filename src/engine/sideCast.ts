@@ -91,7 +91,7 @@ export function hash01(s: string, n = 0): number {
 
 /** nominal lengths (s) of the one-shot hints, so the clip can be laid on their progress */
 export const SIDE_DUR: Partial<Record<AnimHint, number>> = {
-  ondeck_swing: 1.333,
+  ondeck_swing: 1.833,
   coach_stop: 1.0,
   coach_go: 1.5,
   coach_advance: 1.333,
