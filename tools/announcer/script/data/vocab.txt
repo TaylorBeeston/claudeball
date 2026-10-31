@@ -17,6 +17,7 @@ accurate
 acoustics
 across
 action
+actually
 add
 address
 adds
@@ -44,6 +45,7 @@ agrees
 ahead
 ain't
 air
+airports
 albany
 albany's
 alertly
@@ -200,6 +202,7 @@ beats
 beautiful
 beautifully
 because
+bed
 been
 before
 began
@@ -292,6 +295,7 @@ bounces
 boundary
 box
 boxed
+boxes
 boy
 boyd
 boyd's
@@ -375,6 +379,7 @@ calls
 calm
 came
 camera
+camp
 campbell
 campbell's
 camps
@@ -437,6 +442,7 @@ chargers's
 charleston
 charleston's
 charm
+charted
 chase
 chase's
 chased
@@ -476,6 +482,7 @@ classic
 claudeball
 clean
 cleaned
+cleanest
 cleanly
 cleanup
 clear
@@ -563,6 +570,7 @@ cracked
 creaked
 cream
 credit
+creeping
 crew
 crossed
 crosses
@@ -639,6 +647,7 @@ denver's
 depends
 derek
 derek's
+describe
 dewey
 dewey's
 diagram
@@ -928,6 +937,7 @@ errant
 error
 errors
 escaping
+especially
 ethan
 ethan's
 eugene
@@ -997,6 +1007,7 @@ faster
 fastest
 fatigue
 favor
+favorite
 favors
 favourite
 february
@@ -1138,6 +1149,7 @@ five-twenty-three
 five-twenty-two
 flags
 flashed
+flavor
 flawless
 flew
 flickered
@@ -1146,6 +1158,7 @@ flores
 flores's
 floyd
 floyd's
+flu
 fly
 fog
 folks
@@ -1160,6 +1173,7 @@ forced
 forces
 forecasts
 forest
+forever
 forget
 forgets
 forgive
@@ -1378,6 +1392,7 @@ gravy
 gray
 gray's
 great
+greedy
 green
 green's
 greener
@@ -1470,6 +1485,7 @@ hear
 heard
 hearing
 heart
+heartbeat
 heat
 heater
 heavy
@@ -1565,6 +1581,7 @@ ice
 idea
 if
 ignorance
+ignore
 ike
 ike's
 important
@@ -2003,7 +2020,9 @@ mort
 mort's
 most
 mostly
+moth
 mother
+moths
 motion
 mound
 mountains
@@ -2273,6 +2292,7 @@ order
 ordinal
 organ
 organist
+organized
 ortiz
 ortiz's
 oscar
@@ -2380,6 +2400,7 @@ pick
 picked
 pickoff
 picks
+picture
 piece
 pigeon
 pile
@@ -2387,6 +2408,7 @@ piles
 piling
 pin
 pinch
+pinch-hit
 pioneers
 pioneers's
 pipe
@@ -2396,6 +2418,7 @@ pitcher
 pitchers
 pitches
 pitching
+pity
 pivot
 pizza
 place
@@ -2416,6 +2439,7 @@ plenty
 plunked
 point
 pointed
+polite
 pop
 pop-up
 popcorn
@@ -2436,6 +2460,7 @@ power
 practice
 prairie
 prairie's
+prediction
 pregame
 prepare
 prepared
@@ -2444,6 +2469,7 @@ press
 press-box
 pressing
 pressure
+pretended
 prettiest
 pretty
 preview
@@ -2495,6 +2521,7 @@ r
 race
 raced
 racking
+radio
 rafael
 rafael's
 rail
@@ -2612,6 +2639,7 @@ rivera's
 riverbend
 riverbend's
 rms
+road
 roared
 rob
 rob's
@@ -2870,6 +2898,7 @@ seventy-three
 seventy-two
 shade
 shading
+shadows
 shake
 shaking
 shallow
@@ -2903,6 +2932,7 @@ shot
 shotgun
 should
 shoulder
+shouting
 show
 showing
 shown
@@ -2924,6 +2954,7 @@ silva's
 simmons
 simmons's
 simple
+simplest
 since
 single
 singled
@@ -3023,6 +3054,7 @@ sky
 slam
 slapped
 sleep
+slept
 slices
 slid
 slide
@@ -3059,6 +3091,7 @@ snap
 snapped
 snares
 so
+socks
 soda
 soft
 solid
@@ -3069,6 +3102,7 @@ sombrero
 some
 somebody
 somebody's
+somehow
 someone
 something
 sometimes
@@ -3118,6 +3152,7 @@ squares
 squaring
 squat
 squeezes
+stack
 stacked
 stacked's
 stadium
@@ -3224,6 +3259,7 @@ surprises
 surprising
 survive
 suspense
+swallowed
 sweat
 sweeper
 swing
@@ -3250,6 +3286,7 @@ taken
 takes
 taking
 talk
+talked
 talking
 talks
 tall
@@ -3266,12 +3303,14 @@ taste
 tastes
 taylor
 taylor's
+tea
 team
 teammate
 teams
 teases
 ted
 ted's
+television
 tell
 tells
 temperature
@@ -3504,6 +3543,7 @@ times
 timing
 tip
 tipped
+tips
 tired
 tiring
 to
@@ -3520,6 +3560,7 @@ toledo's
 tomas
 tomas's
 tomorrow
+tone
 tonight
 too
 took
@@ -3547,6 +3588,7 @@ traffic
 trailing
 train
 train's
+training
 travel
 traveled
 travis
@@ -3898,6 +3940,7 @@ why
 wichita
 wichita's
 wide
+wife
 wild
 will
 will's
@@ -3965,6 +4008,8 @@ yards's
 yeah
 year
 years
+yell
+yelling
 yellow
 yes
 yet

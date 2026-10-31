@@ -23,11 +23,11 @@ import { BoothMemory, withMemory } from './memory';
 import { ANECDOTES, type Anecdote, type AnecdoteWhen } from './anecdotes';
 
 /** running jokes begun in one game (the stages of a begun joke still come back) */
-const MAX_JOKES = 4;
+const MAX_JOKES = 8;
 const numW = (n: number) => ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][n] ?? String(n);
 /** the booth's own stories: at most this many a game, this many seconds apart */
-const MAX_ANECDOTES = 10;
-const ANECDOTE_GAP = 240;
+const MAX_ANECDOTES = 26;
+const ANECDOTE_GAP = 75;
 
 export interface BoothOpts {
   rng: () => number;
@@ -163,7 +163,8 @@ export class Booth {
     }
     // a pitching change's lull is long, but the change itself is called first: long talk waits for it
     const changeCalled = !!this.recent.change && this.now - this.recent.change.at < 90;
-    const lull = c.lull && c.lull.kind !== 'betweenPitches' && c.lull.kind !== 'break' && (c.lull.kind !== 'pitchingChange' || changeCalled) ? c.lull.remaining ?? 0 : 0;
+    // (between pitches too: at Broadcast tempo the pitcher's routine leaves ~10 s, and a story goes on over a ball or a strike, folded in)
+    const lull = c.lull && c.lull.kind !== 'break' && (c.lull.kind !== 'pitchingChange' || changeCalled) ? c.lull.remaining ?? 0 : 0;
     const topic = this.picker.next(this.log, c, !!tense, { extra: this.extraStories(c, lull), maxTurns: lull >= 15 ? 6 : 4, fresh: (x) => !this.said.includes(x) });
     // (the picker re-words a story whose lines were said recently; what still repeats is not said)
     return topic && topic.turns.some((x) => this.said.includes(x.text)) ? null : topic;
@@ -513,7 +514,7 @@ export class Booth {
   }
 
   /** the analyst chimes in over the last words of a big call, now and then (more at chatter High) */
-  private reactP = 0.35;
+  private reactP = 0.6;
   private maybeReact(call: Call, t: number) {
     if (call.importance !== 'must' || call.react) return;
     const tag = call.tag;
@@ -530,7 +531,7 @@ export class Booth {
 
   setLevel(l: Level) {
     this.director.setLevel(l);
-    this.reactP = l === 'high' ? 0.6 : l === 'low' ? 0 : 0.35;
+    this.reactP = l === 'high' ? 0.75 : l === 'low' ? 0 : 0.6;
   }
 
   /** the broadcast cut to a replay */
