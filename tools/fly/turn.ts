@@ -134,19 +134,21 @@ function analyze(list: { play: { t: number; id: string; name: string }; rows: Ro
     const shiftOf = (rs: Row[]) => Math.max(0, ...rs.map((r) => Math.hypot(...sh(r))));
     const shiftV = (rs: Row[]) => Math.max(0, ...rs.slice(1).map((r, i) => Math.hypot(sh(r)[0] - sh(rs[i])[0], sh(r)[1] - sh(rs[i])[1]) / Math.max(1e-6, r.t - rs[i].t)));
     const all = [...W.reach, ...W.turn];
+    // the body's peak turn rate after the catch (rad/s, over 3 frames: one frame's step is the cap of the turn limiter)
+    const yawRate = (rs: Row[]) => Math.max(0, ...rs.slice(3).map((r, i) => Math.abs(wrap(r.yaw - rs[i].yaw)) / Math.max(1e-6, r.t - rs[i].t)));
     const s = {
       reachS: +(tCatch - (iClip >= 0 ? R[iClip].t : tCatch)).toFixed(2),
       skateReach: cnt(W.reach, 'foot:skate'), slideReach: cnt(W.reach, 'foot:slide'), floatReach: cnt(W.reach, 'foot:float'),
       skateTurn: cnt(W.turn, 'foot:skate'), slideTurn: cnt(W.turn, 'foot:slide'), floatTurn: cnt(W.turn, 'foot:float'),
       skatePivot: tThrow !== null ? cnt(W.pivot, 'foot:skate') : null, slidePivot: tThrow !== null ? cnt(W.pivot, 'foot:slide') : null,
-      yawPlantedTurn: turnPlanted(W.turn), yawPlantedPivot: tThrow !== null ? turnPlanted(W.pivot) : null, swing,
+      yawPlantedTurn: turnPlanted(W.turn), yawRateTurn: yawRate(W.turn), yawPlantedPivot: tThrow !== null ? turnPlanted(W.pivot) : null, swing,
       shiftMax: shiftOf(all), shiftV: shiftV(all), pivotS: tThrow !== null && tRel !== null ? +(tRel - tThrow).toFixed(2) : null,
     };
     summary[p.name] = s;
     const f = (x: number | null, d = 2) => (x === null ? '-' : x.toFixed(d));
-    lines.push(`| ${p.name} | ${p.id} @ ${p.t} | ${s.skateReach} / ${s.slideReach} / ${s.floatReach} (${s.reachS} s) | ${s.skateTurn} / ${s.slideTurn} / ${s.floatTurn} | ${f(s.yawPlantedTurn)} | ${f(s.swing)} | ${f(s.shiftMax)} / ${f(s.shiftV, 1)} | ${s.skatePivot ?? '-'} / ${s.slidePivot ?? '-'} | ${f(s.yawPlantedPivot)} (${s.pivotS ?? '-'} s) |`);
+    lines.push(`| ${p.name} | ${p.id} @ ${p.t} | ${s.skateReach} / ${s.slideReach} / ${s.floatReach} (${s.reachS} s) | ${s.skateTurn} / ${s.slideTurn} / ${s.floatTurn} | ${f(s.yawPlantedTurn)} / ${f(s.yawRateTurn, 1)} | ${f(s.swing)} | ${f(s.shiftMax)} / ${f(s.shiftV, 1)} | ${s.skatePivot ?? '-'} / ${s.slidePivot ?? '-'} | ${f(s.yawPlantedPivot)} (${s.pivotS ?? '-'} s) |`);
   }
-  const head = '| play | fielder @ sim time | reach (clip start to catch): skate / slide / float frames | turn (catch to +0.6 s): skate / slide / float | yaw turned over a planted sole after the catch (rad) | yaw out-and-back (rad) | lunge shift max (m) / speed (m/s) | pivot (throw decision to release + 0.3 s): skate / slide | yaw over a planted sole in the pivot (rad) |\n|---|---|---|---|---|---|---|---|---|';
+  const head = '| play | fielder @ sim time | reach (clip start to catch): skate / slide / float frames | turn (catch to +0.6 s): skate / slide / float | after the catch: yaw turned over a planted sole (rad) / peak body yaw rate (rad/s) | yaw out-and-back (rad) | lunge shift max (m) / speed (m/s) | pivot (throw decision to release + 0.3 s): skate / slide | yaw over a planted sole in the pivot (rad) |\n|---|---|---|---|---|---|---|---|---|';
   const md = `${head}\n${lines.join('\n')}\n`;
   fs.writeFileSync(path.join(OUTF, 'table.md'), md);
   fs.writeFileSync(path.join(OUTF, 'summary.json'), JSON.stringify(summary, null, 1));

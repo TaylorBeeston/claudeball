@@ -54,14 +54,14 @@ describe('foot locking', () => {
     expect(footLock(L, R, at(0), st, 1 / 60, true)).toBe(0);
     expect(st.feet.Left.locked).toBe(false);
   });
-  it('turning on the spot: a planted foot keeps its heading (its ball does not sweep round the ankle) until the body has turned past maxTurn', () => {
+  it('a quick turn on the spot: a planted foot keeps its heading (its ball does not sweep round the ankle) until the body has turned past maxTurn', () => {
     const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
     const st = newFootLock();
     const dt = 1 / 60;
     let toe0: number[] | null = null, sweep = 0;
-    // 10 deg in 0.2 s, below FOOT_LOCK.maxTurn
-    for (let i = 0; i < 12; i++) {
-      const m = turned((i * (10 / 12) * Math.PI) / 180);
+    // 12 deg in 0.1 s (2 rad/s, well over FOOT_LOCK.relax), below FOOT_LOCK.maxTurn
+    for (let i = 0; i < 7; i++) {
+      const m = turned((i * 2 * Math.PI) / 180);
       const L = copyLocals(L0);
       footLock(L, R, m, st, dt);
       const t = world(L, m, B.LeftToeBase);
@@ -71,7 +71,8 @@ describe('foot locking', () => {
       }
     }
     expect(st.feet.Left.locked && st.feet.Right.locked).toBe(true);
-    expect(sweep).toBeLessThan(0.01);
+    // (it gives way at FOOT_LOCK.relax: ~1 rad/s x 0.1 s on a ~0.2 m foot, a couple of centimetres; the body turned 12 deg, ~4 cm at the ball)
+    expect(sweep).toBeLessThan(0.025);
   });
   it('a turn on the spot at 5 rad/s: one foot steps while the other pivots on its ball (heel up, ball kept), never both dragged round', () => {
     const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
@@ -97,5 +98,12 @@ describe('foot locking', () => {
     expect(pivots).toBeGreaterThan(5);
     expect(ballSlip).toBeLessThan(0.02);
     expect(bothOff).toBe(0);
+  });
+  it('a slow turn (under FOOT_LOCK.relax) turns the planted foot with the body: no ankle wound up in a crouch', () => {
+    const L0 = sampleClip(rig.clips.get('idle')!, 0.5, rig.rest);
+    const st = newFootLock();
+    const dt = 1 / 60;
+    for (let i = 0; i < 30; i++) footLock(copyLocals(L0), R, turned(0.5 * dt * i), st, dt);
+    expect(Math.abs(st.feet.Left.th)).toBeLessThan(0.01);
   });
 });

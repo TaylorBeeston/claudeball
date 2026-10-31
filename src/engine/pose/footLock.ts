@@ -46,6 +46,14 @@ export const FOOT_LOCK = {
    */
   pivotHeel: 0.045,
   pivotSpeed: 1.0,
+  /**
+   * how fast a planted foot's own heading gives way to the body's (rad/s): a slow turn (a catcher settling between pitches) turns the foot with
+   * the shin as before, never winding the ankle up; only a quick one (a turn on the spot, a pivot into a throw) leaves the foot behind
+   */
+  relax: 1.0,
+  /** and only on a fairly straight leg: fully up to the first knee flexion (deg), not at all past the second (a catcher's or umpire's crouch,
+   *  where the ankle is near the end of its range already and the foot turns with the shin as before) */
+  holdKnee: [35, 55] as const,
 };
 
 interface Foot {
@@ -67,6 +75,8 @@ interface Foot {
   lr: number[];
   /** the animation's ankle last frame in the rig (its speed in the body's own frame) */
   prevR: number[] | null;
+  /** the body's heading last frame (rad) */
+  yawPrev: number | null;
   /** the lock's world point (ankle), and the animation's ankle last frame (world) */
   lw: number[];
   prev: number[] | null;
@@ -81,7 +91,7 @@ export interface FootLockState {
   /** the root's world position last frame (its ground speed decides whether a turn may pivot) */
   root: number[] | null;
 }
-const newFoot = (): Foot => ({ locked: false, lw: [0, 0, 0], prev: null, off: [0, 0, 0], offT: 1e9, yaw: 0, pivot: null, heel: 0, from: null, stepD: 0, th: 0, th0: 0, lr: [0, 0, 0], prevR: null });
+const newFoot = (): Foot => ({ locked: false, lw: [0, 0, 0], prev: null, off: [0, 0, 0], offT: 1e9, yaw: 0, pivot: null, heel: 0, from: null, stepD: 0, th: 0, th0: 0, lr: [0, 0, 0], prevR: null, yawPrev: null });
 export const newFootLock = (): FootLockState => ({ feet: { Left: newFoot(), Right: newFoot() }, root: null });
 
 const legRests = new WeakMap<RestInfo, Record<'Left' | 'Right', ArmRest>>();
@@ -119,9 +129,10 @@ function toRig(m: ArrayLike<number>, p: number[]): number[] {
 
 /**
  * Lock the feet of pose L (in place). `model`: rig -> world; `dt`: the frame's step (s); `free`: the clip is airborne / a slide / seated (no
- * locking, any lock is let go). Returns the bit mask of the bones it changed.
+ * locking, any lock is let go); `turnHold`: a planted foot may keep its own heading and pivot (FOOT_LOCK.relax, holdKnee; off: the foot turns with
+ * the shin, as for an umpire or a catcher in his stance). Returns the bit mask of the bones it changed.
  */
-export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, st: FootLockState, dt: number, free = false, ground?: (x: number, z: number) => number): number {
+export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, st: FootLockState, dt: number, free = false, ground?: (x: number, z: number) => number, turnHold = true): number {
   const w: PoseWorld = fk(L, W, R.rest);
   let mask = 0;
   // the body's heading in the world (the rig's +z), and how fast the root travels over the ground
@@ -150,10 +161,12 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
     const arig0 = [w.wp[ft * 3], w.wp[ft * 3 + 1], w.wp[ft * 3 + 2]];
     const speedW = F.prev && dt > 0 ? Math.hypot(aw[0] - F.prev[0], aw[2] - F.prev[2]) / dt : 0;
     const speedR = F.prevR && dt > 0 ? (Math.hypot(arig0[0] - F.prevR[0], arig0[2] - F.prevR[2]) * Math.hypot(model[0], model[1], model[2])) / dt : 0;
-    const speed = Math.min(speedW, speedR);
+    // (in the body's frame only on the spot: a running stride's foot stops in the body's frame at each end of its swing, at full speed over the ground)
+    const speed = rootV < FOOT_LOCK.pivotSpeed ? Math.min(speedW, speedR) : speedW;
     F.prev = aw;
     F.prevR = arig0;
     const turnedNow = (((yaw - F.yaw + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+    F.yawPrev ??= yaw;
     // the foot (ankle -> ball, world) as the animation has it, and turned by the foot's own turn on the ground
     const toeA = tw(model, w.wp, toe * 3);
     const fA = [toeA[0] - aw[0], toeA[2] - aw[2]];
@@ -178,6 +191,17 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
     // the body carried the foot away from its lock (the root moved or turned under it), not the clip moving its own foot: a step of its own
     const arig = [w.wp[ft * 3], w.wp[ft * 3 + 1], w.wp[ft * 3 + 2]];
     const bodyCarried = (worldDrift: number) => Math.hypot(arig[0] - F.lr[0], arig[2] - F.lr[2]) * sc < 0.5 * worldDrift;
+    const kneeFlex = (() => {
+      const [u0, l0] = [B[`${side}UpLeg`], B[`${side}Leg`]];
+      const v1 = [w.wp[l0 * 3] - w.wp[u0 * 3], w.wp[l0 * 3 + 1] - w.wp[u0 * 3 + 1], w.wp[l0 * 3 + 2] - w.wp[u0 * 3 + 2]];
+      const v2 = [w.wp[ft * 3] - w.wp[l0 * 3], w.wp[ft * 3 + 1] - w.wp[l0 * 3 + 1], w.wp[ft * 3 + 2] - w.wp[l0 * 3 + 2]];
+      const c = (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (Math.hypot(v1[0], v1[1], v1[2]) * Math.hypot(v2[0], v2[1], v2[2]) || 1);
+      return (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
+    })();
+    // how straight the leg is (1: up to holdKnee[0] of flexion, 0: past holdKnee[1], a crouch): the heading hold, the pivot and a forced step's
+    // minimum lift are for a standing leg (a crouched ankle is near the end of its range)
+    const straight = Math.max(0, Math.min(1, (FOOT_LOCK.holdKnee[1] - kneeFlex) / (FOOT_LOCK.holdKnee[1] - FOOT_LOCK.holdKnee[0])));
+    const hold = turnHold ? straight : 0;
     const other = st.feet[side === 'Left' ? 'Right' : 'Left'];
     if (free) {
       if (F.locked) letGo();
@@ -185,7 +209,7 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
       // a turn steps one foot at a time: while the other one is off the ground this one pivots on its ball (turning on the spot), or waits (up to
       // twice the turn) while the body travels, so the feet alternate
       const otherDown = other.locked || other.offT >= FOOT_LOCK.unlock;
-      const pivotOk = !otherDown && rootV < FOOT_LOCK.pivotSpeed;
+      const pivotOk = !otherDown && rootV < FOOT_LOCK.pivotSpeed && hold > 0.5;
       if (F.pivot && other.locked) {
         // the other foot is down again: this one stands where it pivoted to, its heel coming back down
         const at = lockAt();
@@ -213,14 +237,19 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
       F.th = 0;
     }
     // the foot's own turn: planted, it keeps its heading up to maxTurn of the body's turn (pivoting, it turns with the body at that lag); stepping,
-    // it comes back to the animation's with the step; lifted by the animation, the animation's
+    // it comes back to the animation's with the step; lifted by the animation, the animation's. Only on a fairly straight leg: in a crouch (a
+    // catcher, an umpire) the ankle is near the end of its range already, and the foot turns with the shin as before
     if (F.locked) {
-      F.th = Math.max(-maxTurn, Math.min(maxTurn, (((F.yaw - yaw + 3 * Math.PI) % (2 * Math.PI)) - Math.PI)));
+      // (it gives way at FOOT_LOCK.relax, and never lags the body by more than maxTurn: the pivot turns it with the body at that lag)
+      const r = FOOT_LOCK.relax * dt;
+      F.th = Math.max(-maxTurn * hold, Math.min(maxTurn * hold, F.th + wrapPi(F.yawPrev - yaw)));
+      F.th = Math.abs(F.th) <= r ? 0 : F.th - Math.sign(F.th) * r;
       if (F.pivot) F.yaw = yaw + F.th;
     } else if (F.offT < FOOT_LOCK.unlock) {
       const x = Math.min(1, F.offT / FOOT_LOCK.unlock);
       F.th = F.th0 * (F.from ? 1 - smoother((x - FOOT_LOCK.stepLand[0]) / (FOOT_LOCK.stepLand[1] - FOOT_LOCK.stepLand[0])) : decay(F.offT));
     } else F.th = 0;
+    F.yawPrev = yaw;
     // the heel: up while the foot pivots on its ball, back down after (over ~0.1 s)
     F.heel += ((F.locked && F.pivot ? FOOT_LOCK.pivotHeel : 0) - F.heel) * (1 - Math.exp(-dt * 30));
     if (F.heel < 1e-4) F.heel = 0;
@@ -237,7 +266,7 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
         const [a, b] = FOOT_LOCK.stepLand;
         const u = smoother((x - a) / (b - a));
         F.stepD = Math.max(F.stepD, Math.hypot(aw[0] - F.from[0], aw[2] - F.from[2]));
-        const lift = Math.max(FOOT_LOCK.stepMin, Math.min(FOOT_LOCK.stepH, F.stepD * FOOT_LOCK.stepK)) * Math.sin(Math.PI * x);
+        const lift = Math.max(FOOT_LOCK.stepMin * straight, Math.min(FOOT_LOCK.stepH, F.stepD * FOOT_LOCK.stepK)) * Math.sin(Math.PI * x);
         target = [F.from[0] + (aw[0] - F.from[0]) * u, aw[1] + lift, F.from[2] + (aw[2] - F.from[2]) * u];
       } else {
         const k = decay(F.offT - dt);
@@ -323,6 +352,8 @@ export function footLock(L: PoseLocals, R: RestInfo, model: ArrayLike<number>, s
   }
   return mask;
 }
+
+const wrapPi = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
 
 const norm3 = (v: number[]) => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
