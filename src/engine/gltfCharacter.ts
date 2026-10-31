@@ -51,6 +51,7 @@ import { applyLook, lookInput, neckPitch } from './pose/look';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
 import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
+import { CATCH_YAW, catchYaw, newCatchYaw } from './catchYaw';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { MODEL_HEIGHT, computeLook, hashString, type PlayerLook } from './playerLook';
@@ -92,6 +93,8 @@ const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undersh
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
 /** standing about (the body turns at pivot speed there, the feet stepping with it) */
+/** how fast the reach lunge moves the body over the ground (m/s): a step toward a ball out of reach; a tag's dive at a runner */
+export const LUNGE = { speed: 2.4, tagSpeed: 4.5 };
 const STANDING_TURN = /^(idle|.*_ready|ready_|field_ready|catch_ready|ump_ready|coach_ready|ballkid_idle|manager_idle|bench_stand)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
 const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
@@ -1261,13 +1264,16 @@ export class GltfPuppet implements PuppetLike {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (target && this.gloveW > 0.02 && sh && fore && hand) {
+      // (the body is where the sim stands him: the root is set back on the sim's position every frame before this, so the shoulder is measured
+      // unshifted. It used to take this frame's shift off it once more: the shift fed itself, and every lunge ran up to its cap and every hop
+      // to 0.45 m, whatever the target: t-0039)
       this.refreshMatrices();
-      const S = sh.getWorldPosition(new Vector3()).sub(this.reachShift);
+      const S = sh.getWorldPosition(new Vector3());
       const E = fore.getWorldPosition(new Vector3()), H = hand.getWorldPosition(new Vector3());
       const pocket = side === 'Left' ? this.pocket : null;
       const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(H) : new Vector3();
       const goal = target.clone().sub(off);
-      const reach = (S.distanceTo(E.clone().sub(this.reachShift)) + E.distanceTo(H)) * 0.97;
+      const reach = (S.distanceTo(E) + E.distanceTo(H)) * 0.97;
       const dy = goal.y - S.y;
       const hx = goal.x - S.x, hz = goal.z - S.z;
       const hd = Math.hypot(hx, hz);
@@ -1277,7 +1283,16 @@ export class GltfPuppet implements PuppetLike {
       const lift = hop && dy > reach ? Math.min(0.45, dy - reach) : 0;
       if ((excess > 0 && hd > 1e-4) || lift > 0) want.set(hd > 1e-4 && excess > 0 ? (hx / hd) * Math.min(this.lungeMax, excess) : 0, lift, hd > 1e-4 && excess > 0 ? (hz / hd) * Math.min(this.lungeMax, excess) : 0).multiplyScalar(this.gloveW);
     }
+    // the body moves over the ground at a step's pace (LUNGE.speed; a tag's dive faster), so the feet can step with it (pose/footLock.ts); it
+    // used to close 22/s of the gap, up to 10-16 m/s on planted feet; a hop rises and lands as fast as before
+    const prevX = this.reachShift.x, prevZ = this.reachShift.z;
     this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
+    const mx = this.reachShift.x - prevX, mz = this.reachShift.z - prevZ, m = Math.hypot(mx, mz);
+    const vmax = (this.lungeMax > 1 ? LUNGE.tagSpeed : LUNGE.speed) * dt;
+    if (m > vmax) {
+      this.reachShift.x = prevX + (mx / m) * vmax;
+      this.reachShift.z = prevZ + (mz / m) * vmax;
+    }
     if (this.reachShift.lengthSq() > 1e-8) {
       this.root.position.add(this.reachShift);
       this.refreshMatrices();
@@ -1629,7 +1644,12 @@ export class GltfPuppet implements PuppetLike {
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
     const ready = this.updateReady(snap, env, dt);
     // travelling in a stationary pose (a gait chosen by speed): the body faces where it is going
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
+    // taking a ball and holding it (not running, not throwing): the body keeps its heading through the sim's shuffle-led facing swings and
+    // turns once that has settled, at a standing turn's pace (catchYaw.ts)
+    const readyOn = !!ready && this.readyW > 0.35;
+    const taking = !gaitOver && !stanceHeld && !readyOn && (GltfPuppet.CATCH_HINTS.has(snap.anim) || snap.anim === 'transfer' || (snap.anim === 'idle' && (!!snap.hasBall || snap.calling !== undefined)));
+    const held = catchYaw(this.catchYawSt, taking && snap.role !== 'batter' && snap.role !== 'runner', snap.facing, this.bodyYaw, speed0, dt);
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : readyOn ? ready!.yaw : held !== null ? held : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -1640,7 +1660,7 @@ export class GltfPuppet implements PuppetLike {
       // body turns about as fast as a pivot turn (180 deg in ~0.6 s), so the feet can step with it (pose/footLock.ts)
       // (only standing about: a throw, a pickoff or a catch-and-throw turns at its own speed, on the sim's timeline)
       const standing = !gaitOver && speed0 < 0.3 && !stanceHeld && !this.wasStance && STANDING_TURN.test(this.currentName);
-      const maxTurn = (standing ? 5 : stanceHeld || this.wasStance ? 9 : 9.4) * dt;
+      const maxTurn = (standing ? 5 : held !== null ? CATCH_YAW.turn : stanceHeld || this.wasStance ? 9 : 9.4) * dt;
       this.bodyYaw += Math.abs(d) > maxTurn ? Math.sign(d) * maxTurn : d;
     }
     this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);
@@ -2488,6 +2508,7 @@ export class GltfPuppet implements PuppetLike {
     this.rig.refresh();
   }
   private footState = newFootLock();
+  private catchYawSt = newCatchYaw();
   private lockFeet(dt: number) {
     if (!this.poseRest || (globalThis as { __noFootLock?: boolean }).__noFootLock) return;
     this.refreshMatrices();
