@@ -83,6 +83,8 @@ for nm_, asset_ in (("Gear_Eyebrows", "eyebrow004"), ("Gear_Eyelashes", "eyelash
 thicken_brows(gear["Gear_Eyebrows"], 1.6)                                                          # bolder brows (docs/faces.md: they read at B-roll sizes)
 belt_o, buckle_o = finish_belt(belt_shell); gear["Gear_Belt"] = belt_o; gear["Gear_BeltBuckle"] = buckle_o
 copy_weights(buckle_o, [belt_o])
+rigid_on(belt_o, "Hips"); rigid_on(buckle_o, "Hips")
+for _o in [body] + [SH[n] for n in ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless", "Undershirt", "Pants", "Pants_Long", "Shorts", "Gear_Jacket")]: stiffen_waist(_o)
 set_weight(eyeobj, arm, "Head"); set_weight(eyecornea, arm, "Head")
 # ---------------- extras: facial hair, trim, accessories, shoes (built from the surfaces above, weights transferred / assigned)
 extra = {}
@@ -90,8 +92,9 @@ for fn_ in (beard_full, beard_stubble, mustache, goatee, eye_black): o = fn_(hea
 extra["Gear_Piping"] = piping(SH["Jersey"], SH["Pants"], SH["Socks"]); copy_weights(extra["Gear_Piping"], [SH["Jersey"], SH["Pants"], SH["Socks"]])
 extra["Gear_Buttons"] = buttons(SH["Jersey"]); copy_weights(extra["Gear_Buttons"], [SH["Jersey"]])
 for side in ("Left", "Right"):
-    h = handL if side == "Left" else handR
-    o = batting_glove(h, side); set_weight(o, arm, side+"Hand"); extra[o.name] = o
+    h = handL if side == "Left" else handR; hr_ = handLr if side == "Left" else handRr
+    o = batting_glove(h, side, body); extra[o.name] = o                                                # fist on the bat (batters)
+    o = batting_glove(hr_, side, body, "Gear_BattingGlove_"+side[0]+"_Relaxed"); extra[o.name] = o       # relaxed hand (runners, base coaches)
     o = wristband(side); set_weight(o, arm, side+"ForeArm"); extra[o.name] = o
 extra["Gear_Soles"] = soles(SH["Cleats"]); extra["Gear_Spikes"] = spikes(extra["Gear_Soles"])
 def _sole_w(co):
@@ -123,7 +126,7 @@ ASSIGN = {"Body_Skin": "skin", "Head": "face", "Eyes": "eye", "Eyes_Cornea": "co
           "Gear_CatcherMask": "mask", "Gear_ChestProtector": "catcher_gear", "Gear_ShinGuard_L": "catcher_gear", "Gear_ShinGuard_R": "catcher_gear",
           "Gear_Belt": "belt", "Gear_BeltBuckle": "buckle", "Gear_Collar": "uniform_undershirt",
           "Gear_Hair_Buzz": "hair_short01", "Gear_Hair_Curly": "hair_afro01", "Gear_Hair_Long": "hair_long01", "Gear_Hair_SidePart": "hair_short03", "Gear_Hair_SlickBack": "hair_short04", "Gear_Hair_Bob": "hair_bob01", "Gear_Hair_Ponytail": "hair_ponytail01", "Gear_Hair_Receding": "hair", "Gear_Hair_Balding": "hair", "Gear_Eyebrows": "eyebrow", "Gear_Eyelashes": "eyelash", "Gear_Teeth": "teeth", "Gear_Tongue": "tongue", "Gear_Beard_Full": "hair_beard", "Gear_Mustache": "hair_beard", "Gear_Goatee": "hair_beard", "Gear_Beard_Stubble": "stubble",
-          "Gear_EyeBlack": "eyeblack", "Gear_Piping": "piping", "Gear_Buttons": "button", "Gear_BattingGlove_L": "batting_glove", "Gear_BattingGlove_R": "batting_glove",
+          "Gear_EyeBlack": "eyeblack", "Gear_Piping": "piping", "Gear_Buttons": "button", "Gear_BattingGlove_L": "batting_glove", "Gear_BattingGlove_R": "batting_glove", "Gear_BattingGlove_L_Relaxed": "batting_glove", "Gear_BattingGlove_R_Relaxed": "batting_glove",
           "Gear_Jacket": "jacket", "Jersey_BackNameDecal": "jersey_decal_name", "Jersey_BackNumberDecal": "jersey_decal_backnum", "Jersey_FrontNumberDecal": "jersey_decal_frontnum", "Jersey_SleeveNumberDecal": "jersey_decal_sleevenum", "Umpire_Broom": "belt", "Ball_Bag": "belt", "Gear_Wristband_L": "wristband", "Gear_Wristband_R": "wristband", "Gear_LineupCard": "wristband", "Shorts": "uniform_pants", "Gear_ArmSleeve_L": "arm_sleeve", "Gear_ArmSleeve_R": "arm_sleeve", "Gear_Soles": "sole", "Gear_Spikes": "spikes", "Gear_CapLogo": "cap_logo", "Gear_Laces": "laces"}
 allobjs = {**SH, "Body_Skin": body, "Head": head, "Eyes": eyeobj, "Eyes_Cornea": eyecornea, "Hand_L": handL, "Hand_R": handR, "Hand_R_Ball": handRB, "Hand_L_Relaxed": handLr, "Hand_R_Relaxed": handRr, "Hand_L_Open": handLO, "Hand_L_Open_Catcher": handLOC, **gear}
 for n, mname in ASSIGN.items():
@@ -172,7 +175,7 @@ for n in ("Gear_Teeth", "Gear_Tongue"): add_keys(gear[n], (lambda P, k, _t=(n ==
 for n in ("Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee"): add_keys(gear[n], head_morph, ("head_narrow", "head_wide", "jaw_square", "chin_strong") + FOLLOW["beard"])
 GROUPS = {"jersey": ("Jersey", "Jersey_ShortSleeve", "Jersey_Sleeveless", "Gear_Jacket"), "pants": ("Pants", "Pants_Long", "Shorts"), "prop": ("Umpire_Broom", "Ball_Bag"), "hair": tuple(h[0] for h in HAIR_STYLES), "face_parts": ("Gear_Eyebrows", "Gear_Eyelashes", "Gear_Teeth", "Gear_Tongue", "Eyes_Cornea"),
           "facial_hair": ("Gear_Beard_Stubble", "Gear_Beard_Full", "Gear_Mustache", "Gear_Goatee"), "jersey_decal": tuple(DECALS), "headwear": ("Gear_Cap", "Gear_CapLogo", "Gear_Helmet", "Gear_HelmetLogo", "Gear_Helmet_Catcher"),
-          "accessory": ("Gear_LineupCard", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R", "Gear_Glove"),
+          "accessory": ("Gear_LineupCard", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_BattingGlove_L_Relaxed", "Gear_BattingGlove_R_Relaxed", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R", "Gear_Glove"),
           "trim": ("Gear_Piping", "Gear_Buttons"), "shoe": ("Cleats", "Gear_Soles", "Gear_Laces"), "hand": ("Hand_R", "Hand_R_Ball"), "protective": ("Gear_CatcherMask", "Gear_UmpireMask", "Gear_ChestProtector", "Gear_ShinGuard_L", "Gear_ShinGuard_R")}
 FIT = fit_summary(head, gear)
 ACTS = {} if FAST else bake_clips(arm)
@@ -246,7 +249,7 @@ def setc(name, col):
 CORE = ["Gear_Spikes", "Body_Skin", "Head", "Eyes", "Eyes_Cornea", "Gear_Eyebrows", "Gear_Eyelashes", "Jersey", "Undershirt", "Pants", "Socks", "Cleats", "Gear_Belt", "Gear_BeltBuckle", "Gear_Collar", "Gear_Hair", "Gear_Piping", "Gear_Buttons", "Gear_Soles", "Gear_Laces", "Bat_Grip", "Ball_Grip", "Ball_Grip_2Seam", "Elbow_Pole_L", "Elbow_Pole_R"]
 NUM = ["Gear_Number_Tens", "Gear_Number_Ones"]
 OPT = ["Jersey_ShortSleeve", "Jersey_Sleeveless", "Pants_Long", "Gear_Hair_Buzz", "Gear_Hair_Curly", "Gear_Hair_Long", "Gear_Hair_SidePart", "Gear_Hair_SlickBack", "Gear_Hair_Bob", "Gear_Hair_Ponytail", "Gear_Hair_Receding", "Gear_Hair_Balding", "Gear_Teeth", "Gear_Tongue",
-       "Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R"]                               # optional variants: only in player_base.glb
+       "Gear_Beard_Full", "Gear_Beard_Stubble", "Gear_Mustache", "Gear_Goatee", "Gear_EyeBlack", "Gear_BattingGlove_L", "Gear_BattingGlove_R", "Gear_BattingGlove_L_Relaxed", "Gear_BattingGlove_R_Relaxed", "Gear_Wristband_L", "Gear_Wristband_R", "Gear_ArmSleeve_L", "Gear_ArmSleeve_R"]                               # optional variants: only in player_base.glb
 HOME = dict(uniform_jersey=(.8, .8, .8, 1), uniform_pants=(.75, .75, .75, 1), uniform_socks=(.05, .08, .3, 1), uniform_undershirt=(.05, .08, .3, 1), cap=(.05, .08, .3, 1), helmet=(.05, .08, .3, 1), belt=(.02, .02, .02, 1), piping=(.05, .08, .3, 1), jacket=(.05, .08, .3, 1), hair=(.09, .06, .035, 1), stubble=(.06, .045, .035, 1))
 AWAY = dict(HOME, uniform_jersey=(.30, .33, .38, 1), uniform_pants=(.35, .37, .40, 1), uniform_socks=(.5, .03, .03, 1), uniform_undershirt=(.5, .03, .03, 1), cap=(.5, .03, .03, 1), piping=(.5, .03, .03, 1))
 NAVY = dict(HOME, uniform_jersey=(.015, .03, .10, 1), uniform_pants=(.02, .035, .09, 1), uniform_socks=(.01, .015, .04, 1), uniform_undershirt=(.015, .03, .10, 1), cap=(.012, .022, .07, 1), helmet=(.012, .022, .07, 1), belt=(.01, .01, .012, 1), piping=(.015, .03, .10, 1), catcher_gear=(.015, .025, .08, 1))

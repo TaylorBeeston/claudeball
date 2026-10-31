@@ -1,7 +1,7 @@
 /**
- * The practice swings as the game draws them (src/engine/clipWarp.ts): the hands must come back down from the finish far slower than with the clip
- * laid on the hint linearly (the arms "snapping through the body", t-0036). The path itself is the clip's (its keys put the hand / bat through a
- * heavy build's trunk for a few frames: the asset re-key in the t-0036 report); `jank:check` `played` holds those counts where they are.
+ * The practice swings as the game draws them (src/engine/clipWarp.ts): the hands come back down from the finish no faster than the old warp
+ * held them to (5.5 m/s; the arms used to "snap through the body", t-0036) and slower than the clip laid on the hint linearly. Since the re-key
+ * (t-0038) the clips' own way back takes ~0.5 s on the left side; `jank:check` `played` holds the counts where they are.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Agg } from './agg';
@@ -16,12 +16,14 @@ beforeAll(async () => {
 }, 60_000);
 
 const linear = (w: Warp): Warp => ({ ...w, knots: [[0, 0], [1, 1]] });
+/** each clip's finish (the manifest `finish` event) as a share of the clip */
+const FINISH: Record<string, number> = { ondeck_swing: 24 / 44, batter_practice_swing: 20 / 40 };
 
 /** the hands' peak speed (m/s, 60 Hz) once the clip is past its finish */
 function handsAfterFinish(w: Warp): number {
   const { rig } = files[0];
   const clip = rig.clips.get(w.clip)!;
-  const n = Math.round(w.sec * 60), L = newLocals(), fin = WARPS[w.clip].knots[1][1];
+  const n = Math.round(w.sec * 60), L = newLocals(), fin = FINISH[w.clip];
   let prev: number[] | null = null, peak = 0;
   for (let i = 0; i <= n; i++) {
     const v = warpProgress(w, i / n);
@@ -45,9 +47,9 @@ function throughBody(w: Warp): number {
 
 describe('the practice swings as played', () => {
   for (const hint of ['ondeck_swing', 'batter_practice_swing']) {
-    it(`${hint}: the hands come back from the finish at well under the speed of the clip laid linearly, without more frames through the body`, () => {
+    it(`${hint}: the hands come back from the finish slower than the clip laid linearly, without more frames through the body`, () => {
       const w = WARPS[hint];
-      expect(handsAfterFinish(w)).toBeLessThan(0.7 * handsAfterFinish(linear(w)));
+      expect(handsAfterFinish(w)).toBeLessThan(0.9 * handsAfterFinish(linear(w)));
       expect(handsAfterFinish(w)).toBeLessThan(5.5);
       // (slower shows the clip's own bad frames for longer: no more than three times as many; the re-key removes them)
       expect(throughBody(w)).toBeLessThanOrEqual(3 * Math.max(1, throughBody(linear(w))));

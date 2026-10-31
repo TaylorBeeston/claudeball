@@ -210,7 +210,7 @@ def mouth_interior_faces():
     b = base(); q, nq, off = _faces(); uv = b["uv"]; P = b["P0"]; out = []
     for i in range(len(q)):
         c = P[q[i, :nq[i]]].mean(0); u = uv[off[i]:off[i] + nq[i]].mean(0)
-        if u[0] > .75 and u[1] < .16 and c[2] > NECK_CUT and abs(c[0]) < .05 and c[1] > -.16: out.append(i)
+        if u[0] > .75 and u[1] < .16 and c[2] > NECK_CUT and abs(c[0]) < .05 and -.16 < c[1] < -.04: out.append(i)      # (three faces on the back of the neck share the island's UVs: a black stripe)
     return out
 def _mouth_texel():
     b = base(); q, nq, off = _faces(); return np.concatenate([b["uv"][off[i]:off[i] + nq[i]] for i in mouth_interior_faces()]).mean(0)

@@ -191,6 +191,9 @@ const RISE = 1.167, CLAP = 1.5;
  */
 function standUp(w: World, p: PlayerRT, delay: number, hold: { hint: AnimHint; sec: number }[]): void {
   let at = w.tick + secToTicks(delay);
+  // (each man's delay is his own hash: two of them could still land on one tick, a 1-in-180 chance per pair, so a taken tick moves on by one)
+  const taken = (t: number) => [w.teams.home, w.teams.away].some((tm) => [...tm.players.values()].some((q) => q !== p && q.benchSeq.some((x) => x.hint === 'bench_stand_up' && x.at === t)));
+  while (taken(at)) at++;
   const seq: PlayerRT['benchSeq'] = [];
   for (const h of [{ hint: 'bench_stand_up' as AnimHint, sec: RISE }, ...hold, { hint: 'bench_sit_down' as AnimHint, sec: RISE }]) {
     seq.push({ hint: h.hint, at, sec: h.sec });
@@ -264,7 +267,7 @@ function tickOne(w: World, p: PlayerRT): void {
     stepPlayer(p, w);
     if (w.tick >= p.animUntil) {
       if (w.tick >= p.nextSwing) {
-        setAnim(w, p, 'ondeck_swing', 2.0);
+        setAnim(w, p, 'ondeck_swing', 2.2);
         p.nextSwing = w.tick + secToTicks(6 + 4 * w.propRng.next());
       } else setAnim(w, p, 'ondeck_ready', clamp((p.nextSwing - w.tick) / 240, 0.2, 1.5));
     }

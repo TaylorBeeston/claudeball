@@ -2,12 +2,10 @@
  * Clip time warps: how far into a one-shot clip a sim hint is drawn, from the hint's progress. Most clips are laid on the sim's progress linearly
  * (clip time = progress x clip length); a clip listed here is laid on a curve instead, for one of two reasons:
  *
- * - the clip's own timing is wrong for how the game uses it: the practice swings (on deck, and the batter's outside the box) go from the finish
- *   (bat wrapped behind the head) to the bat lowered across the front in 2-3 frames (assets/src/player_crew.py `_ondeck_swing` keys 24 -> 26,
- *   player_rituals.py `_practice` 20 -> 23): the arms and the bat whipped through the body in under 0.1 s, faster than the swing itself. The
- *   warp plays the swing at its own speed, holds the finish a beat, and spreads the way back over the rest of the hint, eased. (Jumping past
- *   those keys through an inertialized blend measured better in Node, but in the game the elbow-clearance swivel (gltfCharacter armClear)
- *   fought the blended arm and whirled it round at 30-180 m/s: the keys themselves need the re-key, see the report of t-0036.)
+ * - the practice swings (on deck, and the batter's outside the box): the swing at the clip's own speed, the way back from the finish slower,
+ *   over the rest of the hint. The clips were re-keyed (t-0038: assets/src/player_crew.py `_ondeck_swing`, player_rituals.py `_practice`) so
+ *   the way back takes ~0.5 s and stays on the left side; before, the finish -> lowered-bat keys whipped the arms through the body in 2-3 frames
+ *   and the warp spread them over most of the hint with a hold at the finish (t-0036).
  * - one clip is drawn two ways: `bench_sit_down` is `bench_stand_up` played backwards, `batter_tap_cleats` is the cleat-tap part of `batter_step_out`.
  *
  * Pure: (progress 0..1) -> (clip progress 0..1). The jank gate sweeps the warped clips as the game plays them (tools/jank/check.ts `played`).
@@ -25,15 +23,15 @@ export interface Warp {
 }
 
 /**
- * The warped hints. Practice swings: the clip's frames 0..finish at the clip's own speed, a short hold in the finish, then the fast keys (finish ->
- * the bat lowered across the front: 24 -> 28 on deck, 20 -> 23 -> 26 in the box) over most of the rest of the hint, and the last keys back to the
- * ready pose; each segment eased (finish = the clip's `finish` event / its length: 24/32, 20/31).
+ * The warped hints. Practice swings: the swing to its finish at the clip's own speed, then the way back (finish -> the bat lowered in front ->
+ * ready) laid over the rest of the hint, ~0.7 of its keyed speed: the re-keyed way back still peaked at 6.6 m/s at the hands laid linearly,
+ * above the 5.5 m/s the old warp held them to.
  */
 export const WARPS: Record<string, Warp> = {
-  // sim: 2.0 s on deck (dugout.ts), clip 1.333 s, finish at 1.0 s
-  ondeck_swing: { clip: 'ondeck_swing', sec: 2.0, knots: [[0, 0], [0.5, 0.75], [0.58, 0.76, true], [0.88, 28 / 32, true], [1, 1, true]] },
-  // sim: 2.0 s outside / in the box (tempo.ts), clip 1.292 s, finish at 0.833 s; its fastest keys (20 -> 23) get their own slow segment
-  batter_practice_swing: { clip: 'batter_practice_swing', sec: 2.0, knots: [[0, 0], [0.4165, 0.645], [0.45, 0.65, true], [0.66, 23 / 31, true], [0.82, 26 / 31, true], [1, 1, true]] },
+  // sim: 2.2 s on deck (dugout.ts), clip 1.833 s (44 frames, finish at frame 24 = 1.0 s)
+  ondeck_swing: { clip: 'ondeck_swing', sec: 2.2, knots: [[0, 0], [1.0 / 2.2, 24 / 44], [1, 1]] },
+  // sim: 2.0-2.2 s outside / in the box (tempo.ts), clip 1.667 s (40 frames, finish at frame 20 = 0.833 s)
+  batter_practice_swing: { clip: 'batter_practice_swing', sec: 2.0, knots: [[0, 0], [0.8333 / 2.0, 20 / 40], [1, 1]] },
   // the cleat taps of the step-out clip (frames 17-34: three taps, then the bat back up), for a hitter already standing outside the box
   batter_tap_cleats: { clip: 'batter_step_out', sec: 0.75, knots: [[0, 17 / 34], [1, 1]] },
   // the stand-up clip backwards: from standing at the rail down onto the seat

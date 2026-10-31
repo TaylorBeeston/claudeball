@@ -34,9 +34,11 @@ def _ondeck_swing():
     carry = _cp(OND, hips=(.02, -.01, -.09), lean=14, head_yaw=75, lfoot=(.26, 0, .085), bat=((.06, -.30, 1.16), (-.12, -.45, -.88)))                 # bat lowered across the front after the follow-through
     keys = [(0, ready), (3, _cp(OND, hips=(-.02, 0, -.08), lean=12, head_yaw=60, lfoot=(.24, 0, .085), bat=((-.10, -.22, 1.12), (-.20, -.02, -.97)))),
             (6, soft(st)), (9, soft(sw[8])), (11, soft(sw[13])), (14, soft(sw[17])), (16, soft(sw[20])), (18, soft(sw[22])), (21, soft(sw[27])), (24, soft(sw[32])),
-            (26, _cp(carry, lean=12, hips=(.03, -.01, -.08), head_yaw=85, bat=((.28, -.42, 1.28), (-.45, .10, -.88)))), (28, carry), (32, _cp(OND, hips=(.01, -.01, -.06), head_yaw=45, lfoot=(.22, 0, .085)))]
+            (29, _cp(carry, lean=10, hips=(.03, -.01, -.07), head_yaw=80, bat=((.22, -.36, 1.22), (.45, .35, -.82)))),                               # the way back takes ~.5 s and stays on the left side:
+            (33, _cp(carry, lean=12, hips=(.03, -.01, -.08), head_yaw=85, bat=((.16, -.40, 1.12), (.10, -.15, -.98)))), (36, carry),                   # the barrel drops behind the left shoulder while the hands
+            (44, _cp(OND, hips=(.01, -.01, -.06), head_yaw=45, lfoot=(.22, 0, .085)))]                                                                # come down in front, then hangs in front (it snapped through the body in 2 frames)
     return [(f, {}, sp) for f, sp in keys]
-_creg("ondeck_swing", 32, _ondeck_swing(), events=dict(load=9, contact=18, finish=24), dense=True)
+_creg("ondeck_swing", 44, _ondeck_swing(), events=dict(load=9, contact=18, finish=24), dense=True)
 # ondeck_stretch: bat held across the shoulders / behind the neck, trunk twists left and right (warm-up stretch), loop 3 s
 def _ondeck_stretch():
     B = lambda s: ((0, -.02, 1.46), (1.0, 0, 0))                  # bat across the shoulders, knob toward the batter's left
