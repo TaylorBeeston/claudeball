@@ -13,6 +13,7 @@ import { askPitch } from './flow';
 import { MOUND_DIST } from './field';
 import { PENDING } from './decisions';
 import { setGoal } from './movement';
+import { boxEdge } from './venue';
 import { scheduleCall } from './umpires';
 import { setAnim } from './util';
 import type { AnimHint, LullKind, PitchType } from './types';
@@ -49,6 +50,32 @@ export const TICS: Tic[] = ['tap_plate', 'adjust_helmet', 'rock_bat', 'stretch']
 export const ticOf = (p: PlayerRT): Tic => TICS[Math.abs(Math.floor(p.info.appearance.seed)) % TICS.length];
 /** How many practice swings / taps he does (1-2, again by his seed). */
 export const ticCount = (p: PlayerRT) => 1 + (Math.floor(p.info.appearance.seed / 4) % 2);
+
+/** A small integer hash to [0, 1) (show only: nothing in the play reads it). */
+const hash01 = (a: number, b: number) => {
+  let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b | 0, 0xc2b2ae35);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x27d4eb2f);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+};
+
+/**
+ * How this hitter goes through his walk-up routine at the edge of the box (boxEdge), from his appearance seed: the same man does it his way every
+ * time up, with a little variety from one trip to the next (`trip`). A look out at the pitcher leaning on the bat (s, 0 = none), the cleats tapped
+ * with the bat, his practice swings before or after fixing his gloves and helmet; then he steps in, digs in and taps the plate (batter_step_in).
+ */
+export function walkupStyle(p: PlayerRT, trip: number): { glance: number; cleats: boolean; swingsFirst: boolean; extra: number } {
+  const seed = Math.floor(p.info.appearance.seed);
+  const own = hash01(seed, 1), vary = hash01(seed, 100 + trip);
+  return {
+    glance: own < 0.75 ? 0.8 + 1.4 * vary : 0,
+    cleats: hash01(seed, 2) < 0.45 !== vary < 0.15,
+    swingsFirst: hash01(seed, 3) < 0.6,
+    /** compared with the tempo's share of optional ritual: the look and the cleats are shown below it */
+    extra: hash01(seed, 200 + trip),
+  };
+}
 
 // ---------------------------------------------------------------------------------------------
 // the routine of one pitch
@@ -206,21 +233,32 @@ function startRoutine(w: World): Routine {
   const stepOutSeq = (wait: number) => [item(w, B, 'batter_step_out', 1.0, 1.0, { goal: out }), item(w, B, 'batter_adjust', 1.8, wait), item(w, B, 'batter_step_in', 1.1, 1.3, { goal: inn })];
   let wantsTimeout = false;
 
-  // --- the batter: the first pitch of his turn (practice swings on the way in, dig in), or between pitches (sometimes out of the box)
+  // --- the batter: the first pitch of his turn (he has walked up to the edge of the box: a look at the pitcher, the cleats, practice swings, the
+  // gloves and helmet, then he steps in, digs in and taps the plate), or between pitches (sometimes out of the box)
   if (first) {
-    const swings = Math.max(1, Math.round(ticCount(B) * (0.5 + 0.5 * show)));
-    if (w.propRng.next() < show) {
-      for (let i = 0; i < swings; i++) {
-        push(R.bat, item(w, B, 'batter_practice_swing', 1.2, 1.5, { goal: null, look: { x: 0, z: MOUND_DIST } }));
+    const style = walkupStyle(B, w.inning * 2 + (w.half === 'bottom' ? 1 : 0));
+    const mound = { x: 0, z: MOUND_DIST };
+    const swings: Item[] = [];
+    const n = Math.max(1, Math.round(ticCount(B) * (0.5 + 0.5 * show)));
+    if (w.propRng.next() < show) for (let i = 0; i < n; i++) swings.push(item(w, B, 'batter_practice_swing', 2.0, 2.2, { goal: null, look: mound }));
+    const adjust = tic === 'adjust_helmet' || tic === 'stretch' || w.propRng.next() < 0.5 ? [item(w, B, 'batter_adjust', 1.5, 1.8)] : [];
+    // (a quicker game shows less of it: the tempo's share of the real game's ritual)
+    const extra = style.extra < TEMPO_RITUAL[w.cfg.tempo];
+    if (style.glance > 0 && extra) push(R.bat, item(w, B, 'batter_wait', 0.5, style.glance, { goal: null, look: mound }));
+    if (style.cleats && extra) push(R.bat, item(w, B, 'batter_tap_cleats', 0.75, 0.9));
+    for (const it of style.swingsFirst ? [...swings, ...adjust] : [...adjust, ...swings]) push(R.bat, it);
+    push(R.bat, item(w, B, 'batter_step_in', 1.1, 1.3, { goal: inn }));
+    // the clock (and a quick tempo): the look at the pitcher goes first, then the practice swings, the cleats, the fiddling: he digs in by the 8-second mark
+    for (const drop of ['batter_wait', 'batter_practice_swing', 'batter_tap_cleats', 'batter_adjust'] as AnimHint[]) {
+      while (laneSecs(R.bat) > batBudget && R.bat.items.length > 1) {
+        const i = R.bat.items.findIndex((it) => it.hint === drop);
+        if (i < 0) break;
+        R.bat.items.splice(i, 1);
       }
     }
-    if (tic === 'adjust_helmet' || tic === 'stretch' || w.propRng.next() < 0.5) push(R.bat, item(w, B, 'batter_adjust', 1.5, 1.8));
-    push(R.bat, item(w, B, 'batter_step_in', 1.1, 1.3, { goal: inn }));
-    // the clock: the practice swings go first, then the fiddling: he digs in by the 8-second mark
-    while (laneSecs(R.bat) > batBudget && R.bat.items.length > 1) {
-      const i = R.bat.items.findIndex((it) => it.hint === 'batter_practice_swing');
-      R.bat.items.splice(i >= 0 ? i : 0, 1);
-    }
+  } else if (Math.hypot(B.x - box.x, B.z - box.z) > 0.6) {
+    // still outside the box (a violation took his first pitch before he stepped in): he steps in
+    push(R.bat, item(w, B, 'batter_step_in', 1.1, 1.1, { goal: inn }));
   } else {
     // he steps out: after a foul, a close pitch, at two strikes, deep in the count; a steady hitter (consistency) less
     const p = clamp(0.1 + (foul ? 0.18 : 0) + (w.count.strikes === 2 ? 0.1 : 0) + (w.paPitches >= 5 ? 0.08 : 0) + 0.18 * (1 - cons / 100) + (w.count.balls === 3 ? 0.05 : 0), 0.05, 0.6);
@@ -323,6 +361,20 @@ function shakeP(w: World, R: Routine): number {
   // the clock: he does not shake off with no time left to get new signs
   const left = pitcherLeft(w);
   return clamp(p, 0.01, 0.2) * (R.shook.length ? 0.3 : 1) * (left > 6 ? 1 : left > 3.5 ? 0.3 : 0);
+}
+
+/**
+ * A hitter waiting at the edge of his box for his routine (it starts once the pitch is chosen, which a slow decision can hold up): with the
+ * 8-second mark close he steps in by himself.
+ */
+export function stepInIfLate(w: World): void {
+  const B = w.batter;
+  if (!B || w.cfg.pace === 0 || w.prep.routine) return;
+  const bx = boxXY(w);
+  const e = boxEdge(w.batStance === 'R' ? 1 : -1);
+  if (Math.hypot(B.x - e.x, B.z - e.z) > 0.6 || Math.hypot(B.vx, B.vz) > 0.3 || batterLeft(w) > 2.2) return;
+  setAnim(w, B, 'batter_step_in', 1.1);
+  setGoal(B, bx.x, bx.z, true, clamp(2.2 / Math.max(1, B.vmax), 0.1, 1));
 }
 
 /**

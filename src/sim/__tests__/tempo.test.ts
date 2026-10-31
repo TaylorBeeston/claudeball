@@ -292,8 +292,9 @@ describe('tempo: scaling, determinism and the stats', () => {
   it('the league line does not depend on the tempo (apart from fatigue / rhythm): batting average, strikeouts, walks and home runs per plate appearance hold', () => {
     const lines = (t: Tempo) => {
       // (pace 0.05: the waits are a twentieth, but every ritual, shake-off, step-out and visit still happens as the tempo says: it is the decisions that could change the game)
-      // (16 short games a tempo, ~550 plate appearances: enough for the tolerances below; with 8 a walk rate came out a few points off by chance)
-      const rs = Array.from({ length: 16 }, (_, i) => play(`st-${i}`, t, 4, 0.05, false));
+      // (24 short games a tempo, ~830 plate appearances: enough for the tolerances below; with 8 a walk rate came out a few points off by chance, and
+      // with 16 again once the walk-up's new timing reshuffled the games (t-0036: no clock violations, quick 9.4 / broadcast 6.3 % on 16, 8.9 / 7.9 on 24))
+      const rs = Array.from({ length: 24 }, (_, i) => play(`st-${i}`, t, 4, 0.05, false));
       const sum = { ab: 0, h: 0, so: 0, bb: 0, hr: 0, runs: 0 };
       for (const r of rs) for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += r.box[k];
       const pa = sum.ab + sum.bb;

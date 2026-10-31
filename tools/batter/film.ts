@@ -5,7 +5,9 @@
  * goes to <name>.json (sim hint, clip the puppet plays, position, speed).
  *   npx tsx tools/batter/film.ts --at 69.5 --secs 20 --name walkup --follow batter --cam wide [--dt 0.0333] [--seed 24] [--fps 30] [--out <dir>]
  * --follow: a role (batter, ondeck) or a player id; --cam: wide (the plate area from the infield, following), side (from the field side, close),
- * close (head to toe, front), dugout:<0|1> (the director's dugout shot for away / home), or px/py/pz:tx/ty/tz:fov (fixed).
+ * close (head to toe, front), dugout:<0|1> (the director's dugout shot for away / home), bench:<team>:<dist> (the seated men from in front),
+ * or px/py/pz:tx/ty/tz:fov (fixed). --probe bench:<team>: per frame every seated man's chest lean and head yaw (tools/batter/sync.py: how much
+ * they move as one).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -19,7 +21,7 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../.
 const CBV = path.join(ROOT, '.claude/skills/verify-claudeball/scripts/cbv');
 const AT = +opt('at', '69.5'), SECS = +opt('secs', '10'), DT = +opt('dt', String(1 / 30)), NAME = opt('name', 'film');
 const OUT = path.resolve(opt('out', path.join(ROOT, 'tools/batter/out')));
-const FOLLOW = opt('follow', 'batter'), CAM = opt('cam', 'wide');
+const FOLLOW = opt('follow', 'batter'), CAM = opt('cam', 'wide'), PROBE = opt('probe', '');
 
 const cbv = (...a: string[]) => {
   const r = spawnSync(CBV, a, { cwd: ROOT, encoding: 'utf8' });
@@ -56,7 +58,7 @@ async function main() {
     const n = Math.round(SECS / DT);
     for (let k = 0; k < n; k++) {
       const f = await page.evaluate(
-        ({ dt, follow, cam }) => {
+        ({ dt, follow, cam, probe }) => {
           const e = (window as any).engine;
           const st = e.sim.state;
           const p = st.players.find((q: any) => q.id === follow) ?? st.players.find((q: any) => q.role === follow);
@@ -94,9 +96,24 @@ async function main() {
             t: +(st.time + e.sim.acc).toFixed(4), id: p?.id, role: p?.role, hint: p?.anim, clip: pup?.currentName, clipT: pup?.current ? +pup.current.time.toFixed(4) : null,
             x: p && +p.pos.x.toFixed(3), z: p && +p.pos.z.toFixed(3), v: p && +Math.hypot(p.vel.x, p.vel.z).toFixed(2), yaw: pup?.root ? +pup.root.rotation.y.toFixed(4) : null,
             handL: w3(bones.LeftHand), handR: w3(bones.RightHand), chest: w3(bones.Spine2), hips: w3(bones.Hips),
+            // --probe bench:<team>: every seated man of the team, his chest's lean (forward of his root, m) and his head's yaw off his body (rad)
+            bench: probe.startsWith('bench:')
+              ? st.players
+                  .filter((q: any) => q.role === 'bench' && q.team === +probe.split(':')[1] && q.pos.y < -0.3)
+                  .map((q: any) => {
+                    const u = e.players.puppets.get(q.id);
+                    if (!u?.bones?.Spine2 || !u.bones.Head) return null;
+                    const r = u.root.getWorldPosition(new V()), ch = u.bones.Spine2.getWorldPosition(new V());
+                    const f = new V(Math.sin(u.root.rotation.y), 0, Math.cos(u.root.rotation.y));
+                    const hd = new V(0, 0, 1).applyQuaternion(u.bones.Head.getWorldQuaternion(new u.bones.Head.quaternion.constructor()));
+                    const yaw = Math.atan2(hd.x, hd.z) - u.root.rotation.y;
+                    return [q.id, +ch.sub(r).dot(f).toFixed(4), +Math.atan2(Math.sin(yaw), Math.cos(yaw)).toFixed(4)];
+                  })
+                  .filter(Boolean)
+              : undefined,
           };
         },
-        { dt: DT, follow: FOLLOW, cam: CAM },
+        { dt: DT, follow: FOLLOW, cam: CAM, probe: PROBE },
       );
       frames.push(f);
       await page.screenshot({ path: path.join(dir, `${String(k).padStart(4, '0')}.jpg`), quality: 85 });

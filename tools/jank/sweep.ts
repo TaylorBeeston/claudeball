@@ -68,17 +68,9 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const n = Math.max(1, Math.round((warp ? warp.sec : clip.duration) * FPS));
   const tail = loop ? 3 : 0;
   const src = warp ? (constrain ? 'played-constrained' : 'played') : constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
-  const inert = new Inertia();
-  let jumped = false;
   for (let i = 0; i <= n + tail; i++) {
     const t = warp ? warpProgress(warp, i / n) * clip.duration : i <= n ? i / FPS : (i - n) / FPS;
-    // the warp's jump to the last frame: the pose shown the frame before decays onto it (the game: gltfCharacter inertialization)
-    if (warp?.jump && !jumped && i / n >= warp.jump.at) {
-      jumped = true;
-      inert.start(L.lq, L.lp, warp.jump.sec);
-    }
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
-    if (jumped) inert.apply(L, 1 / FPS);
     // what the runtime constraint layer makes of the clip (the game applies it every frame)
     if (constrain) {
       limitNeck(L, info.R);

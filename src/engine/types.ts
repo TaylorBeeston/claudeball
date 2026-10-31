@@ -85,6 +85,8 @@ export type AnimHint =
   | 'bench_cheer'
   | 'bench_stand_up'
   | 'bench_sit_down'
+  /** standing at the dugout rail (the stand-up clip's last frame, held) */
+  | 'bench_stand'
   | 'coach_advance'
   | 'coach_slide'
   | 'coach_signs'
@@ -100,6 +102,8 @@ export type AnimHint =
   | 'batter_step_out'
   /** waiting at the edge of the box before stepping in (the bat resting in front of him) */
   | 'batter_wait'
+  /** knocking the dirt off his cleats with the bat, outside the box */
+  | 'batter_tap_cleats'
   | 'catcher_signs'
   | 'catcher_signal_infield'
   | 'pitcher_shake_off'

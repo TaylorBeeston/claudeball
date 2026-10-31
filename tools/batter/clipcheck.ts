@@ -7,12 +7,11 @@ import { Agg } from '../jank/agg';
 import { loadFiles, sweepClip } from '../jank/sweep';
 import { loadRig, sampleClip } from '../jank/glb';
 import { B, fk, newLocals } from '../../src/engine/pose/skeleton';
-import { Inertia } from '../../src/engine/pose/inertia';
 import { WARPS, warpProgress, type Warp } from '../../src/engine/clipWarp';
 import path from 'node:path';
 import { ROOT } from '../jank/sweep';
 
-const lin = (w: Warp): Warp => ({ ...w, knots: [[0, 0], [1, 1]], jump: undefined });
+const lin = (w: Warp): Warp => ({ ...w, knots: [[0, 0], [1, 1]] });
 
 async function main() {
   const [{ name, rig, info }] = await loadFiles(['player_base']);
@@ -28,13 +27,9 @@ async function main() {
       const n = Math.round(w.sec * 60), L = newLocals();
       let prev: number[] | null = null, peak = 0, peakAll = 0;
       const fin = w.knots[1][1];
-      const inert = new Inertia();
-      let jumped = false;
       for (let i = 0; i <= n; i++) {
         const v = warpProgress(ww, i / n);
-        if (ww.jump && !jumped && i / n >= ww.jump.at) ((jumped = true), inert.start(L.lq, L.lp, ww.jump.sec));
         sampleClip(clip, v * clip.duration, r.rest, L);
-        if (jumped) inert.apply(L, 1 / 60);
         const W = fk(L);
         const h = [B.LeftHand, B.RightHand].flatMap((b) => [W.wp[b * 3], W.wp[b * 3 + 1], W.wp[b * 3 + 2]]);
         if (prev) {
@@ -62,13 +57,10 @@ if (process.argv.includes('--frames')) {
     const hint = process.argv[process.argv.indexOf('--frames') + 1];
     const [{ rig, info }] = await loadFiles(['player_base']);
     const w = WARPS[hint], clip = rig.clips.get(w.clip)!;
-    const n = Math.round(w.sec * 60), L = newLocals(), tr = newTrack(), inert = new Inertia();
-    let jumped = false;
-    for (let i = 0; i <= n; i++) {
+    const n = Math.round(w.sec * 60), L = newLocals(), tr = newTrack();
+        for (let i = 0; i <= n; i++) {
       const v = warpProgress(w, i / n);
-      if (w.jump && !jumped && i / n >= w.jump.at) ((jumped = true), inert.start(L.lq, L.lp, w.jump.sec));
       sampleClip(clip, v * clip.duration, rig.rest, L);
-      if (jumped) inert.apply(L, 1 / 60);
       const out: { kind: string; excess: number }[] = [];
       validateFrame({ L, model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ground: () => 0, dt: i ? 1 / 60 : 0, ...clipFlags(w.clip), bat: gripBat(L, info, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], BAT_CLIPS[w.clip]) }, info, tr, out as never);
       const k = out.filter((x) => /spike|bat:body|hand-torso|behind/.test(x.kind)).map((x) => `${x.kind}:${x.excess.toFixed(2)}`);
