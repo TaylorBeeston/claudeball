@@ -228,6 +228,9 @@ export class RealSimAdapter implements GameLike {
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
+      case 'callForBall':
+        this.emit({ type: 'call_for_ball', playerId: String(e.fielderId), eta: Number(e.eta) });
+        break;
       case 'coachSignal':
         this.emit({ type: 'coach_signal', coachId: String(e.coachId), signal: String(e.kind) as 'stop' | 'go' | 'advance' | 'slide' | 'signs', runnerId: e.runnerId as string | undefined, base: e.base as number | undefined, pos: s?.players.find((q) => q.id === e.coachId)?.pos });
         break;

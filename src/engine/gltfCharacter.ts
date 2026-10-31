@@ -98,6 +98,8 @@ const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_s
 function puppetIsKey(snap: PlayerSnap, env: PuppetEnv): boolean {
   if (snap.role === 'batter' || snap.role === 'runner' || snap.role === 'pitcher' || snap.role === 'catcher' || snap.role === 'ondeck') return true;
   if (snap.hasBall || snap.gloveTarget || env.carrier?.id === snap.id) return true;
+  // calling for a fly ball: the wave is IK, which the simplified path skips
+  if (snap.calling !== undefined && snap.calling < 1.5) return true;
   return /^(catch|throw|tag|transfer|dive|slide|field|toss)/.test(snap.anim);
 }
 /** the culling sphere of a puppet (see `setCullBounds`): centre height and radius, metres */

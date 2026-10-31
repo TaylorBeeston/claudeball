@@ -4,7 +4,7 @@
  * (harness knobs: say so next to the clips). Writes the frames, an mp4, a contact sheet around the catch and a json of what the puppet did
  * per frame: the root's lift off the ground (a hop), the glove pocket's height, the throwing hand's height and the hint.
  *   npx tsx tools/fly/film.ts --seed 2 --at 963.37 --id DUL-away-b7 --name cf --out <dir> [--tempo quick] [--pre 3] [--post 1.2] [--dt 0.016667]
- *     [--view side|front] [--dist 7]
+ *     [--view side|front|director] [--dist 7]   (director: the game's own broadcast camera, no fixed camera)
  * --at: the catch's sim time (tools/fly/catches.ts --rows); --id: the fielder's player id.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -59,7 +59,7 @@ async function main() {
           const e = (window as any).engine;
           const st = e.sim.state;
           const me = st.players.find((p: any) => p.id === pid);
-          if (me) {
+          if (me && view !== 'director') {
             // beside him, square to the line from home plate (the ball comes from there), chest high, following him; or in front of him (from the infield)
             const V = e.camera.position.constructor;
             const l = Math.hypot(me.pos.x, me.pos.z) || 1;

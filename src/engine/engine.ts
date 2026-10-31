@@ -751,6 +751,8 @@ export class Engine {
       const sim = new Vector3(rs.ball.pos.x, rs.ball.pos.y, rs.ball.pos.z);
       if (sim.distanceTo(this.players.heldPos) < 1.5) this.ball.released(this.players.heldPos, sim);
     }
+    if (held && !this.ball.heldByPlayer) this.ball.caught(this.players.heldPos);
+    else if (held) this.ball.holding(this.players.heldPos);
     this.ball.heldByPlayer = held;
     this.ball.update(rs, animDt, this.camera.position, this.batted || out.replaying, dt > 0 ? animDt / dt : 1);
 

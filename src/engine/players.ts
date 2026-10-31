@@ -150,6 +150,24 @@ export class BallView {
     this.popT = 0.05;
   }
 
+  /** the tracer's last point while it fades after a catch: it follows the ball in the glove (see `caught`) */
+  private tail: Vector3 | null = null;
+  /**
+   * A fielder has just taken the ball in flight: the tracer ends at the ball in his glove, which settles into the pocket over a few frames from
+   * where the sim met it (the pocket of a fly ball taken at the face is up to 0.75 m lower), not in the air above him. `heldPos` each frame after.
+   */
+  caught(heldPos: Vector3) {
+    const last = this.trailPts[this.trailPts.length - 1];
+    this.tail = last && this.trailOn > 0.5 && last.distanceTo(heldPos) < 1.5 ? heldPos.clone() : null;
+    if (!this.tail) return;
+    if (this.trailPts.length >= 90) this.trailPts.shift(); // (the ribbon holds 90 points)
+    this.trailPts.push(this.tail);
+  }
+  holding(heldPos: Vector3) {
+    if (this.tail && this.trailPts[this.trailPts.length - 1] === this.tail) this.tail.copy(heldPos);
+    else this.tail = null;
+  }
+
   /**
    * `timeScale`: playback speed (slow motion < 1). The streak is a shutter (1/90 s of travel) in the viewer's time, so it shortens with the
    * playback; the tracer (a broadcast graphic for live flight) fades out under half speed: at 0.05x its last 90 frames were a solid

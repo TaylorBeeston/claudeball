@@ -349,6 +349,8 @@ export type GameEvent =
   | { type: 'wall_contact'; who: 'ball' | 'fielder'; playerId?: string; pos: Vec3; speed: number }
   /** an outfielder left the ground at the wall */
   | { type: 'wall_leap'; playerId: string; pos?: Vec3 }
+  /** a fielder calls for the fly ball he is taking (`eta`: seconds until it gets to him) */
+  | { type: 'call_for_ball'; playerId: string; eta: number }
   /** a base coach's signal to a runner (stop / go / advance / slide) or to the batter (signs) */
   | { type: 'coach_signal'; coachId: string; signal: 'stop' | 'go' | 'advance' | 'slide' | 'signs'; runnerId?: string; base?: number; pos?: Vec3 }
   /** a ball kid picked up a ball (a foul ball) */
