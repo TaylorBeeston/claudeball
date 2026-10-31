@@ -278,6 +278,7 @@ export function defenseAI(w: World): void {
       F.plan.tz = tgt.z;
       F.lookAt = { x: ball.body.x, z: ball.body.z };
     }
+    callForBall(w, primary, bestIc);
   } else {
     play.primary = holder;
     play.catchMargin = null;
@@ -370,6 +371,34 @@ export function defenseAI(w: World): void {
   if (holder) holderLogic(w, holder);
   // receivers of a thrown ball
   if (ball.mode === 'thrown') receiverLogic(w);
+}
+
+/** the call for a fly ball: the ball's time to his glove (s), the time he has to spare (s) and how long he must have been the man taking it (ticks) */
+export const CALL_FOR = { tMin: 1.0, tMax: 2.5, margin: 0.6, steady: 60 };
+
+/**
+ * The fielder taking a fly ball or a pop-up calls for it ("I got it!") once he knows he has it: the same man has been taking charge for a moment,
+ * he will be under the ball with time to spare, and it is still well up (1-2.5 s from his glove). Not a line drive (no time), not a wall play,
+ * not a ball that meets a wall (the backstop, the fence) before it gets to him.
+ * Once a play. Observes only (the `callForBall` event and `play.called`, which nothing in the play reads): who catches what does not change.
+ */
+function callForBall(w: World, F: PlayerRT | null, ic: Intercept | null): void {
+  const play = w.play!;
+  const bip = play.bip;
+  if (play.called || !bip || bip.line || !F || !ic || !ic.found || !ic.air || ic.wall || w.ball.mode !== 'batted' || w.ball.touchedGround) return;
+  if (play.callCand?.F !== F) {
+    play.callCand = { F, since: w.tick };
+    return;
+  }
+  if (w.tick - play.callCand.since < CALL_FOR.steady || ic.t > CALL_FOR.tMax || ic.t < CALL_FOR.tMin || ic.margin < CALL_FOR.margin) return;
+  // not a ball that meets a wall first: the predicted path rebounds off it and the intercept can be on the rebound, but a foul off the
+  // backstop is dead at once (and a fair ball off the wall is no catch). A catcher called for a pop-up drifting into the backstop
+  // (seed 2, bottom 4th, t-0036) and nobody caught it
+  const ball = w.ball;
+  const tNow = (w.tick - ball.pathStart) * TICK;
+  if (ball.path.some((q) => q.wall && q.t > tNow && q.t <= tNow + ic.t)) return;
+  play.called = { F, tick: w.tick };
+  emit(w, { type: 'callForBall', fielderId: F.info.id, pos: { x: ic.x, y: ic.y, z: ic.z }, eta: ic.t });
 }
 
 export const isOutfielder = (p: PlayerRT) => p.fieldPos === 'LF' || p.fieldPos === 'CF' || p.fieldPos === 'RF';

@@ -9,6 +9,7 @@ import { Rng } from './rng';
 import type { FenceConfig } from './field';
 import { DEFAULT_FENCE } from './field';
 import type { Team, TeamSide } from './types';
+import { crowdFans, type CrowdFans } from './fans';
 
 export interface Venue {
   name: string;
@@ -63,6 +64,8 @@ export interface GameInfo {
   date: { month: number; day: number; weekday: number; monthName: string; weekdayName: string };
   /** the configured wind (m/s, sim axes), or null when the game is calm: only a real wind may be said to carry the ball */
   wind: { x: number; z: number } | null;
+  /** the home crowd's favourites and the visitors it loves to boo (`fans.ts`) */
+  fans: CrowdFans;
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -204,6 +207,7 @@ export function buildGameInfo(seed: number | string, teams: Record<TeamSide, Tea
     mascot: `${m.pick(MASCOT_NAMES)} the ${SINGULAR[nick] ?? nick.replace(/s$/, '')}`,
     date: { month, day, weekday, monthName: MONTHS[month - 1], weekdayName: WEEKDAYS[weekday] },
     wind: opts.wind && Math.hypot(opts.wind.x, opts.wind.z) > 0.3 ? { ...opts.wind } : null,
+    fans: crowdFans(teams),
   };
 }
 

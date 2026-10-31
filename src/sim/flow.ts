@@ -14,12 +14,13 @@ import { giveBall, placeBallInHand, releaseBall, setAnim } from './util';
 import type { PlayerRT, World } from './world';
 import { TICK, secToTicks } from './world';
 import type { PitchType } from './types';
-import { routineStage } from './tempo';
+import { routineStage, stepInIfLate } from './tempo';
 import * as clock from './clock';
 import { visitStage } from './visits';
 import { beginBreak, breakFinished } from './breaks';
 import { DEFAULT_SPOTS } from './setup';
-import { leaveDugout, routeToBox, sendToDeck, toBench } from './dugout';
+import { leaveDugout, routeToBox, sendToDeck, toBench, WALKUP_SPEED, walkupMul } from './dugout';
+import { boxEdge } from './venue';
 import * as rules from './rules';
 import * as inplay from './inplay';
 import * as manager from './manager';
@@ -213,13 +214,20 @@ function stepInBatter(w: World): void {
     b.facing = side === 1 ? -Math.PI / 2 : Math.PI / 2;
   } else if (walkingIn) {
     b.dug = null;
-    b.goal = { x: side * BATTER_X, z: 0.15, stop: true, mul: 0.7 };
+    const e = boxEdge(side as 1 | -1);
+    b.goal = { x: e.x, z: e.z, stop: true, mul: walkupMul(w, b) };
   } else {
-    // from the on-deck circle (or the bench, for a pinch hitter or the first man up): he walks to the plate, around behind it if his box is on the far side
+    // from the on-deck circle (or the bench, for a pinch hitter or the first man up): he walks up to the edge of his box, behind the plate if his
+    // box is on the far side, and stops there; his routine (tempo.ts) steps him in
     const keep = b.dug === 'toDeck' ? b.route.slice(0, -1) : [];
-    leaveDugout(b, [...keep, ...routeToBox(b, side as 1 | -1)], { x: side * BATTER_X, z: 0.15, stop: true, mul: clamp(2.4 / b.vmax, 0.1, 1) }, 2.4);
+    const e = boxEdge(side as 1 | -1);
+    leaveDugout(b, [...keep, ...routeToBox(b, side as 1 | -1)], { x: e.x, z: e.z, stop: true, mul: walkupMul(w, b) }, WALKUP_SPEED[w.cfg.tempo]);
   }
-  b.anim = 'idle';
+  // (a warm-up swing on deck still under way plays out first: dugout.ts)
+  if (!(b.anim === 'ondeck_swing' && w.tick < b.animUntil)) {
+    b.anim = 'idle';
+    b.animUntil = 0;
+  }
   clock.newPlateAppearance(w);
   w.pitcher.pit.bf += 1;
   w.pitcher.rattle *= 0.93; // he settles a little between batters
@@ -234,6 +242,7 @@ function stepInBatter(w: World): void {
 export function tickPrePitch(w: World): void {
   // the pitch clock: it starts when the pitcher has the ball back; the batter at the 8-second mark, the pitcher at zero (a violation ends this pitch)
   if (clock.tickClock(w)) return;
+  stepInIfLate(w);
   running.updateLeads(w);
   // defensive alignment for this pitch (asked as soon as the pitch is set up, so the fielders move during the walk-up)
   if (!w.prep.alignmentDone) {

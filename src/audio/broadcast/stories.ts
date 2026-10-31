@@ -102,6 +102,30 @@ export function slotsOf(c: BoothCtx): Slots {
   };
 }
 
+/**
+ * What the booth says when the crowd makes something of the man the PA announced (`c.fan`): $f is his last name, $seasons his seasons with the
+ * club ("nine seasons"). Spoken American ("favorite"). The recording script reads these too (tools/announcer/script/booth.ts).
+ */
+export const FAN_LINES = {
+  favourite: ['Listen to them for $f.', 'Big hand for $f.', 'The crowd loves $f.', 'A fan favorite, $f.', 'Hear that? That is for $f.'],
+  favouriteAgain: ['They are still cheering $f.', 'Another big hand for $f.', 'Every time up, they let $f hear it.'],
+  pitcherIn: ['A big hand for $f as he takes the ball.', 'Nice ovation for $f.', 'The crowd likes it when $f pitches.'],
+  closerIn: ['Here comes $f, and the crowd is up.', 'They know what it means when $f comes in.', 'Listen to them for $f.'],
+  villain: ['A few boos for $f.', 'They are letting $f hear it.', 'Not a warm welcome for $f.', 'Listen to that. Boos for $f.'],
+  villainEnd: ['That is baseball.', 'Some fans never forget.', 'It comes with the territory.'],
+  why: {
+    star: ['He is the best hitter on this club, and they know it.', 'They know who the big bat is.', 'When he comes up, people put their hot dogs down.'],
+    veteran: ['$seasons in this uniform. He has earned that.', 'He has been here $seasons. They have watched him grow up.'],
+    hometown: ['He grew up not far from here. Half this crowd knows his family.', 'The local kid. He came to games in this park as a boy.', 'Hometown kid. Every hit he gets, this place shakes.'],
+    ace: ['He is the ace of this staff. Big crowds when he pitches.', 'When he starts, the place fills up.'],
+    closer: ['That is the closer. Game on the line, ball in his hand.', 'This is his inning.'],
+    former: ['He played $seasons here. Not everybody has made peace with him leaving.', 'He spent $seasons in the home uniform. They have not forgotten.'],
+    rival: ['It is $batTeam and $fldTeam. They boo the big bats on principle.', 'Rivalry game. The best hitter on the other side always hears it.'],
+    burnedHr: ['He took one deep earlier. They remember.', 'After that home run earlier, what did you expect?'],
+    burnedRbi: ['He did the damage last time up. They have not forgotten.', 'He drove in runs earlier. They remember.'],
+  } as Record<string, string[]>,
+};
+
 export function collectStories(log: GameLog, c: BoothCtx): Story[] {
   const S = slotsOf(c);
   const bat = c.batter;
@@ -387,7 +411,28 @@ export function collectStories(log: GameLog, c: BoothCtx): Story[] {
       { who: 'B', t: ['{This game|It} is {a seesaw|back and forth}.', 'Nobody {is comfortable|can relax} in this one.', 'Back and forth, all night.', 'Nobody is leaving early tonight.'] },
     ], { ...S, n: numWord(log.leadChanges) }, rng, o) });
   }
-  if ((c.crowd ?? 0) > 0.6) {
+  // ---- the crowd and the man just announced (a favourite cheered, a villain booed: only when they really did) --------------
+  const fan = c.fan;
+  if (fan) {
+    const F = { ...S, f: lastNameOf(fan.name), seasons: fan.years === 1 ? 'one season' : `${numWord(fan.years)} seasons` };
+    const key = `fan:${fan.id}:${fan.pa}`;
+    const L = FAN_LINES;
+    if (fan.side === 'favourite') {
+      const open = fan.pitcher ? (fan.kind === 'closer' ? L.closerIn : L.pitcherIn) : fan.pa === 1 ? L.favourite : L.favouriteAgain;
+      add({ id: 'fanFavourite', key, salience: 0.62, relevance: 1, opener: 'either', build: (rng, o) => script([
+        { who: 'A', t: open },
+        { who: 'B', t: L.why[fan.kind] ?? L.why.star, opt: true },
+      ], F, rng, o) });
+    } else {
+      const why = fan.kind === 'former' ? L.why.former : fan.kind === 'rival' ? L.why.rival : fan.burnedBy === 'hr' ? L.why.burnedHr : L.why.burnedRbi;
+      add({ id: 'fanVillain', key, salience: 0.6, relevance: 1, opener: 'either', build: (rng, o) => script([
+        { who: 'A', t: L.villain },
+        { who: 'B', t: why, opt: true },
+        { who: 'A', t: L.villainEnd, opt: true },
+      ], F, rng, o) });
+    }
+  }
+  if ((c.crowd ?? 0) > 0.6 && !fan) {
     add({ id: 'crowd', key: `crowd:${c.inning}`, salience: 0.4, relevance: 0.6, opener: 'color', build: (rng, o) => script([
       { who: 'A', t: ['Listen to this crowd.', 'The crowd {is loving|is into} this.', 'Hear that? The place is {alive|buzzing}.'] },
       { who: 'B', t: ['{They know|They can feel} what is {at stake|coming}.', 'That is what baseball is for.', 'You {cannot|can not} {fake|buy} {that|an atmosphere like that}.', 'That is a ballpark that cares.', 'The players feed off that.'], opt: true },
@@ -470,6 +515,8 @@ export const STORY_CAPS: Record<string, { max: number; gap: number }> = {
   rattled: { max: 5, gap: 3 },
   twoOutRsp: { max: 7, gap: 2 },
   clockLow: { max: 7, gap: 3 },
+  fanFavourite: { max: 3, gap: 3 },
+  fanVillain: { max: 2, gap: 3 },
   zeroes: { max: 4, gap: 4 },
   'n.outs': { max: 11, gap: 2 },
   'n.inning': { max: 6, gap: 4 },
@@ -527,7 +574,7 @@ export class TopicPicker {
       this.neutralInRow = 0; // stay quiet this time, then allow it again
       return null;
     }
-    if (this.rng() > 0.4) return null; // fillers are rare
+    if (this.rng() > 0.6) return null; // fillers are rare-ish
     const neutral = neutralStories(c).filter((s) => !this.recentIds.slice(-6).includes(s.id) && !this.used.has(s.key) && !capped(s.id));
     while (neutral.length) {
       const i = Math.floor(this.rng() * neutral.length);

@@ -68,3 +68,9 @@ dist-verify/
 verify-evidence/
 tools/jank/out/
 tools/swing/out/
+
+# fly-ball films (tools/fly/film.ts)
+tools/fly/out/
+
+# batter walk-up / on-deck / bench films (tools/batter/film.ts): frames and clips
+tools/batter/out/

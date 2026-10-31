@@ -23,7 +23,8 @@ function watch(seed: string, innings: number, onTick: (s: GameStateSnapshot, tic
 describe('sitters sit on something: every seated pose is on a real seat at the seat height its clip is made for', () => {
   const sitters: { id: string; role: string; anim: string; x: number; y: number; z: number }[] = [];
   watch('seats-1', 2, (s) => {
-    for (const p of s.players) if (/sit/.test(p.anim)) sitters.push({ id: p.id, role: p.role, anim: p.anim, x: p.pos.x, y: p.pos.y, z: p.pos.z });
+    // (`bench_sit_down` is getting up played backwards: on his feet, then onto the seat; not a seated pose)
+    for (const p of s.players) if (/sit/.test(p.anim) && p.anim !== 'bench_sit_down') sitters.push({ id: p.id, role: p.role, anim: p.anim, x: p.pos.x, y: p.pos.y, z: p.pos.z });
   });
 
   it('the seat heights agree: the bench_sit root is lifted by (bench top - the clip\'s seat height)', () => {

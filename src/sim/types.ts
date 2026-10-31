@@ -105,6 +105,10 @@ export type AnimHint =
   | 'batter_practice_swing'
   | 'batter_adjust'
   | 'batter_step_out'
+  /** waiting at the edge of the box before stepping in (the bat resting in front of him) */
+  | 'batter_wait'
+  /** knocking the dirt off his cleats with the bat, outside the box */
+  | 'batter_tap_cleats'
   /** Catcher and pitcher between pitches. */
   | 'catcher_signs'
   | 'catcher_signal_infield'
@@ -127,6 +131,10 @@ export type AnimHint =
   /** Dugout reactions and the pre-inning catch. */
   | 'bench_cheer'
   | 'bench_stand_up'
+  /** back down onto the seat (the stand-up clip backwards) */
+  | 'bench_sit_down'
+  /** standing at the dugout rail (the stand-up clip's last frame, held) */
+  | 'bench_stand'
   | 'catch_toss';
 
 /** What the person is doing on the field right now. */
@@ -417,6 +425,8 @@ export interface PlayerSnapshot {
   gloveEta?: number;
   /** Seconds until the catch (== `gloveEta`, 0 when no catch is coming): the catch hint starts exactly its clip's catch-frame time before, so the catch frame lands on the arrival. */
   catchIn?: number;
+  /** Seconds since he called for the fly ball he is taking (`callForBall`), during that play; absent otherwise. */
+  calling?: number;
   /** Seconds until the ball leaves his hand while a throwing motion is under way (`throw`, `toss_underhand`, `toss_sidearm_short`, `throw_casual`,
    * `roll_ball`): the clip is laid so its release frame lands then. Undefined otherwise. */
   releaseIn?: number;
@@ -643,6 +653,8 @@ export type GameEvent =
   | (EBase & { type: 'homeRun'; batterId: string; distance: number; /** metres the ball cleared the top of the wall by */ heightAboveWall?: number; pos?: Vec3 })
   /** The ball met the outfield wall (`who: 'ball'`, in play) or a fielder ran up to it (`who: 'fielder'`). */
   | (EBase & { type: 'wallContact'; who: 'ball' | 'fielder'; fielderId?: string; pos: Vec3; speed: number })
+  /** A fielder calls for a fly ball ("I got it!"): he will be under it in time. `pos`: where he will take it, `eta`: seconds until the ball gets there. */
+  | (EBase & { type: 'callForBall'; fielderId: string; pos: Vec3; eta: number })
   /** A fielder leaves the ground at the wall for a ball he may reach over the fence. */
   | (EBase & { type: 'wallLeap'; fielderId: string; pos: Vec3; ballHeightAboveWall: number })
   /** A would-be home run was caught by a fielder reaching over the fence. */

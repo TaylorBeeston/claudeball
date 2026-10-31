@@ -39,6 +39,11 @@ export const benchFacing = (side: TeamSide) => Math.atan2(-sg(side) * R, R);
 export const onDeckSpot = (side: TeamSide) => ({ x: sg(side) * 11.3, z: 0 });
 /** A point behind the plate the walk to the far batter's box goes through (behind the umpire and the catcher). */
 export const behindPlate = (x: number) => ({ x, z: -3.6 });
+/**
+ * Where a hitter stops before he steps in: just outside his box (its outer line is 1.6 m off the plate centre), level with its back half. He does
+ * his routine there (practice swings, the gloves, the cleats), then steps in. `side`: +1 the third-base box (a right-handed hitter), -1 the first-base box.
+ */
+export const boxEdge = (side: 1 | -1) => ({ x: side * 1.8, z: -0.15 });
 
 /** Coach boxes beside first and third (10 x 20 ft, 15 ft off the line): the point a coach stands at. */
 export const coachBox = (base: 1 | 3) => alongLine(27.4, 6.1, base === 3 ? 'home' : 'away');

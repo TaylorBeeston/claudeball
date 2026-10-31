@@ -165,3 +165,31 @@ describe('topic picker', () => {
     }
   });
 });
+
+describe('the booth on the crowd\'s favourite and villain', () => {
+  const fav = { id: 'b1', name: 'Tyler Vance', side: 'favourite' as const, kind: 'veteran' as const, size: 1, pa: 1, pitcher: false, years: 9 };
+  it('only when the crowd really reacted, and in place of the general crowd remark', () => {
+    const log = new GameLog();
+    expect(collectStories(log, ctx()).map((s) => s.id)).not.toContain('fanFavourite');
+    const ids = collectStories(log, ctx({ fan: fav })).map((s) => s.id);
+    expect(ids).toContain('fanFavourite');
+    expect(ids).not.toContain('crowd');
+  });
+  it('says what the data holds: his seasons with the club, the reason a visitor is booed', () => {
+    const log = new GameLog();
+    const say = (c: BoothCtx, id: string) => {
+      const s = collectStories(log, c).find((x) => x.id === id)!;
+      const out = new Set<string>();
+      for (let k = 0; k < 40; k++) for (const t of s.build(mulberry32(k), 'pxp') ?? []) out.add(t.text);
+      return [...out].join(' ');
+    };
+    const f = say(ctx({ fan: fav }), 'fanFavourite');
+    expect(f).toMatch(/Vance/);
+    expect(f).toMatch(/nine seasons/);
+    expect(f).not.toMatch(/favourite/i); // spoken American: "favorite"
+    const v = say(ctx({ half: 'top', fan: { ...fav, side: 'villain', kind: 'burned', burnedBy: 'hr', years: 0 } }), 'fanVillain');
+    expect(v).toMatch(/boos|hear it|warm welcome/);
+    expect(v).toMatch(/home run|deep/);
+    expect(v).not.toMatch(/seasons/);
+  });
+});

@@ -482,6 +482,12 @@ export class CueMapper {
         }
         break;
       }
+      case 'callForBall': {
+        // "I got it!": shouted on the field, picked up by the park's mics like any other field sound
+        const at = c.pos(ev.fielderId) ?? vec(ev.pos);
+        out.push(cue.sfx('fielder_call', 1, { pos: at ? { x: at.x, y: 1.75, z: at.z } : undefined, gain: 0.6 }));
+        break;
+      }
       case 'wallLeap':
         out.push(cue.crowd('gasp', 2, 0.8, 0), cue.excite(0.5, 3, 2));
         break;

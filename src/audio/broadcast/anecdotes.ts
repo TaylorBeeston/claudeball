@@ -6,8 +6,8 @@
  * no real clubs, no brands; players are "he", umpires are "the umpire", everybody else stays neutral.
  *
  * Each anecdote is one exchange (alternatives within a line say the same thing, so any combination makes sense). It fits a kind of moment
- * (`when`); the booth tells one now and then in a long lull, picks the one heard longest ago (the booth's memory spans games) and never the same
- * one twice in a game.
+ * (`when`); the booth tells one now and then in a long lull (at Broadcast tempo a long pitcher's routine counts too), picks the one heard
+ * longest ago (the booth's memory spans games) and never the same one twice in a game.
  */
 import type { Line } from './stories';
 
@@ -467,5 +467,144 @@ export const ANECDOTES: Anecdote[] = [
   { id: 'game.dirt', when: 'lull', a: 'pxp', lines: [
     A(['The grounds crew here is one of the best in the league, $other. Look at the lines on that infield.']),
     B(['A catcher notices the dirt around home plate. Too soft and the ball dies, too hard and it skips right past you.', 'I always shook hands with the grounds crew. They decide how the ball bounces in front of the plate.']),
+  ] },
+  // ---- more of them (added after the recording script's sessions were laid out: new stories go at the end) ---------------------------
+  { id: 'bis.backupDays', when: 'lull', a: 'pxp', lines: [
+    A(['Eleven years as a backup catcher, $other. What did you do on the days you did not play?', 'What does a backup catcher do on his days off, $other?']),
+    B(['Caught every pitcher in the bullpen, charted every pitch, and kept the sunflower seeds organized. Somebody had to.']),
+    A(['Organized how?']),
+    B(['By flavor. Nobody ever thanked me.']),
+  ] },
+  { id: 'bis.spring', when: 'lull', a: 'pxp', lines: [
+    A(['Spring training must have been something for a backup catcher, $other.', 'Did you like spring training, $other?']),
+    B(['Six weeks of catching every arm in camp. By the end of March my left hand had its own heartbeat.']),
+    A(['And the hitting?']),
+    B(['I hit very well in the spring. It is the only time of year the pitchers are trying to throw strikes.']),
+  ] },
+  { id: 'bis.mittBreakIn', when: 'lull', a: 'color', lines: [
+    A(['Breaking in a new catcher\'s mitt takes about a month, $other. I used to sleep with a ball tied up in mine.']),
+    B(['You slept with the mitt?', 'In the bed?']),
+    A(['Every night. My family asked which one of us was getting traded first.']),
+  ] },
+  { id: 'bis.foulTip', when: 'catcher', a: 'pxp', lines: [
+    A(['A catcher takes a lot of foul tips off the mask, $other. Do you remember them?', 'How many foul tips did you take off the mask, $other?']),
+    B(['Every one of them. They live in a little room in the back of my head, and they all still ring a bell.']),
+  ] },
+  { id: 'bis.breathe', when: 'visit', a: 'color', lines: [
+    A(['Here is a secret about mound visits, $other. Half the time the catcher just wants the pitcher to breathe.']),
+    B(['And the other half?']),
+    A(['The other half he wants to breathe himself.']),
+  ] },
+  { id: 'bis.oneSteal', when: 'steal', a: 'color', lines: [
+    A(['I stole one base in eleven years, $other.', 'One stolen base in my whole career, $other.']),
+    B(['Just the one?', 'How did that happen?']),
+    A(['The pitcher forgot about me and the catcher had the flu. I still had to slide, and I was out of breath for two innings.']),
+  ] },
+  { id: 'bis.greedy', when: 'strikeouts', a: 'pxp', lines: [
+    A(['On a strikeout night like this one, $other, what is the catcher thinking back there?', 'Everything is working tonight. What does a catcher do with a night like this, $other?']),
+    B(['Trying not to get greedy. When a pitch is working you want to call it forever, and that is exactly when a hitter starts waiting for it.']),
+  ] },
+  { id: 'bis.plate', when: 'lull', a: 'color', lines: [
+    A(['The play at the plate was my favorite thing in baseball, $other.']),
+    B(['Even with a runner coming right at you?']),
+    A(['Especially then. You get the ball, you hold on, and for one second the whole park is watching the catcher.']),
+  ] },
+  { id: 'bis.pinchHit', when: 'lull', a: 'pxp', lines: [
+    A(['Did you ever pinch-hit, $other?', 'Did they ever send you up to pinch-hit, $other?']),
+    B(['Eleven times. The manager only sent me up when he had run out of everybody else, and I could hear him counting.']),
+    A(['How did it go?']),
+    B(['Two hits, one walk, and eight very long walks back to the dugout.']),
+  ] },
+  { id: 'bis.noChangeup', when: 'lull', a: 'color', lines: [
+    A(['My first week in the big leagues, $other, I called a changeup for a pitcher who did not have one.']),
+    B(['What did he throw?']),
+    A(['His fastball, a little slower, out of pity. The hitter popped it up, so we both pretended it was the plan.']),
+  ] },
+  { id: 'bis.lights', when: 'night', a: 'color', lines: [
+    A(['Night games behind the plate, $other, you lose the ball in the lights maybe once a month.']),
+    B(['What do you do then?', 'And then what?']),
+    A(['Hold the mitt still, close your eyes a little, and hope the pitcher is having a good night.']),
+  ] },
+  { id: 'bis.firstInning', when: 'early', a: 'color', lines: [
+    A(['First inning, $other, I always wanted to throw a runner out early. It sets the tone.']),
+    B(['Did it work?']),
+    A(['About one time in five. The other four set a different tone.']),
+  ] },
+  { id: 'lyle.radio', when: 'lull', a: 'pxp', lines: [
+    A(['I started out on radio, $other. On radio you have to describe everything. The grass, the clouds, the color of the socks.']),
+    B(['And on television?']),
+    A(['On television I can say, look at that, and let the picture do the work. Best part of the job.']),
+  ] },
+  { id: 'lyle.notes', when: 'lull', a: 'color', lines: [
+    A(['They hand you a stack of notes this thick before every game, $other. How much of it do you use?', 'How much of that stack of game notes do you actually use, $other?']),
+    B(['About one line. The trick is knowing which line, and the trick is usually wrong.']),
+  ] },
+  { id: 'lyle.voice', when: 'lull', a: 'color', lines: [
+    A(['How do you keep your voice for a whole season, $other?']),
+    B(['Hot tea, no shouting at home, and I let you do the yelling on the home runs.']),
+    A(['I do yell a little.', 'Fair enough.']),
+  ] },
+  { id: 'lyle.firstPartner', when: 'lull', a: 'color', lines: [
+    A(['Who was your first partner in the booth, $other?']),
+    B(['A retired pitcher who talked about his arm for nine innings a night, for three seasons.']),
+    A(['And now you have me.']),
+    B(['Now I have a catcher who talks about his knees. It is a step up.']),
+  ] },
+  { id: 'lyle.scoreAtHome', when: 'early', a: 'pxp', lines: [
+    A(['Anybody keeping score at home tonight, I salute you. Sharpen those pencils.', 'If you are keeping score at home tonight, good for you. It is the best way to watch a ballgame.']),
+    B(['Are there a lot of them?', 'Is that a lot of people?']),
+    A(['More than you would think. And every one of them knows how to mark a fielder\'s choice, which is more than I can say for some press boxes.']),
+  ] },
+  { id: 'lyle.miles', when: 'lull', a: 'color', lines: [
+    A(['How many miles do you think you have traveled for this job, $other?']),
+    B(['Twenty-six seasons, half of them on the road. Enough to get to the moon, and the moon has better coffee than some of these airports.']),
+  ] },
+  { id: 'lyle.shadows', when: 'day', a: 'pxp', lines: [
+    A(['Shadows creeping across the infield now, $other. The hardest time of day to see the ball.']),
+    B(['Half the plate in the sun and half in the shade. As a catcher you just hope the pitcher is not trying anything fancy.']),
+  ] },
+  { id: 'lyle.moth', when: 'night', a: 'pxp', lines: [
+    A(['Something about a night game, $other. The lights come on and the whole place gets a little louder.']),
+    B(['And the moths come out. I swallowed one once, in the middle of a pitch.']),
+    A(['In the middle of a pitch?']),
+    B(['I caught the pitch. The moth was not so lucky.']),
+  ] },
+  { id: 'lyle.cleanPage', when: 'scoreless', a: 'pxp', lines: [
+    A(['A scoreless game is the cleanest page in my scorebook, $other. Nothing but little lines and zeroes.']),
+    B(['You sound happy about that.']),
+    A(['I am. I have not had to sharpen a pencil since the second inning.']),
+  ] },
+  { id: 'duo.prediction', when: 'lull', a: 'pxp', lines: [
+    A(['Give me a prediction for the next inning, $other.', 'All right, $other, what happens in the next inning?']),
+    B(['A ground ball, a walk, and somebody in the front row drops a hot dog.']),
+    A(['That is not a prediction. That is every inning.']),
+    B(['And I am usually right.']),
+  ] },
+  { id: 'duo.watchCatcher', when: 'lull', a: 'color', lines: [
+    A(['You know what my notes say for this inning, $other? Watch the catcher.']),
+    B(['Your notes always say watch the catcher.']),
+    A(['And I have never once been wrong.']),
+  ] },
+  { id: 'game.wave', when: 'lull', a: 'pxp', lines: [
+    A(['No wave yet tonight, $other.']),
+    B(['Give it an inning. Somebody in the upper deck is always ready to start one.']),
+    A(['And somebody in the good seats is always ready to ignore it.']),
+  ] },
+  { id: 'game.warmups', when: 'change', a: 'pxp', lines: [
+    A(['Eight warm-up pitches for the new man, $other. What is he thinking about out there?']),
+    B(['The first hitter, the catcher\'s signs, and whether he tied his shoes. In that order, if he is smart.']),
+  ] },
+  { id: 'game.visitClock', when: 'visit', a: 'pxp', lines: [
+    A(['The umpire will give them about thirty seconds out there, $other.']),
+    B(['And then he walks out nice and slow, so everybody sees him coming. It is a very polite way of saying, that is enough.']),
+  ] },
+  { id: 'game.stealSign', when: 'steal', a: 'pxp', lines: [
+    A(['The steal sign is the simplest sign in baseball, $other, and somehow it is the one everybody misses.']),
+    B(['Because the runner is the only one looking for it. Everybody else is looking at the runner.']),
+  ] },
+  { id: 'game.bigLead', when: 'blowout', a: 'color', lines: [
+    A(['In a game like this one, $other, the catcher starts calling whatever the pitcher wants to throw.']),
+    B(['No more chess?']),
+    A(['No more chess. Just strikes, and everybody gets home a little early.']),
   ] },
 ];

@@ -435,7 +435,7 @@ export const EVENT_KEYS: Record<string, string[]> = {
 };
 
 /** sim events the booth deliberately says nothing about (they are sounds, gestures or bookkeeping) */
-export const SILENT_EVENTS = ['baseMissed', 'collision', 'interference', 'outOfBaseline', 'windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart', 'pitchClockStart', 'pitchClockReset', 'disengagement'];
+export const SILENT_EVENTS = ['baseMissed', 'collision', 'interference', 'outOfBaseline', 'windup', 'pitchReleased', 'pitchCrossed', 'swing', 'umpireCall', 'ballReturn', 'baseTouch', 'playEnd', 'decisionRequested', 'decisionResolved', 'ballKidRetrieve', 'ballTossedToFan', 'batBoyRetrieve', 'coachSignal', 'signsGiven', 'shakeOff', 'timeCalled', 'moundVisit', 'moundVisitEnd', 'pitchingChangeStart', 'challenge', 'challengeResult', 'breakStart', 'pitchClockStart', 'pitchClockReset', 'disengagement', 'callForBall'];
 
 export const lexiconStats = () => Object.fromEntries(Object.entries(LEX).map(([k, v]) => [k, v.reduce((a, t) => a + variants(t), 0)]));
 

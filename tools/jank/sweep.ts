@@ -20,12 +20,14 @@ import { gripBat, newTrack, rigInfo, validateFrame, type RigInfo, type Violation
 export { gripBat };
 import { Agg, type Snapshot } from './agg';
 import { torsoVolume } from '../../src/engine/armClear';
-import { constrainPose, constrainOptsFor, newConstrainState } from '../../src/engine/pose/constrain';
+import { constrainPose, constrainOptsFor, isGaitClip, newConstrainState } from '../../src/engine/pose/constrain';
+import { gaitWeightStep } from '../../src/engine/pose/gaitArms';
 import { limitNeck } from '../../src/engine/pose/neck';
 import { applyLook, lookFrame, lookInput, neckPitch } from '../../src/engine/pose/look';
 import { HeadLook, lookTarget } from '../../src/engine/headLook';
 import { oldApplyLook, oldLookInput } from './oldLook';
 import { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, batHandsBlend, clipFlags } from './clips';
+import { warpProgress, type Warp } from '../../src/engine/clipWarp';
 export { AIRBORNE, BALLISTIC, BAT_CLIPS, LOCOMOTION, clipFlags };
 
 export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
@@ -54,7 +56,7 @@ export function shippedPlayers(): string[] {
 }
 
 /** sweep one clip (looping clips get a wrap-around tail so a pop at the loop point counts) */
-export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false, constrain = false) {
+export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, clipName: string, loop: boolean, mirrored = false, constrain = false, warp?: Warp) {
   const clip = rig.clips.get(clipName)!;
   const fl = clipFlags(clipName);
   const tr = newTrack();
@@ -63,11 +65,15 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
   const cst = newConstrainState();
   const fls = newFootLock();
   const model = mirrored ? MIRROR : IDENT;
-  const n = Math.max(1, Math.round(clip.duration * FPS));
+  // a warped clip (clipWarp.ts) is swept as the game draws it: over its hint's seconds, laid on the warp
+  const n = Math.max(1, Math.round((warp ? warp.sec : clip.duration) * FPS));
   const tail = loop ? 3 : 0;
-  const src = constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
+  const src = warp ? (constrain ? 'played-constrained' : 'played') : constrain ? 'static-constrained' : mirrored ? `static-mirror` : 'static';
+  // a gait clip through the runtime passes: the running-arm pass carries the arms clear of the player's OWN trunk (the game passes each
+  // puppet's build), so each extra build's trunk checks (body:*@<build>) are measured on the pose made for that build, not the average one's
+  const perBuild = constrain && isGaitClip(clipName) ? (info.builds ?? []).map((b) => ({ b, L: newLocals(), cst: newConstrainState(), fls: newFootLock(), tr: newTrack(), v: [] as Violation[], info: { ...info, builds: [b] } })) : [];
   for (let i = 0; i <= n + tail; i++) {
-    const t = i <= n ? i / FPS : (i - n) / FPS;
+    const t = warp ? warpProgress(warp, i / n) * clip.duration : i <= n ? i / FPS : (i - n) / FPS;
     sampleClip(clip, Math.min(t, clip.duration), rig.rest, L);
     // what the runtime constraint layer makes of the clip (the game applies it every frame)
     if (constrain) {
@@ -78,6 +84,19 @@ export function sweepClip(agg: Agg, file: string, rig: RigFile, info: RigInfo, c
     const bh = BAT_CLIPS[clipName];
     const bat = bh ? gripBat(L, info, model, bh) : null;
     validateFrame({ L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, info, tr, v);
+    if (perBuild.length) {
+      const own = v.filter((x) => !x.kind.includes('@'));
+      for (const p of perBuild) {
+        sampleClip(clip, Math.min(t, clip.duration), rig.rest, p.L);
+        limitNeck(p.L, info.R);
+        constrainPose(p.L, info.R, { ...constrainOptsFor(clipName), gait: { w: 1, torso: p.b.torso }, state: p.cst, dt: 1 / FPS });
+        footLock(p.L, info.R, IDENT, p.fls, 1 / FPS, FREE_FEET.test(clipName));
+        validateFrame({ L: p.L, model, ground: flat, dt: i === 0 ? 0 : 1 / FPS, ...fl, bat }, p.info, p.tr, p.v);
+        for (const x of p.v) if (x.kind.endsWith(`@${p.b.name}`)) own.push(x);
+      }
+      v.length = 0;
+      v.push(...own);
+    }
     agg.add(src, file, clipName, v, 1 / FPS, () => ({ ...snap(L, model, { file, clip: clipName, t, mirrored }), bat: bat && { knob: bat.knob, tip: bat.tip } }));
   }
 }
@@ -181,7 +200,13 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
   const cb = new ContinuousBlend();
   const continuous = (globalThis as { __continuousBlend?: boolean }).__continuousBlend ?? false;
   const cs = [newConstrainState(), newConstrainState(), newConstrainState()];
+  // the running-arm pass on the blend: its weight follows the gait clips' share of the pose as in the game (gltfCharacter.constrain)
+  const gA = isGaitClip(tx.from) ? 1 : 0, gB = isGaitClip(tx.to) ? 1 : 0;
+  const gw = { w: gA, v: 0 };
   const fls3 = [newFootLock(), newFootLock(), newFootLock()];
+  // a switch into or out of a gait through the runtime passes: the trunk checks of each extra build on the poses made for that build (as in
+  // sweepClip)
+  const perBuild = constrain && (gA || gB) ? (info.builds ?? []).map((b) => ({ b, info: { ...info, builds: [b] }, P: [newLocals(), newLocals(), newLocals()], cs: [newConstrainState(), newConstrainState(), newConstrainState()], fs: [newFootLock(), newFootLock(), newFootLock()], tr: [newTrack(), newTrack(), newTrack()], v: [[], [], []] as Violation[][] })) : [];
   for (let i = -2; i <= n; i++) {
     const t = Math.max(0, i) / FPS;
     sampleClip(A, at(A, tx.fromT + i / FPS), rig.rest, LA);
@@ -205,10 +230,15 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
       inert.apply(L, 1 / FPS);
     }
     // the game's passes after the mixer (pose/neck.ts, pose/constrain.ts), on the blend and on both clips alike
+    for (const p of perBuild) [L, LA, LB].forEach((src, j) => copyLocals(src, p.P[j]));
     if (constrain) {
+      const k = i < 0 ? 0 : crossfade ? Math.min(1, t / Math.max(1e-6, tx.fade)) : 1;
+      if (i > -2) gaitWeightStep(gw, gA + (gB - gA) * k, 1 / FPS);
       for (const [P, c, st, fs] of [[L, tx.to, cs[0], fls3[0]], [LA, tx.from, cs[1], fls3[1]], [LB, tx.to, cs[2], fls3[2]]] as const) {
         limitNeck(P, info.R);
-        constrainPose(P, info.R, { ...constrainOptsFor(c), state: st, dt: 1 / FPS });
+        const o = constrainOptsFor(c);
+        if (P === L) o.gait = { w: gw.w, torso: constrainOptsFor('run').gait!.torso };
+        constrainPose(P, info.R, { ...o, state: st, dt: 1 / FPS });
         footLock(P, info.R, IDENT, fs, 1 / FPS, FREE_FEET.test(c));
       }
     }
@@ -220,7 +250,27 @@ export function sweepFade(agg: Agg, file: string, rig: RigFile, info: RigInfo, t
     // only what the blend itself adds: a violation kind neither endpoint has this frame (or a worse one)
     const worst = new Map<string, number>();
     for (const x of [...va, ...vB]) worst.set(x.kind, Math.max(worst.get(x.kind) ?? 0, x.excess));
-    const own = vb.filter((x) => x.excess > (worst.get(x.kind) ?? 0) + (x.kind.startsWith('joint') ? 3 : 0.01));
+    let own = vb.filter((x) => x.excess > (worst.get(x.kind) ?? 0) + (x.kind.startsWith('joint') ? 3 : 0.01));
+    if (perBuild.length) {
+      own = own.filter((x) => !x.kind.includes('@'));
+      for (const p of perBuild) {
+        const tag = `@${p.b.name}`;
+        p.P.forEach((P, j) => {
+          const c = j === 1 ? tx.from : tx.to;
+          limitNeck(P, info.R);
+          const o = constrainOptsFor(c);
+          o.gait = j === 0 ? { w: gw.w, torso: p.b.torso } : o.gait && { ...o.gait, torso: p.b.torso };
+          constrainPose(P, info.R, { ...o, state: p.cs[j], dt: 1 / FPS });
+          footLock(P, info.R, IDENT, p.fs[j], 1 / FPS, FREE_FEET.test(c));
+        });
+        validateFrame({ L: p.P[0], model: IDENT, ground: flat, dt, ...fl, locomotion: fl.locomotion || LOCOMOTION.has(tx.from), airborne: fl.airborne || AIRBORNE.test(tx.from), ballistic: fl.ballistic || BALLISTIC.test(tx.from), bat }, p.info, p.tr[0], p.v[0]);
+        validateFrame({ L: p.P[1], model: IDENT, ground: flat, dt, ...clipFlags(tx.from) }, p.info, p.tr[1], p.v[1]);
+        validateFrame({ L: p.P[2], model: IDENT, ground: flat, dt, ...fl }, p.info, p.tr[2], p.v[2]);
+        const wb = new Map<string, number>();
+        for (const x of [...p.v[1], ...p.v[2]]) if (x.kind.endsWith(tag)) wb.set(x.kind, Math.max(wb.get(x.kind) ?? 0, x.excess));
+        for (const x of p.v[0]) if (x.kind.endsWith(tag) && x.excess > (wb.get(x.kind) ?? 0) + 0.01) own.push(x);
+      }
+    }
     agg.add('fade', file, key, own, 1 / FPS, () => snap(L, IDENT, { file, clip: key, from: tx.from, to: tx.to, fromT: tx.fromT, toT: tx.toT, fade: tx.fade, t, mode: crossfade ? "crossfade" : "inertia" }));
   }
 }

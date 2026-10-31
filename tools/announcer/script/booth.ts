@@ -1,11 +1,12 @@
 /**
  * The booth's own written lines, straight from the game (src/audio/broadcast): the anecdotes Lyle and Biscuit tell in long lulls, the running
- * jokes, the catchphrases and the park promos. They are fixed sentences (no play-by-play slots), so the recording script takes every wording as it
+ * jokes, the catchphrases, the park promos and the remarks on the crowd's favourites and villains. They are fixed sentences (no play-by-play slots), so the recording script takes every wording as it
  * is, with the partner's name filled in. Lyle's lines are read as play-by-play (calm), Biscuit's as colour (deadpan), the home-run and strikeout
  * catchphrases as the big call. Extended tier only, in sessions of their own after the others (adding them renumbers nothing already recorded).
  */
 import { ANECDOTES } from '../../../src/audio/broadcast/anecdotes';
 import { CAST, CATCHPHRASES, PROMOS, RUNNING_JOKES } from '../../../src/audio/broadcast/cast';
+import { FAN_LINES } from '../../../src/audio/broadcast/stories';
 import type { Kind, Style } from './types';
 
 export interface BoothRaw {
@@ -44,5 +45,8 @@ export function boothLines(): BoothRaw[] {
     for (const t of c.lines)
       out.push(c.trigger === 'homeRun' || c.trigger === 'strikeout' ? { kind: 'playbyplay', style: c.who === 'pbp' ? 'peak' : 'deadpan', direction: c.who === 'pbp' ? BIG : BISCUIT, text: fill(t, c.who === 'pbp' ? 'pxp' : 'color'), source: 'booth:phrases' } : as(c.who === 'pbp' ? 'pxp' : 'color', t, 'booth:phrases'));
   for (const p of PROMOS) out.push(as('pxp', p, 'booth:promos'));
+  // the crowd's favourite or villain just announced: a stand-in name, seasons and clubs (the game fills in its own)
+  const stands = (t: string) => t.replace(/\$f/g, 'Abbott').replace(/\$seasons/g, 'nine seasons').replace(/\$batTeam/g, 'the Falcons').replace(/\$fldTeam/g, 'the Kings');
+  for (const [k, ts] of Object.entries(FAN_LINES)) for (const t of Array.isArray(ts) ? ts : Object.values(ts).flat()) out.push(as(k === 'villainEnd' || k === 'why' ? 'color' : 'pxp', stands(t), 'booth:stands'));
   return out;
 }

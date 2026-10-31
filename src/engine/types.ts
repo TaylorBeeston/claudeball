@@ -84,6 +84,9 @@ export type AnimHint =
   | 'coach_go_loop'
   | 'bench_cheer'
   | 'bench_stand_up'
+  | 'bench_sit_down'
+  /** standing at the dugout rail (the stand-up clip's last frame, held) */
+  | 'bench_stand'
   | 'coach_advance'
   | 'coach_slide'
   | 'coach_signs'
@@ -97,6 +100,10 @@ export type AnimHint =
   | 'batter_practice_swing'
   | 'batter_adjust'
   | 'batter_step_out'
+  /** waiting at the edge of the box before stepping in (the bat resting in front of him) */
+  | 'batter_wait'
+  /** knocking the dirt off his cleats with the bat, outside the box */
+  | 'batter_tap_cleats'
   | 'catcher_signs'
   | 'catcher_signal_infield'
   | 'pitcher_shake_off'
@@ -174,6 +181,8 @@ export interface PlayerSnap {
   gloveTarget?: Vec3;
   /** seconds until the catch (the hint starts the clip's catch-frame time before it, so the catch frame lands on the arrival) */
   catchIn?: number;
+  /** seconds since he called for the fly ball he is taking ("I got it!"), during that play */
+  calling?: number;
   /** seconds until the ball leaves his hand while a throwing motion is under way: the clip is laid so its release frame lands then */
   releaseIn?: number;
   /** umpires: HP, 1B-U, 2B-U, 3B-U */
@@ -347,6 +356,8 @@ export type GameEvent =
   | { type: 'wall_contact'; who: 'ball' | 'fielder'; playerId?: string; pos: Vec3; speed: number }
   /** an outfielder left the ground at the wall */
   | { type: 'wall_leap'; playerId: string; pos?: Vec3 }
+  /** a fielder calls for the fly ball he is taking (`eta`: seconds until it gets to him) */
+  | { type: 'call_for_ball'; playerId: string; eta: number }
   /** a base coach's signal to a runner (stop / go / advance / slide) or to the batter (signs) */
   | { type: 'coach_signal'; coachId: string; signal: 'stop' | 'go' | 'advance' | 'slide' | 'signs'; runnerId?: string; base?: number; pos?: Vec3 }
   /** a ball kid picked up a ball (a foul ball) */

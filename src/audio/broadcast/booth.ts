@@ -23,11 +23,11 @@ import { BoothMemory, withMemory } from './memory';
 import { ANECDOTES, type Anecdote, type AnecdoteWhen } from './anecdotes';
 
 /** running jokes begun in one game (the stages of a begun joke still come back) */
-const MAX_JOKES = 4;
+const MAX_JOKES = 8;
 const numW = (n: number) => ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][n] ?? String(n);
 /** the booth's own stories: at most this many a game, this many seconds apart */
-const MAX_ANECDOTES = 10;
-const ANECDOTE_GAP = 240;
+const MAX_ANECDOTES = 26;
+const ANECDOTE_GAP = 75;
 
 export interface BoothOpts {
   rng: () => number;
@@ -163,7 +163,8 @@ export class Booth {
     }
     // a pitching change's lull is long, but the change itself is called first: long talk waits for it
     const changeCalled = !!this.recent.change && this.now - this.recent.change.at < 90;
-    const lull = c.lull && c.lull.kind !== 'betweenPitches' && c.lull.kind !== 'break' && (c.lull.kind !== 'pitchingChange' || changeCalled) ? c.lull.remaining ?? 0 : 0;
+    // (between pitches too: at Broadcast tempo the pitcher's routine leaves ~10 s, and a story goes on over a ball or a strike, folded in)
+    const lull = c.lull && c.lull.kind !== 'break' && (c.lull.kind !== 'pitchingChange' || changeCalled) ? c.lull.remaining ?? 0 : 0;
     const topic = this.picker.next(this.log, c, !!tense, { extra: this.extraStories(c, lull), maxTurns: lull >= 15 ? 6 : 4, fresh: (x) => !this.said.includes(x) });
     // (the picker re-words a story whose lines were said recently; what still repeats is not said)
     return topic && topic.turns.some((x) => this.said.includes(x.text)) ? null : topic;
@@ -278,9 +279,11 @@ export class Booth {
     if (lull >= 12 && c.inning >= 3) out.push(jokeStory(this.jokeFor('foodLull', t), 0.7)!, jokeStory(this.jokeFor('lull', t), 0.65)!);
     if (t - (this.recent.visitAt ?? -99) < 30 && lull >= 10) out.push(jokeStory(this.jokeFor('moundVisit', t), 0.62)!);
     if (this.recent.change && t - this.recent.change.at < 90 && lull >= 12) out.push(jokeStory(this.jokeFor('pitchingChange', t), 0.6)!);
-    // the booth's own stories: in a long lull, now and then (one every few innings, a handful a game)
+    // the booth's own stories: in a long lull (a walk-up, a visit, a long pitcher's routine at Broadcast tempo), a minute or so apart. Between
+    // pitches not with two strikes or three balls: the next pitch may well end the at-bat, and the call would cut the story off
     const tense = (c.inning >= 7 && Math.abs(c.score.home - c.score.away) <= 2) || ((c.runners[1] || c.runners[2]) && c.outs === 2);
-    if (lull >= 10 && !tense && t - this.told.at >= ANECDOTE_GAP && this.told.anecdotes.size < MAX_ANECDOTES) {
+    const lastPitch = c.lull?.kind === 'betweenPitches' && (c.strikes >= 2 || c.balls >= 3);
+    if (lull >= 10 && !tense && !lastPitch && t - this.told.at >= ANECDOTE_GAP && this.told.anecdotes.size < MAX_ANECDOTES) {
       const a = this.anecdote(c);
       if (a)
         out.push({ id: `anecdote.${a.id}`, key: `anecdote:${a.id}`, salience: a.when === 'lull' || a.when === 'early' || a.when === 'day' || a.when === 'night' ? 0.5 : 0.6, relevance: 0.6, opener: a.a, build: (rng, o) => {
@@ -513,7 +516,7 @@ export class Booth {
   }
 
   /** the analyst chimes in over the last words of a big call, now and then (more at chatter High) */
-  private reactP = 0.35;
+  private reactP = 0.6;
   private maybeReact(call: Call, t: number) {
     if (call.importance !== 'must' || call.react) return;
     const tag = call.tag;
@@ -530,7 +533,7 @@ export class Booth {
 
   setLevel(l: Level) {
     this.director.setLevel(l);
-    this.reactP = l === 'high' ? 0.6 : l === 'low' ? 0 : 0.35;
+    this.reactP = l === 'high' ? 0.75 : l === 'low' ? 0 : 0.6;
   }
 
   /** the broadcast cut to a replay */

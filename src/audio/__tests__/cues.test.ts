@@ -229,3 +229,14 @@ describe('robustness and gating', () => {
     expect(engineToRaw({ type: 'nonsense' })).toBeNull();
   });
 });
+
+describe('fielder calls for a fly ball', () => {
+  it('a shout from where the fielder stands, head high, and nothing from the booth or the crowd', () => {
+    const cues = m({ type: 'callForBall', fielderId: 'f1', pos: { x: 1, y: 2.4, z: 98 }, eta: 2.2 });
+    const call = sfx(cues, 'fielder_call') as Extract<Cue, { kind: 'sfx' }>[];
+    expect(call).toHaveLength(1);
+    expect(call[0].pos).toEqual({ x: 0, y: 1.75, z: 100 });
+    expect(says(cues)).toHaveLength(0);
+    expect(cues.filter((c) => c.kind === 'crowd')).toHaveLength(0);
+  });
+});

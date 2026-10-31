@@ -1,4 +1,5 @@
 import { groundHeight } from './field';
+import { SHOULDER_X } from './batting';
 import { BENCH_SIT_LIFT, dugoutFloorY, seatStands } from './venue';
 import { umpStance } from './umpires';
 import { teamStats } from './stats';
@@ -24,9 +25,23 @@ function animOf(w: World, p: PlayerRT): { anim: PlayerSnapshot['anim']; t: numbe
   const sp = Math.hypot(p.vx, p.vz);
   if (p.dug === 'bench' && !p.route.length) return { anim: seatStands(p.seat) ? 'idle' : 'bench_sit', t: 0 };
   if (p.dug === 'deck' && sp < 0.3) return { anim: 'ondeck_ready', t: 0 };
+  // the hitter standing at the edge of his box before his routine starts (after his walk-up): leaning on the bat (`idle` would draw him in his
+  // stance, off in the dirt). In the short gaps between his routine's items he stays in his stance, as he does in the box
+  const busy = w.prep.routine?.bat.now;
+  if (p === w.batter && w.phase === 'prePitch' && sp < 0.3 && (!busy || busy === 'batter_wait') && Math.hypot(p.x - (w.batStance === 'R' ? 1 : -1) * SHOULDER_X, p.z - 0.15) > 0.6) return { anim: 'batter_wait', t: 0 };
   if (p.gait === 'walk' && sp > 0.25) return { anim: 'walk', t: 0 };
+  // the hitter on his walk-up, all the way to the edge of the box (the last leg is a goal, not a route: it had no gait and showed as a run)
+  if (p === w.batter && w.phase === 'prePitch' && sp > 0.25 && sp < 3.4) return { anim: 'walk', t: 0 };
   if (sp > 1.2) return { anim: p.gait === 'trot' ? 'trot' : p.gait === 'turn' ? 'run_turn' : 'run', t: 0 };
   return { anim: 'idle', t: 0 };
+}
+
+/** How much of a seated man's weight is on the seat (the root lift of the taller dugout bench): all of it seated, none standing, in between getting up / sitting down. */
+function seatedShare(anim: PlayerSnapshot['anim'], t: number): number {
+  if (anim === 'bench_sit') return 1;
+  if (anim === 'bench_stand_up') return Math.max(0, 1 - t / 0.6);
+  if (anim === 'bench_sit_down') return Math.max(0, (t - 0.4) / 0.6);
+  return 0;
 }
 
 /** Height of the feet above the field's datum: the ground at his spot (the mound is 10 in up) plus the height of a wall leap. */
@@ -59,7 +74,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     position: (p.fieldPos ?? p.info.primaryPosition) as PlayerSnapshot['position'],
     jersey: p.info.jersey,
     // seated, the root is the floor below the seat centre for a seat of the clip's height: on the taller dugout bench it is lifted by the difference
-    pos: { x: p.x, y: feetY(w, p) + (a.anim === 'bench_sit' ? BENCH_SIT_LIFT : 0), z: p.z },
+    pos: { x: p.x, y: feetY(w, p) + BENCH_SIT_LIFT * seatedShare(a.anim, a.t), z: p.z },
     vel: { x: p.vx, y: 0, z: p.vz },
     facing: p.facing,
     anim: a.anim,
@@ -76,6 +91,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     releaseIn: releaseIn(w, p),
+    calling: w.play?.called?.F === p ? (w.tick - w.play.called.tick) * TICK : undefined,
     pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
     gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     tic: role === 'batter' || role === 'ondeck' ? ticOf(p) : undefined,

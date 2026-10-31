@@ -20,6 +20,7 @@ interface RSPlayer {
   gloveEta?: number;
   catchIn?: number;
   releaseIn?: number;
+  calling?: number;
   gloveHand?: 'L' | 'R';
   pitchType?: string | null;
   stride?: { next: 0 | 1; phase: number };
@@ -90,7 +91,7 @@ const POS_ROLE: Record<string, PlayerRole> = {
   P: 'pitcher', C: 'catcher', '1B': 'first', '2B': 'second', '3B': 'third', SS: 'short', LF: 'left', CF: 'center', RF: 'right', DH: 'first',
 };
 /** Nominal clip lengths (s) used only to convert the sim's 0..1 progress for the procedural fallback rig. */
-const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_ready: 1.0, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0, pitcher_catch_toss: 0.5, ondeck_swing: 2.0, coach_stop: 1.0, coach_go: 1.5, coach_advance: 1.333, coach_slide: 1.0, coach_signs: 3.0, ballkid_pickup: 1.5, ballkid_toss: 1.0, bench_stand_up: 1.167, bench_cheer: 1.5 };
+const NOMINAL: Partial<Record<AnimHint, number>> = { windup: 1.2, pitch: 0.55, swing: 0.4, throw: 0.6, catch: 0.5, field: 0.6, slide: 0.8, catch_jump: 1.2, transfer: 0.5, toss: 0.7, catch_ready: 1.0, catch_pitch: 0.4, catch_throw: 0.5, catch_stretch: 0.6, catch_fly: 0.7, catch_backhand: 0.6, field_grounder: 0.7, tag_glove: 0.5, tag_hand: 0.5, slide_feet: 0.9, slide_head: 0.9, slide_hook_left: 0.9, slide_hook_right: 0.9, dive_back: 0.8, catcher_block: 0.8, ump_strike: 1.0, ump_strike_swinging: 1.0, ump_ball: 0.8, ump_safe: 1.0, ump_out: 1.0, ump_foul: 1.0, ump_fair: 0.8, ump_homerun: 1.2, ump_time: 1.0, pitcher_catch_toss: 0.5, ondeck_swing: 2.0, coach_stop: 1.0, coach_go: 1.5, coach_advance: 1.333, coach_slide: 1.0, coach_signs: 3.0, ballkid_pickup: 1.5, ballkid_toss: 1.0, bench_stand_up: 1.167, bench_cheer: 1.5, bench_sit_down: 1.167, batter_practice_swing: 2.0, batter_tap_cleats: 0.75, bench_stand: 1 };
 
 const PALETTE: [string, string][] = [
   ['#b3202f', '#161616'], ['#f4f4f0', '#12305f'], ['#0c2340', '#c8102e'], ['#1d6b3c', '#f2c94c'],
@@ -227,6 +228,9 @@ export class RealSimAdapter implements GameLike {
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
+      case 'callForBall':
+        this.emit({ type: 'call_for_ball', playerId: String(e.fielderId), eta: Number(e.eta) });
+        break;
       case 'coachSignal':
         this.emit({ type: 'coach_signal', coachId: String(e.coachId), signal: String(e.kind) as 'stop' | 'go' | 'advance' | 'slide' | 'signs', runnerId: e.runnerId as string | undefined, base: e.base as number | undefined, pos: s?.players.find((q) => q.id === e.coachId)?.pos });
         break;
@@ -330,7 +334,7 @@ export class RealSimAdapter implements GameLike {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
         animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
-        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings, stride: p.stride,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, calling: p.calling, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings, stride: p.stride,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;

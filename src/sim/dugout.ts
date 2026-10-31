@@ -7,14 +7,20 @@ import { emit } from './events';
 import { clamp } from './math';
 import { setGoal, stepPlayer } from './movement';
 import { setAnim } from './util';
-import { behindPlate, benchAisle, benchFacing, bullpenSpot, dugDoor, dugStep, onDeckSpot, seatSpot, seatStands } from './venue';
+import { behindPlate, benchAisle, benchFacing, bullpenSpot, dugoutFloorY, dugDoor, dugStep, onDeckSpot, seatSpot, seatStands } from './venue';
 import { pitchLimit } from './attributes';
 import type { AnimHint, GameEvent } from './types';
 import type { PlayerRT, TeamRT, World } from './world';
-import { secToTicks } from './world';
+import { TICK, secToTicks } from './world';
 
 /** How fast he walks (m/s): a brisk walk to the plate or the circle. */
 export const WALK_SPEED = 2.1;
+/**
+ * The walk up to the plate (m/s): a hitter walks, he does not hurry (the walk clip's own foot speed is 1.42 m/s; at 2.4 m/s it was a trot). A
+ * quicker game walks a little faster; a batter the game is waiting on goes no faster than `WALK_SPEED` (handling.ts hurryStragglers).
+ */
+export const WALKUP_SPEED = { broadcast: 1.45, standard: 1.7, quick: 2.3 } as const;
+export const walkupMul = (w: World, p: PlayerRT) => walkMul(p, WALKUP_SPEED[w.cfg.tempo]);
 const sgn = (side: 'home' | 'away') => (side === 'home' ? 1 : -1);
 
 const walkMul = (p: PlayerRT, speed = WALK_SPEED) => clamp(speed / Math.max(1, p.vmax), 0.08, 1);
@@ -81,8 +87,6 @@ export function initDugouts(w: World): void {
   }
 }
 
-const inDugout = (p: PlayerRT) => p.dug === 'bench' || p.dug === 'toBench' || p.dug === 'toDeck';
-
 /** Someone who is done (out, scored, replaced, the inning is over): he walks back to the dugout and sits down. */
 export function toBench(w: World, p: PlayerRT): void {
   p.onField = false;
@@ -116,6 +120,7 @@ export function sendToDeck(w: World, p: PlayerRT): void {
   if (p.dug !== 'bench') return;
   if (w.deckNext === p) w.deckNext = null;
   const side = p.team.side;
+  p.benchSeq = [];
   p.dug = 'toDeck';
   p.route = [benchAisle(side, p.seat), dugStep(side), dugDoor(side), onDeckSpot(side)];
   p.routeMul = walkMul(p);
@@ -123,13 +128,19 @@ export function sendToDeck(w: World, p: PlayerRT): void {
   emit(w, { type: 'onDeck', playerId: p.info.id, team: side });
 }
 
-/** The way from where a hitter is to the batter's box: out of the dugout if he is in it, around behind the plate if the box is on the other side. */
+/**
+ * The way from where a hitter is to the edge of his box (`boxEdge`, where he stops): behind the umpire and the
+ * catcher if the box is on the other side. The far side's way point is no further out than the box edge itself: at 3.4 m he walked 1.6 m past
+ * the box and came back into it in a curve.
+ */
 export function routeToBox(b: PlayerRT, boxSide: 1 | -1): { x: number; z: number }[] {
   const side = b.team.side;
   const dsg = sgn(side);
   const route: { x: number; z: number }[] = [];
-  if (inDugout(b)) route.push(benchAisle(side, b.seat), dugStep(side), dugDoor(side));
-  if (boxSide !== dsg) route.push(behindPlate(dsg * 5.2), behindPlate(boxSide * 3.4));
+  // (the way out from his seat is leaveDugout's, or already on his route to the circle: here it doubled, and he walked out to the door, back
+  // to his seat and out again; a man on his way back in who is already down in the dugout turns round at the steps)
+  if (b.dug === 'toBench' && dugoutFloorY(b.x, b.z) < 0) route.push(dugStep(side), dugDoor(side));
+  if (boxSide !== dsg) route.push(behindPlate(dsg * 3.0), behindPlate(boxSide * 1.8));
   return route;
 }
 
@@ -160,6 +171,34 @@ function tickBullpen(w: World, t: TeamRT): void {
   cand.lookAt = { x: cand.x - 1.5, z: cand.z + 6 };
 }
 
+/** A [0, 1) for a man on the bench from the game seed, his id and a counter (show only: no rng stream is drawn from, so nothing else shifts). */
+function benchHash(w: World, p: PlayerRT, k: number): number {
+  let h = 2166136261 ^ k;
+  const str = `${w.cfg.seed}:${p.info.id}`;
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822519);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+/** Seconds of the bench clips: getting up and sitting back down (`bench_stand_up` both ways), a round of clapping. */
+const RISE = 1.167, CLAP = 1.5;
+
+/**
+ * A man on the bench gets up, does `hold` (a round of clapping, or just standing at the rail looking out) and sits back down, starting `delay` s
+ * from now: nobody jumps from seated to standing in one frame any more, and two men are never on the same frame.
+ */
+function standUp(w: World, p: PlayerRT, delay: number, hold: { hint: AnimHint; sec: number }[]): void {
+  let at = w.tick + secToTicks(delay);
+  const seq: PlayerRT['benchSeq'] = [];
+  for (const h of [{ hint: 'bench_stand_up' as AnimHint, sec: RISE }, ...hold, { hint: 'bench_sit_down' as AnimHint, sec: RISE }]) {
+    seq.push({ hint: h.hint, at, sec: h.sec });
+    at += secToTicks(h.sec);
+  }
+  p.benchSeq = seq;
+}
+
 /** The dugout reacts: the batting side's bench cheers (or stands) for a hit, a run, a homer; the fielding side's for a strikeout. */
 export function benchReact(w: World, e: GameEvent): void {
   if (w.cfg.pace === 0) return;
@@ -187,11 +226,22 @@ export function benchReact(w: World, e: GameEvent): void {
   for (const p of team.players.values()) {
     // (the draw comes before the standing check: the prop stream stays the same however full the bench is)
     if (p.dug !== 'bench' || p.route.length || w.propRng.next() > share || seatStands(p.seat)) continue;
-    setAnim(w, p, hint, hint === 'bench_stand_up' ? 3.0 : 2.2);
+    if (p.benchSeq.length || w.tick < p.animUntil) continue; // already up (or about to be): he is not sent up again from his feet
+    // each in his own time (0.15-0.9 s: some react to the crack of the bat, some to the ball landing); a big moment, longer on their feet
+    const k = w.tick % 9973;
+    const delay = 0.15 + 0.75 * benchHash(w, p, k);
+    const claps = hint === 'bench_stand_up' ? 2 : 1;
+    const stay = hint === 'bench_stand_up' ? 0.8 + 2.4 * benchHash(w, p, k + 1) : 0.4 * benchHash(w, p, k + 1);
+    standUp(w, p, delay, [...Array.from({ length: claps }, () => ({ hint: 'bench_cheer' as AnimHint, sec: CLAP })), { hint: 'bench_stand', sec: stay }]);
   }
 }
 
 function tickOne(w: World, p: PlayerRT): void {
+  // called up in the middle of a warm-up swing: he finishes it, then walks (he used to set off with the swing still playing)
+  if (p.route.length && p.anim === 'ondeck_swing' && w.tick < p.animUntil) {
+    p.goal = null;
+    return;
+  }
   if (p.route.length) {
     const next = p.route[0];
     const last = p.route.length === 1;
@@ -218,7 +268,20 @@ function tickOne(w: World, p: PlayerRT): void {
         p.nextSwing = w.tick + secToTicks(6 + 4 * w.propRng.next());
       } else setAnim(w, p, 'ondeck_ready', clamp((p.nextSwing - w.tick) / 240, 0.2, 1.5));
     }
-  } else if (p.dug === 'bench' || p.dug === 'bullpen') {
+  } else if (p.dug === 'bench') {
+    p.vx = p.vz = 0;
+    if (seatStands(p.seat)) return;
+    const q = p.benchSeq[0];
+    if (q && w.tick >= q.at) {
+      p.benchSeq.shift();
+      // (two ticks over: the next one starts as this one ends, no frame of the seated default between them)
+      if (q.sec > 0) setAnim(w, p, q.hint, q.sec + 2 * TICK);
+    } else if (!q && w.tick >= p.fidgetAt && w.tick >= p.animUntil) {
+      // now and then a man gets up by himself and stands at the rail for a while (every 1.5-4 minutes each, at his own times)
+      if (p.fidgetAt > 0) standUp(w, p, 0, [{ hint: 'bench_stand', sec: 4 + 10 * benchHash(w, p, w.tick % 9973) }]);
+      p.fidgetAt = w.tick + secToTicks(90 + 150 * benchHash(w, p, (w.tick + 7) % 9973));
+    }
+  } else if (p.dug === 'bullpen') {
     p.vx = p.vz = 0;
   }
 }
@@ -228,6 +291,8 @@ function arrive(w: World, p: PlayerRT): void {
   const side = p.team.side;
   if (p.dug === 'toBench') {
     p.dug = 'bench';
+    // (he has just sat down: no getting up again by himself for a while)
+    p.fidgetAt = w.tick + secToTicks(45 + 60 * benchHash(w, p, w.tick % 9973));
     p.goal = null;
     p.vx = p.vz = 0;
     p.facing = benchFacing(side);
@@ -252,6 +317,7 @@ function arrive(w: World, p: PlayerRT): void {
 export function leaveDugout(p: PlayerRT, then: { x: number; z: number }[], after: { x: number; z: number; stop: boolean; mul: number } | null, speed = 3.2): void {
   const side = p.team.side;
   const out = p.dug === 'bench' ? [benchAisle(side, p.seat), dugStep(side), dugDoor(side)] : [];
+  p.benchSeq = [];
   p.route = [...out, ...then];
   p.dug = null;
   p.after = after;

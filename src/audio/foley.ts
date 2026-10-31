@@ -288,7 +288,8 @@ export function batTap(_b: number, _a: number, r: Rand): Rendered {
 
 /**
  * The catcher's mitt, the iconic pop. Bucket by pitch speed (< 80, 80-88, 88-95, 95+ mph). Layers: a leather transient, a tiny
- * paper-like snap of the laces, the pocket's air slap, the mitt's dead body resonances (300-700 Hz, fast), a low thump that grows with
+ * paper-like snap of the laces, the pocket's slap (a short pop around 1-2 kHz, gone in ~4 ms: a longer, broadband slap was a hiss in the
+ * upper mids), the mitt's dead body resonances (250-750 Hz, heavily damped: they thud, they do not ring), a low thump that grows with
  * the speed; the room tail comes from the venue (the plate mic's reverb send).
  */
 export function mittPop(b: number, _a: number, r: Rand): Rendered {
@@ -298,12 +299,13 @@ export function mittPop(b: number, _a: number, r: Rand): Rendered {
   const decay = vary(r, 0.15);
   burst(o, r, { tau: 0.0009, amp: 1.3 + 0.5 * p, hp: 2200 }); // the leather crack
   burst(o, r, { t0: 0.0012 + 0.001 * r(), tau: 0.0005, amp: 0.6 + 0.2 * p, bp: 7000 * pitch, q: 1.5 }); // the laces' paper snap
-  burst(o, r, { tau: 0.007 + 0.002 * (1 - p), amp: 1.5, hp: 700, lp: 6000 }); // the pocket slapping shut on the ball
-  burst(o, r, { tau: 0.004, amp: 1, bp: 2600 * pitch, q: 0.9 });
-  modal(o, [[340, 0.55, 0.012], [520, 0.45, 0.009], [690, 0.35, 0.007], [1050, 0.25, 0.005]], { pitch, decay });
+  burst(o, r, { tau: 0.0035 + 0.001 * (1 - p), amp: 1.6, hp: 500, lp: 4000 }); // the pocket slapping shut on the ball
+  burst(o, r, { tau: 0.0025, amp: 1, bp: 1800 * pitch, q: 0.9 });
+  modal(o, [[260, 0.5, 0.008], [360, 0.55, 0.006], [520, 0.45, 0.005], [740, 0.3, 0.004]], { pitch, decay });
   thump(o, { f0: 150 + 20 * p, f1: 82, pitchTau: 0.01, tau: 0.02 + 0.015 * p, amp: 0.14 + 0.36 * p });
   burst(o, r, { t0: 0.002, tau: 0.04, amp: 0.1, lp: 900 }); // air pushed out of the pocket
-  return level(o, ([-14, -12.5, -11, -9.5][b] ?? -12) - HEADROOM);
+  // the plate dish cuts under 260 Hz: these targets keep the pop as loud through it as the old, brighter recipe
+  return level(o, ([-12, -11.5, -10, -8][b] ?? -11) - HEADROOM);
 }
 
 /** a pitch in the dirt: the catcher blocks it (chest protector thump, a dull mitt, a puff of dirt) */
@@ -342,19 +344,23 @@ export function glovePop(b: number, _a: number, r: Rand): Rendered {
   }
   const P = [
     { tr: 0.4, trHp: 2000, slap: 1100, slapTau: 0.004, modes: [[420, 0.7, 0.008], [650, 0.45, 0.006]] as Mode[], th: [175, 110, 0.02, 0.45], db: -21 },
-    { tr: 0.85, trHp: 2200, slap: 1300, slapTau: 0.005, modes: [[380, 0.8, 0.01], [600, 0.6, 0.008], [860, 0.35, 0.006]] as Mode[], th: [165, 95, 0.028, 0.75], db: -14 },
-    { tr: 1.1, trHp: 2600, slap: 1450, slapTau: 0.0045, modes: [[400, 0.8, 0.01], [630, 0.6, 0.008], [900, 0.4, 0.006]] as Mode[], th: [175, 95, 0.032, 0.95], db: -12 },
+    { tr: 0.85, trHp: 2200, slap: 1300, slapTau: 0.005, modes: [[380, 0.8, 0.01], [600, 0.6, 0.008], [860, 0.35, 0.006]] as Mode[], th: [165, 95, 0.028, 0.75], db: -12.5 },
+    { tr: 1.1, trHp: 2600, slap: 1450, slapTau: 0.0045, modes: [[400, 0.8, 0.01], [630, 0.6, 0.008], [900, 0.4, 0.006]] as Mode[], th: [175, 95, 0.032, 0.95], db: -11 },
     { tr: 0.25, trHp: 1500, slap: 700, slapTau: 0.01, modes: [[300, 0.8, 0.014], [470, 0.5, 0.01]] as Mode[], th: [130, 78, 0.04, 0.9], db: -17 },
     { tr: 0.35, trHp: 1800, slap: 1000, slapTau: 0.005, modes: [[380, 0.6, 0.009], [580, 0.4, 0.007]] as Mode[], th: [160, 100, 0.022, 0.5], db: -19 },
     { tr: 0.7, trHp: 3000, slap: 2400, slapTau: 0.003, modes: [[900, 0.6, 0.006], [1400, 0.4, 0.005]] as Mode[], th: [220, 150, 0.012, 0.3], db: -17 },
   ][Math.min(5, Math.max(0, b))];
   const fly = b === 3;
+  const edge = b === 5;
+  // the slap is short (a pop, not a hiss in the upper mids); the webbing's is a little longer and thinner, the outfield "thwup" as it was
+  const slapTau = P.slapTau * (fly ? 1 : edge ? 0.8 : 0.6);
   burst(o, r, { t0, attack: fly ? 0.0015 : 0, tau: 0.0008, amp: P.tr * 1.5, hp: P.trHp, lp: fly ? 5000 : undefined });
-  // the pocket's slap: broadband for a firm catch, low and soft for the big outfield pocket ("thwup")
-  burst(o, r, { t0, attack: fly ? 0.002 : 0, tau: P.slapTau, amp: 1.3, hp: fly ? 250 : 600, lp: fly ? 2200 : 5500 });
-  burst(o, r, { t0, attack: fly ? 0.002 : 0, tau: P.slapTau, amp: 0.7, bp: P.slap * pitch, q: fly ? 0.7 : 0.9 });
-  modal(o, P.modes.map(([f, a, t]) => [f, a * 0.7, t] as Mode), { t0, pitch, decay });
-  thump(o, { t0, f0: P.th[0], f1: P.th[1], pitchTau: 0.01, tau: P.th[2] * 0.7, amp: P.th[3] * (fly ? 0.4 : 0.22) });
+  // the pocket's slap: a firm pop under 3.5 kHz for a catch, low and soft for the big outfield pocket ("thwup")
+  burst(o, r, { t0, attack: fly ? 0.002 : 0, tau: slapTau, amp: 1.4, hp: fly ? 250 : 500, lp: fly ? 2200 : edge ? 4500 : 3400 });
+  burst(o, r, { t0, attack: fly ? 0.002 : 0, tau: slapTau, amp: 0.7, bp: P.slap * pitch, q: fly ? 0.7 : 0.9 });
+  // the leather's resonances, damped hard: a thud, not a hollow knock
+  modal(o, P.modes.map(([f, a, t]) => [f, a * 0.8, t * 0.55] as Mode), { t0, pitch, decay });
+  thump(o, { t0, f0: P.th[0], f1: P.th[1], pitchTau: 0.01, tau: P.th[2] * 0.7, amp: P.th[3] * (fly ? 0.4 : 0.26) });
   return level(o, (P.db) - HEADROOM);
 }
 
