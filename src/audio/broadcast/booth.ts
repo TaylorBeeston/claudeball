@@ -279,9 +279,11 @@ export class Booth {
     if (lull >= 12 && c.inning >= 3) out.push(jokeStory(this.jokeFor('foodLull', t), 0.7)!, jokeStory(this.jokeFor('lull', t), 0.65)!);
     if (t - (this.recent.visitAt ?? -99) < 30 && lull >= 10) out.push(jokeStory(this.jokeFor('moundVisit', t), 0.62)!);
     if (this.recent.change && t - this.recent.change.at < 90 && lull >= 12) out.push(jokeStory(this.jokeFor('pitchingChange', t), 0.6)!);
-    // the booth's own stories: in a long lull, now and then (one every few innings, a handful a game)
+    // the booth's own stories: in a long lull (a walk-up, a visit, a long pitcher's routine at Broadcast tempo), a minute or so apart. Between
+    // pitches not with two strikes or three balls: the next pitch may well end the at-bat, and the call would cut the story off
     const tense = (c.inning >= 7 && Math.abs(c.score.home - c.score.away) <= 2) || ((c.runners[1] || c.runners[2]) && c.outs === 2);
-    if (lull >= 10 && !tense && t - this.told.at >= ANECDOTE_GAP && this.told.anecdotes.size < MAX_ANECDOTES) {
+    const lastPitch = c.lull?.kind === 'betweenPitches' && (c.strikes >= 2 || c.balls >= 3);
+    if (lull >= 10 && !tense && !lastPitch && t - this.told.at >= ANECDOTE_GAP && this.told.anecdotes.size < MAX_ANECDOTES) {
       const a = this.anecdote(c);
       if (a)
         out.push({ id: `anecdote.${a.id}`, key: `anecdote:${a.id}`, salience: a.when === 'lull' || a.when === 'early' || a.when === 'day' || a.when === 'night' ? 0.5 : 0.6, relevance: 0.6, opener: a.a, build: (rng, o) => {

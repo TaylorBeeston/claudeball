@@ -5065,14 +5065,14 @@ Styles: **calm** easy descriptive, **building** rising tension, **excited**, **p
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
 - `1001886a` _calm_ **Did you like spring training, Biscuit?**  
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
-- `1278b178` _deadpan_ **Every night. My wife asked which one of us was getting traded first.**  
-  <sub>Colour man telling a story on himself: dry, amused, unhurried; let the punchline land soft.</sub>
 - `131dde0d` _calm_ **Just the one?**  
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
 - `1806856c` _calm_ **Did you ever pinch-hit, Biscuit?**  
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
 - `1a69cf0f` _calm_ **No more chess?**  
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
+- `1a7e1c94` _deadpan_ **Every night. My family asked which one of us was getting traded first.**  
+  <sub>Colour man telling a story on himself: dry, amused, unhurried; let the punchline land soft.</sub>
 - `1c656a48` _calm_ **All right, Biscuit, what happens in the next inning?**  
   <sub>Easy play-by-play conversation with your partner; warm, a little dry, fall on the last word.</sub>
 - `1d2a5983` _deadpan_ **Night games behind the plate, Lyle, you lose the ball in the lights maybe once a month.**  

@@ -6,8 +6,8 @@
  * no real clubs, no brands; players are "he", umpires are "the umpire", everybody else stays neutral.
  *
  * Each anecdote is one exchange (alternatives within a line say the same thing, so any combination makes sense). It fits a kind of moment
- * (`when`); the booth tells one now and then in a long lull, picks the one heard longest ago (the booth's memory spans games) and never the same
- * one twice in a game.
+ * (`when`); the booth tells one now and then in a long lull (at Broadcast tempo a long pitcher's routine counts too), picks the one heard
+ * longest ago (the booth's memory spans games) and never the same one twice in a game.
  */
 import type { Line } from './stories';
 
@@ -484,7 +484,7 @@ export const ANECDOTES: Anecdote[] = [
   { id: 'bis.mittBreakIn', when: 'lull', a: 'color', lines: [
     A(['Breaking in a new catcher\'s mitt takes about a month, $other. I used to sleep with a ball tied up in mine.']),
     B(['You slept with the mitt?', 'In the bed?']),
-    A(['Every night. My wife asked which one of us was getting traded first.']),
+    A(['Every night. My family asked which one of us was getting traded first.']),
   ] },
   { id: 'bis.foulTip', when: 'catcher', a: 'pxp', lines: [
     A(['A catcher takes a lot of foul tips off the mask, $other. Do you remember them?', 'How many foul tips did you take off the mask, $other?']),

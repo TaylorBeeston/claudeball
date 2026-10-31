@@ -505,7 +505,7 @@ The talk is about 12 % thinner (495 -> 438 not-call lines a game, conversation l
 plate appearance (a first-pitch breaking ball, two fastballs and a change, righty on righty, "two down, one to go") are now capped per game
 (`STORY_CAPS` in `stories.ts`), and the booth's own anecdotes (about 7 a game, 18 lines) and the new running jokes fill part of that time.
 If the booth feels too quiet, raise the caps in `STORY_CAPS` or shorten `ANECDOTE_GAP` / raise `MAX_ANECDOTES` in `booth.ts`.
-(The owner did find it a tad quiet: see *A more talkative booth* below, which brings the talk back to 497 lines a game with fewer repeats.)
+(The owner did find it a tad quiet: see *A more talkative booth* below, which brings the talk back up to 487 lines a game with fewer repeats.)
 
 ## What changed
 
@@ -551,15 +551,17 @@ memory on, 3 chains of 10 games at each tempo; before is main at d51d9f4 (the nu
 
 | not-call lines | Broadcast before | Broadcast after | Standard before | Standard after | Quick before | Quick after |
 |---|---|---|---|---|---|---|
-| lines a game | 438 | **497** | 372 | 387 | 291 | 309 |
-| conversation (topic) lines a game | 334 | 383 | 298 | 305 | 262 | 273 |
+| lines a game | 438 | **487** | 372 | 387 | 291 | 309 |
+| conversation (topic) lines a game | 334 | 374 | 298 | 305 | 262 | 273 |
 | analyst reactions a game | 15 | 21 | 14 | 22 | 14 | 20 |
-| exact words repeated within the game | 4.6 % | 4.0 % | 4.8 % | 4.7 % | 4.9 % | 5.1 % |
-| same line (names masked) repeated within the game | 14.3 % | **12.5 %** | 15.0 % | 14.9 % | 13.8 % | 13.9 % |
-| said in the game just before (games 2-10) | 44.7 % | 41.3 % | 46.5 % | 46.5 % | 41.8 % | 42.9 % |
-| times each line had been said in the earlier games (mean) | 3.5 | 3.3 | 3.7 | 3.7 | 3.3 | 3.4 |
-| heard three times or more before | 44.2 % | 42.4 % | 46.8 % | 47.7 % | 43.0 % | 45.0 % |
-| calls a game (balls, strikes, plays) | 404 | 399 | 391 | 398 | 373 | 376 |
+| exact words repeated within the game | 4.6 % | 4.2 % | 4.8 % | 4.7 % | 4.9 % | 5.1 % |
+| same line (names masked) repeated within the game | 14.3 % | **12.9 %** | 15.0 % | 14.9 % | 13.8 % | 13.9 % |
+| said in the game just before (games 2-10) | 44.7 % | 41.8 % | 46.5 % | 46.5 % | 41.8 % | 42.9 % |
+| times each line had been said in the earlier games (mean) | 3.5 | 3.4 | 3.7 | 3.7 | 3.3 | 3.4 |
+| heard three times or more before | 44.2 % | 42.9 % | 46.8 % | 47.7 % | 43.0 % | 45.0 % |
+| analyst reactions heard in an earlier game (games 6-10) | 88.8 % | 92.5 % | 89.6 % | 94.1 % | 86.0 % | 93.0 % |
+| calls a game (balls, strikes, plays) | 404 | 403 | 391 | 398 | 373 | 376 |
+| the booth's own stories a game / cut short by a play | 7.3 / 0.5 % | 16.8 / 2.2 % | 0.1 | 0.1 | - | - |
 
 **Why it was quiet.** Supply, not the caps: the booth asked for a topic ~1300 times a game at Broadcast and had nothing 88 % of the time. Raising
 `STORY_CAPS` alone (tried: +13 lines) cost about 0.4 within-game repeats per line gained: those stories have small pools. The booth's own stories
@@ -569,7 +571,9 @@ pitching change), so only ~7 fit a game.
 **What changed.**
 - A pitcher's routine between pitches counts as a lull for the booth's stories and jokes (`nextTopic` in `booth.ts`). At Broadcast tempo it
   leaves ~10 s (median 10.5 s, 120 of ~180 a game are 10 s or more), so a story starts there and runs on over a ball or a strike (the call is
-  folded into the next line or dropped, as for any topic; calls a game: 404 -> 399). At Standard (~6 s) and Quick (~2 s) nothing changes there.
+  folded into the next line or dropped, as for any topic). Not on two strikes or three balls: a play call (a strikeout, a walk, a ball in play)
+  drops a running topic, and with every count allowed 4.3 % of the stories were cut off (497 lines a game); with this rule 2.2 % (487 lines).
+  At Standard (~6 s) and Quick (~2 s) nothing changes there.
 - The booth's stories: up to 26 a game, 75 s apart (were 10 and 240 s); about 17 a game now (were ~7). 28 new ones (114 in all), appended at
   the end of `ANECDOTES` so the recording script's sessions move as little as possible.
 - Running jokes begun per game: 8 (were 4). The analyst chimes in on 60 % of the big calls (35 %; High 75 %, was 60 %).
@@ -577,6 +581,7 @@ pitching change), so only ~7 fit a game.
 - Not changed: `STORY_CAPS` (see above).
 
 At Broadcast the new talk is mostly the booth's stories, so the within-game repeat rate went down and fewer lines come straight back from the game
-before. Standard and Quick gain less (their lulls are short) and their repeat numbers are flat. To go further: `MAX_ANECDOTES` / `ANECDOTE_GAP`
-(with 114 stories and ~17 a game, one comes round again about every six or seven games), or more anecdotes.
+before. The analyst's quick reactions are heard more often from small pools, so more of them are ones heard in earlier games. Standard and Quick gain less (their lulls are short) and their repeat numbers are flat. To go further: `MAX_ANECDOTES` / `ANECDOTE_GAP`
+(with 114 stories and ~17 a game, one comes round again about every six or seven games), or more anecdotes. Standard and Quick numbers
+were measured before the two-strike / three-ball rule, which cannot apply there (their pitcher routines are under 10 s).
 
