@@ -5,14 +5,17 @@ import type { GameEvent } from '../types';
 
 type Call = Extract<GameEvent, { type: 'callForBall' }>;
 
-/** The first innings of a seeded game: every call for a fly ball, whether that ball was a line drive, and the next air catch after it. */
+/** The first innings of a seeded game: every call for a fly ball, whether that ball was a line drive, and the air catch of that play. */
 function calls(seed: number, innings = 5) {
   const g = createGame({ seed, pace: 1 } as never);
   const w = g._world;
   const out: { c: Call; line: boolean; calling: number | undefined; catch: Extract<GameEvent, { type: 'catch' }> | null }[] = [];
+  // (the catch of the same play: a called ball nobody caught used to take the next play's catch, another fielder's)
+  let open: (typeof out)[number] | null = null;
   g.on('*', (e: GameEvent) => {
-    if (e.type === 'callForBall') out.push({ c: e, line: !!w.play?.bip?.line, calling: undefined, catch: null });
-    if (e.type === 'catch' && e.fly) for (const o of out) o.catch ??= e;
+    if (e.type === 'callForBall') out.push((open = { c: e, line: !!w.play?.bip?.line, calling: undefined, catch: null }));
+    if (e.type === 'catch' && e.fly && open) open.catch ??= e;
+    if (e.type === 'playEnd' || e.type === 'pitchReleased') open = null; // (a foul ends no play: the next pitch does)
   });
   let n = 0;
   while (!g.over && w.inning <= innings && n++ < 240 * 3600) {
