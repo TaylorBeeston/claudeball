@@ -38,8 +38,8 @@ def _practice():
     carry = dict(OND, hips=(.02, -.01, -.09), lean=14, head_yaw=75, lfoot=(.26, 0, .085), bat=((.06, -.30, 1.16), (-.12, -.45, -.88))); carry.pop('lhand_rel', None)
     via = dict(carry, lean=12, hips=(.03, -.01, -.08), head_yaw=85, bat=((.28, -.42, 1.28), (-.45, .10, -.88)))
     rows = [(0, S0_, {}), (4, S0_, _soft(SW[8])), (7, S0_, _soft(SW[13])), (10, S0_, _soft(SW[17])), (12, S0_, _soft(SW[20])), (14, S0_, _soft(SW[22])), (17, S0_, _soft(SW[27])), (20, S0_, _soft(SW[32])),
-            (25, S0_, dict(via, lean=10, head_yaw=80, bat=((.20, -.38, 1.40), (-.10, .15, .98)))), (29, S0_, via), (32, S0_, carry),               # ~.5 s back: bat upright in front of the shoulder,
-            (40, S0_, dict(bat=((-.17, -.19, 1.36), (-.30, .12, .94))))]                                                                               # then down across the front (it snapped in 3 frames)
+            (25, S0_, dict(via, lean=10, head_yaw=80, bat=((.22, -.36, 1.22), (.45, .35, -.82)))), (29, S0_, dict(via, bat=((.16, -.40, 1.12), (.10, -.15, -.98)))),   # ~.5 s back on the left side:
+            (32, S0_, carry), (40, S0_, dict(bat=((-.17, -.19, 1.36), (-.30, .12, .94))))]                                                             # barrel down behind the shoulder, then in front (it snapped in 3 frames)
     return rows
 _rreg("batter_practice_swing", 40, _practice(), events=dict(load=7, contact=14, finish=20, back_in_stance=40))
 def _adjust():
