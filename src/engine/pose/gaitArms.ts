@@ -182,9 +182,10 @@ export function gaitArms(L: PoseLocals, R: RestInfo, o: GaitArmsOpts): number {
         fk(L, w, R.rest);
         return fistClear(L, w, o.torso, hand);
       };
-      // the fist stays clear of the trunk as in the solve: no more of the offset than keeps it so
+      // the fist stays clear of the trunk as in the solve: no more of the offset than keeps it so; none on an arm an IK holds (a glove
+      // reaching for the catch the run ends in, a bat)
       const c0 = put(0);
-      let kk = k;
+      let kk = k * Math.max(0, Math.min(1, o.free?.[side] ?? 1));
       if (put(kk) < Math.min(GAIT_ARMS.fistClear, c0)) {
         let lo = 0, hi = kk;
         for (let n = 0; n < 6; n++) {
@@ -207,7 +208,9 @@ export function gaitArms(L: PoseLocals, R: RestInfo, o: GaitArmsOpts): number {
     const arm = B[`${side}Arm`], fore = B[`${side}ForeArm`], hand = B[`${side}Hand`];
     const orig = [...L.lq.subarray(arm * 4, arm * 4 + 4), ...L.lq.subarray(fore * 4, fore * 4 + 4)];
     mask |= correct(L, w, R, o, side, s, arm, fore, hand);
-    if (st) mask |= limitRate(L, w, R, st, side, arm, fore, orig, o.dt ?? 1 / 60);
+    // an arm an IK holds keeps no correction to ease out of (it would be laid over the IK's pose)
+    if (st && (o.free?.[side] ?? 1) <= 1e-3) st[side] = undefined;
+    else if (st) mask |= limitRate(L, w, R, st, side, arm, fore, orig, o.dt ?? 1 / 60);
   }
   return mask;
 }

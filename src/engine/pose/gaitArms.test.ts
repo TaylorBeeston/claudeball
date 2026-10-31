@@ -62,6 +62,18 @@ describe('running arms', () => {
     for (const i of [7, 8, 9]) expect(Array.from(L.lq.subarray(i * 4, i * 4 + 4))).toEqual(Array.from(before.subarray(i * 4, i * 4 + 4)));
   });
 
+  it('an arm an IK takes over (a glove reach as the run ends) keeps none of the correction, fading out or not', () => {
+    for (const fading of [true, false]) {
+      const st: GaitArmsState = {};
+      for (let k = 0; k < 10; k++) gaitArms(at('run', k / 60), R, { w: 1, torso: T, state: st, dt: 1 / 60 });
+      expect(st.Left).toBeDefined();
+      const L = at('run', 10 / 60), before = L.lq.slice();
+      gaitArms(L, R, { w: fading ? 0.8 : 1, torso: T, free: { Left: 0, Right: 1 }, state: st, dt: 1 / 60 });
+      for (const i of [7, 8, 9]) expect(Array.from(L.lq.subarray(i * 4, i * 4 + 4))).toEqual(Array.from(before.subarray(i * 4, i * 4 + 4)));
+      expect(st.Left).toBeUndefined();
+    }
+  });
+
   it('leaves a raised arm (a throw) to its clip', () => {
     const c = rig.clips.get('throw')!;
     let worst = 0;
