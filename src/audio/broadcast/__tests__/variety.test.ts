@@ -212,3 +212,25 @@ describe('a whole game through the booth', () => {
     expect([...unknown]).toEqual([]);
   }, 240_000);
 });
+
+describe('room to talk between pitches', () => {
+  // the booth's own stories need a long lull; at Broadcast tempo the pitcher's routine between pitches leaves ~10 s, at Standard ~6 s
+  const topics = (remaining: number) => {
+    const g: any = createGame({ seed: 5, pace: 0 });
+    const booth: any = new Booth({ rng: mulberry32(5), level: 'normal' });
+    booth.ctx = { ...ctxFromRaw(g.getState(), { game: g }), inning: 4, lull: { kind: 'betweenPitches', sec: 12, remaining } };
+    booth.now = 600;
+    const tags: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      booth.now += 10;
+      const tp = booth.nextTopic();
+      if (tp) tags.push(tp.tag);
+    }
+    return tags;
+  };
+
+  it('a story of their own fits in a long pitcher routine (Broadcast), not in a short one', () => {
+    expect(topics(11).some((t) => t.startsWith('anecdote.'))).toBe(true);
+    expect(topics(5).some((t) => t.startsWith('anecdote.'))).toBe(false);
+  });
+});

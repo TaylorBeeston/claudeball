@@ -111,7 +111,7 @@ export interface DirectorCfg {
 
 export const CFG: Record<Level, DirectorCfg> = {
   low: { pauseMin: 0.3, pauseMax: 0.7, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 99, breatheMax: 99, topics: false },
-  normal: { pauseMin: 0.2, pauseMax: 0.6, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 5, breatheMax: 11, topics: true },
+  normal: { pauseMin: 0.2, pauseMax: 0.6, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 4, breatheMax: 9, topics: true },
   high: { pauseMin: 0.2, pauseMax: 0.5, shouldWindow: 0.7, finishUnder: 1.2, maxCutWait: 1.5, interjectOverlap: 0.4, breatheMin: 2.5, breatheMax: 6, topics: true },
 };
 

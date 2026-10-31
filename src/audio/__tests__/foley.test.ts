@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { surfaceAt, fenceAt, foulLanding, surfaceBounce, surfaceStep } from '../field';
 import { SFX_DEFS, renderSfx } from '../synth';
+import { Biquad } from '../dsp';
 import { CueMapper, mittBucket } from '../cues';
 import type { Cue, MapCtx, SfxId } from '../types';
 
@@ -57,6 +58,27 @@ describe('foley recipes', () => {
     }
     expect(Array.from(renderSfx('mitt_pop', 3, 1).ch[0])).toEqual(Array.from(renderSfx('mitt_pop', 3, 1).ch[0]));
     expect(Array.from(renderSfx('mitt_pop', 3, 1).ch[0].slice(0, 400))).not.toEqual(Array.from(renderSfx('mitt_pop', 3, 2).ch[0].slice(0, 400)));
+  });
+
+  it('a mitt or a glove pops: the upper mids (3-6 kHz) are gone 20 dB within ~10 ms, no hiss after the snap', () => {
+    // ms from the loudest 1 ms of the 3-6 kHz band to 20 dB under it (the old recipes: 11-19 ms for the mitt, up to 13 for the glove)
+    const tail = (id: SfxId, b: number, a: number) => {
+      const r = renderSfx(id, b, a);
+      const f = new Biquad('bp', 4240, 1.4, r.sr);
+      const y = r.ch[0].map((v) => f.tick(v));
+      const w = Math.round(r.sr * 0.001);
+      const env: number[] = [];
+      for (let i = 0; i + w <= y.length; i += w) {
+        let e = 0;
+        for (let k = i; k < i + w; k++) e += y[k] * y[k];
+        env.push(e / w);
+      }
+      const i0 = env.indexOf(Math.max(...env));
+      return env.findIndex((v, i) => i > i0 && v < env[i0] / 100) - i0;
+    };
+    for (let b = 0; b < SFX_DEFS.mitt_pop.buckets; b++) for (let a = 0; a < SFX_DEFS.mitt_pop.alts; a++) expect(tail('mitt_pop', b, a), `mitt_pop/${b}/${a}`).toBeLessThanOrEqual(10);
+    // the outfield "thwup" (bucket 3) is soft and low on purpose
+    for (const b of [0, 1, 2, 4, 5]) for (let a = 0; a < SFX_DEFS.glove_pop.alts; a++) expect(tail('glove_pop', b, a), `glove_pop/${b}/${a}`).toBeLessThanOrEqual(8);
   });
 });
 

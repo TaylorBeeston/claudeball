@@ -574,7 +574,7 @@ export class TopicPicker {
       this.neutralInRow = 0; // stay quiet this time, then allow it again
       return null;
     }
-    if (this.rng() > 0.4) return null; // fillers are rare
+    if (this.rng() > 0.6) return null; // fillers are rare-ish
     const neutral = neutralStories(c).filter((s) => !this.recentIds.slice(-6).includes(s.id) && !this.used.has(s.key) && !capped(s.id));
     while (neutral.length) {
       const i = Math.floor(this.rng() * neutral.length);
