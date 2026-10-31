@@ -14,8 +14,8 @@ def open_hand(side="Left", name="Hand_L_Open"):
 #   back / pad: x of the back of the glove and of the flat pad front; pocket: ball-centre (x, y, z) and pocket sphere radius;
 #   fingers: (length to the fingertip, half spread of the four finger centres, finger half-thickness x, finger radius y); thumb: (tip y, tip z)
 KINDS = {
- "infield":   dict(grow=1.05, node="Gear_Glove",           pocket_node="Glove_Pocket",           back=-.056, pad=.064, half_w=.066, heel_z=(-.030, .075), pocket=(.080, -.004, .112), pr=.0425, fingers=(.205, .036, .034, .0215), thumb=(-.088, .150)),
- "outfield":  dict(node="Gear_Glove_Outfield",  pocket_node="Glove_Pocket_Outfield",  back=-.058, pad=.068, half_w=.071, heel_z=(-.030, .080), pocket=(.086, -.004, .128), pr=.0420, fingers=(.232, .038, .035, .0225), thumb=(-.094, .170)),
+ "infield":   dict(grow=1.05, node="Gear_Glove",           pocket_node="Glove_Pocket",           back=-.056, pad=.064, half_w=.066, heel_z=(-.030, .075), pocket=(.080, -.004, .112), pr=.0425, fingers=(.205, .036, .034, .0215), thumb=(-.125, .175)),
+ "outfield":  dict(node="Gear_Glove_Outfield",  pocket_node="Glove_Pocket_Outfield",  back=-.058, pad=.068, half_w=.071, heel_z=(-.030, .080), pocket=(.086, -.004, .128), pr=.0420, fingers=(.232, .038, .035, .0225), thumb=(-.132, .190)),
  "firstbase": dict(node="Gear_Glove_FirstBase", pocket_node="Glove_Pocket_FirstBase", back=-.056, pad=.062, half_w=.060, heel_z=(-.030, .075), pocket=(.078, -.004, .150), pr=.0425, fingers=(.240, .0, .033, .0300), thumb=(-.080, .190)),
  "catcher":   dict(grow=1.10, node="Gear_Glove_Catcher",   pocket_node="Glove_Pocket_Catcher",   back=-.060, pad=.076, half_w=.104, heel_z=(-.030, .080), pocket=(.096, -.004, .118), pr=.0450, fingers=(.215, .0, .040, .0),   thumb=(-.100, .120)),
 }
@@ -31,6 +31,31 @@ def _add_capsule(bm, a, b, r, seg=20, sq=(1.0, 1.0)):
     for p, rr in ((a, r), (b, r*.94)):
         s = bmesh.ops.create_uvsphere(bm, u_segments=seg, v_segments=12, radius=rr)
         for v in s["verts"]: v.co = R @ Vector((v.co.x*sq[0], v.co.y*sq[1], v.co.z)) + p
+
+def _add_panel(bm, q, thick, bulge=0.0, holes=(), nu=12, nv=14):
+    """Leather panel (the web between thumb and index): bilinear patch over the corners q = (q00, q10, q11, q01) (hand-local), bowed by `bulge` toward the
+    pocket (+x) in the middle, with rectangular windows `holes` = ((u0, u1, v0, v1), ...) in patch coordinates, solidified to `thick`."""
+    q = [Vector(c) for c in q]; vs = {}
+    def at(u, v): return q[0]*(1-u)*(1-v) + q[1]*u*(1-v) + q[2]*u*v + q[3]*(1-u)*v + Vector((bulge*math.sin(math.pi*u)*math.sin(math.pi*v), 0, 0))
+    sub = bmesh.new()
+    for i in range(nu + 1):
+        for j in range(nv + 1): vs[i, j] = sub.verts.new(at(i/nu, j/nv))
+    for i in range(nu):
+        for j in range(nv):
+            uc, vc = (i + .5)/nu, (j + .5)/nv
+            if any(u0 < uc < u1 and v0 < vc < v1 for u0, u1, v0, v1 in holes): continue
+            sub.faces.new((vs[i, j], vs[i+1, j], vs[i+1, j+1], vs[i, j+1]))
+    bmesh.ops.delete(sub, geom=[v for v in sub.verts if not v.link_faces], context='VERTS')
+    bmesh.ops.solidify(sub, geom=list(sub.faces), thickness=thick)
+    mp = {v: bm.verts.new(v.co) for v in sub.verts}
+    for f in sub.faces: bm.faces.new([mp[v] for v in f.verts])
+    sub.free()
+# the web between thumb and index (hand-local corners before the hand scale, on the stalls' axes so it fuses with both: thumb middle, thumb tip, index tip,
+# index middle) and its windows (u from the base to the tips, v from the thumb to the index; an H-web for the
+# infielders: two posts and a cross bar; a closed trapeze for the outfield and first-base gloves); the catcher's mitt has none
+WEB = {"infield": (((.012, -.091, .098), (.012, -.125, .153), (.012, -.057, .172), (.012, -.054, .105)), ((.30, .52, .40, .60),)),
+       "outfield": (((.012, -.095, .104), (.012, -.132, .168), (.012, -.057, .196), (.012, -.054, .110)), ()),
+       "firstbase": (((.012, -.066, .106), (.012, -.078, .168), (.012, -.045, .220), (.012, -.045, .120)), ())}
 
 GLOVE_EASE = 1.03                                                   # gloves are scaled 3 % more than the hand (about 3 mm of room on every side)
 def _hscale(z):
@@ -73,14 +98,22 @@ def build_glove(kind, side="Left"):
             y = t*spread; ln = L*(0.96 if abs(t) > 1 else 1.0)*(1.03 if i in (1, 2) else 1.0)
             _add_capsule(bm, (xm*.45, y, .07), (xm*.45, y*1.05, ln - fr), fr, sq=(ft/fr*1.0, 1.0))
         _add_capsule(bm, (xm*.5 + .006, -.05, .03), (xm*.5 + .006, K["thumb"][0], K["thumb"][1] - .022), .0275, sq=(1.35, 1.0))       # thumb sleeve
-        _add_ellipsoid(bm, (xm*.95, -.048, .125), (xr_*.7, .042, .050))                                              # web between thumb and index
+        _add_ellipsoid(bm, (xm*.95, -.048, .110), (xr_*.7, .036, .040))                                              # web root between thumb and index
+    if kind != "catcher":
+        _add_capsule(bm, (pad - .016, -hw*.58, z0 + .036), (pad - .016, hw*.58, z0 + .036), .015, sq=(1.0, 1.0))         # rolled heel pad across the palm side
+        q, holes = WEB[kind]; _add_panel(bm, q, .009, bulge=.008, holes=holes)                                        # the web
+    else:
+        for k in range(64):                                                                                          # fat padded rim round the mitt's face (open at the wrist)
+            a0, a1 = math.radians(-58 + 296*k/64), math.radians(-58 + 296*(k + 1)/64)
+            p0 = (xm + xr_*.45, hw*.90*math.cos(a0) - .004, .128 + .100*math.sin(a0)); p1 = (xm + xr_*.45, hw*.90*math.cos(a1) - .004, .128 + .100*math.sin(a1))
+            _add_capsule(bm, p0, p1, .021, seg=12)
     # cuff: opening that clears the forearm (wrist radius ~ .04) and extends a few cm up the forearm
     ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=32, radius1=.066, radius2=.066, depth=.05)
     R = Matrix.Rotation(0, 3, 'X')
     for v in ring["verts"]: v.co = Vector((v.co.x*1.02, v.co.y*.98, v.co.z)) + Vector((xm*.35, 0, -.005))
     mesh = bpy.data.meshes.new("glove_union"); bm.to_mesh(mesh); bm.free(); o = bpy.data.objects.new("glove_tmp", mesh); bpy.context.collection.objects.link(o)
     bpy.context.view_layer.objects.active = o; o.select_set(True)
-    md = o.modifiers.new("R", 'REMESH'); md.mode = 'VOXEL'; md.voxel_size = .0032; md.use_smooth_shade = True
+    md = o.modifiers.new("R", 'REMESH'); md.mode = 'VOXEL'; md.voxel_size = .0028; md.use_smooth_shade = True
     bpy.ops.object.modifier_apply(modifier="R")
     # wrist bore: the forearm slides in here (circle r .046 about the wrist axis); the walls that remain are >= 1 cm thick
     cy = bmesh.new(); bmesh.ops.create_cone(cy, cap_ends=True, segments=40, radius1=.059, radius2=.052, depth=.09)
@@ -96,7 +129,7 @@ def build_glove(kind, side="Left"):
     if grow != 1.0: pc0.y *= grow; pc0.z = .06 + (pc0.z - .06)*grow
     # pocket
     pc = pc0; sph = bmesh.new(); bmesh.ops.create_uvsphere(sph, u_segments=32, v_segments=20, radius=K["pr"])
-    for v in sph.verts: v.co = v.co*Vector((1.0, 1.0, 1.0)) + pc
+    for v in sph.verts: v.co = v.co*Vector((1.0, 1.35, 1.30)) + pc                     # a broad bowl, not a ball-sized crater (it still holds the ball's sphere: same depth)
     if kind == "firstbase":
         for v in sph.verts: v.co.z = pc.z + (v.co.z - pc.z)*1.55
     if kind == "catcher":
@@ -104,10 +137,14 @@ def build_glove(kind, side="Left"):
     sm = bpy.data.meshes.new("pocket_tmp"); sph.to_mesh(sm); sph.free(); so = bpy.data.objects.new("pocket_tmp", sm); bpy.context.collection.objects.link(so)
     bo = o.modifiers.new("B", 'BOOLEAN'); bo.operation = 'DIFFERENCE'; bo.object = so; bo.solver = 'EXACT'
     bpy.ops.object.modifier_apply(modifier="B"); bpy.data.objects.remove(so, do_unlink=True)
-    sm2 = o.modifiers.new("S", 'CORRECTIVE_SMOOTH'); sm2.iterations = 6; sm2.factor = .6; sm2.rest_source = 'BIND'
+    sm2 = o.modifiers.new("S", 'CORRECTIVE_SMOOTH'); sm2.iterations = 4; sm2.factor = .5; sm2.rest_source = 'BIND'
     try: bpy.ops.object.modifier_apply(modifier="S")
     except Exception: o.modifiers.remove(sm2)
-    dc = o.modifiers.new("D", 'DECIMATE'); dc.ratio = .34 if kind in ("infield", "outfield") else .30; bpy.ops.object.modifier_apply(modifier="D")
+    bmr = bmesh.new(); bmr.from_mesh(o.data); r_ = K["pr"]*(1.25 if kind == "catcher" else 1.0)                    # the pocket's lip rolls over instead of a sharp crater edge
+    rim = [v for v in bmr.verts if -.003 < (v.co - pc).length - r_ < .010]
+    for _ in range(6): bmesh.ops.smooth_vert(bmr, verts=rim, factor=.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bmr.to_mesh(o.data); bmr.free(); o.data.update()
+    dc = o.modifiers.new("D", 'DECIMATE'); dc.ratio = .23 if kind in ("infield", "outfield") else .21; bpy.ops.object.modifier_apply(modifier="D")
     for p in o.data.polygons: p.use_smooth = True
     # local -> model space
     M = local_to_world(side); o.data.transform(M); o.name = K["node"]; o.data.name = K["node"]
@@ -173,6 +210,32 @@ def glove_laces(glove, kind, side="Left"):
         l, n = on_surface(lp, (-1, 0, 0))
         if l is not None: ring_pts.append(l + n*.0016)
     for a, b in zip(ring_pts, ring_pts[1:] + ring_pts[:1]): _thin(bm, a, b, .0024)
+    # rawhide lacing that reads at broadcast distance: across the finger tips, a lattice over the web, along the heel roll, stitched round the catcher's rim
+    R0 = KINDS[kind]; g = R0.get("grow", 1.0); xm = (R0["back"] + R0["pad"])/2; hw = R0["half_w"] + .003; z0 = R0["heel_z"][0]
+    def sc(p):                                                                       # unscaled hand-local point -> the glove's scaled local space (as build_glove)
+        h = float(_hscale(np.array([p[2]]))[0]); x, y, z = p[0]*h, p[1]*h, p[2]*h
+        return (x, y*g, .06 + (z - .06)*g) if g != 1.0 else (x, y, z)
+    def lace(pts_local, dirloc, r=.0021, lift=.0018):
+        pts = []
+        for lp in pts_local:
+            l, n = on_surface(lp, dirloc)
+            if l is not None: pts.append(l + n*lift)
+        for a, b in zip(pts, pts[1:]):
+            if (a - b).length < .03: _thin(bm, a, b, r)
+    if kind in ("infield", "outfield"):
+        sp = R0["fingers"][1]; ys = np.linspace(-1.5*sp, 1.5*sp, 25)
+        lace([(.010*(1 if i % 2 else -1), y_*1.28, .60) for i, y_ in enumerate(ys)], (0, 0, -1))           # zigzag binding over the four stall tips
+    if kind in WEB:
+        q = [Vector(sc(c)) for c in WEB[kind][0]]; at = lambda u, v: q[0]*(1-u)*(1-v) + q[1]*u*(1-v) + q[2]*u*v + q[3]*(1-u)*v
+        for t in (.3, .55, .8): lace([tuple(at(t, v) + Vector((.15, 0, 0))) for v in np.linspace(.15, .85, 8)], (-1, 0, 0))
+        for t in (.35, .65): lace([tuple(at(u, t) + Vector((.15, 0, 0))) for u in np.linspace(.15, .95, 8)], (-1, 0, 0))
+    if kind != "catcher":
+        lace([sc((.20, y_, z0 + .036)) for y_ in np.linspace(-hw*.55, hw*.55, 12)], (-1, 0, 0), r=.0024)     # heel roll
+    else:
+        for k in range(48):                                                                                   # cross-stitches over the padded rim
+            a0, a1 = math.radians(-50 + 280*k/48), math.radians(-50 + 280*(k + .5)/48)
+            p0 = sc((.20, hw*.84*math.cos(a0) - .004, .128 + .093*math.sin(a0))); p1 = sc((.20, hw*.97*math.cos(a1) - .004, .128 + .108*math.sin(a1)))
+            lace([p0, p1], (-1, 0, 0), r=.0026)
     me = bpy.data.meshes.new(K["node"] + "_laces"); bm.to_mesh(me); bm.free()
     for p in me.polygons: p.use_smooth = True
     o = bpy.data.objects.new(K["node"] + "_Laces", me); bpy.context.collection.objects.link(o); return o

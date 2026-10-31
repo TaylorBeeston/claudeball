@@ -241,6 +241,25 @@ def f_skin_neck(p):
     e = math.hypot((p[0]-NECK_C[0])/NECK_R[0], (p[1]-NECK_C[1])/NECK_R[1]) - 1.0
     return min(.30 - e, p[2] - 1.445, 1.72 - p[2])
 
+def stiffen_waist(o, z0=.945, z1=.990):
+    """Above the hip joint the waist (belt, buckle, waistband, jersey hem, the skin under them) follows the pelvis, not the thighs: the UpLeg weights fade out
+    between z0 and z1 and the rest is renormalised. With the body's thigh weights the belt was dragged into flaps whenever a hip flexed (crouch, slide)."""
+    me = o.data; names = {g.index: g.name for g in o.vertex_groups}; hips = o.vertex_groups.get(PFX + "Hips") or o.vertex_groups.new(name=PFX + "Hips")
+    for v in me.vertices:
+        t = max(0.0, min(1.0, (v.co.z - z0)/(z1 - z0)))
+        if t <= 0.0: continue
+        k = 1 - t*t*(3 - 2*t); ws = {names[g.group]: g.weight for g in v.groups}; leg = [n for n in ws if n.endswith("UpLeg") or n.endswith("Leg")]
+        if not leg: continue
+        moved = sum(ws[n] for n in leg)*(1 - k)
+        for n in leg: o.vertex_groups[n].add([v.index], ws[n]*k, 'REPLACE')
+        hips.add([v.index], ws.get(hips.name, 0.0) + moved, 'REPLACE')
+
+def rigid_on(o, bone):
+    """All of `o` on one bone (the belt and its buckle ride the pelvis: any thigh weight left on its lower edge dragged it into a flap in a crouch)."""
+    for g in list(o.vertex_groups):
+        if g.name != PFX + bone: o.vertex_groups.remove(g)
+    set_weight(o, None, bone)
+
 def ease_field(P, kind):
     """Extra room (m) a real uniform has over the body, by region (t-0014: "their clothes are too tight, they look like they're wearing spandex"): the
     jersey hangs off the chest and back and blouses over the belt, its sleeves are loose at the biceps; the pants are roomy in the seat, thighs and knees
@@ -254,8 +273,8 @@ def ease_field(P, kind):
         e += np.where(torso, .009*g(z, 1.035, .055), 0.0)                         # blousing over the belt
         e += np.where(~torso & (z > 1.15), .012, 0.0)                             # loose sleeves (biceps / elbow)
     elif kind == "pants":
-        legs = z < .935
-        e += np.where(legs, .009 + .004*g(z, .74, .14) + .006*g(z, .53, .07), 0.0)   # seat / thighs / the knee gather
+        legs = z < .935; hem = z.min(); s_ = np.clip((z - hem)/.035, 0, 1); s_ = s_*s_*(3 - 2*s_)
+        e += np.where(legs, (.009 + .004*g(z, .74, .14))*(.30 + .70*s_) + .004*g(z, hem + .06, .025), 0.0)   # seat / thighs; the hem gathers onto the sock (it flared open), bloused just above it
         e += .004*np.clip((.935 - z)/.04, 0, 1)*(z >= .895)                        # eased in from the waistband
     return e
 

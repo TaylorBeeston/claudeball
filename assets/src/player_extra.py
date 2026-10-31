@@ -72,17 +72,28 @@ def hair_long(bm):
 def _mouth(q, rx=.0285, rz=.0135, zc=-.0815):
     # the lips of the MPFB head: stomion at z 1.652 (q.z -.083), upper lip top 1.667, lower lip bottom ~1.640, corners at |x| ~.025
     return math.hypot(q.x/rx, (q.z-zc)/rz) - 1.0 if q.y < -.05 else 1.0
-def _top_edge(ax, centre=-.0595, side=-.002):
-    # under the nose (subnasale z 1.678) at the centre, rising along the cheek line to the sideburns at the ear
-    t = max(0.0, min(1.0, (ax - .022)/.058)); return centre + (side - centre)*t*t*(3 - 2*t)
+def _top_edge(ax, centre=-.0595, side=-.002, qy=None):
+    # under the nose (subnasale z 1.678) at the centre; along the cheek the line runs from the sideburn in front of the ear (q.y ~ 0) diagonally down
+    # to the mouth corner (q.y ~ -.07): it used to run level across the cheekbone, a mask up to the eyes
+    if qy is None:
+        t = max(0.0, min(1.0, (ax - .022)/.058)); return centre + (side - centre)*t*t*(3 - 2*t)
+    t = max(0.0, min(1.0, (-qy - .008)/.062)); t = t*t*(3 - 2*t)
+    return side + (centre + .0055 - side)*t - .0055*max(0.0, 1 - ax/.04)          # ~ -.054 at the mouth corner (under the nostril wings), `centre` under the nose
+def _beard_frame(q, top, side):
+    """The beard's outline fields: top (cheek line), back (in front of the ear; along the jaw angle below the lobe), neckline (from under the jaw angle
+    forward and down to under the chin: no level shelf across the neck)."""
+    ax = abs(q.x); edge = _top_edge(ax, top, side, q.y)
+    back = .004 + .030*max(0.0, min(1.0, (-.050 - q.z)/.030)) - q.y
+    u = max(0.0, min(1.0, (.030 - q.y)/.100)); neck = q.z - (-.085 - .050*u*u*(3 - 2*u))
+    return edge - q.z, back, neck
 def beard_keep(top=-.0595):
     def f(q):
-        edge = _top_edge(abs(q.x), top)
-        return min(edge - q.z, .060 - q.y, .090 - abs(q.x), _mouth(q)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
+        e, bk, nk = _beard_frame(q, top, -.002)
+        return min(e, bk, .090 - abs(q.x), _mouth(q)*.2, nk)
     return f
 def stubble_keep(q):
-    edge = _top_edge(abs(q.x), -.0600, -.012)
-    return min(edge - q.z, .060 - q.y, .088 - abs(q.x), _mouth(q, .0275, .0125, -.0815)*.2, q.z + .142, max(q.z + .118, -q.y - .075))
+    e, bk, nk = _beard_frame(q, -.0600, -.012)
+    return min(e, bk, .088 - abs(q.x), _mouth(q, .0275, .0125, -.0815)*.2, nk)
 def _taper(v, k=.014): return max(0.0, min(1.0, v/k))
 def beard_full(head):
     f = beard_keep(); return head_copy(head, "Gear_Beard_Full", f, lambda q: .0007 + .0072*_taper(f(q), .018)*(1 + .35*max(0.0, -q.z-.10)/.05))      # a thin edge that melts into the skin
@@ -132,14 +143,69 @@ def buttons(jersey):
     return _obj("Gear_Buttons", bm)
 
 # ---------------------------------------------------------------- accessories
-def batting_glove(hand, side):
-    me = hand.data.copy(); bm = bmesh.new(); bm.from_mesh(me); bm.normal_update()
-    for v in bm.verts: v.co = v.co + v.normal*.0022
+def batting_glove(hand, side, body, name=None):
+    """Batting glove on a posed hand variant (`Hand_*` fist on the bat, `Hand_*_Relaxed` for runners and coaches): the hand surface pushed out 3 mm and
+    rounded (no knuckle-sharp creases), with the hand's own skin weights vertex for vertex (the old glove was rigid on the Hand bone, so the skin's wrist
+    blend into the forearm pulled out of it whenever the wrist bent or turned), and a cuff continued from the wrist edge 3 cm up the forearm over the
+    undershirt: a rolled lip at its end and a strap tab on the back of the wrist. The cuff takes the forearm skin's weights under it."""
+    from mathutils.kdtree import KDTree
     sx = 1 if side == "Left" else -1
-    wr = JOINTS[side+"Hand"][1]; dvec = (JOINTS[side+"Hand"][2]-wr).normalized(); ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=20, radius1=.033, radius2=.033, depth=.028)
-    R = dvec.to_track_quat('Z', 'Y').to_matrix()
-    for v in ring["verts"]: v.co = R @ v.co + wr + dvec*.006
-    return _obj("Gear_BattingGlove_"+side[0], bm)
+    bm = bmesh.new(); bm.from_mesh(hand.data)
+    for lay in list(bm.verts.layers.shape): bm.verts.layers.shape.remove(lay)                # (the fist's fingers_n keys are the catcher's signs, not the glove's)
+    bm.verts.ensure_lookup_table(); bm.normal_update(); n0 = len(bm.verts)
+    P0 = [v.co.copy() for v in bm.verts]; hb = BVHTree.FromBMesh(bm)
+    for v in bm.verts: v.co = v.co + v.normal*.003
+    inner = [v for v in bm.verts if not v.is_boundary]
+    for _ in range(3):                                                                          # round off the creases, then keep >= 2.5 mm of leather over the skin
+        bmesh.ops.smooth_vert(bm, verts=inner, factor=.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        for v in bm.verts:
+            loc, nrm, i, d = hb.find_nearest(v.co)
+            if loc is not None and (v.co - loc).dot(nrm) < .0025: v.co = loc + nrm*.0025
+    # the wrist edge (the hand mesh's open boundary), in loop order
+    bnd = [e for e in bm.edges if e.is_boundary]; nb = {}
+    for e in bnd:
+        for v in e.verts: nb.setdefault(v, []).append(e.other_vert(v))
+    start = next(iter(nb)); loop = [start]; prev = None
+    while True:
+        nxt = [w for w in nb[loop[-1]] if w is not prev and w is not loop[0]] if len(loop) > 1 else nb[start][:1]
+        if not nxt: break
+        prev = loop[-1]; loop.append(nxt[0])
+        if len(loop) > len(nb): break
+    wr = JOINTS[side+"Hand"][1]; d = (JOINTS[side+"Hand"][2] - wr).normalized()          # the hand axis (wrist -> fingers); the cuff runs the other way
+    c = sum((v.co for v in loop), Vector())/len(loop)
+    bk = Vector((-sx, 0, 0)); bk = (bk - d*bk.dot(d)).normalized()                          # back of the hand in the rest pose (palm normal points to the body's side)
+    bodybm = bmesh.new(); bodybm.from_mesh(body.data); bb = BVHTree.FromBMesh(bodybm); bodybm.free()
+    def ring(dz, out, tab=0.0):
+        vs = []
+        for v in loop:
+            r = v.co - c; r = r - d*r.dot(d); rn = r.normalized(); p = c - d*dz
+            l, nrm, i_, dist = bb.ray_cast(p, rn, .2)                                         # the forearm under this point
+            rr = max(r.length, ((l - p).length if l is not None else r.length) + .0055 + .0035)
+            vs.append(bm.verts.new(p + rn*(rr + out + tab*max(0.0, rn.dot(bk) - .35))))
+        return vs
+    rings = [loop, ring(.012, .0005, .0030), ring(.026, .0010, .0030), ring(.031, .0030), ring(.034, .0015), ring(.032, -.0015)]   # edge, cuff + strap tab, lip, rolled in
+    for ra, rb in zip(rings, rings[1:]):
+        for i in range(len(loop)):
+            j = (i + 1) % len(loop)
+            try: bm.faces.new((ra[i], ra[j], rb[j], rb[i]))
+            except ValueError: pass
+    bm.faces.ensure_lookup_table(); n_ref = bm.faces[0].normal.copy()                     # (an open shell: keep the hand's own outward orientation)
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces)); bm.faces.ensure_lookup_table(); bm.normal_update()
+    if bm.faces[0].normal.dot(n_ref) < 0: bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    o = _obj(name or "Gear_BattingGlove_"+side[0], bm)
+    # weights: the hand's own, vertex for vertex; the cuff from the nearest forearm / hand skin
+    hn = {g.index: g.name for g in hand.vertex_groups}
+    src = [(v.co.copy(), [(hn[g.group], g.weight) for g in v.groups]) for v in hand.data.vertices]
+    bn = {g.index: g.name for g in body.vertex_groups}
+    src += [(v.co.copy(), [(bn[g.group], g.weight) for g in v.groups]) for v in body.data.vertices if (v.co - wr).length < .12]
+    kd = KDTree(len(src))
+    for i, (co, _) in enumerate(src): kd.insert(co, i)
+    kd.balance()
+    for v in o.data.vertices:
+        ws = src[v.index][1] if v.index < n0 else src[kd.find(v.co)[1]][1]
+        for nm, w in ws:
+            vg = o.vertex_groups.get(nm) or o.vertex_groups.new(name=nm); vg.add([v.index], w, 'REPLACE')
+    return o
 def wristband(side):
     sx = 1 if side == "Left" else -1; sh, d = _arm_frame(sx); bm = bmesh.new()
     ring = bmesh.ops.create_cone(bm, cap_ends=False, segments=24, radius1=.0355, radius2=.0355, depth=.045)

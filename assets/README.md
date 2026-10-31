@@ -437,3 +437,31 @@ The baked numbers (`Gear_Number_Tens/Ones`, material `jersey_number`) stay in th
   the sim's CLIP_SWING / FINISH were measured on that bat path).
 - Headless quick look: `CB_FAST` + `CB_ONLY = ["player_base"]` (globals before exec'ing `player_build.py`) exports one file without clips in ~2 min;
   `tools/faces/facelab.py` with `CAND=BUILD` renders it (faces x expressions x distances, day / night).
+
+## Thirteenth pass (t-0038): gloves, batting gloves, facial hair, waist / pants, wrist build keys, on-deck / practice swing endings
+- **Fielding gloves** (`src/player_glove.py`): the glove thumb splays out from the index (it ran parallel, a mitten), a leather web fills the
+  thumb-index gap (`WEB`: corners on the stalls' axes so it fuses with both; a small window on the infield glove), a rolled heel pad across the palm
+  side, finer voxels / less smoothing (finger stalls keep their grooves), and the pocket is a broad bowl with a rolled lip instead of a ball-sized
+  crater (the carve still holds the ball's sphere: same depth, same `Glove_Pocket`). **Catcher's mitt**: a fat padded rim round the face (open at
+  the wrist). **Laces**: a zigzag binding over the finger tips, a lattice over the web, a lace along the heel roll, cross-stitches round the
+  catcher's rim. Hand fit, pocket centres, `glove_open` / `glove_closed`, node names unchanged; triangles about as before (decimation raised).
+- **Batting gloves** (`player_extra.batting_glove`): built on the posed hand (fist for the bat, plus `Gear_BattingGlove_L/R_Relaxed` on the relaxed
+  hand for runners and base coaches, player_base only, hidden by default; the engine picks the one matching the hand pose and hides the hand
+  inside), 3 mm off the skin and rounded, with the hand's own skin weights vertex for vertex (it was rigid on the Hand bone, so the skin's
+  wrist blend pulled out of it whenever the wrist bent or turned), and a cuff continued 3 cm up the forearm over the undershirt with a strap tab
+  and a rolled lip, weighted like the forearm skin under it.
+- **Facial hair** (`player_extra._beard_frame`): the full beard / stubble cheek line runs from the sideburn in front of the ear down to the mouth
+  corner (it ran level across the cheekbones, a mask), the back edge stays in front of the ear (along the jaw angle below the lobe), and the
+  neckline curves from under the jaw angle forward to under the chin (no level shelf across the neck).
+- **Neck stripe**: three faces on the back of the neck share the mouth-interior island's UVs and were painted as the dark mouth cavity
+  (`mouth_interior_faces` now keeps only faces in front of the neck axis).
+- **Waist** (`player_cloth.stiffen_waist`): above the hip joint (z .945-.99) the belt, buckle, jersey hem, waistband, undershirt and the skin
+  under them follow the pelvis, not the thighs (with the body's UpLeg weights the belt was dragged into flaps in a crouch or slide). **Pants**: the
+  knee-length hem gathers onto the sock (it flared open), bloused just above it.
+- **Build keys at the wrist** (`player_morph.arm_fade`, t-0037's request): the forearm's build deltas lose their share along the forearm (elbow ->
+  wrist) and fade out over the last 20 % before the wrist (heavy slid the skin 52 mm into the hand, lean pulled it 26 mm away); the same rule as
+  the engine's `src/engine/armMorphs.ts`, so that runtime patch now finds (almost) nothing to do.
+- **Clips**: `ondeck_swing` 32 -> 44 frames and `batter_practice_swing` 31 -> 40 frames: after the finish the hands come forward in front of the
+  left shoulder with the bat upright and the barrel comes down across the front (~.5 s; it snapped through the body in 2-3 frames).
+- Audit renders: `tools/visual/model_audit.py` (one plain GLB; gloves, batting gloves, facial hair x cap / helmet, logo, lower body at every build
+  and in stance / run / slide / crouch / lunge).

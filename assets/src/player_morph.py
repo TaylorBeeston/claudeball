@@ -70,11 +70,39 @@ def head_morph(P, kind):
     return out
 
 BODY_KEYS = ("build_lean", "build_stocky", "build_muscular", "build_heavy")
+def arm_frame(obj, P):
+    """Per vertex on a forearm (by its weight on that side's ForeArm + Hand, as the engine picks it): (indices, t along the forearm: elbow 0, wrist 1,
+    unit elbow -> wrist axis per vertex)."""
+    names = {g.index: g.name for g in obj.vertex_groups}; sides = []
+    for s in ("Left", "Right"):
+        E = np.array(JOINTS[s+"ForeArm"][1][:]); W = np.array(JOINTS[s+"Hand"][1][:]); ax = W - E; L = np.linalg.norm(ax); sides.append(((PFX + s + "ForeArm", PFX + s + "Hand"), E, ax/L, L))
+    idx, ts, axs = [], [], []
+    for v in obj.data.vertices:
+        best, bw = None, .01
+        for sd in sides:
+            w = sum(g.weight for g in v.groups if names[g.group] in sd[0])
+            if w > bw: best, bw = sd, w
+        if best is None: continue
+        _, E, ax, L = best; t = float((P[v.index] - E)@ax)/L
+        if t > 0: idx.append(v.index); ts.append(t); axs.append(ax)
+    return np.array(idx, int), np.array(ts), np.array(axs).reshape(-1, 3)
+def arm_fade(frame, D):
+    """Build deltas D (n,3) faded on the forearms so the skin meets the hand on every build (t-0037): the hands, gloves and batting gloves carry no build
+    keys and the bones do not move, but the arm's radial scaling slid the forearm skin ALONG the arm (heavy +50 mm into the hand at the wrist, lean
+    -25 mm: a gap). Along the forearm the axial share fades out from the elbow to the wrist, the whole delta over the last 20 %, nothing past the
+    wrist: the rule of the engine's runtime patch (src/engine/armMorphs.ts, fadeArmDelta), which this makes a no-op."""
+    idx, t, ax = frame; out = D.copy()
+    if not len(idx): return out
+    d = D[idx]; a = (d*ax).sum(1)*_sm(0, 1, t); keep = 1 - _sm(.8, 1.0, t)
+    out[idx] = (d - a[:, None]*ax)*keep[:, None]; return out
 def add_keys(obj, fn, names):
-    """fn(P, name) -> displaced positions; adds Basis + one shape key per name (value 0, range 0..1)."""
+    """fn(P, name) -> displaced positions; adds Basis + one shape key per name (value 0, range 0..1). Build keys are faded on the forearms (arm_fade)."""
     me = obj.data; n = len(me.vertices)
     P = np.empty(n*3, np.float32); me.vertices.foreach_get("co", P); P = P.reshape(-1, 3).astype(np.float64)
     if me.shape_keys is None: obj.shape_key_add(name="Basis", from_mix=False)
+    frame = arm_frame(obj, P) if any(nm in BODY_KEYS for nm in names) and len(obj.vertex_groups) else None
     for nm in names:
         sk = obj.shape_key_add(name=nm, from_mix=False); sk.slider_min = 0.0; sk.slider_max = 1.0; sk.value = 0.0
-        sk.data.foreach_set("co", fn(P, nm).astype(np.float32).ravel())
+        Q = fn(P, nm)
+        if frame is not None and nm in BODY_KEYS: Q = P + arm_fade(frame, Q - P)
+        sk.data.foreach_set("co", Q.astype(np.float32).ravel())
