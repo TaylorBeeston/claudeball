@@ -51,6 +51,7 @@ import { applyLook, lookInput, neckPitch } from './pose/look';
 import { Inertia, useInertia } from './pose/inertia';
 import { ContinuousBlend } from './pose/blend';
 import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
+import { CATCH_YAW, catchYaw, newCatchYaw } from './catchYaw';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { MODEL_HEIGHT, computeLook, hashString, type PlayerLook } from './playerLook';
@@ -94,6 +95,14 @@ const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undersh
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
 /** standing about (the body turns at pivot speed there, the feet stepping with it) */
+/** a ball in flight toward him (a glove target and the ball closing on him): not one of his own throw on its way out */
+function ballComing(snap: PlayerSnap, env: PuppetEnv): boolean {
+  if (!snap.gloveTarget || !env.ball || !env.ballVel) return false;
+  return (snap.pos.x - env.ball.x) * env.ballVel.x + (snap.pos.z - env.ball.z) * env.ballVel.z > 0;
+}
+
+/** how fast the reach lunge moves the body over the ground (m/s): a step toward a ball out of reach; a tag's dive at a runner */
+export const LUNGE = { speed: 2.4, tagSpeed: 4.5 };
 const STANDING_TURN = /^(idle|.*_ready|ready_|field_ready|catch_ready|ump_ready|coach_ready|ballkid_idle|manager_idle|bench_stand)/;
 /** the locomotion loops (their arms swing past the trunk every stride) */
 const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_sprint', 'run_turn', 'run_turn_sprint']);
@@ -1196,7 +1205,11 @@ export class GltfPuppet implements PuppetLike {
     // no walk clip in older GLBs: the (slowed) trot is the next best thing to a slide in a stance
     const slow: AnimHint | null = this.actions.has('walk') ? 'walk' : this.actions.has('trot') ? 'trot' : null;
     if (slow && (snap.anim === 'run' || snap.anim === 'trot') && sp < 1.9) return slow;
-    if (slow && snap.anim === 'idle' && sp > (slow === 'walk' ? 0.3 : 0.6) && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher') return slow;
+    // (walking on while the ~0.1 s average stays above most of the threshold: a creep under a fly ball goes 0.15 -> 0.5 -> 0.15 m/s every 0.1 s
+    // and flipped walk <-> ready every few frames, t-0039)
+    const on = slow === 'walk' ? 0.3 : 0.6;
+    const walking = this.lastMoveHint === slow || this.currentName === slow ? Math.max(sp, this.speedAvg) > on * 0.7 : sp > on;
+    if (slow && snap.anim === 'idle' && walking && snap.role !== 'batter' && snap.role !== 'umpire' && snap.role !== 'catcher') return slow;
     return snap.anim;
   }
 
@@ -1277,13 +1290,16 @@ export class GltfPuppet implements PuppetLike {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (target && this.gloveW > 0.02 && sh && fore && hand) {
+      // (the body is where the sim stands him: the root is set back on the sim's position every frame before this, so the shoulder is measured
+      // unshifted. It used to take this frame's shift off it once more: the shift fed itself, and every lunge ran up to its cap and every hop
+      // to 0.45 m, whatever the target: t-0039)
       this.refreshMatrices();
-      const S = sh.getWorldPosition(new Vector3()).sub(this.reachShift);
+      const S = sh.getWorldPosition(new Vector3());
       const E = fore.getWorldPosition(new Vector3()), H = hand.getWorldPosition(new Vector3());
       const pocket = side === 'Left' ? this.pocket : null;
       const off = pocket ? pocket.getWorldPosition(new Vector3()).sub(H) : new Vector3();
       const goal = target.clone().sub(off);
-      const reach = (S.distanceTo(E.clone().sub(this.reachShift)) + E.distanceTo(H)) * 0.97;
+      const reach = (S.distanceTo(E) + E.distanceTo(H)) * 0.97;
       const dy = goal.y - S.y;
       const hx = goal.x - S.x, hz = goal.z - S.z;
       const hd = Math.hypot(hx, hz);
@@ -1293,7 +1309,16 @@ export class GltfPuppet implements PuppetLike {
       const lift = hop && dy > reach ? Math.min(0.45, dy - reach) : 0;
       if ((excess > 0 && hd > 1e-4) || lift > 0) want.set(hd > 1e-4 && excess > 0 ? (hx / hd) * Math.min(this.lungeMax, excess) : 0, lift, hd > 1e-4 && excess > 0 ? (hz / hd) * Math.min(this.lungeMax, excess) : 0).multiplyScalar(this.gloveW);
     }
+    // the body moves over the ground at a step's pace (LUNGE.speed; a tag's dive faster), so the feet can step with it (pose/footLock.ts); it
+    // used to close 22/s of the gap, up to 10-16 m/s on planted feet; a hop rises and lands as fast as before
+    const prevX = this.reachShift.x, prevZ = this.reachShift.z;
     this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
+    const mx = this.reachShift.x - prevX, mz = this.reachShift.z - prevZ, m = Math.hypot(mx, mz);
+    const vmax = (this.lungeMax > 1 ? LUNGE.tagSpeed : LUNGE.speed) * dt;
+    if (m > vmax) {
+      this.reachShift.x = prevX + (mx / m) * vmax;
+      this.reachShift.z = prevZ + (mz / m) * vmax;
+    }
     if (this.reachShift.lengthSq() > 1e-8) {
       this.root.position.add(this.reachShift);
       this.refreshMatrices();
@@ -1433,6 +1458,9 @@ export class GltfPuppet implements PuppetLike {
     if (gy !== undefined) {
       if (h === 'catch_throw') return gy < 0.6 && has('catch_throw_low') ? 'catch_throw_low' : gy > 1.75 && has('catch_throw_high') ? 'catch_throw_high' : null;
       if (h === 'catch_pitch') return gy < 0.55 && has('catch_pitch_low') ? 'catch_pitch_low' : gy > 1.05 && has('catch_pitch_high') ? 'catch_pitch_high' : null;
+      // a grounder or a comebacker taken above the shoulders (a high hop, a liner back at the pitcher): the reach up, not the scoop at the ground
+      // (in the scoop's crouch a ball 2.5 m up was out of reach: a 0.4 m hop and a 0.7 m lunge, t-0039)
+      if ((h === 'field_grounder' || h === 'catch_comebacker') && gy > 1.7 && has('catch_throw_high')) return 'catch_throw_high';
     }
     if (h === 'slide') {
       const r = (hashString(snap.id) + this.slideCount++ * 2654435761) >>> 0;
@@ -1535,7 +1563,14 @@ export class GltfPuppet implements PuppetLike {
     const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
     const speed0 = Math.hypot(snap.vel.x, snap.vel.z);
-    const gaitOver = wantsGait(snap.anim, snap.role, speed0, this.gaitOn) && snap.anim !== 'catch_pitch';
+    // (a catch hint the sim keeps while no ball is coming to him, the glove target gone, and he travels: he runs, he does not slide in the catch
+    // pose; the hint outlasts the play's catch for its clip length, and is armed for a thrower by his own throw on its way out: t-0039)
+    const looseCatch = GltfPuppet.CATCH_HINTS.has(snap.anim) && snap.anim !== 'catch_pitch' && !snap.gloveTarget && speed0 > (this.gaitOn ? 1.2 : 1.6);
+    // a gait lets go only when the speed has dropped for a moment (an average over ~0.1 s), not on one slow tick: a fielder drifting under a
+    // ball moves at 0.15-0.5 m/s from tick to tick, and the clip flipped walk <-> ready every few frames (6-9 m/s foot slides, t-0039)
+    this.speedAvg += (speed0 - this.speedAvg) * (1 - Math.exp(-dt / 0.1));
+    const gaitSpeed = this.gaitOn ? Math.max(speed0, this.speedAvg) : speed0;
+    const gaitOver = (wantsGait(snap.anim, snap.role, gaitSpeed, this.gaitOn) || looseCatch) && snap.anim !== 'catch_pitch';
     this.gaitOn = gaitOver;
     const hint = gaitOver ? snap.anim : this.moveHint(snap);
     const loco = (pit0 && !gaitOver) || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap, gaitOver);
@@ -1547,10 +1582,14 @@ export class GltfPuppet implements PuppetLike {
     const finish = !pit && snap.role === 'batter' && snap.anim === 'idle' && !!env.batGrip && this.currentName === 'swing' && !!this.current;
     // the swing on the pitch's and the sim's timeline (stride during the flight, launch -> contact -> finish on the sim's swing)
     const bt = !pit && !finish && !gaitOver ? this.batterTiming(snap, env) : null;
-    const name = finish || bt !== null ? 'swing' : pit ? pit.name : baseName;
+    // the throw's follow-through: the sim's hint leaves the throw at the release (for what he does next, or for a catch it arms on his own throw on
+    // its way out of his hand, the ball passing within his reach: a static ready pose slid along at 1-3 m/s, t-0039); the clip plays out unless he
+    // runs off or a ball is really coming to him
+    this.throwOut = !pit && !finish && bt === null && !gaitOver && !snap.hasBall && THROW_HINTS.has(this.currentName) && !THROW_HINTS.has(snap.anim) && !!this.current && this.current.time < this.current.getClip().duration - 0.05 && !ballComing(snap, env);
+    const name = finish || bt !== null ? 'swing' : this.throwOut ? this.currentName : pit ? pit.name : baseName;
     this.pitchClipTime = pit ? pit.time : null;
     // (the stride already plays the swing clip: the sim's swing continues it, no restart)
-    const keep = finish || (bt !== null && this.currentName === 'swing');
+    const keep = finish || this.throwOut || (bt !== null && this.currentName === 'swing');
     if (!keep && (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint))) {
       this.play(name, snap);
     }
@@ -1593,7 +1632,7 @@ export class GltfPuppet implements PuppetLike {
       }
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : AMBIENT_ROLES.has(snap.role) && this.isLoop(name) ? loopRate(snap.id) : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
-    if (!pit && bt === null && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
+    if (!pit && bt === null && !this.throwOut && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
@@ -1648,7 +1687,14 @@ export class GltfPuppet implements PuppetLike {
     // sideways, chest toward the plate, and only turns his head. Everywhere else the sim's facing is the body's.
     const ready = this.updateReady(snap, env, dt);
     // travelling in a stationary pose (a gait chosen by speed): the body faces where it is going
-    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : ready && this.readyW > 0.35 ? ready.yaw : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
+    // taking a ball and holding it (not running, not throwing): the body keeps its heading through the sim's shuffle-led facing swings and
+    // turns once that has settled, at a standing turn's pace (catchYaw.ts)
+    const readyOn = !!ready && this.readyW > 0.35;
+    const taking = !gaitOver && !stanceHeld && !readyOn && (GltfPuppet.CATCH_HINTS.has(snap.anim) || snap.anim === 'transfer' || (snap.anim === 'idle' && (!!snap.hasBall || snap.calling !== undefined)));
+    // (not a catcher taking pitches in his stance: the sim's facing is his, and holding it worked on his crouched ankles)
+    const receiving = snap.role === 'catcher' && (snap.anim === 'catch_pitch' || snap.anim === 'transfer' || snap.anim === 'idle');
+    const held = catchYaw(this.catchYawSt, taking && !receiving && snap.role !== 'batter' && snap.role !== 'runner', snap.facing, this.bodyYaw, speed0, dt);
+    const wantYaw = stanceHeld ? stanceYaw(snap.hand) : readyOn ? ready!.yaw : held !== null ? held : gaitOver && speed0 > 0.9 ? Math.atan2(snap.vel.x, snap.vel.z) : snap.facing;
     if (!this.bodyYawSet) {
       this.bodyYaw = wantYaw;
       this.bodyYawSet = true;
@@ -1659,7 +1705,7 @@ export class GltfPuppet implements PuppetLike {
       // body turns about as fast as a pivot turn (180 deg in ~0.6 s), so the feet can step with it (pose/footLock.ts)
       // (only standing about: a throw, a pickoff or a catch-and-throw turns at its own speed, on the sim's timeline)
       const standing = !gaitOver && speed0 < 0.3 && !stanceHeld && !this.wasStance && STANDING_TURN.test(this.currentName);
-      const maxTurn = (standing ? 5 : stanceHeld || this.wasStance ? 9 : 9.4) * dt;
+      const maxTurn = (standing ? 5 : held !== null ? CATCH_YAW.turn : stanceHeld || this.wasStance ? 9 : 9.4) * dt;
       this.bodyYaw += Math.abs(d) > maxTurn ? Math.sign(d) * maxTurn : d;
     }
     this.wasStance = stanceHeld || (this.wasStance && Math.abs(wantYaw - this.bodyYaw) > 0.01);
@@ -1737,7 +1783,7 @@ export class GltfPuppet implements PuppetLike {
     this.constrain(snap, dt);
     this.clearElbows(snap, dt);
     // feet that are down stay where they landed (pose/footLock.ts)
-    this.lockFeet(dt);
+    this.lockFeet(dt, snap.role);
     if (perf.on) perf.sub('pup.ik', tIk);
     let place: BallPlace | 'none' | 'transfer' = pit ? pit.place : snap.anim === 'transfer' ? 'transfer' : 'none';
     if (place === 'none' && snap.hasBall && snap.role !== 'batter' && snap.role !== 'runner' && snap.role !== 'umpire') {
@@ -2022,7 +2068,7 @@ export class GltfPuppet implements PuppetLike {
     else if (!inCatchHint) this.lastGlove = null;
     const held = !gt && inCatchHint && !!this.lastGlove && (snap.animProgress ?? 0.5) < 1;
     if (held) gt = this.lastGlove!;
-    const catching = (GltfPuppet.CATCH_HINTS.has(snap.anim) || this.inferredGlove !== null) && !!gt;
+    const catching = !this.throwOut && (GltfPuppet.CATCH_HINTS.has(snap.anim) || this.inferredGlove !== null) && !!gt;
     const tagging = snap.anim === 'tag_glove' || snap.anim === 'tag_hand';
     const p = snap.animProgress ?? 0.5;
     let target: Vector3 | null = null;
@@ -2085,12 +2131,16 @@ export class GltfPuppet implements PuppetLike {
     }
     this.gloveW += ((target ? w : 0) - this.gloveW) * (1 - Math.exp(-dt * 40));
     // a target beyond arm's reach: a lunge (the body steps / leans toward it, at most ~0.45 m) before the trunk lean and the arm finish the reach
-    this.lungeMax = tagging ? 1.05 : 0.8;
+    // (a catcher taking a pitch shifts his crouch only a little: a crouched ankle is near the end of its range, and a bigger shift over his planted
+    // feet bent it past it, t-0039; the arm and the lean take the rest)
+    this.lungeMax = tagging ? 1.05 : snap.anim === 'catch_pitch' ? 0.12 : 0.8;
     // a fly ball he takes in front of his face is not a hop: he leaves the ground only for one still well over his head (a high liner),
     const fly = GltfPuppet.FLY_HINTS.has(snap.anim) || settle > 0;
     // and once the ball is in the glove a leap comes down (the body lands in ~0.15 s; the ball rides in the pocket), it does not hang there
+    // (any catch: a high hop fielded on a leap landed only when the give ended, ~0.4 s later; nor does the body go on lunging after the ball it
+    // has: t-0039)
     // (the glove coming up while he settles is the arm alone: no step, no hop, his feet stay where they are)
-    this.reachStep(target, side, dt, !(fly && held) && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching));
+    this.reachStep(target, side, dt, !held && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching) && !held);
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;
@@ -2507,14 +2557,20 @@ export class GltfPuppet implements PuppetLike {
     this.rig.refresh();
   }
   private footState = newFootLock();
-  private lockFeet(dt: number) {
+  private catchYawSt = newCatchYaw();
+  /** the ground speed averaged over ~0.1 s (a gait's release) */
+  private speedAvg = 0;
+  /** finishing a throw the sim has already moved on from (its follow-through) */
+  private throwOut = false;
+  private lockFeet(dt: number, role: string) {
     if (!this.poseRest || (globalThis as { __noFootLock?: boolean }).__noFootLock) return;
     this.refreshMatrices();
     this.readPose();
     // the ground under the feet: the field's (the mound's slope), at the height the sim stands the player (a dugout floor, a seat)
     const g0 = groundHeight(this.root.position.x, this.root.position.z), dy = this.root.position.y - g0;
     const ground = Math.abs(dy) > 0.05 ? (x: number, z: number) => groundHeight(x, z) + dy : groundHeight;
-    const mask = footLock(this.poseL, this.poseRest, this.model.matrixWorld.elements, this.footState, dt, FREE_FEET.test(this.currentName), ground);
+    // (an umpire's or a catcher's stance is a crouch, and their turns are not a play's: the feet turn with the shins as before)
+    const mask = footLock(this.poseL, this.poseRest, this.model.matrixWorld.elements, this.footState, dt, FREE_FEET.test(this.currentName), ground, role !== 'umpire' && role !== 'catcher');
     if (!mask) return;
     for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
     this.refreshMatrices();
