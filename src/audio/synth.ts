@@ -122,6 +122,28 @@ function umpYell(_b: number, _a: number, r: Rand): Rendered {
   return finish({ sr, ch: [c.ch[0]] }, 0.8, 12);
 }
 
+/**
+ * A fielder calling for a fly ball, "I got it!": three shouted syllables (ah-gah-ih), one voice, the pitch falling across the call, a stop for
+ * the g and a short t burst at the end. The alts vary the voice (pitch, vocal tract).
+ */
+function fielderCall(_b: number, a: number, r: Rand): Rendered {
+  const sr = 22050;
+  const f0 = 175 + 22 * a + r() * 10;
+  const tract = 0.95 + 0.05 * a;
+  const syl = (t0: number, dur: number, vowel: [number, number, number], p0: number, p1: number) =>
+    choir(
+      { sr, dur: t0 + dur + 0.04, vowel, voices: 1, f0: (t) => f0 * (p0 + (p1 - p0) * Math.max(0, Math.min(1, (t - t0) / dur))), formantScale: () => tract, env: (t) => { const u = t - t0; return u < 0 ? 0 : Math.min(1, u / 0.012) * (u > dur ? Math.exp(-(u - dur) / 0.008) : 1); }, breath: 0.25, spread: 0 },
+      r,
+    ).ch[0];
+  // "I" (ah gliding to ee), the g's closure, "got" (the stressed one), the flap, "it"
+  const parts = [syl(0, 0.08, VOWELS.a, 1.05, 1.0), syl(0.08, 0.06, VOWELS.i, 1.0, 0.98), syl(0.19, 0.12, VOWELS.a, 1.12, 1.02), syl(0.34, 0.07, VOWELS.i, 0.95, 0.85)];
+  const o = buf(0.5, sr);
+  for (const c of parts) for (let i = 0; i < Math.min(c.length, o.length); i++) o[i] += c[i];
+  // the t of "it"
+  addNoise(o, sr, r, { t0: 0.43, tau: 0.012, amp: 0.25, bp: 4200, q: 1.2 });
+  return finish({ sr, ch: [o] }, 0.8, 10);
+}
+
 // ---- crowd ------------------------------------------------------------------------------------------------------------
 
 const CSR = 16000;
@@ -451,6 +473,7 @@ export const SFX_DEFS: Record<SfxId, SoundDef> = {
   replay_whoosh: { buckets: 1, alts: 1, make: replayWhoosh },
   pa_click: { buckets: 1, alts: 1, make: paClick },
   ump_yell: { buckets: 1, alts: 2, make: umpYell },
+  fielder_call: { buckets: 1, alts: 3, make: fielderCall },
   bfx_whoosh: { buckets: 1, alts: 2, make: bfxWhoosh },
   bfx_thunk: { buckets: 1, alts: 2, make: bfxThunk },
   bfx_replay: { buckets: 1, alts: 1, make: bfxReplay },

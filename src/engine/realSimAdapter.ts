@@ -20,6 +20,7 @@ interface RSPlayer {
   gloveEta?: number;
   catchIn?: number;
   releaseIn?: number;
+  calling?: number;
   gloveHand?: 'L' | 'R';
   pitchType?: string | null;
   stride?: { next: 0 | 1; phase: number };
@@ -227,6 +228,9 @@ export class RealSimAdapter implements GameLike {
       case 'wallLeap':
         this.emit({ type: 'wall_leap', playerId: String(e.fielderId), pos: e.pos as V | undefined });
         break;
+      case 'callForBall':
+        this.emit({ type: 'call_for_ball', playerId: String(e.fielderId), eta: Number(e.eta) });
+        break;
       case 'coachSignal':
         this.emit({ type: 'coach_signal', coachId: String(e.coachId), signal: String(e.kind) as 'stop' | 'go' | 'advance' | 'slide' | 'signs', runnerId: e.runnerId as string | undefined, base: e.base as number | undefined, pos: s?.players.find((q) => q.id === e.coachId)?.pos });
         break;
@@ -330,7 +334,7 @@ export class RealSimAdapter implements GameLike {
         id: p.id, team: p.role === 'umpire' ? -1 : p.team === 'away' ? 0 : 1, role, name: p.name, number: p.jersey, hand,
         pos: p.pos, facing: p.facing, vel: p.vel, anim: p.anim,
         animTime: dur ? p.animT * dur : undefined, animProgress: dur ? p.animT : undefined, animDur: dur,
-        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings, stride: p.stride,
+        hasBall: p.hasBall, gloveTarget: p.gloveTarget ?? undefined, catchIn: p.gloveTarget ? p.catchIn : undefined, releaseIn: p.releaseIn, calling: p.calling, pitchType: p.pitchType ?? undefined, position: p.role === 'umpire' ? p.position : undefined, physique: p.physique, appearance: p.appearance, delivery: p.delivery, ratings: p.ratings, stride: p.stride,
       };
     });
     const knob = s.bat.knob, tip = s.bat.tip;

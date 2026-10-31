@@ -65,6 +65,7 @@ export type SfxId =
   | 'replay_whoosh'
   | 'pa_click'
   | 'ump_yell' // fallback shout when there is no speech synthesis
+  | 'fielder_call' // a fielder calling for a fly ball ("I got it!")
   // broadcast stings (broadcastfx.ts): quiet, on their own bus with its own volume
   | 'bfx_whoosh' // a soft swish for a dissolve or a wipe
   | 'bfx_thunk' // a tiny low tick on a hard cut to a close-up

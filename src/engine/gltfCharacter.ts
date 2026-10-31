@@ -36,6 +36,7 @@ import type { CharacterTemplate, GearSets, PlayerManifest } from './assets';
 import type { AnimHint, PlayerRole, PlayerSnap } from './types';
 import { reg, type Look, type PuppetEnv, type PuppetLike } from './characters';
 import { readyGlove, receiveReady } from './receiveReady';
+import { callWave, comfortGloveY, routineGlove } from './flyCatch';
 import { makeOnDeckBat } from './ondeckProp';
 import { DECAL_NODES, JerseyTextures, decalRange, jerseyPrint, jerseyQuality, type DecalKind } from './jerseyText';
 import { makeCorneaShell, shadeHair, shadeSkin, shadingTier, upgradeMaterial } from './characterShading';
@@ -52,7 +53,7 @@ import { ContinuousBlend } from './pose/blend';
 import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
-import { computeLook, hashString, type PlayerLook } from './playerLook';
+import { MODEL_HEIGHT, computeLook, hashString, type PlayerLook } from './playerLook';
 import { FACE_KEYS, FaceState, personalityFor } from './face/emotion';
 import type { FaceAction } from './face/reactions';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -98,6 +99,8 @@ const GAIT_CLIPS = new Set(['manager_walk', 'walk', 'trot', 'jog', 'run', 'run_s
 function puppetIsKey(snap: PlayerSnap, env: PuppetEnv): boolean {
   if (snap.role === 'batter' || snap.role === 'runner' || snap.role === 'pitcher' || snap.role === 'catcher' || snap.role === 'ondeck') return true;
   if (snap.hasBall || snap.gloveTarget || env.carrier?.id === snap.id) return true;
+  // calling for a fly ball: the wave is IK, which the simplified path skips
+  if (snap.calling !== undefined && snap.calling < 1.5) return true;
   return /^(catch|throw|tag|transfer|dive|slide|field|toss)/.test(snap.anim);
 }
 /** the culling sphere of a puppet (see `setCullBounds`): centre height and radius, metres */
@@ -1254,7 +1257,7 @@ export class GltfPuppet implements PuppetLike {
   private reachShift = new Vector3();
   /** longest lunge (m): a tag is a dive at a runner, a catch a step */
   private lungeMax = 0.8;
-  private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number) {
+  private reachStep(target: Vector3 | null, side: 'Left' | 'Right', dt: number, hop = true, lunge = true) {
     const want = new Vector3();
     const sh = this.bones[`${side}Arm`], fore = this.bones[`${side}ForeArm`], hand = this.bones[`${side}Hand`];
     if (target && this.gloveW > 0.02 && sh && fore && hand) {
@@ -1269,9 +1272,9 @@ export class GltfPuppet implements PuppetLike {
       const hx = goal.x - S.x, hz = goal.z - S.z;
       const hd = Math.hypot(hx, hz);
       const allowed = Math.sqrt(Math.max(0, reach * reach - dy * dy));
-      const excess = hd - allowed;
+      const excess = lunge ? hd - allowed : 0;
       // above reach: a hop (the feet leave the ground a little); beyond it sideways: a lunge of up to ~0.8 m
-      const lift = dy > reach ? Math.min(0.45, dy - reach) : 0;
+      const lift = hop && dy > reach ? Math.min(0.45, dy - reach) : 0;
       if ((excess > 0 && hd > 1e-4) || lift > 0) want.set(hd > 1e-4 && excess > 0 ? (hx / hd) * Math.min(this.lungeMax, excess) : 0, lift, hd > 1e-4 && excess > 0 ? (hz / hd) * Math.min(this.lungeMax, excess) : 0).multiplyScalar(this.gloveW);
     }
     this.reachShift.lerp(want, 1 - Math.exp(-dt * 22));
@@ -1951,6 +1954,8 @@ export class GltfPuppet implements PuppetLike {
   private clipPose = new Map<Bone, Quaternion>();
 
   private static readonly CATCH_HINTS = new Set<AnimHint>(['catch', 'field', 'catch_pitch', 'catch_throw', 'catch_stretch', 'catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand', 'catch_comebacker', 'field_grounder', 'catch_jump', 'pitcher_catch_toss']);
+  /** the catches in the air (the sim's fly-ball and line-drive clips): their glove point may be moved down the ball's line (`flyGlove`) */
+  private static readonly FLY_HINTS = new Set<AnimHint>(['catch_fly', 'catch_fly_run', 'catch_line_drive', 'catch_backhand']);
   private gloveW = 0;
   private readyW = 0;
   private readyGlovePos: { x: number; y: number; z: number } | null = null;
@@ -1991,7 +1996,7 @@ export class GltfPuppet implements PuppetLike {
    * at the ball at the catch instant, and closes on it; a tag sweeps the glove (or bare hand) through the nearest opposing runner.
    */
   private reachIK(snap: PlayerSnap, env: PuppetEnv, dt: number) {
-    let gt = snap.gloveTarget ?? (this.inferredGlove ? { x: this.inferredGlove.x, y: this.inferredGlove.y, z: this.inferredGlove.z } : undefined);
+    let gt = this.flyGlove(snap, env) ?? snap.gloveTarget ?? (this.inferredGlove ? { x: this.inferredGlove.x, y: this.inferredGlove.y, z: this.inferredGlove.z } : undefined);
     // the sim drops the glove target at the catch itself: the glove stays where the ball is for the rest of the catch (the give), then relaxes
     const inCatchHint = GltfPuppet.CATCH_HINTS.has(snap.anim);
     if (gt) this.lastGlove = { x: gt.x, y: gt.y, z: gt.z };
@@ -2004,10 +2009,22 @@ export class GltfPuppet implements PuppetLike {
     let target: Vector3 | null = null;
     let side: 'Left' | 'Right' = 'Left';
     let w = 0;
+    // settled under a fly ball he called for: the glove comes up in front of his face toward where he will take it, before the catch clip starts
+    const settle = snap.calling !== undefined && snap.gloveTarget && snap.catchIn !== undefined ? Math.max(0, Math.min(0.75, (1.3 - snap.catchIn) / 0.8)) : 0;
     if (catching) {
       target = new Vector3(gt!.x, gt!.y, gt!.z);
       // reach out through the first half of the catch, then hold the pocket on the ball
-      w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : p < 0.15 ? p / 0.15 : 1;
+      w = held ? Math.max(0, Math.min(1, (0.95 - p) / 0.3)) : Math.max(settle, p < 0.15 ? p / 0.15 : 1);
+    } else if (settle > 0 && gt) {
+      // in front of him toward the catch point (he is still drifting under it: the glove does not reach out for where he will be)
+      // (a ball coming down behind him, his body still facing the plate: up in front of his face, not reaching back over his shoulder)
+      const fx = Math.sin(snap.facing), fz = Math.cos(snap.facing);
+      let dx = gt.x - snap.pos.x, dz = gt.z - snap.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.05 || (dx * fx + dz * fz) / d < 0.3) ((dx = fx * 0.35), (dz = fz * 0.35));
+      const k = Math.hypot(dx, dz) > 0.45 ? 0.45 / Math.hypot(dx, dz) : 1;
+      target = new Vector3(snap.pos.x + dx * k, gt.y, snap.pos.z + dz * k);
+      w = settle * (1 - callWave(snap.calling!, snap.catchIn).w);
     } else if (this.readyW > 0.02 && this.readyGlovePos) {
       // glove out for a throw that has not left the thrower's hand yet
       target = new Vector3(this.readyGlovePos.x, this.readyGlovePos.y, this.readyGlovePos.z);
@@ -2050,7 +2067,11 @@ export class GltfPuppet implements PuppetLike {
     this.gloveW += ((target ? w : 0) - this.gloveW) * (1 - Math.exp(-dt * 40));
     // a target beyond arm's reach: a lunge (the body steps / leans toward it, at most ~0.45 m) before the trunk lean and the arm finish the reach
     this.lungeMax = tagging ? 1.05 : 0.8;
-    this.reachStep(target, side, dt);
+    // a fly ball he takes in front of his face is not a hop: he leaves the ground only for one still well over his head (a high liner),
+    const fly = GltfPuppet.FLY_HINTS.has(snap.anim) || settle > 0;
+    // and once the ball is in the glove a leap comes down (the body lands in ~0.15 s; the ball rides in the pocket), it does not hang there
+    // (the glove coming up while he settles is the arm alone: no step, no hop, his feet stay where they are)
+    this.reachStep(target, side, dt, !(fly && held) && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching));
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;
@@ -2063,6 +2084,47 @@ export class GltfPuppet implements PuppetLike {
       }
     }
     this.driveGlove(snap);
+    this.callArm(snap, dt);
+  }
+
+  /**
+   * The glove point of a fly ball (a catch in the air, or one he has called for): the sim's point moved down the ball's own line to in front of
+   * his face (flyCatch.ts: the sim takes the ball at the top of his reach, ~2.45 m, which made every catch a hop). A ball coming in flat stays put.
+   */
+  private flyGlove(snap: PlayerSnap, env: PuppetEnv): { x: number; y: number; z: number } | null {
+    const gt = snap.gloveTarget;
+    if (!gt || !env.ball || !env.ballVel || !(GltfPuppet.FLY_HINTS.has(snap.anim) || snap.calling !== undefined)) {
+      if (!GltfPuppet.FLY_HINTS.has(snap.anim)) this.flyLatch = null;
+      return null;
+    }
+    // in its last few ticks the sim's target is the ball's next position, timed by the gap across the ground, which a ball dropping straight
+    // onto him has already closed (the target jumps up to the ball, a metre over his head): the point from just before stands
+    if (this.flyLatch && (snap.catchIn ?? 0) < 0.12) return this.flyLatch;
+    // the ball's velocity when it gets to him (gravity over the time left; the last second is enough to say how steeply it comes down)
+    const t = Math.min(1, snap.catchIn ?? 0);
+    const v = env.ballVel;
+    return (this.flyLatch = routineGlove(gt, { x: v.x, y: v.y - 9.81 * t, z: v.z }, comfortGloveY(MODEL_HEIGHT * this.bodyScale)));
+  }
+  private flyLatch: { x: number; y: number; z: number } | null = null;
+
+  private callW = 0;
+  /**
+   * Calling for a fly ball: the throwing arm goes up over his head and waves ("I got it!") for about a second after the sim's call
+   * (`calling`), and is down before the catch clip starts (flyCatch.ts `callWave`).
+   */
+  private callArm(snap: PlayerSnap, dt: number) {
+    const c = snap.calling !== undefined && !snap.hasBall ? callWave(snap.calling, snap.gloveTarget ? snap.catchIn : undefined) : { w: 0, wave: 0 };
+    this.callW += (c.w - this.callW) * (1 - Math.exp(-dt * 30));
+    const arm = this.bones.RightArm;
+    if (this.callW < 0.02 || !arm) return;
+    this.refreshMatrices();
+    const S = arm.getWorldPosition(new Vector3());
+    // over the shoulder, a little in front and out to the side, swinging side to side across the top of his head
+    const f = snap.facing;
+    const fx = Math.sin(f), fz = Math.cos(f), lx = Math.cos(f), lz = -Math.sin(f);
+    const side = (S.x - snap.pos.x) * lx + (S.z - snap.pos.z) * lz > 0 ? 1 : -1;
+    const out = side * (0.1 + 0.14 * c.wave);
+    this.armIK('Right', new Vector3(S.x + fx * 0.14 + lx * out, S.y + 0.6, S.z + fz * 0.14 + lz * out), this.callW);
   }
 
   /**

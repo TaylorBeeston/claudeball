@@ -76,6 +76,7 @@ function snapPlayer(w: World, p: PlayerRT, role: PlayerSnapshot['role']): Player
     gloveEta: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     catchIn: p.gloveTarget ? Math.max(0, (p.gloveAt - w.tick) * TICK) : 0,
     releaseIn: releaseIn(w, p),
+    calling: w.play?.called?.F === p ? (w.tick - w.play.called.tick) * TICK : undefined,
     pitchType: p === w.pitcher ? (w.prep.pitch?.pitchType ?? null) : undefined,
     gloveHand: p.info.throws === 'R' ? 'L' : 'R',
     tic: role === 'batter' || role === 'ondeck' ? ticOf(p) : undefined,

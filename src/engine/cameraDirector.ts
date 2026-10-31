@@ -311,6 +311,11 @@ export class CameraDirector {
         if (this.inPlay && !this.hr) {
           const p = live.players.find((q) => q.id === e.playerId);
           if (this.shot === 'base' || (this.shot === 'fielder' && this.clock - this.shotStart < 0.7)) break;
+          // already on him since he called for it: stay on the shot through the catch
+          if (this.shot === 'fielder' && this.fielderId === e.playerId && !this.thrown) {
+            this.holdUntil = this.clock + 1.5;
+            break;
+          }
           // catch at a base after a throw => base shot; otherwise fielder shot
           this.fielderId = e.playerId;
           if (p && this.thrown) {
@@ -422,6 +427,15 @@ export class CameraDirector {
         if (this.shot !== 'fielder') this.cut('fielder');
         break;
       }
+      case 'call_for_ball':
+        // a fly ball he has called for: the camera goes to him as he settles under it (the call, the glove up, the catch), as a broadcast does
+        // on a routine fly; the hold is a fallback for a ball he never catches (the catch sets its own)
+        if (this.inPlay && !this.hr && this.shot === 'follow') {
+          this.fielderId = e.playerId;
+          this.cut('fielder');
+          this.holdUntil = this.clock + e.eta + 2;
+        }
+        break;
       case 'wall_leap':
         this.playScore += 2;
         if (this.inPlay && !this.hr) {
