@@ -322,20 +322,20 @@
    "score": 3.588
   },
   "body:hand-torso@heavy": {
-   "frames": 1835,
-   "score": 25.138
+   "frames": 1785,
+   "score": 23.934
   },
   "body:hand-torso": {
-   "frames": 220,
-   "score": 1.293
+   "frames": 185,
+   "score": 1.11
   },
   "body:hand-torso@stocky": {
-   "frames": 800,
-   "score": 15.623
+   "frames": 760,
+   "score": 14.72
   },
   "body:hand-torso@muscular": {
-   "frames": 465,
-   "score": 6.446
+   "frames": 455,
+   "score": 5.994
   },
   "joint:wrist.swing": {
    "frames": 70,
@@ -390,8 +390,8 @@
    "score": 7.418
   },
   "body:elbow-torso@heavy": {
-   "frames": 855,
-   "score": 11.139
+   "frames": 845,
+   "score": 11.115
   },
   "spike:UpLeg": {
    "frames": 85,

@@ -43,7 +43,8 @@ import { HeadLook, lookTarget, maxLookStep, type LookTarget } from './headLook';
 import { ARM_LIMITS, armRest, solveArm as solveArmIK, springStep, type ArmRest, type GripTrack } from './pose/armIK';
 import { BONES, NB, fk, newLocals, type PoseLocals } from './pose/skeleton';
 import { restInfo, type RestInfo } from './pose/limits';
-import { constrainOptsFor, constrainPose, newConstrainState } from './pose/constrain';
+import { constrainOptsFor, constrainPose, isGaitClip, newConstrainState } from './pose/constrain';
+import { gaitWeightStep } from './pose/gaitArms';
 import { limitNeck } from './pose/neck';
 import { applyLook, lookInput, neckPitch } from './pose/look';
 import { Inertia, useInertia } from './pose/inertia';
@@ -2445,12 +2446,26 @@ export class GltfPuppet implements PuppetLike {
     this.readPose();
     // a bat in the hands (the batter's, the on-deck hitter's): the hands' twist stays as the clip / the bat IK made it
     const holdsBat = snap.role === 'batter' || snap.role === 'ondeck';
-    const mask = constrainPose(this.poseL, this.poseRest, { ...constrainOptsFor(this.currentName, holdsBat), state: this.constrainState, dt });
+    // the running arms (pose/gaitArms.ts): weighted by the running gaits' share of the mixer's pose (eased: an inertialized switch moves it
+    // at once), this player's own trunk, and not on an arm the bat or the glove reach holds
+    let all = 0, gait = 0;
+    for (const [name, a] of this.actions) {
+      if (!a.isRunning()) continue;
+      const ew = a.getEffectiveWeight();
+      all += ew;
+      if (isGaitClip(name)) gait += ew;
+    }
+    gaitWeightStep(this.gaitW, all > 1e-6 ? gait / all : 0, Math.min(dt, 0.1));
+    const free = { Left: 1 - Math.min(1, Math.max(this.ikW, this.gloveW)), Right: 1 - Math.min(1, this.ikW) };
+    const mask = constrainPose(this.poseL, this.poseRest, { ...constrainOptsFor(this.currentName, holdsBat), gait: { w: this.gaitW.w, torso: this.torso, free }, state: this.constrainState, dt });
     if (!mask) return;
     for (let i = 0; i < NB; i++) if (mask & (1 << i)) this.poseBones[i]!.quaternion.fromArray(this.poseL.lq, i * 4);
     this.refreshMatrices();
     this.rig.refresh();
   }
+
+  /** the running-arm pass's weight and its speed (pose/gaitArms.ts gaitWeightStep) */
+  private gaitW = { w: 0, v: 0 };
 
   /** per arm: rest frames for the arm solver, the fist point and grip line in the hand's frame (from the model's Bat_Grip) */
   private arms: Partial<Record<'Left' | 'Right', { rest: ArmRest; fist: Vector3; grip: Vector3 }>> = {};

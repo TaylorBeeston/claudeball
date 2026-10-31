@@ -26,6 +26,7 @@ import shipped from '../../assets/shipped.json';
 import { FLAGS } from './flags';
 import { applyMaterialPolicy } from './materials';
 import { simplifyMeshes } from './lodSimplify';
+import { fixArmMorphs } from './armMorphs';
 
 export interface CharacterTemplate {
   /** file name without extension (`player_base`, `player_coach`, …) */
@@ -193,6 +194,8 @@ export async function loadAssets(renderer: WebGLRenderer, base = `${import.meta.
     if (!c) return;
     // physically plausible values per material (the GLBs' factors were glossy for plastic / leather / vinyl: materials.ts)
     policyAll(c.scene, renderer);
+    // the build morphs end at the wrist, where the hands (no build morphs) begin (armMorphs.ts)
+    if (!FLAGS.noarmmorphs) fixArmMorphs(c.scene);
     const clips = new Map<string, AnimationClip>();
     for (const clip of c.animations) clips.set(clip.name, clip);
     const defaults = new Set<string>();
