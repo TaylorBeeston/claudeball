@@ -75,7 +75,12 @@ describe('every hint resolves to a clip the player files have, in a fitting post
 
   it('hints without a clip of their own are only these known stand-ins (a new one must be added here on purpose)', () => {
     const own = hints.filter((h) => !has(h) && resolve(h, 'short') !== h).sort();
-    expect(own).toEqual(['ballkid_idle', 'ballkid_run', 'catch', 'catch_ready', 'field', 'toss', 'transfer', 'umpire_brush_plate']);
+    expect(own).toEqual(['ballkid_idle', 'ballkid_run', 'batter_tap_cleats', 'batter_wait', 'bench_sit_down', 'bench_stand', 'catch', 'catch_ready', 'field', 'toss', 'transfer', 'umpire_brush_plate']);
     expect(resolve('umpire_brush_plate', 'umpire')).toBe('ump_brush_plate');
+    // drawn from other clips on purpose (clipWarp.ts): backwards, a part of one, a held frame; the bat leaning in front outside the box
+    expect(resolve('bench_sit_down', 'bench')).toBe('bench_stand_up');
+    expect(resolve('bench_stand', 'bench')).toBe('bench_stand_up');
+    expect(resolve('batter_tap_cleats', 'batter')).toBe('batter_step_out');
+    expect(resolve('batter_wait', 'batter')).toBe('ondeck_ready');
   });
 });

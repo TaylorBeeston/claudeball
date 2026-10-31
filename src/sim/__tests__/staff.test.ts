@@ -130,8 +130,9 @@ describe('ball kids and the bat boy', () => {
     let tossed = 0;
     let sitting = 0;
     let samples = 0;
-    // (a 40 % toss per retrieval: three games, so that a run of returns does not fail it)
-    for (const seed of ['kid-g3', 'kid-g5', 'kid-g7']) {
+    // (a 40 % toss per retrieval: five games, so that a run of returns does not fail it; three gave 4 retrievals and no toss once the walk-up
+    // pass moved the timelines, t-0036)
+    for (const seed of ['kid-g3', 'kid-g5', 'kid-g7', 'kid-g9', 'kid-g11']) {
       const g = createGame({ seed, pace: 1 });
       const w = g._world;
       g.on('ballKidRetrieve', () => retrieved++);
@@ -176,12 +177,17 @@ describe('ball kids and the bat boy', () => {
         expect(Math.hypot(e.pos.x, e.pos.z)).toBeLessThan(3); // at the plate
       });
       hitBall(w, 80, 6, 10 + k * 4, 800);
+      const side = w.battingTeam.side;
+      const boy = w.staff.find((s) => s.role === 'batboy' && s.team === side)!;
+      // until he is back after his retrieval (or 30 s): a fixed 30 s could land on the next hitter's dropped bat, with the boy out fetching it
+      let busy = false;
       for (let i = 0; i < 240 * 30; i++) {
         l.g.step(1 / 240);
         if (i % 24 === 0 && l.g.getState().bat.dropped) droppedSeen++;
+        if (boy.task !== 'idle') busy = true;
+        else if (busy) break;
       }
-      const spot = batBoySpot(w.battingTeam.side);
-      const boy = w.staff.find((s) => s.role === 'batboy' && s.team === w.battingTeam.side)!;
+      const spot = batBoySpot(side);
       expect(Math.hypot(boy.x - spot.x, boy.z - spot.z)).toBeLessThan(2.5);
       expect(w.batDown).toBeNull();
     }

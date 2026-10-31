@@ -5,7 +5,9 @@
  */
 import { SHOULDER_X } from './batting';
 import { emit } from './events';
-import { toBench } from './dugout';
+import { toBench, WALK_SPEED, WALKUP_SPEED } from './dugout';
+import * as clock from './clock';
+import { boxEdge } from './venue';
 import { lullScale } from './tempo';
 import { spawnDeadBall } from './staff';
 import { CATCH_LEAD, catchClipOn } from './fielding';
@@ -317,7 +319,10 @@ export function readyToPitch(w: World): { ready: boolean; why: string } {
   const b = w.batter;
   if (b) {
     const side = w.batStance === 'R' ? 1 : -1;
-    if (Math.hypot(b.x - side * SHOULDER_X, b.z - 0.15) > 0.6 || Math.hypot(b.vx, b.vz) > 0.4) return { ready: false, why: 'batter not in the box' };
+    // on his walk-up he stops at the edge of the box: his routine (tempo.ts) is what steps him in, so the routine starts with him there
+    const edge = boxEdge(side as 1 | -1);
+    const atEdge = Math.hypot(b.x - edge.x, b.z - edge.z) < 0.6;
+    if ((Math.hypot(b.x - side * SHOULDER_X, b.z - 0.15) > 0.6 && !atEdge) || Math.hypot(b.vx, b.vz) > 0.4) return { ready: false, why: 'batter not in the box' };
   }
   for (const r of w.runners) {
     if (r.state !== 'live' || r.dead || r.base < 1) continue;
@@ -328,13 +333,37 @@ export function readyToPitch(w: World): { ready: boolean; why: string } {
   return { ready: true, why: '' };
 }
 
+/** Metres he still has to walk: along his route, then to his goal. */
+function walkLeft(p: PlayerRT): number {
+  let d = 0, x = p.x, z = p.z;
+  for (const q of p.route) {
+    d += Math.hypot(q.x - x, q.z - z);
+    x = q.x;
+    z = q.z;
+  }
+  const g = p.route.length ? p.after : p.goal;
+  return g ? d + Math.hypot(g.x - x, g.z - z) : d;
+}
+
 /** The game is waiting on somebody: those who are not in place hurry. */
 export function hurryStragglers(w: World): void {
   for (const F of w.fieldingTeam.defense.values()) {
     if (F.onField && F.goal && F.home && Math.hypot(F.x - F.home.x, F.z - F.home.z) > 1.5) F.goal.mul = 1;
   }
-  if (w.batter?.goal) w.batter.goal.mul = 1;
-  if (w.batter && w.batter.route.length) w.batter.routeMul = clamp(4.5 / Math.max(1, w.batter.vmax), 0.1, 1); // (a jog, not a sprint)
+  // the batter walks a little quicker, and only when the clock says so (the 8-second mark is close for the walk he has left and stepping in); no
+  // more than that: a hitter does not run to the plate (he did: a jog on the way, a sprint for the last metres, on nearly every walk-up)
+  const b = w.batter;
+  const c = w.clock;
+  const left = clock.clockOn(w) && c.state === 'running' ? (clock.remaining(w) - clock.CLOCK_RULES.batterAlert) * clock.clockScale(w) : Infinity;
+  // (3 s: stepping in and digging in at the least)
+  const need = b ? walkLeft(b) : 0;
+  if (b && left < need / WALKUP_SPEED[w.cfg.tempo] + 3) {
+    // a late leadoff man from the bench: a jog, only when a brisk walk would not get him there
+    const v = left < need / WALK_SPEED + 3 ? 3.2 : WALK_SPEED;
+    const mul = clamp(v / Math.max(1, b.vmax), 0.1, 1);
+    if (b.goal) b.goal.mul = Math.max(b.goal.mul, mul);
+    if (b.route.length) b.routeMul = Math.max(b.routeMul, mul);
+  }
 }
 
 export { MOUND_DIST, TICK };

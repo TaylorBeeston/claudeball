@@ -98,6 +98,10 @@ export interface PlayerRT {
   after: Goal | null;
   /** Tick of his next warm-up swing while on deck. */
   nextSwing: number;
+  /** On the bench: what he is about to do (a reaction to the play, a stretch of standing at the rail), each from its tick; dugout.ts. */
+  benchSeq: { hint: import('./types').AnimHint; at: number; sec: number }[];
+  /** On the bench: the tick he next gets up for a while by himself. */
+  fidgetAt: number;
   /** His footsteps: the foot that lands next, the step in progress, the last footstrikes (see stride.ts). */
   stride: import('./stride').Stride;
   /** Sliding: the dirt slows him at this rate (m/s^2) and he cannot steer; 0 = on his feet. */

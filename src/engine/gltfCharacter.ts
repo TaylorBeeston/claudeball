@@ -54,6 +54,8 @@ import { FREE_FEET, footLock, newFootLock } from './pose/footLock';
 import { groundHeight } from '../sim/field';
 import { swivelTarget, armHeadClearance, headVolume, swivelElbow, torsoClearance, torsoVolume, type HeadVolume, type TorsoVolume, type V3 } from './armClear';
 import { MODEL_HEIGHT, computeLook, hashString, type PlayerLook } from './playerLook';
+import { WARPS, warpProgress } from './clipWarp';
+import { benchLook, loopPhase, loopRate } from './benchLife';
 import { FACE_KEYS, FaceState, personalityFor } from './face/emotion';
 import type { FaceAction } from './face/reactions';
 import { deliveryClip, deliveryClipTime, gripFor, pitchBallPlace, planDelivery, windupSeconds, type BallPlace, type DeliveryEvents, type DeliveryPlan } from './pitchTiming';
@@ -146,6 +148,7 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'coach_stop': return ['coach_stop', 'ump_time', 'idle'];
     case 'coach_go': case 'coach_advance': case 'coach_go_loop': return [hint, 'celebrate', 'idle'];
     case 'bench_cheer': case 'bench_stand_up': return [hint, 'bench_sit', 'idle'];
+    case 'bench_sit_down': case 'bench_stand': return ['bench_stand_up', 'bench_sit', 'idle']; // backwards / its last frame held (clipWarp.ts)
     case 'catch_ready': return ['catch_ready', ...idleFor(role)];
     case 'pitcher_catch_toss': return ['pitcher_catch_toss', 'catch_throw', 'field_catch'];
     case 'ballkid_idle': return ['ballkid_idle', 'idle']; // standing: never a seated clip (that sat the bat boy on thin air)
@@ -157,6 +160,8 @@ export function clipCandidates(hint: AnimHint, role: PlayerRole): string[] {
     case 'batter_practice_swing': return ['batter_practice_swing', 'ondeck_swing', 'swing'];
     case 'batter_adjust': return ['batter_adjust', ...idleFor('batter')];
     case 'batter_step_out': return ['batter_step_out', ...idleFor('batter')];
+    case 'batter_wait': return ['ondeck_ready', ...idleFor('batter')]; // outside the box: leaning on the bat, not in his stance
+    case 'batter_tap_cleats': return ['batter_step_out', ...idleFor('batter')]; // the step-out's cleat taps (clipWarp.ts)
     case 'catcher_signs': case 'catcher_signal_infield': return [hint, 'catcher_crouch'];
     case 'pitcher_shake_off': case 'pitcher_nod': case 'pitcher_step_off': case 'pitcher_rosin': case 'pitcher_adjust': case 'pitcher_look_runner': return [hint, 'pitcher_set', 'idle'];
     case 'mound_talk': case 'mound_talk_listen': return [hint, 'idle'];
@@ -613,6 +618,8 @@ export class GltfPuppet implements PuppetLike {
   constructor(private tpl: CharacterTemplate, snap: PlayerSnap, private gearSets: GearSets = {}, private manifest?: PlayerManifest) {
     this.umpBase = snap.role === 'umpire' && !!snap.position && snap.position !== 'HP';
     const id = snap.id;
+    // (the half-rate far extras: not all on the same frame)
+    this.lodFlip = (hashString(id) & 1) === 1;
     this.root.matrixWorldAutoUpdate = !!FLAGS.nomatrix;
     this.model = SkeletonUtils.clone(tpl.scene);
     this.root.add(this.model);
@@ -1025,14 +1032,23 @@ export class GltfPuppet implements PuppetLike {
     if (!a || a === this.current) return;
     // a clip coming back while it still fades out keeps its time and its weight (reset() dropped its share of the pose to nothing in one frame,
     // and restarted its time: a whole-body jump when a switch came mid-fade, e.g. walk -> stance -> walk at the plate)
-    const wa = a.isRunning() ? a.getEffectiveWeight() : 0;
-    const resume = wa > 0.01;
+    // (still mixed in: a clip laid on the sim's progress has time scale 0, and three's isRunning() calls that not running while it fades out)
+    const mixedIn = a.enabled && (a as unknown as { _mixer: { _isActiveAction(x: AnimationAction): boolean } })._mixer._isActiveAction(a);
+    const wa = mixedIn ? a.getEffectiveWeight() : 0;
+    // a one-shot starting over from its beginning while its last run still fades out (a second practice swing 0.2 s after the first, inside the
+    // stance's 0.3 s fade) is no resume: its fading weight would be seeked from its last frame to its first, and dropping that weight lets the mixer
+    // fill it with the bind pose (a 27 cm hand pop, t-0036). It starts afresh, inertialized from the pose on screen
+    const restart = wa > 0.01 && !this.isLoop(name) && (snap.animProgress ?? 1) < 0.1 && a.time > 0.5 * a.getClip().duration;
+    const resume = wa > 0.01 && !restart;
     if (!resume) a.reset();
     let t = snap.animTime ?? 0;
     // a throw starts so its release frame meets the sim's release (`releaseIn`); the sim starts most motions that long ahead, a play's quick throw later
     const rel = THROW_HINTS.has(snap.anim) && snap.releaseIn !== undefined ? this.manifest?.clips[name]?.events_s?.release : undefined;
     if (rel !== undefined) t = Math.max(0, rel - (snap.releaseIn ?? 0));
     if (!resume) a.time = Math.min(t, Math.max(0, a.getClip().duration - 0.001));
+    // an ambient loop the sim gives no time for (the bench's sit, the on-deck stance) starts at the man's own phase (benchLife.ts): every puppet
+    // was built on the same tick and they all leaned and turned their heads as one
+    if (!resume && snap.animTime === undefined && AMBIENT_ROLES.has(snap.role) && this.isLoop(name)) a.time = loopPhase(snap.id) * a.getClip().duration;
     a.enabled = true;
     a.setEffectiveWeight(1);
     a.play();
@@ -1041,7 +1057,7 @@ export class GltfPuppet implements PuppetLike {
     const fade = stanceBlend ? 0.3 : this.isLoop(name) ? 0.2 : 0.1;
     if (this.current) {
       // inertialization instead of a crossfade (pose/inertia.ts): the new clip at full weight now, the old pose as a decaying offset
-      if (this.poseRest && useInertia(this.currentName, name) && !(globalThis as { __crossfade?: boolean }).__crossfade) {
+      if (this.poseRest && (useInertia(this.currentName, name) || restart) && !(globalThis as { __crossfade?: boolean }).__crossfade) {
         this.readClipPose();
         this.inertia.start(this.poseL.lq, this.poseL.lp, fade * 1.5);
         this.current.stop();
@@ -1540,7 +1556,7 @@ export class GltfPuppet implements PuppetLike {
     }
     this.lastHint = snap.anim;
     this.lastMoveHint = hint;
-    const stanceHeld = !gaitOver && snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out');
+    const stanceHeld = !gaitOver && snap.role === 'batter' && (snap.anim === 'idle' || snap.anim === 'swing' || snap.anim === 'batter_practice_swing' || snap.anim === 'batter_adjust' || snap.anim === 'batter_step_out' || snap.anim === 'batter_wait' || snap.anim === 'batter_tap_cleats');
     const sp = Math.hypot(snap.vel.x, snap.vel.z);
     const locomotion = name === 'run' || name === 'trot' || name === 'jog' || name === 'run_sprint' || name === 'run_turn' || name === 'run_turn_sprint' || name === 'walk';
     if (bt !== null && this.current) {
@@ -1575,13 +1591,16 @@ export class GltfPuppet implements PuppetLike {
         const foot = this.footSpeedOf(name, fallback);
         this.current.timeScale = Math.min(name === 'walk' ? 1.7 : 1.8, Math.max(0.4, sp / foot));
       }
-    } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
+    } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : AMBIENT_ROLES.has(snap.role) && this.isLoop(name) ? loopRate(snap.id) : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
     if (!pit && bt === null && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
-      this.current.time = Math.min(dur - 0.001, Math.max(0, snap.animProgress * dur));
+      // a warped hint (clipWarp.ts) is laid on its curve
+      const warp = WARPS[snap.anim];
+      const v = warp && !(globalThis as { __noClipWarp?: boolean }).__noClipWarp ? warpProgress(warp, snap.animProgress) : snap.animProgress;
+      this.current.time = Math.min(dur - 0.001, Math.max(0, v * dur));
     }
     // ROOT CAUSE of the spinning heads: three's mixer only writes a bone when the clip value changed since last frame, so on a held
     // pose (stance frame 0, paused / progress-seeked clips) our look / IK rotation from the previous frame stayed on the bone and
@@ -2638,6 +2657,29 @@ export class GltfPuppet implements PuppetLike {
     }
   }
 
+  /** A bench player's own look schedule (benchLife.ts): the plate, the mound, the man beside him, nothing; a ball in play after his reaction time. */
+  private benchFocus(snap: PlayerSnap, env: PuppetEnv): Vector3 | null {
+    const fast = !!env.ball && (env.ballSpeed ?? 0) > 8;
+    if (!fast) this.ballLiveAt = null;
+    else this.ballLiveAt ??= env.time;
+    const look = benchLook(snap.id, env.time, this.ballLiveAt === null ? -1 : env.time - this.ballLiveAt);
+    switch (look.at) {
+      case 'ball':
+        return env.ball;
+      case 'plate':
+        return this.benchTgt.set(0, 1.0, 0);
+      case 'mound':
+        return this.benchTgt.set(0, 1.8, 18.4);
+      case 'mate':
+        // along the bench to one side, at a seated man's head height
+        return this.benchTgt.set(snap.pos.x + look.side * 1.6 * Math.cos(snap.facing), snap.pos.y + 1.1, snap.pos.z - look.side * 1.6 * Math.sin(snap.facing));
+      default:
+        return null;
+    }
+  }
+  private ballLiveAt: number | null = null;
+  private readonly benchTgt = new Vector3();
+
   /**
    * Head look-at, in a level frame (pose/look.ts): the target's yaw about the vertical from the chest's heading and its pitch off the horizon,
    * clamped to human limits, ignored when it is behind the player / too close / the player is idling with a dead ball, and eased with a
@@ -2650,7 +2692,7 @@ export class GltfPuppet implements PuppetLike {
     // idle players with nothing moving forget the ball and look ahead
     const still = (snap.anim === 'idle' || snap.anim === 'celebrate') && Math.hypot(snap.vel.x, snap.vel.z) < 0.3;
     const live = env.ball && !(still && (env.ballSpeed ?? 99) < 0.5 && snap.role !== 'batter' && snap.role !== 'catcher' && snap.role !== 'umpire');
-    const focus = this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
+    const focus = snap.role === 'bench' ? this.benchFocus(snap, env) : this.readyLook && this.readyW > 0.35 ? this.readyLook : live ? env.ball : env.mound ?? null;
     let t: LookTarget | null = null;
     // what the neck's range keeps the head from (up / down): the eyes look the rest of the way
     let neckShort = 0;

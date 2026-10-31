@@ -76,6 +76,8 @@ function makePlayerRT(info: PlayerInfo, team: TeamRT): PlayerRT {
     routeMul: 0.25,
     after: null,
     nextSwing: 0,
+    benchSeq: [],
+    fidgetAt: 0,
     gait: null,
     stride: newStride(),
     slideDecel: 0,
