@@ -93,6 +93,12 @@ const LOD_TIER2 = /^(Jersey_BackNumberDecal|Eyes$|Gear_Belt$|Gear_Collar|Undersh
 /** layer bit the camera does not see: a part moved there is skipped by the main pass, the GTAO prepass and every shadow cascade without touching `visible` */
 const HIDDEN_LAYERS = 1 << 1;
 /** standing about (the body turns at pivot speed there, the feet stepping with it) */
+/** a ball in flight toward him (a glove target and the ball closing on him): not one of his own throw on its way out */
+function ballComing(snap: PlayerSnap, env: PuppetEnv): boolean {
+  if (!snap.gloveTarget || !env.ball || !env.ballVel) return false;
+  return (snap.pos.x - env.ball.x) * env.ballVel.x + (snap.pos.z - env.ball.z) * env.ballVel.z > 0;
+}
+
 /** how fast the reach lunge moves the body over the ground (m/s): a step toward a ball out of reach; a tag's dive at a runner */
 export const LUNGE = { speed: 2.4, tagSpeed: 4.5 };
 const STANDING_TURN = /^(idle|.*_ready|ready_|field_ready|catch_ready|ump_ready|coach_ready|ballkid_idle|manager_idle|bench_stand)/;
@@ -1432,6 +1438,9 @@ export class GltfPuppet implements PuppetLike {
     if (gy !== undefined) {
       if (h === 'catch_throw') return gy < 0.6 && has('catch_throw_low') ? 'catch_throw_low' : gy > 1.75 && has('catch_throw_high') ? 'catch_throw_high' : null;
       if (h === 'catch_pitch') return gy < 0.55 && has('catch_pitch_low') ? 'catch_pitch_low' : gy > 1.05 && has('catch_pitch_high') ? 'catch_pitch_high' : null;
+      // a grounder or a comebacker taken above the shoulders (a high hop, a liner back at the pitcher): the reach up, not the scoop at the ground
+      // (in the scoop's crouch a ball 2.5 m up was out of reach: a 0.4 m hop and a 0.7 m lunge, t-0039)
+      if ((h === 'field_grounder' || h === 'catch_comebacker') && gy > 1.7 && has('catch_throw_high')) return 'catch_throw_high';
     }
     if (h === 'slide') {
       const r = (hashString(snap.id) + this.slideCount++ * 2654435761) >>> 0;
@@ -1534,7 +1543,10 @@ export class GltfPuppet implements PuppetLike {
     const cin = snap.role === 'catcher' && snap.anim === 'idle' && !realCatch ? this.catcherCatch(snap, env) : null;
     // the catcher's inferred catch is driven like the pitcher's delivery: a clip time on the sim's ball timeline
     const speed0 = Math.hypot(snap.vel.x, snap.vel.z);
-    const gaitOver = wantsGait(snap.anim, snap.role, speed0, this.gaitOn) && snap.anim !== 'catch_pitch';
+    // (a catch hint the sim keeps while no ball is coming to him, the glove target gone, and he travels: he runs, he does not slide in the catch
+    // pose; the hint outlasts the play's catch for its clip length, and is armed for a thrower by his own throw on its way out: t-0039)
+    const looseCatch = GltfPuppet.CATCH_HINTS.has(snap.anim) && snap.anim !== 'catch_pitch' && !snap.gloveTarget && speed0 > (this.gaitOn ? 1.2 : 1.6);
+    const gaitOver = (wantsGait(snap.anim, snap.role, speed0, this.gaitOn) || looseCatch) && snap.anim !== 'catch_pitch';
     this.gaitOn = gaitOver;
     const hint = gaitOver ? snap.anim : this.moveHint(snap);
     const loco = (pit0 && !gaitOver) || snap.anim === 'catch_pitch' ? null : this.locomotionClip(snap, gaitOver);
@@ -1546,10 +1558,14 @@ export class GltfPuppet implements PuppetLike {
     const finish = !pit && snap.role === 'batter' && snap.anim === 'idle' && !!env.batGrip && this.currentName === 'swing' && !!this.current;
     // the swing on the pitch's and the sim's timeline (stride during the flight, launch -> contact -> finish on the sim's swing)
     const bt = !pit && !finish && !gaitOver ? this.batterTiming(snap, env) : null;
-    const name = finish || bt !== null ? 'swing' : pit ? pit.name : baseName;
+    // the throw's follow-through: the sim's hint leaves the throw at the release (for what he does next, or for a catch it arms on his own throw on
+    // its way out of his hand, the ball passing within his reach: a static ready pose slid along at 1-3 m/s, t-0039); the clip plays out unless he
+    // runs off or a ball is really coming to him
+    this.throwOut = !pit && !finish && bt === null && !gaitOver && !snap.hasBall && THROW_HINTS.has(this.currentName) && !THROW_HINTS.has(snap.anim) && !!this.current && this.current.time < this.current.getClip().duration - 0.05 && !ballComing(snap, env);
+    const name = finish || bt !== null ? 'swing' : this.throwOut ? this.currentName : pit ? pit.name : baseName;
     this.pitchClipTime = pit ? pit.time : null;
     // (the stride already plays the swing clip: the sim's swing continues it, no restart)
-    const keep = finish || (bt !== null && this.currentName === 'swing');
+    const keep = finish || this.throwOut || (bt !== null && this.currentName === 'swing');
     if (!keep && (snap.anim !== this.lastHint || name !== this.currentName || (hint !== snap.anim && hint !== this.lastMoveHint))) {
       this.play(name, snap);
     }
@@ -1592,7 +1608,7 @@ export class GltfPuppet implements PuppetLike {
       }
     } else if (this.current) this.current.timeScale = name === 'toss' ? 0.75 : 1;
     // sim-driven clip time: when the sim reports progress through a one-shot animation, seek to it
-    if (!pit && bt === null && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
+    if (!pit && bt === null && !this.throwOut && this.current && snap.animProgress !== undefined && !this.isLoop(this.currentName)) {
       const dur = this.current.getClip().duration;
       this.current.paused = false;
       this.current.timeScale = 0;
@@ -2023,7 +2039,7 @@ export class GltfPuppet implements PuppetLike {
     else if (!inCatchHint) this.lastGlove = null;
     const held = !gt && inCatchHint && !!this.lastGlove && (snap.animProgress ?? 0.5) < 1;
     if (held) gt = this.lastGlove!;
-    const catching = (GltfPuppet.CATCH_HINTS.has(snap.anim) || this.inferredGlove !== null) && !!gt;
+    const catching = !this.throwOut && (GltfPuppet.CATCH_HINTS.has(snap.anim) || this.inferredGlove !== null) && !!gt;
     const tagging = snap.anim === 'tag_glove' || snap.anim === 'tag_hand';
     const p = snap.animProgress ?? 0.5;
     let target: Vector3 | null = null;
@@ -2090,8 +2106,9 @@ export class GltfPuppet implements PuppetLike {
     // a fly ball he takes in front of his face is not a hop: he leaves the ground only for one still well over his head (a high liner),
     const fly = GltfPuppet.FLY_HINTS.has(snap.anim) || settle > 0;
     // and once the ball is in the glove a leap comes down (the body lands in ~0.15 s; the ball rides in the pocket), it does not hang there
+    // (any catch: a high hop fielded on a leap landed only when the give ended, ~0.4 s later, t-0039)
     // (the glove coming up while he settles is the arm alone: no step, no hop, his feet stay where they are)
-    this.reachStep(target, side, dt, !(fly && held) && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching));
+    this.reachStep(target, side, dt, !held && !(settle > 0 && !catching) && (!fly || !target || target.y > comfortGloveY(MODEL_HEIGHT * this.bodyScale) + 0.25), !(settle > 0 && !catching));
     if (target && this.gloveW > 0.02) {
       const hand = this.bones[`${side}Hand`];
       const pocket = side === 'Left' ? this.pocket ?? this.nodes.get('Glove_Pocket') ?? null : null;
@@ -2509,6 +2526,8 @@ export class GltfPuppet implements PuppetLike {
   }
   private footState = newFootLock();
   private catchYawSt = newCatchYaw();
+  /** finishing a throw the sim has already moved on from (its follow-through) */
+  private throwOut = false;
   private lockFeet(dt: number) {
     if (!this.poseRest || (globalThis as { __noFootLock?: boolean }).__noFootLock) return;
     this.refreshMatrices();
